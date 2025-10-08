@@ -5,10 +5,30 @@ const Permission = require('./permissions')(sequelize, Sequelize.DataTypes);
 const Role = require('./roles')(sequelize, Sequelize.DataTypes);
 const RolePermission = require('./rolePermissions')(sequelize, Sequelize.DataTypes);
 
+// Branch related models
+const Branch = require('./branches')(sequelize, Sequelize.DataTypes);
+const BankAccount = require('./bankAccounts')(sequelize, Sequelize.DataTypes);
+const KycDocument = require('./KycDocuments')(sequelize, Sequelize.DataTypes);
+const InvoiceSetting = require('./invoiceSettings')(sequelize, Sequelize.DataTypes);
+const User = require('./users')(sequelize, Sequelize.DataTypes);
+const UserRole = require('./userRoles')(sequelize, Sequelize.DataTypes);
+
+// Vendor related models
+const Vendor = require('./vendors')(sequelize, Sequelize.DataTypes);
+const VendorSPOCDetails = require('./vendorSpocDetails')(sequelize, Sequelize.DataTypes);
+
 const models = {
   Permission,
   Role,
   RolePermission,
+  Branch,
+  BankAccount,
+  KycDocument,
+  InvoiceSetting,
+  User,
+  UserRole,
+  Vendor,
+  VendorSPOCDetails,
 };
 
 Object.values(models).forEach((model) => {
@@ -16,6 +36,12 @@ Object.values(models).forEach((model) => {
     model.associate(models);
   }
 });
+
+// Many-to-many between Users and Roles through UserRole
+if (User && Role) {
+  User.belongsToMany(Role, { through: UserRole, foreignKey: 'user_id', otherKey: 'role_id', as: 'roles' });
+  Role.belongsToMany(User, { through: UserRole, foreignKey: 'role_id', otherKey: 'user_id', as: 'users' });
+}
 
 (async () => {
   try {
