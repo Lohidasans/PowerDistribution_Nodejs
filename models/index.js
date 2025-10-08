@@ -17,6 +17,11 @@ const UserRole = require('./userRoles')(sequelize, Sequelize.DataTypes);
 const Vendor = require('./vendors')(sequelize, Sequelize.DataTypes);
 const VendorSPOCDetails = require('./vendorSpocDetails')(sequelize, Sequelize.DataTypes);
 
+// Employee related models
+const Employee = require('./employees')(sequelize, Sequelize.DataTypes);
+const EmployeeContact = require('./employeeContacts')(sequelize, Sequelize.DataTypes);
+const EmployeeExperience = require('./employeeExperiences')(sequelize, Sequelize.DataTypes);
+
 const models = {
   Permission,
   Role,
@@ -29,6 +34,9 @@ const models = {
   UserRole,
   Vendor,
   VendorSPOCDetails,
+  Employee,
+  EmployeeContact,
+  EmployeeExperience,
 };
 
 Object.values(models).forEach((model) => {
