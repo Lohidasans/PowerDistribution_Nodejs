@@ -1,0 +1,10 @@
+{
+    "success": "Success",
+    "failure": {
+      "internalError": "Something went wrong. Please try again.",
+      "notFound": "Data not found.",
+      "alreadyExists": "This record already exists.",
+      "badRequest": "Invalid request."
+    }
+  }
+  

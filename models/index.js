@@ -1,6 +1,29 @@
-const sequelize = require("../config/database");
-const User = require("./user.model");
+const Sequelize = require('sequelize');
+const { sequelize } = require('../config/dbConfig');
 
-const db = { sequelize, User };
+const Permission = require('./permissions')(sequelize, Sequelize.DataTypes);
+const Role = require('./roles')(sequelize, Sequelize.DataTypes);
+const RolePermission = require('./rolePermissions')(sequelize, Sequelize.DataTypes);
 
-module.exports = db;
+const models = {
+  Permission,
+  Role,
+  RolePermission,
+};
+
+Object.values(models).forEach((model) => {
+  if (model.associate) {
+    model.associate(models);
+  }
+});
+
+(async () => {
+  try {
+    await sequelize.sync();
+    console.log("Models synchronized successfully!.");
+  } catch (error) {
+    console.error("Unable to sync database:", error);
+  }
+})();
+
+module.exports = { sequelize, models }; 
