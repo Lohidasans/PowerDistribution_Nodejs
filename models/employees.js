@@ -8,6 +8,10 @@ module.exports = (sequelize, DataTypes) => {
                 primaryKey: true,
                 type: DataTypes.INTEGER,
             },
+            profile_image_url: {
+                type: DataTypes.STRING,
+                allowNull: true,
+            },
             employee_no: {
                 type: DataTypes.STRING,
                 allowNull: false,

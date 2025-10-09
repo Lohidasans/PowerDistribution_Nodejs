@@ -11,7 +11,6 @@ const BankAccount = require('./bankAccounts')(sequelize, Sequelize.DataTypes);
 const KycDocument = require('./KycDocuments')(sequelize, Sequelize.DataTypes);
 const InvoiceSetting = require('./invoiceSettings')(sequelize, Sequelize.DataTypes);
 const User = require('./users')(sequelize, Sequelize.DataTypes);
-const UserRole = require('./userRoles')(sequelize, Sequelize.DataTypes);
 
 // Vendor related models
 const Vendor = require('./vendors')(sequelize, Sequelize.DataTypes);
@@ -21,6 +20,17 @@ const VendorSPOCDetails = require('./vendorSpocDetails')(sequelize, Sequelize.Da
 const Employee = require('./employees')(sequelize, Sequelize.DataTypes);
 const EmployeeContact = require('./employeeContacts')(sequelize, Sequelize.DataTypes);
 const EmployeeExperience = require('./employeeExperiences')(sequelize, Sequelize.DataTypes);
+const EmployeeIncentive = require('./employeeIncentives')(sequelize.DataTypes);
+
+//Collection and UOM related modes
+const MaterialType = require('./materialType')(sequelize, Sequelize.DataTypes);
+const Category = require('./categories')(sequelize, Sequelize.DataTypes);
+const Subcategory = require('./subcategories')(sequelize, Sequelize.DataTypes);
+const Variant = require('./variants')(sequelize, Sequelize.DataTypes);
+const VariantValue = require('./variantValues')(sequelize, Sequelize.DataTypes);
+const Uom = require('./uom')(sequelize, Sequelize.DataTypes);
+
+
 
 const models = {
   Permission,
@@ -31,12 +41,18 @@ const models = {
   KycDocument,
   InvoiceSetting,
   User,
-  UserRole,
   Vendor,
   VendorSPOCDetails,
   Employee,
   EmployeeContact,
   EmployeeExperience,
+  EmployeeIncentive,
+  MaterialType,
+  Category,
+  Subcategory,
+  Variant,
+  VariantValue,
+  Uom,
 };
 
 Object.values(models).forEach((model) => {
