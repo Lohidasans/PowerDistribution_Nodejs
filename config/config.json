@@ -1,23 +1,23 @@
 {
   "development": {
-    "username": "postgres",
-    "password": "ENHR@123",
-    "database": "AuditComplianceDEV",
-    "host": "13.127.241.131",
+    "username": "etsuser",
+    "password": "Ets@1234",
+    "database": "retailerp",
+    "host": "46.202.160.46",
     "dialect": "postgres"
   },
   "test": {
-    "username": "postgres",
-    "password": "ENHR@123",
-    "database": "AuditComplianceDEV",
-    "host": "13.127.241.131",
+    "username": "etsuser",
+    "password": "Ets@1234",
+    "database": "retailerp",
+    "host": "46.202.160.46",
     "dialect": "postgres"
   },
   "production": {
-    "username": "postgres",
-    "password": "ENHR@123",
-    "database": "AuditComplianceDEV",
-    "host": "13.127.241.131",
+    "username": "etsuser",
+    "password": "Ets@1234",
+    "database": "retailerp",
+    "host": "46.202.160.46",
     "dialect": "postgres"
   }
 }

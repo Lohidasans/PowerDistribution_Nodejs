@@ -8,7 +8,7 @@ const RolePermission = require('./rolePermissions')(sequelize, Sequelize.DataTyp
 // Branch related models
 const Branch = require('./branches')(sequelize, Sequelize.DataTypes);
 const BankAccount = require('./bankAccounts')(sequelize, Sequelize.DataTypes);
-const KycDocument = require('./KycDocuments')(sequelize, Sequelize.DataTypes);
+const KycDocument = require('./kycDocuments')(sequelize, Sequelize.DataTypes);
 const InvoiceSetting = require('./invoiceSettings')(sequelize, Sequelize.DataTypes);
 const User = require('./users')(sequelize, Sequelize.DataTypes);
 
@@ -20,7 +20,7 @@ const VendorSPOCDetails = require('./vendorSpocDetails')(sequelize, Sequelize.Da
 const Employee = require('./employees')(sequelize, Sequelize.DataTypes);
 const EmployeeContact = require('./employeeContacts')(sequelize, Sequelize.DataTypes);
 const EmployeeExperience = require('./employeeExperiences')(sequelize, Sequelize.DataTypes);
-const EmployeeIncentive = require('./employeeIncentives')(sequelize.DataTypes);
+const EmployeeIncentive = require('./employeeIncentives')(sequelize, Sequelize.DataTypes);
 
 //Collection and UOM related modes
 const MaterialType = require('./materialType')(sequelize, Sequelize.DataTypes);
@@ -60,12 +60,6 @@ Object.values(models).forEach((model) => {
     model.associate(models);
   }
 });
-
-// Many-to-many between Users and Roles through UserRole
-if (User && Role) {
-  User.belongsToMany(Role, { through: UserRole, foreignKey: 'user_id', otherKey: 'role_id', as: 'roles' });
-  Role.belongsToMany(User, { through: UserRole, foreignKey: 'role_id', otherKey: 'user_id', as: 'users' });
-}
 
 (async () => {
   try {
