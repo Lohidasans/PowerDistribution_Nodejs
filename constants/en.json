@@ -7,6 +7,7 @@
     "badRequest": "Invalid request.",
     "requiredFields": "Required fields are missing."
   },
+  "requiredEntityIdAndType":"Entity ID and Type Required",
   "rolesPermissions": {
     "duplicateIdsFound":"Some permissions do not exist (OR) Duplicate permission IDs found."
   },
@@ -20,5 +21,5 @@
   },
   "role": {
     "duplicateName": "Role name already exists."
-  }
+  }  
 }

@@ -44,6 +44,30 @@ const options = {
           },
           required: ['branch_no', 'branch_name'],
         },
+        BankAccountInput: {
+          type: 'object',
+          properties: {
+            account_holder_name: { type: 'string' },
+            bank_name: { type: 'string' },
+            ifsc_code: { type: 'string' },
+            account_number: { type: 'string' },
+            bank_branch_name: { type: 'string' },
+            entity_type: { type: 'string', enum: ['branch','vendor','employee'] },
+            entity_id: { type: 'integer' },
+          },
+          required: ['account_holder_name','bank_name','ifsc_code','account_number']
+        },
+        KycDocumentInput: {
+          type: 'object',
+          properties: {
+            doc_type: { type: 'string' },
+            doc_number: { type: 'string' },
+            file_url: { type: 'string' },
+            entity_type: { type: 'string', enum: ['branch','vendor','employee'] },
+            entity_id: { type: 'integer' },
+          },
+          required: ['doc_type']
+        },
       },
     },
   },

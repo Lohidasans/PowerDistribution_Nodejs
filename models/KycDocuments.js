@@ -28,19 +28,6 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.STRING,
         allowNull: true,
       },
-      issued_on: {
-        type: DataTypes.DATE,
-        allowNull: true,
-      },
-      expires_on: {
-        type: DataTypes.DATE,
-        allowNull: true,
-      },
-      is_verified: {
-        type: DataTypes.BOOLEAN,
-        allowNull: false,
-        defaultValue: false,
-      },
     },
     {
       timestamps: true,

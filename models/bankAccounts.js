@@ -8,10 +8,6 @@ module.exports = (sequelize, DataTypes) => {
         primaryKey: true,
         type: DataTypes.INTEGER,
       },
-      branch_id: {
-        type: DataTypes.INTEGER,
-        allowNull: false,
-      },
       entity_type: {
         type: DataTypes.ENUM("branch", "vendor", "employee"),
         allowNull: false,
