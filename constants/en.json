@@ -1,10 +1,24 @@
 {
-    "success": "Success",
-    "failure": {
-      "internalError": "Something went wrong. Please try again.",
-      "notFound": "Data not found.",
-      "alreadyExists": "This record already exists.",
-      "badRequest": "Invalid request."
-    }
+  "success": "Success",
+  "failure": {
+    "internalError": "Something went wrong. Please try again.",
+    "notFound": "Data not found.",
+    "alreadyExists": "This record already exists.",
+    "badRequest": "Invalid request.",
+    "requiredFields": "Required fields are missing."
+  },
+  "rolesPermissions": {
+    "duplicateIdsFound":"Some permissions do not exist (OR) Duplicate permission IDs found."
+  },
+  "roles": {
+    "notExist":"Role does not exist.",
+    "alreadyExists":"This Role already exists."
+  },
+  "branch": {
+    "required": "Branch No and Branch Name are required.",
+    "duplicateNo": "Branch No already exists."
+  },
+  "role": {
+    "duplicateName": "Role name already exists."
   }
-  
+}

@@ -1,6 +1,8 @@
 const { models, sequelize } = require("../models/index");
 const { Op } = require("sequelize");
 const commonService = require("../services/commonService");
+const message = require("../constants/en.json");
+const roles = require("../models/roles");
 
 // Assign Multiple Permissions to a Role
 const create = async (req, res) => {
@@ -10,7 +12,7 @@ const create = async (req, res) => {
     // Check if role exists
     const roleExists = await models.Role.findByPk(role_id);
     if (!roleExists) {
-      return commonService.badRequest(res, "Role does not exist.");
+      return commonService.badRequest(res, message.roles.notExist);
     }
 
     // Check if all permission IDs exist
@@ -18,10 +20,7 @@ const create = async (req, res) => {
       where: { id: permission_ids },
     });
     if (existingPermissions.length !== permission_ids.length) {
-      return commonService.badRequest(
-        res,
-        "Some permissions do not exist (OR) Duplicate permission IDs found."
-      );
+      return commonService.badRequest(res, message.rolesPermissions.duplicateIdsFound);
     }
 
     // Remove existing permissions for the role

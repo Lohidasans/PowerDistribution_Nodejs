@@ -1,6 +1,7 @@
 const { models } = require("../models/index");
 const { Op } = require("sequelize");
 const commonService = require("../services/commonService");
+const message = require("../constants/en.json");
 
 // Create Role
 const create = async (req, res) => {
@@ -10,7 +11,7 @@ const create = async (req, res) => {
     // Check if role already exists
     const roleExists = await models.Role.findOne({ where: { role_name } });
     if (roleExists) {
-      return commonService.badRequest(res);
+      return commonService.badRequest(res, message.role.roleExists);
     }
 
     // Create new role
@@ -63,7 +64,7 @@ const update = async (req, res) => {
     });
 
     if (roleExists) {
-      return commonService.badRequest(res);
+      return commonService.badRequest(res, message.role.roleExists);
     }
 
     // Update role

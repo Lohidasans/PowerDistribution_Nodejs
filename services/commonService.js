@@ -33,7 +33,7 @@ const createdResponse = (res, data = null) => {
 };
 
 // Standardized Bad Request Response
-const badRequest = (res, message = enMessage.failure.alreadyExists) => {
+const badRequest = (res, message) => {
   return res.status(status.REST_API_STATUSCODE.badRequest).send({
     statusCode: status.REST_API_STATUSCODE.badRequest,
     message,
