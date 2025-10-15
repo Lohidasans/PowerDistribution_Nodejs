@@ -30,6 +30,15 @@ const Variant = require('./variants')(sequelize, Sequelize.DataTypes);
 const VariantValue = require('./variantValues')(sequelize, Sequelize.DataTypes);
 const Uom = require('./uom')(sequelize, Sequelize.DataTypes);
 
+// Products related models
+const Product = require('./products')(sequelize, Sequelize.DataTypes);
+const ProductItemDetail = require('./productItemDetails')(sequelize, Sequelize.DataTypes);
+const ProductAdditionalDetail = require('./productAdditionalDetails')(sequelize, Sequelize.DataTypes);
+const ProductAddOn = require('./productAddOns')(sequelize, Sequelize.DataTypes);
+
+// GRN related models
+const Grn = require('./grns')(sequelize, Sequelize.DataTypes);
+const GrnItem = require('./grnItems')(sequelize, Sequelize.DataTypes);
 
 
 const models = {
@@ -53,6 +62,12 @@ const models = {
   Variant,
   VariantValue,
   Uom,
+  Product,
+  Grn,
+  GrnItem,
+  ProductItemDetail,
+  ProductAdditionalDetail,
+  ProductAddOn,
 };
 
 Object.values(models).forEach((model) => {
