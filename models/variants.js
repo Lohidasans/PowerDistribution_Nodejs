@@ -8,6 +8,10 @@ module.exports = (sequelize, DataTypes) => {
         primaryKey: true,
         type: DataTypes.INTEGER,
       },
+      product_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+      },
       variant_type: {
         type: DataTypes.STRING, // e.g., Stone Color, Size, Occasion
         allowNull: false,

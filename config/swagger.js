@@ -52,10 +52,10 @@ const options = {
             ifsc_code: { type: 'string' },
             account_number: { type: 'string' },
             bank_branch_name: { type: 'string' },
-            entity_type: { type: 'string', enum: ['branch','vendor','employee'] },
+            entity_type: { type: 'string', enum: ['branch', 'vendor', 'employee'] },
             entity_id: { type: 'integer' },
           },
-          required: ['account_holder_name','bank_name','ifsc_code','account_number']
+          required: ['account_holder_name', 'bank_name', 'ifsc_code', 'account_number']
         },
         KycDocumentInput: {
           type: 'object',
@@ -63,10 +63,60 @@ const options = {
             doc_type: { type: 'string' },
             doc_number: { type: 'string' },
             file_url: { type: 'string' },
-            entity_type: { type: 'string', enum: ['branch','vendor','employee'] },
+            entity_type: { type: 'string', enum: ['branch', 'vendor', 'employee'] },
             entity_id: { type: 'integer' },
           },
           required: ['doc_type']
+        },
+        MaterialType: {
+          type: 'object',
+          properties: {
+            material_type: { type: 'string' },
+            material_image_url: { type: 'string', description: 'Image URL for the material type' },
+          },
+          required: ['material_type'],
+        },
+        Category: {
+          type: 'object',
+          properties: {
+            material_type_id: { type: 'integer', description: 'ID of the associated material type' },
+            category_name: { type: 'string' },
+            category_image_url: { type: 'string', description: 'Image URL for the category' },
+            description: { type: 'string' },
+            sort_order: { type: 'integer' },
+            status: {
+              type: 'string', enum: ['Active', 'Inactive']
+            },
+          },
+            required: ['material_type', 'category_name'],
+        },
+        Subcategory: {
+          type: 'object',
+          properties: {
+            materialType_id: { type: 'integer', description: 'ID of the associated material type' },
+            category_id: { type: 'integer', description: 'ID of the associated category' },
+            subcategory_name: { type: 'string' },
+            subcategory_image_url: { type: 'string', description: 'Image URL for the subcategory' },
+            reorder_level: { type: 'integer' },
+            making_changes: { type: 'integer' },
+            Margin: { type: 'number', format: 'float' },
+          },
+          required: ['materialType_id', 'category_id', 'subcategory_name'],
+        },
+        Variant: {
+          type: 'object',
+          properties: {
+            variant_type: { type: 'string' },
+          },
+          required: ['variant_type'],
+        },
+        VariantValue: {
+          type: 'object',
+          properties: {
+            variant_id: { type: 'integer', description: 'ID of the associated variant' },
+            variant_value: { type: 'string' },
+          },
+          required: ['variant_id', 'variant_value'],
         },
       },
     },

@@ -1,3 +1,5 @@
+const materialType = require("./materialType");
+
 module.exports = (sequelize, DataTypes) => {
   const Subcategory = sequelize.define(
     "subcategories",
@@ -7,6 +9,10 @@ module.exports = (sequelize, DataTypes) => {
         autoIncrement: true,
         primaryKey: true,
         type: DataTypes.INTEGER,
+      },
+      materialtype_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
       },
       category_id: {
         type: DataTypes.INTEGER,
@@ -20,14 +26,23 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.STRING,
         allowNull: true,
       },
+      reorder_level: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 0,
+      },
+      making_changes: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+      },
+      margin: {
+        type: DataTypes.FLOAT,
+        allowNull: false,  
+        defaultValue: 0,
+      },
       description: {
         type: DataTypes.TEXT,
         allowNull: true,
-      },
-      sort_order: {
-        type: DataTypes.INTEGER,
-        allowNull: true,
-        defaultValue: 0,
       },
       status: {
         type: DataTypes.ENUM("Active", "Inactive"),
@@ -47,14 +62,6 @@ module.exports = (sequelize, DataTypes) => {
       ],
     }
   );
-
-  Subcategory.associate = (models) => {
-    if (models.Category)
-      Subcategory.belongsTo(models.Category, {
-        foreignKey: "category_id",
-        as: "category",
-      });
-  };
 
   return Subcategory;
 };
