@@ -8,17 +8,21 @@ module.exports = (sequelize, DataTypes) => {
         primaryKey: true,
         type: DataTypes.INTEGER,
       },
+      vendor_image_url: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
       vendor_code: {
-        type: DataTypes.STRING,   // e.g., VEN/01/24-25
+        type: DataTypes.STRING, // VEN/01/24-25
         allowNull: false,
         unique: true,
       },
       vendor_name: {
-        type: DataTypes.STRING,   // e.g., Golden Hub Pvt. Ltd.
+        type: DataTypes.STRING, // Golden Hub Pvt. Ltd.
         allowNull: false,
       },
       proprietor_name: {
-        type: DataTypes.STRING,   // e.g., Shantanu
+        type: DataTypes.STRING, // Shantanu
         allowNull: true,
       },
       email: {
@@ -45,7 +49,6 @@ module.exports = (sequelize, DataTypes) => {
       country: {
         type: DataTypes.STRING,
         allowNull: true,
-        defaultValue: "India",
       },
       state: {
         type: DataTypes.STRING,
@@ -68,11 +71,11 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: true,
       },
       payment_terms: {
-        type: DataTypes.STRING,  // e.g., 10 days, 30 days
+        type: DataTypes.STRING, //  10 days, 30 days
         allowNull: true,
       },
-      material_type: {
-        type: DataTypes.STRING,  // e.g., Gold, Silver
+      material_type_id: {
+        type: DataTypes.STRING,
         allowNull: true,
       },
       branch_id: {
@@ -80,7 +83,7 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: true,
       },
       visibility: {
-        type: DataTypes.STRING,  // e.g., HMK Silvers, ShineCraft Silver
+        type: DataTypes.STRING, //  HMK Silvers, ShineCraft Silver
         allowNull: true,
       },
       status: {

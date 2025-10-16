@@ -1,4 +1,4 @@
-const materialType = require("./materialType");
+const materialType = require("./materialTypes");
 
 module.exports = (sequelize, DataTypes) => {
   const Subcategory = sequelize.define(

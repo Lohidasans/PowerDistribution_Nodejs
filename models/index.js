@@ -14,7 +14,7 @@ const User = require('./users')(sequelize, Sequelize.DataTypes);
 
 // Vendor related models
 const Vendor = require('./vendors')(sequelize, Sequelize.DataTypes);
-const VendorSPOCDetails = require('./vendorSpocDetails')(sequelize, Sequelize.DataTypes);
+const VendorSpocDetails = require('./vendorSpocDetails')(sequelize, Sequelize.DataTypes);
 
 // Employee related models
 const Employee = require('./employees')(sequelize, Sequelize.DataTypes);
@@ -23,7 +23,7 @@ const EmployeeExperience = require('./employeeExperiences')(sequelize, Sequelize
 const EmployeeIncentive = require('./employeeIncentives')(sequelize, Sequelize.DataTypes);
 
 //Collection and UOM related modes
-const MaterialType = require('./materialType')(sequelize, Sequelize.DataTypes);
+const MaterialType = require('./materialTypes')(sequelize, Sequelize.DataTypes);
 const Category = require('./categories')(sequelize, Sequelize.DataTypes);
 const Subcategory = require('./subcategories')(sequelize, Sequelize.DataTypes);
 const Variant = require('./variants')(sequelize, Sequelize.DataTypes);
@@ -51,7 +51,7 @@ const models = {
   InvoiceSetting,
   User,
   Vendor,
-  VendorSPOCDetails,
+  VendorSpocDetails,
   Employee,
   EmployeeContact,
   EmployeeExperience,
