@@ -12,6 +12,7 @@ const ImageUploadRoute = require("./imageUploadRoute");
 const UserLoginService = require("./userLoginRoute");
 const VendorSpocDetailsRoute = require("./vendorSpocDetailsRoute");
 const VendorRoutes = require("./vendorRoute");
+const ProductRouter = require('./productRoute');
 
 module.exports = (app) => {
   app.use("/api/v1", RoleRouter);
@@ -28,5 +29,8 @@ module.exports = (app) => {
   app.use("/api/v1", UserLoginService);
   app.use("/api/v1", VendorSpocDetailsRoute);
   app.use("/api/v1", VendorRoutes);
+  app.use("/api/v1", ProductRouter);
 };  
+
+ 
 

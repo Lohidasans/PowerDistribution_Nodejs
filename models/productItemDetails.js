@@ -16,7 +16,7 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.STRING, // Child Sku_ids auto increment in UI
         allowNull: true,
       },
-      variation_name: {
+      variation: {
         type: DataTypes.STRING, //variation: "[name: finish, values: [regualr, Gold]]"
         allowNull: true,
       },
@@ -41,12 +41,16 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.INTEGER,
         allowNull: false
       },
-      charge_type: { // Weight related fields
+      making_charge_type: {
         type: DataTypes.ENUM("Amount", "Percentage"),
         allowNull: true
       },
       making_charge: {
         type: DataTypes.DECIMAL(15, 2),
+        allowNull: true
+      },
+      wastage_type: {
+        type: DataTypes.ENUM("Amount", "Percentage"),
         allowNull: true
       },
       wastage: {

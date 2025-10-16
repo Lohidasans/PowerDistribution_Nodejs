@@ -63,7 +63,7 @@ module.exports = (sequelize, DataTypes) => {
       // Product info
       sku_id: { // auto generate in backend
         type: DataTypes.STRING,
-        allowNull: false,
+        allowNull: true,
       },
       hsn_code: {
         type: DataTypes.STRING,
