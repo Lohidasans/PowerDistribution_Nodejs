@@ -1,23 +1,24 @@
-const RoleRouter = require('./roleRoute');
-const RolePermissionRouter = require('./rolesPermissionRoute');
-const BranchRouter = require('./branchRoute');
-const BankAccountRouter = require('./bankAccountRoute');
-const KycDocumentRouter = require('./kycDocumentRoute');
-const MaterialTypeRoute = require('./materialTypeRoute');
-const CategoryRouter = require('./categoryRoute');
-const SubcategoryRouter = require('./subcategoryRoute');
-const VariantRouter = require('./variantRoute');
-const VariantValueRouter = require('./variantValueRoute');
-
+const RoleRouter = require("./roleRoute");
+const RolePermissionRouter = require("./rolesPermissionRoute");
+const BranchRouter = require("./branchRoute");
+const BankAccountRouter = require("./bankAccountRoute");
+const KycDocumentRouter = require("./kycDocumentRoute");
+const MaterialTypeRoute = require("./materialTypeRoute");
+const CategoryRouter = require("./categoryRoute");
+const SubcategoryRouter = require("./subcategoryRoute");
+const VariantRouter = require("./variantRoute");
+const VariantValueRouter = require("./variantValueRoute");
+const ImageUploadRoute = require("./imageUploadRoute");
 module.exports = (app) => {
-    app.use("/api/v1", RoleRouter);
-    app.use("/api/v1", RolePermissionRouter);
-    app.use("/api/v1", BranchRouter);
-    app.use("/api/v1", BankAccountRouter);
-    app.use("/api/v1", KycDocumentRouter);
-    app.use("/api/v1", MaterialTypeRoute);
-    app.use("/api/v1", CategoryRouter);
-    app.use("/api/v1", SubcategoryRouter);
-    app.use("/api/v1", VariantRouter);
-    app.use("/api/v1", VariantValueRouter);
-}
+  app.use("/api/v1", RoleRouter);
+  app.use("/api/v1", RolePermissionRouter);
+  app.use("/api/v1", BranchRouter);
+  app.use("/api/v1", BankAccountRouter);
+  app.use("/api/v1", KycDocumentRouter);
+  app.use("/api/v1", MaterialTypeRoute);
+  app.use("/api/v1", CategoryRouter);
+  app.use("/api/v1", SubcategoryRouter);
+  app.use("/api/v1", VariantRouter);
+  app.use("/api/v1", VariantValueRouter);
+  app.use("/api/v1", ImageUploadRoute);
+};
