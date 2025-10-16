@@ -9,6 +9,8 @@ const SubcategoryRouter = require("./subcategoryRoute");
 const VariantRouter = require("./variantRoute");
 const VariantValueRouter = require("./variantValueRoute");
 const ImageUploadRoute = require("./imageUploadRoute");
+const ProductRouter = require('./productRoute');
+
 module.exports = (app) => {
   app.use("/api/v1", RoleRouter);
   app.use("/api/v1", RolePermissionRouter);
@@ -21,4 +23,5 @@ module.exports = (app) => {
   app.use("/api/v1", VariantRouter);
   app.use("/api/v1", VariantValueRouter);
   app.use("/api/v1", ImageUploadRoute);
+  app.use("/api/v1", ProductRouter);
 };
