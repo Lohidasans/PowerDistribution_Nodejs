@@ -1,6 +1,6 @@
 module.exports = (sequelize, DataTypes) => {
   const ProductAddOn = sequelize.define(
-    "product_add_ons",
+    "productAddOns",
     {
       id: {
         allowNull: false,

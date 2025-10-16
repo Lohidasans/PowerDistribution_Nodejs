@@ -23,21 +23,37 @@ module.exports = (sequelize, DataTypes) => {
       // Item detail fields
       gross_weight: {
         type: DataTypes.DECIMAL(15, 3),
-        allowNull: true
+        allowNull: false
       },
       net_weight: {
         type: DataTypes.DECIMAL(15, 3),
-        allowNull: true
+        allowNull: false
       },
       stone_weight: {
         type: DataTypes.DECIMAL(15, 3),
         allowNull: true
       },
-      quantity: {
-        type: DataTypes.INTEGER,
+      stone_value: {
+        type: DataTypes.DECIMAL(15, 3),
         allowNull: true
       },
-      rate_per_gram: {
+      quantity: {
+        type: DataTypes.INTEGER,
+        allowNull: false
+      },
+      charge_type: { // Weight related fields
+        type: DataTypes.ENUM("Amount", "Percentage"),
+        allowNull: true
+      },
+      making_charge: {
+        type: DataTypes.DECIMAL(15, 2),
+        allowNull: true
+      },
+      wastage: {
+        type: DataTypes.DECIMAL(15, 2),
+        allowNull: true
+      },
+      rate_per_gram: { // Piece realted Fields 
         type: DataTypes.DECIMAL(15, 2),
         allowNull: true
       },
