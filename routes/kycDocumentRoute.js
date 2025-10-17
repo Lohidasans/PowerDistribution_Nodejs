@@ -9,11 +9,11 @@ var router = express.Router();
 const svc = require("../services/kycDocumentService");
 
 // CRUD
-router.post("/kyc-document", svc.createKycDocument);
-router.get("/kyc-document", svc.listKycDocuments);
-router.get("/kyc-document/:id", svc.getKycDocumentById);
-router.put("/kyc-document/:id", svc.updateKycDocument);
-router.delete("/kyc-document/:id", svc.deleteKycDocument);
+router.post("/kyc-document", svc.createKycDocuments); // bulk create
+router.get("/kyc-document", svc.listKycDocuments); // list with filters
+router.get("/kyc-document/:id", svc.getKycDocumentById); // single
+router.put("/kyc-document/by-entity", svc.updateKycDocumentsByEntity); // bulk update by entity
+router.delete("/kyc-document/:id", svc.deleteKycDocument); // soft delete
 
 module.exports = router;
 
@@ -37,7 +37,7 @@ module.exports = router;
  *       200:
  *         description: OK
  *   post:
- *     summary: Create KYC document
+ *     summary: Create KYC documents (bulk)
  *     tags: [KycDocument]
  *     requestBody:
  *       required: true
@@ -63,23 +63,6 @@ module.exports = router;
  *     responses:
  *       200:
  *         description: OK
- *   put:
- *     summary: Update KYC document
- *     tags: [KycDocument]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema: { type: integer }
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             $ref: '#/components/schemas/KycDocumentInput'
- *     responses:
- *       200:
- *         description: OK
  *   delete:
  *     summary: Delete KYC document (soft)
  *     tags: [KycDocument]
@@ -91,4 +74,20 @@ module.exports = router;
  *     responses:
  *       204:
  *         description: No Content
+ */
+/**
+ * @openapi
+ * /api/v1/kyc-document/by-entity:
+ *   put:
+ *     summary: Bulk update KYC documents for an entity
+ *     tags: [KycDocument]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/KycUpdateByEntityInput'
+ *     responses:
+ *       200:
+ *         description: OK
  */

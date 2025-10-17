@@ -66,16 +66,48 @@ const options = {
         KycDocumentInput: {
           type: "object",
           properties: {
-            doc_type: { type: "string" },
-            doc_number: { type: "string" },
-            file_url: { type: "string" },
-            entity_type: {
-              type: "string",
-              enum: ["branch", "vendor", "employee"],
+            documents: {
+              type: "array",
+              description: "List of KYC documents to be uploaded",
+              items: {
+                type: "object",
+                properties: {
+                  doc_type: { type: "string" },
+                  doc_number: { type: "string" },
+                  file_url: { type: "string" },
+                  entity_type: {
+                    type: "string",
+                    enum: ["branch", "vendor", "employee"],
+                  },
+                  entity_id: { type: "integer" },
+                },
+                required: ["doc_type", "entity_type", "entity_id"],
+              },
             },
-            entity_id: { type: "integer" },
           },
-          required: ["doc_type"],
+          required: ["documents"],
+        },
+        KycUpdateByEntityInput: {
+          type: "object",
+          properties: {
+            entity_type: { type: "string", enum: ["branch", "vendor", "employee"] },
+            entity_id: { type: "integer" },
+            documents: {
+              type: "array",
+              description: "Documents to update for the given entity. Each item must include id.",
+              items: {
+                type: "object",
+                properties: {
+                  id: { type: "integer" },
+                  doc_type: { type: "string" },
+                  doc_number: { type: "string" },
+                  file_url: { type: "string" }
+                },
+                required: ["id"],
+              },
+            },
+          },
+          required: ["entity_type", "entity_id", "documents"],
         },
         MaterialType: {
           type: "object",

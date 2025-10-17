@@ -21,5 +21,9 @@
   },
   "role": {
     "duplicateName": "Role name already exists."
-  }  
+  },
+  "kyc":{
+    "arrayRequired":"Documents array is required",
+    "includeId":"Each document must include an id to update."    
+  }
 }

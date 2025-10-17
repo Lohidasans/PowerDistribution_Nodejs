@@ -3,22 +3,31 @@ const commonService = require("../services/commonService");
 const message = require("../constants/en.json");
 const { buildSearchCondition } = require("../helpers/queryHelper");
 
-// Create KYC Document
-const createKycDocument = async (req, res) => {
+// Create multiple KYC Documents (Bulk)
+const createKycDocuments = async (req, res) => {
   try {
-    const { entity_type, entity_id, doc_type, doc_number } = req.body;
+    const { documents } = req.body;
 
-    if (!entity_type || !entity_id || !doc_type) {
-      return commonService.badRequest(res, message.requiredEntityIdAndType);
+    if (!Array.isArray(documents) || documents.length === 0) {
+      return commonService.badRequest(res, message.kyc.arrayRequired);
     }
 
-    const row = await models.KycDocument.create({ entity_type, entity_id, doc_type, doc_number });
+    // Validate each document
+    for (const doc of documents) {
+      if (!doc.entity_type || !doc.entity_id || !doc.doc_type) {
+        return commonService.badRequest(res, message.requiredEntityIdAndType);
+      }
+    }
 
-    return commonService.createdResponse(res, { kycDocument: row });
+    // Bulk insert
+    const rows = await models.KycDocument.bulkCreate(documents, { returning: true });
+
+    return commonService.createdResponse(res, { kycDocuments: rows });
   } catch (err) {
     return commonService.handleError(res, err);
   }
 };
+
 
 // List KYC Documents with optional filters
 const listKycDocuments = async (req, res) => {
@@ -51,17 +60,57 @@ const getKycDocumentById = async (req, res) => {
   }
 };
 
-// Update
-const updateKycDocument = async (req, res) => {
+// Update KYC Documents by entity_id
+const updateKycDocumentsByEntity = async (req, res) => {
   try {
-    const row = await commonService.findById(models.KycDocument, req.params.id, res);
-    if (!row) return;
-    await row.update(req.body);
-    return commonService.okResponse(res, { kycDocument: row });
+    const { entity_type, entity_id, documents } = req.body;
+
+    if (!entity_type || !entity_id) {
+      return commonService.badRequest(res, message.requiredEntityIdAndType);
+    }
+
+    if (!Array.isArray(documents) || documents.length === 0) {
+      return commonService.badRequest(res, message.kyc.arrayRequired);
+    }
+
+    const updatedDocuments = [];
+
+    for (const doc of documents) {
+      if (!doc.id) {
+        return commonService.badRequest(res, message.kyc.includeId);
+      }
+
+      // Update specific document using primary key and entity info
+      const [affectedRows] = await models.KycDocument.update(
+        {
+          doc_type: doc.doc_type,
+          doc_number: doc.doc_number,
+          file_url: doc.file_url,
+        },
+        {
+          where: {
+            id: doc.id,
+            entity_id: entity_id,
+            entity_type: entity_type,
+          },
+        }
+      );
+
+      if (affectedRows > 0) {
+        // Optionally, fetch the updated row if needed
+        const updatedDoc = await models.KycDocument.findByPk(doc.id);
+        if (updatedDoc) {
+          updatedDocuments.push(updatedDoc);
+        }
+      }
+    }
+
+    return commonService.okResponse(res, { kycDocuments: updatedDocuments });
   } catch (err) {
     return commonService.handleError(res, err);
   }
 };
+
 
 // Delete (soft)
 const deleteKycDocument = async (req, res) => {
@@ -76,9 +125,9 @@ const deleteKycDocument = async (req, res) => {
 };
 
 module.exports = {
-  createKycDocument,
+  createKycDocuments,
   listKycDocuments,
   getKycDocumentById,
-  updateKycDocument,
+  updateKycDocumentsByEntity,
   deleteKycDocument,
 };
