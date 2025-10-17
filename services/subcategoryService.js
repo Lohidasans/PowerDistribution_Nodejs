@@ -5,10 +5,21 @@ const { buildSearchCondition } = require("../helpers/queryHelper");
 
 const createSubcategory = async (req, res) => {
   try {
-    const { materialType_id, category_id, subcategory_name, subcategory_image_url, reorder_level, making_changes, Margin } = req.body;
+    const {
+      materialType_id,
+      category_id,
+      subcategory_name,
+      subcategory_image_url,
+      reorder_level,
+      making_changes,
+      Margin,
+    } = req.body;
 
     if (!materialType_id || !category_id || !subcategory_name)
-      return commonService.badRequest(res, enMessage.failure.requiredMaterialCategoryAndSub);
+      return commonService.badRequest(
+        res,
+        enMessage.failure.requiredMaterialCategoryAndSub
+      );
 
     const row = await models.Subcategory.create({
       materialType_id,
@@ -48,14 +59,42 @@ const listSubcategories = async (req, res) => {
   }
 };
 
+const listSubcategoriesDropdown = async (req, res) => {
+  try {
+    const { materialType_id, category_id } = req.query;
+    const where = {};
+
+    if (materialType_id) where.materialType_id = materialType_id;
+    if (category_id) where.category_id = category_id;
+
+    const items = await models.Subcategory.findAll({
+      attributes: ["id", "subcategory_name"],
+      where,
+      order: [["subcategory_name", "ASC"]],
+    });
+
+    return commonService.okResponse(res, { subcategories: items });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
 const getSubcategoryById = async (req, res) => {
-  const entity = await commonService.findById(models.Subcategory, req.params.id, res);
+  const entity = await commonService.findById(
+    models.Subcategory,
+    req.params.id,
+    res
+  );
   if (!entity) return;
   return commonService.okResponse(res, { subcategory: entity });
 };
 
 const updateSubcategory = async (req, res) => {
-  const entity = await commonService.findById(models.Subcategory, req.params.id, res);
+  const entity = await commonService.findById(
+    models.Subcategory,
+    req.params.id,
+    res
+  );
   if (!entity) return;
 
   try {
@@ -63,7 +102,10 @@ const updateSubcategory = async (req, res) => {
     if (category_id) {
       const category = await models.Category.findByPk(category_id);
       if (!category) {
-        return commonService.badRequest(res, "Invalid category_id: category does not exist.");
+        return commonService.badRequest(
+          res,
+          "Invalid category_id: category does not exist."
+        );
       }
     }
 
@@ -74,9 +116,12 @@ const updateSubcategory = async (req, res) => {
   }
 };
 
-
 const deleteSubcategory = async (req, res) => {
-  const entity = await commonService.findById(models.Subcategory, req.params.id, res);
+  const entity = await commonService.findById(
+    models.Subcategory,
+    req.params.id,
+    res
+  );
   if (!entity) return;
 
   try {
@@ -90,6 +135,7 @@ const deleteSubcategory = async (req, res) => {
 module.exports = {
   createSubcategory,
   listSubcategories,
+  listSubcategoriesDropdown,
   getSubcategoryById,
   updateSubcategory,
   deleteSubcategory,

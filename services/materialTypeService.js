@@ -8,10 +8,16 @@ const createMaterialType = async (req, res) => {
     const { material_type, material_image_url } = req.body;
 
     if (!material_type) {
-      return commonService.badRequest(res, enMessage.failure.requiredMaterialType);
+      return commonService.badRequest(
+        res,
+        enMessage.failure.requiredMaterialType
+      );
     }
 
-    const row = await models.MaterialType.create({ material_type, material_image_url });
+    const row = await models.MaterialType.create({
+      material_type,
+      material_image_url,
+    });
 
     return commonService.createdResponse(res, { materialType: row });
   } catch (err) {
@@ -36,14 +42,34 @@ const listMaterialTypes = async (req, res) => {
   }
 };
 
+const listMaterialTypesDropdown = async (req, res) => {
+  try {
+    const items = await models.MaterialType.findAll({
+      attributes: ["id", "material_type"],
+      order: [["material_type", "ASC"]],
+    });
+    return commonService.okResponse(res, { materialTypes: items });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
 const getMaterialTypeById = async (req, res) => {
-  const entity = await commonService.findById(models.MaterialType, req.params.id, res);
+  const entity = await commonService.findById(
+    models.MaterialType,
+    req.params.id,
+    res
+  );
   if (!entity) return;
   return commonService.okResponse(res, { materialType: entity });
 };
 
 const updateMaterialType = async (req, res) => {
-  const entity = await commonService.findById(models.MaterialType, req.params.id, res);
+  const entity = await commonService.findById(
+    models.MaterialType,
+    req.params.id,
+    res
+  );
   if (!entity) return;
 
   try {
@@ -55,7 +81,11 @@ const updateMaterialType = async (req, res) => {
 };
 
 const deleteMaterialType = async (req, res) => {
-  const entity = await commonService.findById(models.MaterialType, req.params.id, res);
+  const entity = await commonService.findById(
+    models.MaterialType,
+    req.params.id,
+    res
+  );
   if (!entity) return;
 
   try {
@@ -69,6 +99,7 @@ const deleteMaterialType = async (req, res) => {
 module.exports = {
   createMaterialType,
   listMaterialTypes,
+  listMaterialTypesDropdown,
   getMaterialTypeById,
   updateMaterialType,
   deleteMaterialType,

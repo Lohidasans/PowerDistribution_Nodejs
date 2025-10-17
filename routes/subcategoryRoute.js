@@ -4,9 +4,19 @@ const subcategoryService = require("../services/subcategoryService");
 
 subcategoryRouter.post("/subcategory", subcategoryService.createSubcategory);
 subcategoryRouter.get("/subcategory", subcategoryService.listSubcategories);
-subcategoryRouter.get("/subcategory/:id", subcategoryService.getSubcategoryById);
+subcategoryRouter.get(
+  "/subcategory/dropdown",
+  subcategoryService.listSubcategoriesDropdown
+);
+subcategoryRouter.get(
+  "/subcategory/:id",
+  subcategoryService.getSubcategoryById
+);
 subcategoryRouter.put("/subcategory/:id", subcategoryService.updateSubcategory);
-subcategoryRouter.delete("/subcategory/:id", subcategoryService.deleteSubcategory);
+subcategoryRouter.delete(
+  "/subcategory/:id",
+  subcategoryService.deleteSubcategory
+);
 
 module.exports = subcategoryRouter;
 
@@ -48,6 +58,40 @@ module.exports = subcategoryRouter;
  *     responses:
  *       201:
  *         description: Created
+ */
+
+/**
+ * @openapi
+ * /api/v1/subcategory/dropdown:
+ *   get:
+ *     summary: List subcategories for dropdown (id and subcategory_name only)
+ *     tags: [Subcategory]
+ *     parameters:
+ *       - in: query
+ *         name: materialType_id
+ *         schema: { type: integer }
+ *         description: Filter by material type ID
+ *       - in: query
+ *         name: category_id
+ *         schema: { type: integer }
+ *         description: Filter by category ID
+ *     responses:
+ *       200:
+ *         description: OK
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 subcategories:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                       subcategory_name:
+ *                         type: string
  */
 
 /**
