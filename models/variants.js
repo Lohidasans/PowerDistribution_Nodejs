@@ -1,6 +1,6 @@
 module.exports = (sequelize, DataTypes) => {
   const Variant = sequelize.define(
-    "variants",
+    "variant",
     {
       id: {
         allowNull: false,
@@ -14,7 +14,7 @@ module.exports = (sequelize, DataTypes) => {
       },
       variant_type: {
         type: DataTypes.STRING, // e.g., Stone Color, Size, Occasion
-        allowNull: false,
+        allowNull: true,
       },
       status: {
         type: DataTypes.ENUM("Active", "Inactive"),
@@ -28,11 +28,18 @@ module.exports = (sequelize, DataTypes) => {
       updatedAt: "updated_at",
       paranoid: true,
       deletedAt: "deleted_at",
-      indexes: [
-        { unique: true, fields: ["variant_type"] },
-      ],
+      indexes: [{ unique: true, fields: ["variant_type"] }],
     }
   );
+
+  Variant.associate = (models) => {
+    Variant.hasMany(models.VariantValue, {
+      foreignKey: "variant_id",
+      as: "variant_values",
+      onDelete: "CASCADE", // auto delete variant values
+      hooks: true,
+    });
+  };
 
   return Variant;
 };

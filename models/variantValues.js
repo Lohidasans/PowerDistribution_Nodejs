@@ -1,6 +1,6 @@
 module.exports = (sequelize, DataTypes) => {
   const VariantValue = sequelize.define(
-    "variantValues",
+    "variantValue",
     {
       id: {
         allowNull: false,
@@ -13,7 +13,7 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
       },
       value: {
-        type: DataTypes.STRING,// e.g., Rose, Blue, Yellow, Red
+        type: DataTypes.STRING, // Rose, Blue, Yellow
         allowNull: false,
       },
       sort_order: {
@@ -39,6 +39,13 @@ module.exports = (sequelize, DataTypes) => {
       ],
     }
   );
+
+  VariantValue.associate = (models) => {
+    VariantValue.belongsTo(models.Variant, {
+      foreignKey: "variant_id",
+      as: "variant",
+    });
+  };
 
   return VariantValue;
 };

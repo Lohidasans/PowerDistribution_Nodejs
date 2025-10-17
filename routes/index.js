@@ -7,7 +7,6 @@ const MaterialTypeRoute = require("./materialTypeRoute");
 const CategoryRouter = require("./categoryRoute");
 const SubcategoryRouter = require("./subcategoryRoute");
 const VariantRouter = require("./variantRoute");
-const VariantValueRouter = require("./variantValueRoute");
 const ImageUploadRoute = require("./imageUploadRoute");
 const UserLoginService = require("./userLoginRoute");
 const VendorSpocDetailsRoute = require("./vendorSpocDetailsRoute");
@@ -24,7 +23,6 @@ module.exports = (app) => {
   app.use("/api/v1", CategoryRouter);
   app.use("/api/v1", SubcategoryRouter);
   app.use("/api/v1", VariantRouter);
-  app.use("/api/v1", VariantValueRouter);
   app.use("/api/v1", ImageUploadRoute);
   app.use("/api/v1", UserLoginService);
   app.use("/api/v1", VendorSpocDetailsRoute);
