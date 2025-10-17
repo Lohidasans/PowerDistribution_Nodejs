@@ -4,6 +4,7 @@ const branchService = require("../services/branchService");
 
 branchRouter.post("/branch", branchService.createBranch);
 branchRouter.get("/branch", branchService.listBranches);
+branchRouter.get("/branch/dropdown", branchService.branchDropdownList);
 branchRouter.get("/branch/:id", branchService.getBranchById);
 branchRouter.put("/branch/:id", branchService.updateBranch);
 branchRouter.delete("/branch/:id", branchService.deleteBranch);

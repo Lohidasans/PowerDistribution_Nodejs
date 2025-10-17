@@ -12,6 +12,7 @@ const UserLoginService = require("./userLoginRoute");
 const VendorSpocDetailsRoute = require("./vendorSpocDetailsRoute");
 const VendorRoutes = require("./vendorRoute");
 const ProductRouter = require('./productRoute');
+const GrnRouter = require('./grnRoute');
 
 module.exports = (app) => {
   app.use("/api/v1", RoleRouter);
@@ -22,13 +23,10 @@ module.exports = (app) => {
   app.use("/api/v1", MaterialTypeRoute);
   app.use("/api/v1", CategoryRouter);
   app.use("/api/v1", SubcategoryRouter);
-  app.use("/api/v1", VariantRouter);
   app.use("/api/v1", ImageUploadRoute);
   app.use("/api/v1", UserLoginService);
   app.use("/api/v1", VendorSpocDetailsRoute);
   app.use("/api/v1", VendorRoutes);
   app.use("/api/v1", ProductRouter);
-};  
-
- 
-
+  app.use("/api/v1", GrnRouter);
+};

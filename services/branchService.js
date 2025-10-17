@@ -95,10 +95,24 @@ const deleteBranch = async (req, res) => {
     }
 };
 
+const branchDropdownList = async (req, res) => {
+    try {
+        const rows = await models.Branch.findAll({
+            attributes: ["id", "branch_name"], // Only the fields needed for dropdown
+            order: [["branch_name", "ASC"]],
+        });
+
+        return commonService.okResponse(res, { branches: rows });
+    } catch (err) {
+        return commonService.handleError(res, err);
+    }
+};
+
 module.exports = {
   createBranch,
   listBranches,
   getBranchById,
   updateBranch,
   deleteBranch,
+  branchDropdownList,
 };
