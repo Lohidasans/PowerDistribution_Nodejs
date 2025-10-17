@@ -6,38 +6,27 @@ const { buildSearchCondition } = require("../helpers/queryHelper");
 // Main Create Product API
 const createProduct = async (req, res) => {
   try {
-    const requiredFields = ["product_name", "description", "vendor_id", "material_type_id",
-      "category_id", "subcategory_id", "grn_id", "hsn_code", "purity", "product_type", "variation_type" ];
+    const requiredFields = [
+      "product_name", "description", "vendor_id", "material_type_id",
+      "category_id", "subcategory_id", "grn_id", "hsn_code",
+      "purity", "product_type", "variation_type"
+    ];
 
+    // Validation
     for (const field of requiredFields) {
-      if (req.body[field] === undefined || req.body[field] === null || req.body[field] === "")
+      if (!req.body[field]) {
         return commonService.badRequest(res, message.failure.requiredFields);
+      }
     }
 
-    const { item_details, additional_details, ...productData } = req.body;
-    
+    const { item_details, ...productData } = req.body;
+
     const result = await sequelize.transaction(async (t) => {
-      // Step 1: Find last product SKU
-      const lastProduct = await models.Product.findOne({ order: [["id", "DESC"]], attributes: ["sku_id"], transaction: t, });
-      
-      // Step 2: Extract numeric part and increment
-      let nextSkuNumber = 1; // start from 0001
-      if (lastProduct && lastProduct.sku_id) {
-        const match = lastProduct.sku_id.match(/(\d+)$/);
-        if (match) nextSkuNumber = parseInt(match[1]) + 1;
-      }
+      const sku_id = await generateSkuId(t);
+      const product = await models.Product.create({ ...productData, sku_id }, { transaction: t });
 
-      // Step 3: Generate new SKU with padded zeros (e.g. SKU-GN-0001)
-      const newSku = `SKU-GN-${String(nextSkuNumber).padStart(4, "0")}`;
-      productData.sku_id = newSku;
+      await createItemDetails(product.id, item_details, t);
 
-      // Step 4: Create Product
-      const product = await models.Product.create(productData, { transaction: t });
-
-      // Step 5: Create product item details and additional details
-      await createItemDetails(product.id, item_details, additional_details, t);
-
-      // Step 6: Compute summary
       const items = await models.ProductItemDetail.findAll({
         where: { product_id: product.id },
         transaction: t,
@@ -49,49 +38,80 @@ const createProduct = async (req, res) => {
       return product;
     });
 
-    return commonService.createdResponse(res, { product: result });
+    const fullProduct = await getProductWithDetails(result.id);
+    return commonService.createdResponse(res, fullProduct);
+
   } catch (err) {
     return commonService.handleError(res, err);
   }
 };
 
-
-// Helper: Create Item Details & Additional Details
-const createItemDetails = async (productId, itemDetails, additionalDetails, t) => {
-  let firstItem;
-
+// Helper: Create Item Details & Nested Additional Details
+const createItemDetails = async (productId, itemDetails, t) => {
   for (const d of itemDetails || []) {
     const { additional_details: adds = [], ...fields } = d;
-    const item = await models.ProductItemDetail.create({ ...fields, product_id: productId }, { transaction: t });
 
-    // Insert nested additional details
-    if (adds?.length) {
+    // Create product item detail
+    const item = await models.ProductItemDetail.create(
+      { ...fields, product_id: productId },
+      { transaction: t }
+    );
+
+    // Insert nested additional details, if any
+    if (Array.isArray(adds) && adds.length > 0) {
       const addPayload = adds.map((a) => ({
         ...a,
         item_detail_id: item.id,
         product_id: productId,
       }));
+
       await models.ProductAdditionalDetail.bulkCreate(addPayload, { transaction: t });
     }
-
-    if (!firstItem) firstItem = item;
-  }
-
-  // Top-level additional_details
-  if (additionalDetails?.length) {
-    if (!firstItem) {
-      firstItem = await models.ProductItemDetail.create({ product_id: productId }, { transaction: t });
-    }
-
-    const addPayload = additionalDetails.map((a) => ({
-      ...a,
-      item_detail_id: firstItem.id,
-      product_id: productId,
-    }));
-
-    await models.ProductAdditionalDetail.bulkCreate(addPayload, { transaction: t });
   }
 };
+
+// Helper: Generate
+const generateSkuId = async (transaction) => {
+  const lastProduct = await models.Product.findOne({
+    order: [["id", "DESC"]],
+    attributes: ["sku_id"],
+    transaction,
+  });
+
+  let nextSkuNumber = 1;
+  if (lastProduct?.sku_id) {
+    const match = lastProduct.sku_id.match(/(\d+)$/);
+    if (match) nextSkuNumber = parseInt(match[1]) + 1;
+  }
+
+  return `SKU-GN-${String(nextSkuNumber).padStart(4, "0")}`;
+};
+
+
+const getProductWithDetails = async (productId) => {
+  const [product, items, adds] = await Promise.all([
+    models.Product.findByPk(productId),
+    models.ProductItemDetail.findAll({ where: { product_id: productId }, order: [["id", "ASC"]] }),
+    models.ProductAdditionalDetail.findAll({ where: { product_id: productId }, order: [["id", "ASC"]] }),
+  ]);
+
+  const addsByItem = adds.reduce((acc, a) => {
+    const key = String(a.item_detail_id);
+    (acc[key] = acc[key] || []).push(a);
+    return acc;
+  }, {});
+
+  const itemsWithAdds = items.map((it) => ({
+    ...it.get({ plain: true }),
+    additional_details: addsByItem[it.id] || [],
+  }));
+
+  return {
+    product,
+    item_details: itemsWithAdds,
+  };
+};
+
 
 // Helper: compute totals
 const computeSummaries = (items = [], type) => {
@@ -114,14 +134,6 @@ const computeSummaries = (items = [], type) => {
     remaining_weight: +totalWeight.toFixed(3),
   };
 };
-
-// Wrappers for product type variations
-const wrapper = (type, variation) => (req, res) => {
-  req.body.product_type = type;
-  req.body.variation_type = variation;
-  return createProduct(req, res);
-};
-
 
 // Get one by ID
 const getProductById = async (req, res) => {
@@ -159,10 +171,6 @@ const deleteProduct = async (req, res) => {
 
 module.exports = {
   createProduct,
-  createWeightWithoutVariation: wrapper("Weight Based", "Without Variations"),
-  createWeightWithVariation: wrapper("Weight Based", "With Variations"),
-  createPieceWithoutVariation: wrapper("Piece Rate", "Without Variations"),
-  createPieceWithVariation: wrapper("Piece Rate", "With Variations"),
   getProductById,
   deleteProduct,
 };

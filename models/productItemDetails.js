@@ -17,7 +17,7 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: true,
       },
       variation: {
-        type: DataTypes.STRING, //variation: "[name: finish, values: [regualr, Gold]]"
+        type: DataTypes.STRING, //variation: "[name: finish, values: [Gold]]"
         allowNull: true,
       },
       // Item detail fields

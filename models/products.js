@@ -26,10 +26,8 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
         defaultValue: false,
       },
-
-      // Images
-      image_url: {
-        type: DataTypes.STRING,
+      image_urls: {
+        type: DataTypes.ARRAY(DataTypes.STRING),// Images (bulk)
         allowNull: true,
       },
       qr_image_url: {
@@ -80,6 +78,15 @@ module.exports = (sequelize, DataTypes) => {
       variation_type: {
         type: DataTypes.ENUM("Without Variations", "With Variations"),
         allowNull: false,
+      },
+      product_variations: {
+        type: DataTypes.STRING,//variation: "[name: finish, values: [regualr, Gold]]"
+        allowNull: true,
+      },
+      is_addOn: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
       },
       // Summary details
       total_grn_value: {

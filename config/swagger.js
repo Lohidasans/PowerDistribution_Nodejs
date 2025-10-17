@@ -23,6 +23,77 @@ const options = {
             data: { type: "object" },
           },
         },
+        ProductAdditionalDetailInput: {
+          type: "object",
+          properties: {
+            label_name: { type: "string" },
+            unit: { type: "string" },
+            price: { type: "number", format: "float" },
+            visibility: { type: "string", enum: ["Show", "Hide"] }
+          },
+          required: ["label_name"],
+        },
+        ProductItemDetailInput: {
+          type: "object",
+          properties: {
+            sku_id: { type: "string" },
+            variation_name: { type: "string" },
+            variation_value: { oneOf: [{ type: "string" }, { type: "number" }] },
+            gross_weight: { type: "number", format: "float" },
+            net_weight: { type: "number", format: "float" },
+            stone_weight: { type: "number", format: "float" },
+            quantity: { type: "integer" },
+            rate_per_gram: { type: "number", format: "float" },
+            base_price: { type: "number", format: "float" },
+            measurement_type: { type: "string", enum: ["cm", "mm"] },
+            width: { type: "number", format: "float" },
+            length: { type: "number", format: "float" },
+            height: { type: "number", format: "float" },
+            additional_details: {
+              type: "array",
+              items: { $ref: '#/components/schemas/ProductAdditionalDetailInput' }
+            }
+          }
+        },
+        ProductCreateInput: {
+          type: "object",
+          properties: {
+            product_name: { type: "string" },
+            description: { type: "string" },
+            is_published: { type: "boolean" },
+            image_urls: { type: "array", items: { type: "string" } },
+            qr_image_url: { type: "string" },
+            vendor_id: { type: "integer" },
+            material_type_id: { type: "integer" },
+            category_id: { type: "integer" },
+            subcategory_id: { type: "integer" },
+            grn_id: { type: "integer" },
+            branch_id: { type: "integer" },
+            hsn_code: { type: "string" },
+            purity: { type: "number", format: "float" },
+            product_type: { type: "string", enum: ["Weight Based", "Piece Rate"] },
+            variation_type: { type: "string", enum: ["Without Variations", "With Variations"] },
+            product_variation: { type: "string" },
+            is_addOn: { type: "boolean" },
+            item_details: {
+              type: "array",
+              items: { $ref: '#/components/schemas/ProductItemDetailInput' }
+            }
+          },
+          required: [
+            "product_name",
+            "description",
+            "vendor_id",
+            "material_type_id",
+            "category_id",
+            "subcategory_id",
+            "grn_id",
+            "hsn_code",
+            "purity",
+            "product_type",
+            "variation_type"
+          ]
+        },
         Branch: {
           type: "object",
           properties: {
@@ -221,6 +292,38 @@ const options = {
             status: { type: "string", enum: ["Active", "Inactive"] },
           },
           required: ["vendor_code", "vendor_name", "email"],
+        },
+        Product: {
+          type: "object",
+          properties: {
+            id: { type: "integer" },
+            product_code: { type: "string" },
+            product_name: { type: "string" },
+            description: { type: "string" },
+            is_published: { type: "boolean" },
+            image_urls: {
+              type: "array",
+              items: { type: "string" },
+              description: "List of product image URLs",
+            },
+            qr_image_url: { type: "string" },
+            vendor_id: { type: "integer" },
+            material_type_id: { type: "integer" },
+            category_id: { type: "integer" },
+            subcategory_id: { type: "integer" },
+            grn_id: { type: "integer" },
+            branch_id: { type: "integer" },
+            sku_id: { type: "string" },
+            hsn_code: { type: "string" },
+            purity: { type: "number", format: "float" },
+            product_type: { type: "string", enum: ["Weight Based", "Piece Rate"] },
+            variation_type: { type: "string", enum: ["Without Variations", "With Variations"] },
+            product_variation: { type: "string" },
+            is_addOn: { type: "boolean" },
+            total_grn_value: { type: "number", format: "float" },
+            total_products: { type: "integer" },
+            remaining_weight: { type: "number", format: "float" },
+          },
         },
       },
     },
