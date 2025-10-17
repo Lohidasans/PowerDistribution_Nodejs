@@ -1,4 +1,4 @@
-const { models } = require("../models/index");
+const { sequelize, models } = require("../models/index");
 const commonService = require("./commonService");
 const enMessage = require("../constants/en.json");
 
@@ -21,7 +21,6 @@ const createVendor = async (req, res) => {
       opening_balance,
       opening_balance_type,
       payment_terms,
-      material_type,
       branch_id,
       visibility,
       status,
@@ -51,7 +50,6 @@ const createVendor = async (req, res) => {
       opening_balance,
       opening_balance_type,
       payment_terms,
-      material_type,
       branch_id,
       visibility,
       status,
@@ -65,10 +63,40 @@ const createVendor = async (req, res) => {
 
 const listVendors = async (req, res) => {
   try {
-    const vendors = await models.Vendor.findAll({
-      where: { deleted_at: null },
-      order: [["id", "DESC"]],
-    });
+    const { materialType, search } = req.query;
+
+    // Base SQL query
+    let query = `
+      SELECT 
+        v.id, v.vendor_code, v.vendor_name, v.proprietor_name, v.mobile AS vendor_mobile,
+        b.branch_name, b.contact_person, b.mobile AS branch_mobile,
+        m.material_type
+      FROM vendors v
+      LEFT JOIN branches b ON b.id = v.branch_id
+      LEFT JOIN "materialTypes" m ON m.id = v.material_type_id
+      WHERE 1=1`;
+
+    const replacements = {};
+
+    // Apply filters
+    if (materialType) {
+      query += ` AND m.material_type ILIKE :materialType`;
+      replacements.materialType = `%${materialType}%`;
+    }
+
+    if (search) {
+      const fields = [
+        "v.vendor_name", "v.proprietor_name", "v.mobile",
+        "b.branch_name", "b.contact_person", "b.mobile", "m.material_type"
+      ];
+      query += ` AND (${fields.map(field => `${field} ILIKE :search`).join(" OR ")})`;
+      replacements.search = `%${search}%`;
+    }
+
+    query += ` ORDER BY v.vendor_name ASC`;
+
+    const [vendors] = await sequelize.query(query, { replacements });
+
     return commonService.okResponse(res, { vendors });
   } catch (err) {
     return commonService.handleError(res, err);
