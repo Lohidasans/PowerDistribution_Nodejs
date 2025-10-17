@@ -75,7 +75,7 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: true,
       },
       material_type_id: {
-        type: DataTypes.STRING,
+        type: DataTypes.INTEGER,
         allowNull: true,
       },
       branch_id: {

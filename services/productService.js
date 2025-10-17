@@ -22,8 +22,7 @@ const createProduct = async (req, res) => {
     const { item_details, ...productData } = req.body;
 
     const result = await sequelize.transaction(async (t) => {
-      const sku_id = await generateSkuId(t);
-      const product = await models.Product.create({ ...productData, sku_id }, { transaction: t });
+      const product = await models.Product.create({ ...productData }, { transaction: t });
 
       await createItemDetails(product.id, item_details, t);
 
@@ -70,23 +69,6 @@ const createItemDetails = async (productId, itemDetails, t) => {
   }
 };
 
-// Helper: Generate
-const generateSkuId = async (transaction) => {
-  const lastProduct = await models.Product.findOne({
-    order: [["id", "DESC"]],
-    attributes: ["sku_id"],
-    transaction,
-  });
-
-  let nextSkuNumber = 1;
-  if (lastProduct?.sku_id) {
-    const match = lastProduct.sku_id.match(/(\d+)$/);
-    if (match) nextSkuNumber = parseInt(match[1]) + 1;
-  }
-
-  return `SKU-GN-${String(nextSkuNumber).padStart(4, "0")}`;
-};
-
 
 const getProductWithDetails = async (productId) => {
   const [product, items, adds] = await Promise.all([
@@ -112,7 +94,6 @@ const getProductWithDetails = async (productId) => {
   };
 };
 
-
 // Helper: compute totals
 const computeSummaries = (items = [], type) => {
   let totalWeight = 0, totalQty = 0, totalValue = 0;
@@ -134,6 +115,33 @@ const computeSummaries = (items = [], type) => {
     remaining_weight: +totalWeight.toFixed(3),
   };
 };
+
+
+const generateSkuId = async (req, res) => {
+  try {
+    // Fetch last product's SKU
+    const lastProduct = await models.Product.findOne({
+      order: [["id", "DESC"]],
+      attributes: ["sku_id"],
+    });
+
+    // Determine next SKU number
+    let nextSkuNumber = 1;
+    if (lastProduct?.sku_id) {
+      const match = lastProduct.sku_id.match(/(\d+)$/);
+      if (match) nextSkuNumber = parseInt(match[1]) + 1;
+    }
+
+    // Generate new SKU (e.g. SKU-GN-0001)
+    const newSkuId = `SKU-GN-${String(nextSkuNumber).padStart(4, "0")}`;
+
+    // Send response
+    return commonService.okResponse(res, { sku_id: newSkuId });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
 
 // Get one by ID
 const getProductById = async (req, res) => {
@@ -173,4 +181,5 @@ module.exports = {
   createProduct,
   getProductById,
   deleteProduct,
+  generateSkuId
 };

@@ -272,6 +272,12 @@ const options = {
             Values: { type: "string", description: "Comma separated values" }
           }
         },
+        SkuResponse: {
+          type: "object",
+          properties: {
+            sku_id: { type: "string", example: "SKU-GN-0007" }
+          }
+        },
         User: {
           type: "object",
           properties: {

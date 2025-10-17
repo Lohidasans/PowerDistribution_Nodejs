@@ -4,6 +4,7 @@ const svc = require("../services/productService");
 
 // CRUD
 router.post("/products", svc.createProduct);
+router.get("/products/generateSku", svc.generateSkuId);
 router.get("/products/:id", svc.getProductById);
 router.delete("/products/:id", svc.deleteProduct);
 
@@ -31,6 +32,20 @@ module.exports = router;
  *     responses:
  *       201:
  *         description: Created
+ */
+/**
+ * @openapi
+ * /api/v1/products/generateSku:
+ *   get:
+ *     summary: Generate next SKU ID (server-calculated)
+ *     tags: [Product]
+ *     responses:
+ *       200:
+ *         description: Next SKU generated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/SkuResponse'
  */
 /**
  * @openapi
