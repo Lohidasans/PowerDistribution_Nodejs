@@ -228,9 +228,20 @@ const options = {
         Variant: {
           type: "object",
           properties: {
+            product_id: { type: "integer", description: "Optional: link variant to a product" },
             variant_type: { type: "string" },
+            status: { type: "string", enum: ["Active", "Inactive"] }
           },
           required: ["variant_type"],
+        },
+        VariantCreateInput: {
+          type: "object",
+          properties: {
+            product_id: { type: "integer" },
+            variant_type: { type: "string" },
+            values: { type: "array", items: { type: "string" } }
+          },
+          required: ["variant_type", "values"],
         },
         VariantValue: {
           type: "object",
@@ -239,9 +250,9 @@ const options = {
               type: "integer",
               description: "ID of the associated variant",
             },
-            variant_value: { type: "string" },
+            value: { type: "string" },
           },
-          required: ["variant_id", "variant_value"],
+          required: ["variant_id", "value"],
         },
         User: {
           type: "object",
