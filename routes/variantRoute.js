@@ -4,6 +4,7 @@ const variantService = require("../services/variantService");
 
 variantRouter.post("/variant", variantService.createVariant);
 variantRouter.delete("/variant/:id", variantService.deleteVariant);
+variantRouter.get("/variants", variantService.listVariantWithValues);
 
 module.exports = variantRouter;
 
@@ -12,6 +13,17 @@ module.exports = variantRouter;
  * tags:
  *   - name: Variant
  *     description: Variant and variant value management
+ */
+
+/**
+ * @openapi
+ * /api/v1/variants:
+ *   get:
+ *     summary: List variants with their values (aggregated)
+ *     tags: [Variant]
+ *     responses:
+ *       200:
+ *         description: OK
  */
 
 /**
@@ -25,7 +37,7 @@ module.exports = variantRouter;
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/Variant'
+ *             $ref: '#/components/schemas/VariantCreateInput'
  *           example:
  *             product_id: 3
  *             variant_type: "Size"

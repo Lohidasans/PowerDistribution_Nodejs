@@ -254,6 +254,24 @@ const options = {
           },
           required: ["variant_id", "value"],
         },
+        VariantCreateResponse: {
+          type: "object",
+          properties: {
+            variant: { $ref: '#/components/schemas/Variant' },
+            variant_values: {
+              type: "array",
+              items: { $ref: '#/components/schemas/VariantValue' }
+            }
+          }
+        },
+        VariantListItem: {
+          type: "object",
+          properties: {
+            S_No: { type: "integer" },
+            "Variant Type": { type: "string" },
+            Values: { type: "string", description: "Comma separated values" }
+          }
+        },
         User: {
           type: "object",
           properties: {

@@ -1,6 +1,7 @@
 const { sequelize, models } = require("../models/index");
 const commonService = require("../services/commonService");
 const enMessage = require("../constants/en.json");
+const db = require("../config/dbConfig");
 
 const createVariant = async (req, res) => {
   const transaction = await sequelize.transaction();
@@ -68,7 +69,31 @@ const deleteVariant = async (req, res) => {
   }
 };
 
+const listVariantWithValues = async (req, res) => {
+  try
+  {    
+    const [rows] = await sequelize.query(`SELECT 
+            v.id AS "S_No",
+            v.variant_type AS "Variant Type",
+            STRING_AGG(vv.value, ', ' ORDER BY vv.id) AS "Values"
+          FROM 
+            variants v
+          LEFT JOIN 
+            "variantValues" vv ON vv.variant_id = v.id
+          WHERE 
+            v.deleted_at IS NULL AND vv.deleted_at IS NULL
+          GROUP BY 
+            v.id, v.variant_type
+          ORDER BY 
+            v.id ASC`);
+    return commonService.okResponse(res, { variants:rows });
+  } catch (err) {
+  return commonService.handleError(res, err);
+  }
+};
+
 module.exports = {
   createVariant,
   deleteVariant,
+  listVariantWithValues
 };
