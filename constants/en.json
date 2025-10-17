@@ -5,15 +5,17 @@
     "notFound": "Data not found.",
     "alreadyExists": "This record already exists.",
     "badRequest": "Invalid request.",
-    "requiredFields": "Required fields are missing."
+    "requiredFields": "Required fields are missing.",
+    "requiredVariantType": "Variant type is required.",
+    "variantNotFound": "Variant not found."
   },
-  "requiredEntityIdAndType":"Entity ID and Type Required",
+  "requiredEntityIdAndType": "Entity ID and Type Required",
   "rolesPermissions": {
-    "duplicateIdsFound":"Some permissions do not exist (OR) Duplicate permission IDs found."
+    "duplicateIdsFound": "Some permissions do not exist (OR) Duplicate permission IDs found."
   },
   "roles": {
-    "notExist":"Role does not exist.",
-    "alreadyExists":"This Role already exists."
+    "notExist": "Role does not exist.",
+    "alreadyExists": "This Role already exists."
   },
   "branch": {
     "required": "Branch No and Branch Name are required.",
@@ -22,8 +24,18 @@
   "role": {
     "duplicateName": "Role name already exists."
   },
-  "kyc":{
-    "arrayRequired":"Documents array is required",
-    "includeId":"Each document must include an id to update."    
+  "kyc": {
+    "arrayRequired": "Documents array is required",
+    "includeId": "Each document must include an id to update."
+  },
+  "materialType": {
+    "required": "Material type is required.",
+    "alreadyExists": "Material type already exists."
+  },
+  "variant": {
+    "notFound": "Variant not found.",
+    "requiredVariantType": "Variant type is required.",
+    "alreadyExists": "Variant with this type already exists.",
+    "invalidData": "Invalid variant data provided."
   }
 }

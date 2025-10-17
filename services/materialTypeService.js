@@ -1,4 +1,5 @@
-const { models } = require("../models/index");
+const { models, sequelize } = require("../models/index");
+const { Op } = require("sequelize");
 const commonService = require("../services/commonService");
 const enMessage = require("../constants/en.json");
 const { buildSearchCondition } = require("../helpers/queryHelper");
@@ -8,9 +9,22 @@ const createMaterialType = async (req, res) => {
     const { material_type, material_image_url } = req.body;
 
     if (!material_type) {
+      return commonService.badRequest(res, enMessage.materialType.required);
+    }
+
+    // Check if material type already exists (only among non-deleted records)
+    const existingMaterialType = await models.MaterialType.findOne({
+      where: {
+        material_type: material_type,
+        deleted_at: null, // Only check non-deleted records
+      },
+      paranoid: false, // Include soft-deleted records in search but filter them out with deleted_at: null
+    });
+
+    if (existingMaterialType) {
       return commonService.badRequest(
         res,
-        enMessage.failure.requiredMaterialType
+        enMessage.materialType.alreadyExists
       );
     }
 
@@ -73,6 +87,27 @@ const updateMaterialType = async (req, res) => {
   if (!entity) return;
 
   try {
+    const { material_type } = req.body;
+
+    // Check if material_type is being updated and if it already exists in another record
+    if (material_type && material_type !== entity.material_type) {
+      const existingMaterialType = await models.MaterialType.findOne({
+        where: {
+          material_type: material_type,
+          id: { [Op.ne]: req.params.id }, // Exclude current record
+          deleted_at: null, // Only check non-deleted records
+        },
+        paranoid: false, // Include soft-deleted records in search but filter them out with deleted_at: null
+      });
+
+      if (existingMaterialType) {
+        return commonService.badRequest(
+          res,
+          enMessage.materialType.alreadyExists
+        );
+      }
+    }
+
     await entity.update(req.body);
     return commonService.okResponse(res, { materialType: entity });
   } catch (err) {

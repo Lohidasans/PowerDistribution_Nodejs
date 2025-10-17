@@ -7,9 +7,17 @@ const { buildSearchCondition } = require("../helpers/queryHelper");
 const createProduct = async (req, res) => {
   try {
     const requiredFields = [
-      "product_name", "description", "vendor_id", "material_type_id",
-      "category_id", "subcategory_id", "grn_id", "hsn_code",
-      "purity", "product_type", "variation_type"
+      "product_name",
+      "description",
+      "vendor_id",
+      "material_type_id",
+      "category_id",
+      "subcategory_id",
+      "grn_id",
+      "hsn_code",
+      "purity",
+      "product_type",
+      "variation_type",
     ];
 
     // Validation
@@ -22,7 +30,10 @@ const createProduct = async (req, res) => {
     const { item_details, ...productData } = req.body;
 
     const result = await sequelize.transaction(async (t) => {
-      const product = await models.Product.create({ ...productData }, { transaction: t });
+      const product = await models.Product.create(
+        { ...productData },
+        { transaction: t }
+      );
 
       await createItemDetails(product.id, item_details, t);
 
@@ -39,7 +50,6 @@ const createProduct = async (req, res) => {
 
     const fullProduct = await getProductWithDetails(result.id);
     return commonService.createdResponse(res, fullProduct);
-
   } catch (err) {
     return commonService.handleError(res, err);
   }
@@ -64,17 +74,24 @@ const createItemDetails = async (productId, itemDetails, t) => {
         product_id: productId,
       }));
 
-      await models.ProductAdditionalDetail.bulkCreate(addPayload, { transaction: t });
+      await models.ProductAdditionalDetail.bulkCreate(addPayload, {
+        transaction: t,
+      });
     }
   }
 };
 
-
 const getProductWithDetails = async (productId) => {
   const [product, items, adds] = await Promise.all([
     models.Product.findByPk(productId),
-    models.ProductItemDetail.findAll({ where: { product_id: productId }, order: [["id", "ASC"]] }),
-    models.ProductAdditionalDetail.findAll({ where: { product_id: productId }, order: [["id", "ASC"]] }),
+    models.ProductItemDetail.findAll({
+      where: { product_id: productId },
+      order: [["id", "ASC"]],
+    }),
+    models.ProductAdditionalDetail.findAll({
+      where: { product_id: productId },
+      order: [["id", "ASC"]],
+    }),
   ]);
 
   const addsByItem = adds.reduce((acc, a) => {
@@ -96,7 +113,9 @@ const getProductWithDetails = async (productId) => {
 
 // Helper: compute totals
 const computeSummaries = (items = [], type) => {
-  let totalWeight = 0, totalQty = 0, totalValue = 0;
+  let totalWeight = 0,
+    totalQty = 0,
+    totalValue = 0;
 
   for (const it of items) {
     const net = +it?.net_weight || 0;
@@ -116,6 +135,57 @@ const computeSummaries = (items = [], type) => {
   };
 };
 
+// Get all products with pagination and filtering
+const getAllProducts = async (req, res) => {
+  try {
+    const {
+      search = "",
+      category_id,
+      subcategory_id,
+      vendor_id,
+      material_type_id,
+      product_type,
+      is_published,
+      sort_by = "created_at",
+      sort_order = "DESC",
+    } = req.query;
+    const searchConditions = buildSearchCondition(search, [
+      "product_name",
+      "description",
+      "product_code",
+      "sku_id",
+      "hsn_code",
+    ]);
+
+    // Build where conditions
+    const whereConditions = {
+      ...searchConditions,
+      ...(category_id && { category_id: parseInt(category_id) }),
+      ...(subcategory_id && { subcategory_id: parseInt(subcategory_id) }),
+      ...(vendor_id && { vendor_id: parseInt(vendor_id) }),
+      ...(material_type_id && { material_type_id: parseInt(material_type_id) }),
+      ...(product_type && { product_type }),
+      ...(is_published !== undefined && {
+        is_published: is_published === "true",
+      }),
+    };
+
+    // Get all products without pagination
+    const products = await models.Product.findAll({
+      where: whereConditions,
+      order: [[sort_by, sort_order.toUpperCase()]],
+      distinct: true,
+    });
+
+    const response = {
+      products,
+    };
+
+    return commonService.okResponse(res, response);
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
 
 const generateSkuId = async (req, res) => {
   try {
@@ -142,17 +212,26 @@ const generateSkuId = async (req, res) => {
   }
 };
 
-
 // Get one by ID
 const getProductById = async (req, res) => {
   try {
-    const row = await commonService.findById(models.Product, req.params.id, res);
+    const row = await commonService.findById(
+      models.Product,
+      req.params.id,
+      res
+    );
     if (!row) return;
 
     // fetch child details
     const [itemDetails, additionalDetails] = await Promise.all([
-      models.ProductItemDetail.findAll({ where: { product_id: row.id }, order: [["id", "ASC"]] }),
-      models.ProductAdditionalDetail.findAll({ where: { product_id: row.id }, order: [["id", "ASC"]] }),
+      models.ProductItemDetail.findAll({
+        where: { product_id: row.id },
+        order: [["id", "ASC"]],
+      }),
+      models.ProductAdditionalDetail.findAll({
+        where: { product_id: row.id },
+        order: [["id", "ASC"]],
+      }),
     ]);
 
     return commonService.okResponse(res, {
@@ -165,10 +244,66 @@ const getProductById = async (req, res) => {
   }
 };
 
+// Update Product
+const updateProduct = async (req, res) => {
+  try {
+    const productId = req.params.id;
+    const product = await commonService.findById(
+      models.Product,
+      productId,
+      res
+    );
+    if (!product) return;
+
+    const { item_details, ...productData } = req.body;
+
+    const result = await sequelize.transaction(async (t) => {
+      // Update main product
+      await product.update(productData, { transaction: t });
+
+      // If item_details provided, update them
+      if (item_details && Array.isArray(item_details)) {
+        // Delete existing item details and additional details
+        await models.ProductAdditionalDetail.destroy({
+          where: { product_id: productId },
+          transaction: t,
+        });
+        await models.ProductItemDetail.destroy({
+          where: { product_id: productId },
+          transaction: t,
+        });
+
+        // Create new item details
+        await createItemDetails(productId, item_details, t);
+
+        // Recalculate summaries
+        const items = await models.ProductItemDetail.findAll({
+          where: { product_id: productId },
+          transaction: t,
+        });
+
+        const summary = computeSummaries(items, product.product_type);
+        await product.update(summary, { transaction: t });
+      }
+
+      return product;
+    });
+
+    const fullProduct = await getProductWithDetails(result.id);
+    return commonService.okResponse(res, fullProduct);
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
 // Delete (soft)
 const deleteProduct = async (req, res) => {
   try {
-    const row = await commonService.findById(models.Product, req.params.id, res);
+    const row = await commonService.findById(
+      models.Product,
+      req.params.id,
+      res
+    );
     if (!row) return;
     await row.destroy();
     return commonService.noContentResponse(res);
@@ -179,7 +314,9 @@ const deleteProduct = async (req, res) => {
 
 module.exports = {
   createProduct,
+  getAllProducts,
   getProductById,
+  updateProduct,
   deleteProduct,
-  generateSkuId
+  generateSkuId,
 };
