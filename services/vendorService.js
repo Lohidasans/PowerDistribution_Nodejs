@@ -75,6 +75,19 @@ const listVendors = async (req, res) => {
   }
 };
 
+const listVendorDropdown = async (req, res) => {
+  try {
+    const vendors = await models.Vendor.findAll({
+      attributes: ["id", "vendor_name"],
+      where: { deleted_at: null },
+      order: [["vendor_name", "ASC"]],
+    });
+    return commonService.okResponse(res, { vendors });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
 const getVendorById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -123,6 +136,7 @@ const deleteVendor = async (req, res) => {
 module.exports = {
   createVendor,
   listVendors,
+  listVendorDropdown,
   getVendorById,
   updateVendor,
   deleteVendor,

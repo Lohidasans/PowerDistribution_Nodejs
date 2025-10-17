@@ -5,6 +5,7 @@ const vendorService = require("../services/vendorService");
 // CRUD
 vendorRouter.post("/vendors", vendorService.createVendor);
 vendorRouter.get("/vendors", vendorService.listVendors);
+vendorRouter.get("/vendors/dropdown", vendorService.listVendorDropdown);
 vendorRouter.get("/vendors/:id", vendorService.getVendorById);
 vendorRouter.put("/vendors/:id", vendorService.updateVendor);
 vendorRouter.delete("/vendors/:id", vendorService.deleteVendor);
@@ -43,6 +44,31 @@ module.exports = vendorRouter;
  *     responses:
  *       201:
  *         description: Created
+ */
+
+/**
+ * @openapi
+ * /api/v1/vendors/dropdown:
+ *   get:
+ *     summary: List vendors for dropdown (id and vendor_name only)
+ *     tags: [Vendor]
+ *     responses:
+ *       200:
+ *         description: OK
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 vendors:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                       vendor_name:
+ *                         type: string
  */
 
 /**
