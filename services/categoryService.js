@@ -7,7 +7,10 @@ const createCategory = async (req, res) => {
     const { material_type_id, category_name, category_image_url } = req.body;
 
     if (!material_type_id || !category_name) {
-      return commonService.badRequest(res, enMessage.failure.requiredMaterialAndCategory);
+      return commonService.badRequest(
+        res,
+        enMessage.failure.requiredMaterialAndCategory
+      );
     }
 
     const materialType = await models.MaterialType.findByPk(material_type_id);
@@ -44,18 +47,44 @@ const listCategories = async (req, res) => {
   }
 };
 
+const listCategoriesDropdown = async (req, res) => {
+  try {
+    const { material_type_id } = req.query;
+    const where = {};
+    if (material_type_id) where.material_type_id = material_type_id;
+
+    const items = await models.Category.findAll({
+      attributes: ["id", "category_name"],
+      where,
+      order: [["category_name", "ASC"]],
+    });
+
+    return commonService.okResponse(res, { categories: items });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
 const getCategoryById = async (req, res) => {
-  const entity = await commonService.findById(models.Category, req.params.id, res);
+  const entity = await commonService.findById(
+    models.Category,
+    req.params.id,
+    res
+  );
   if (!entity) return;
   return commonService.okResponse(res, { category: entity });
 };
 
 const updateCategory = async (req, res) => {
-  const entity = await commonService.findById(models.Category, req.params.id, res);
+  const entity = await commonService.findById(
+    models.Category,
+    req.params.id,
+    res
+  );
   if (!entity) return;
 
   try {
-    await entity.update( req.body );
+    await entity.update(req.body);
     return commonService.okResponse(res, { category: entity });
   } catch (err) {
     return commonService.handleError(res, err);
@@ -63,7 +92,11 @@ const updateCategory = async (req, res) => {
 };
 
 const deleteCategory = async (req, res) => {
-  const entity = await commonService.findById(models.Category, req.params.id, res);
+  const entity = await commonService.findById(
+    models.Category,
+    req.params.id,
+    res
+  );
   if (!entity) return;
 
   try {
@@ -77,6 +110,7 @@ const deleteCategory = async (req, res) => {
 module.exports = {
   createCategory,
   listCategories,
+  listCategoriesDropdown,
   getCategoryById,
   updateCategory,
   deleteCategory,
