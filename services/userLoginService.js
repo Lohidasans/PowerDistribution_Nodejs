@@ -35,7 +35,20 @@ const getUserById = async (req, res) => {
   return commonService.okResponse(res, { user: entity });
 };
 
-// Delete User (Soft)
+// Update User
+const updateUser = async (req, res) => {
+  const entity = await commonService.findById(models.User, req.params.id, res);
+  if (!entity) return;
+
+  try {
+    await entity.update(req.body);
+    return commonService.okResponse(res, { user: entity });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+}
+
+// Delete User
 const deleteUser = async (req, res) => {
   const entity = await commonService.findById(models.User, req.params.id, res);
   if (!entity) return;
@@ -52,5 +65,6 @@ module.exports = {
   createUser,
   listUsers,
   getUserById,
+  updateUser,
   deleteUser,
 };
