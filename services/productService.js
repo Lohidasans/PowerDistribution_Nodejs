@@ -54,7 +54,6 @@ const createProduct = async (req, res) => {
     return commonService.handleError(res, err);
   }
 };
-
 // Helper: Create Item Details & Nested Additional Details
 const createItemDetails = async (productId, itemDetails, t) => {
   for (const d of itemDetails || []) {
@@ -312,6 +311,72 @@ const deleteProduct = async (req, res) => {
   }
 };
 
+
+// Detailed product page rows 
+const getProductDetailRows = async (req, res) => {
+  try {
+    const { product_id } = req.query;
+
+    if (!product_id) {
+      return commonService.badRequest(res, message.failure.requiredFields);
+    }
+
+    const query = `
+      SELECT 
+        p.id AS product_id,
+        p.product_name,
+        p.sku_id,
+        p.description,
+        p.image_urls,
+        p.purity,
+        p.product_type,
+        p.variation_type,
+        p."is_addOn",
+        p.total_grn_value,
+        p.total_products,
+        p.remaining_weight,
+
+        mt.material_type,
+
+        pid.id AS product_item_id,
+        pid.sku_id AS item_sku_id,
+        pid.width,
+        pid.length,
+        pid.height,
+        pid.measurement_type,
+        pid.gross_weight,
+        pid.net_weight,
+        pid.quantity,
+        pid.rate_per_gram,
+        pid.base_price,
+        pid.making_charge_type,
+        pid.making_charge,
+        pid.wastage_type,
+        pid.wastage,
+
+        pad.label_name,
+        pad.unit,
+        pad.price AS addon_price,
+        pad.visibility
+
+      FROM products p
+      LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
+      LEFT JOIN "productItemDetails" pid ON pid.product_id = p.id
+      LEFT JOIN "productAdditionalDetails" pad ON pad.product_id = p.id AND pad.item_detail_id = pid.id
+      WHERE p.id = :productId
+      ORDER BY pid.id ASC, pad.id ASC
+    `;
+
+    const replacements = { productId: +product_id };
+
+    const [rows] = await sequelize.query(query, { replacements });
+    return commonService.okResponse(res, { rows });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
+
 module.exports = {
   createProduct,
   getAllProducts,
@@ -319,4 +384,5 @@ module.exports = {
   updateProduct,
   deleteProduct,
   generateSkuId,
+  getProductDetailRows,
 };

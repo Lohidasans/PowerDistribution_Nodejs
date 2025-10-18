@@ -6,6 +6,7 @@ const svc = require("../services/productService");
 router.post("/products", svc.createProduct);
 router.get("/products", svc.getAllProducts);
 router.get("/products/generateSku", svc.generateSkuId);
+router.get("/products/details", svc.getProductDetailRows);
 router.get("/products/:id", svc.getProductById);
 router.put("/products/:id", svc.updateProduct);
 router.delete("/products/:id", svc.deleteProduct);
@@ -33,6 +34,10 @@ module.exports = router;
  *     responses:
  *       201:
  *         description: Created
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiResponse'
  */
 /**
  * @openapi
@@ -52,7 +57,7 @@ module.exports = router;
  *       - in: query
  *         name: search
  *         schema: { type: string }
- *         description: Search in product name, description, code, SKU, HSN code
+ *         description: Case-insensitive search across string fields
  *       - in: query
  *         name: category_id
  *         schema: { type: integer }
@@ -91,59 +96,31 @@ module.exports = router;
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/ProductListResponse'
- * /api/v1/products/generateSku:
- *   get:
- *     summary: Generate next SKU ID (server-calculated)
- *     tags: [Product]
- *     responses:
- *       200:
- *         description: Next SKU generated
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/SkuResponse'
+ *               $ref: '#/components/schemas/ApiResponse'
  */
 /**
  * @openapi
- * /api/v1/products/{id}:
+ * /api/v1/products/details/{id}:
  *   get:
- *     summary: Get product by ID with item and additional details
+ *     summary: Get detailed product rows (product + items + additional details)
  *     tags: [Product]
  *     parameters:
  *       - in: path
  *         name: id
  *         required: true
  *         schema: { type: integer }
+ *         description: Product ID to fetch
+ *       - in: query
+ *         name: search
+ *         schema: { type: string }
+ *         description: Case-insensitive search across string fields
  *     responses:
  *       200:
  *         description: OK
- *   put:
- *     summary: Update product by ID
- *     tags: [Product]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema: { type: integer }
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             $ref: '#/components/schemas/ProductCreateInput'
- *     responses:
- *       200:
- *         description: Product updated successfully
- *   delete:
- *     summary: Delete product (soft)
- *     tags: [Product]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema: { type: integer }
- *     responses:
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ProductDetailRowsResponse'
  *       204:
  *         description: No Content
  */

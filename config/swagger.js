@@ -278,6 +278,51 @@ const options = {
             sku_id: { type: "string", example: "SKU-GN-0007" }
           }
         },
+        ProductDetailRowsResponse: {
+          type: "object",
+          properties: {
+            rows: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  product_id: { type: "integer" },
+                  product_name: { type: "string" },
+                  sku_id: { type: "string" },
+                  description: { type: "string" },
+                  image_urls: { type: "array", items: { type: "string" } },
+                  purity: { type: "number", format: "float" },
+                  product_type: { type: "string" },
+                  variation_type: { type: "string" },
+                  is_addOn: { type: "boolean" },
+                  total_grn_value: { type: "number", format: "float" },
+                  total_products: { type: "integer" },
+                  remaining_weight: { type: "number", format: "float" },
+                  material_type: { type: "string" },
+                  item_id: { type: "integer" },
+                  item_sku_id: { type: "string" },
+                  width: { type: "number", format: "float" },
+                  length: { type: "number", format: "float" },
+                  height: { type: "number", format: "float" },
+                  measurement_type: { type: "string" },
+                  gross_weight: { type: "number", format: "float" },
+                  net_weight: { type: "number", format: "float" },
+                  quantity: { type: "integer" },
+                  rate_per_gram: { type: "number", format: "float" },
+                  base_price: { type: "number", format: "float" },
+                  making_charge_type: { type: "string" },
+                  making_charge: { type: "number", format: "float" },
+                  wastage_type: { type: "string" },
+                  wastage: { type: "number", format: "float" },
+                  label_name: { type: "string" },
+                  unit: { type: "string" },
+                  addon_price: { type: "number", format: "float" },
+                  visibility: { type: "string" }
+                }
+              }
+            }
+          }
+        },
         User: {
           type: "object",
           properties: {

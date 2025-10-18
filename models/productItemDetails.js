@@ -81,6 +81,10 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.DECIMAL(15, 3),
         allowNull: true,
       },
+      tag_url: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      }
     },
     {
       timestamps: true,
