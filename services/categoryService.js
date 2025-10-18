@@ -30,6 +30,51 @@ const createCategory = async (req, res) => {
   }
 };
 
+const getAllCategories = async (req, res) => {
+  try {
+    const { materialType, search } = req.query;
+
+    let query = `
+      SELECT
+        c.id,
+        c.category_name,
+        c.category_image_url,
+        c.material_type_id,
+        mt.material_type AS material_type
+      FROM categories c
+      LEFT JOIN "materialTypes" mt ON mt.id = c.material_type_id
+      WHERE 1=1
+    `;
+
+    const replacements = {};
+
+    // Filter by Material Type
+    if (materialType) {
+      query += ` AND mt.material_type ILIKE :materialType`;
+      replacements.materialType = `%${materialType}%`;
+    }
+
+    // Search across fields
+    if (search) {
+      const searchableFields = [
+        "c.category_name",
+        "mt.material_type"
+      ];
+      query += ` AND (${searchableFields.map(f => `${f} ILIKE :search`).join(" OR ")})`;
+      replacements.search = `%${search}%`;
+    }
+
+    // Sorting
+    query += ` ORDER BY c.id ASC`;
+
+    const [categories] = await sequelize.query(query, { replacements });
+
+    return commonService.okResponse(res, { categories });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
 const listCategories = async (req, res) => {
   try {
     const { material_type_id, search = "" } = req.query;
@@ -110,6 +155,7 @@ const deleteCategory = async (req, res) => {
 module.exports = {
   createCategory,
   listCategories,
+  getAllCategories,
   listCategoriesDropdown,
   getCategoryById,
   updateCategory,

@@ -5,6 +5,7 @@ const categoryService = require("../services/CategoryService");
 categoryRouter.post("/category", categoryService.createCategory);
 categoryRouter.get("/category", categoryService.listCategories);
 categoryRouter.get("/category/dropdown", categoryService.listCategoriesDropdown);
+categoryRouter.get("/category", categoryService.getAllCategories);
 categoryRouter.get("/category/:id", categoryService.getCategoryById);
 categoryRouter.put("/category/:id", categoryService.updateCategory);
 categoryRouter.delete("/category/:id", categoryService.deleteCategory);

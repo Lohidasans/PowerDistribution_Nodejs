@@ -79,6 +79,64 @@ const listSubcategoriesDropdown = async (req, res) => {
   }
 };
 
+const getAllSubCategories = async (req, res) => {
+  try {
+    const { materialType, category, search } = req.query;
+
+    let query = `
+      SELECT
+        sc.id,
+        sc.subcategory_name,
+        sc.subcategory_image_url,
+        sc.reorder_level,
+        sc.category_id,
+        c.category_name,
+        c.category_image_url,
+        mt.material_type AS material_type
+      FROM "subcategories" sc
+      LEFT JOIN categories c ON c.id = sc.category_id
+      LEFT JOIN "materialTypes" mt ON mt.id = c.material_type_id
+      WHERE 1=1
+    `;
+
+    const replacements = {};
+
+    //  Filter by Material Type
+    if (materialType) {
+      query += ` AND mt.material_type ILIKE :materialType`;
+      replacements.materialType = `%${materialType}%`;
+    }
+
+    // Filter by Category
+    if (category) {
+      query += ` AND c.category_name ILIKE :category`;
+      replacements.category = `%${category}%`;
+    }
+
+    // Search across fields
+    if (search) {
+      const searchableFields = [
+        "sc.subcategory_name",
+        "c.category_name",
+        "mt.material_type",
+      ];
+      query += ` AND (${searchableFields
+        .map((f) => `${f} ILIKE :search`)
+        .join(" OR ")})`;
+      replacements.search = `%${search}%`;
+    }
+
+    // 🔹 Sorting
+    query += ` ORDER BY sc.id ASC`;
+
+    const [subCategories] = await sequelize.query(query, { replacements });
+
+    return commonService.okResponse(res, { subCategories });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
 const getSubcategoryById = async (req, res) => {
   const entity = await commonService.findById(
     models.Subcategory,
@@ -135,6 +193,7 @@ const deleteSubcategory = async (req, res) => {
 module.exports = {
   createSubcategory,
   listSubcategories,
+  getAllSubCategories,
   listSubcategoriesDropdown,
   getSubcategoryById,
   updateSubcategory,

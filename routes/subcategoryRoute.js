@@ -4,19 +4,11 @@ const subcategoryService = require("../services/subcategoryService");
 
 subcategoryRouter.post("/subcategory", subcategoryService.createSubcategory);
 subcategoryRouter.get("/subcategory", subcategoryService.listSubcategories);
-subcategoryRouter.get(
-  "/subcategory/dropdown",
-  subcategoryService.listSubcategoriesDropdown
-);
-subcategoryRouter.get(
-  "/subcategory/:id",
-  subcategoryService.getSubcategoryById
-);
+subcategoryRouter.get("/subcategory", subcategoryService.getAllSubCategories);
+subcategoryRouter.get("/subcategory/dropdown",subcategoryService.listSubcategoriesDropdown);
+subcategoryRouter.get("/subcategory/:id",subcategoryService.getSubcategoryById);
 subcategoryRouter.put("/subcategory/:id", subcategoryService.updateSubcategory);
-subcategoryRouter.delete(
-  "/subcategory/:id",
-  subcategoryService.deleteSubcategory
-);
+subcategoryRouter.delete("/subcategory/:id",subcategoryService.deleteSubcategory);
 
 module.exports = subcategoryRouter;
 

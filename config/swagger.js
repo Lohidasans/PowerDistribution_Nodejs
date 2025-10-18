@@ -254,23 +254,15 @@ const options = {
         Category: {
           type: "object",
           properties: {
-            material_type_id: {
-              type: "integer",
-              description: "ID of the associated material type",
-            },
+            material_type_id: { type: "integer", description: "ID of the associated material type", },
             category_name: { type: "string" },
-            category_image_url: {
-              type: "string",
-              description: "Image URL for the category",
-            },
+            category_image_url: {type: "string", description: "Image URL for the category", },
             description: { type: "string" },
             sort_order: { type: "integer" },
-            status: {
-              type: "string",
-              enum: ["Active", "Inactive"],
-            },
+            status: { type: "string", enum: ["Active", "Inactive"], },
+            material_type: { type: "string" },
           },
-          required: ["material_type", "category_name"],
+          required: ["material_type", "category_name", "material_type"],
         },
         Subcategory: {
           type: "object",
@@ -281,7 +273,7 @@ const options = {
             subcategory_image_url: { type: "string",description: "Image URL for the subcategory",},
             reorder_level: { type: "integer" },
             making_changes: { type: "integer" },
-            Margin: { type: "number", format: "float" },
+            margin: { type: "number", format: "float" },
           },
           required: ["materialType_id", "category_id", "subcategory_name"],
         },
