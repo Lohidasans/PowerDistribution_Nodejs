@@ -167,7 +167,7 @@ const getAllProducts = async (req, res) => {
       ...(is_published !== undefined && {
         is_published: is_published === "true",
       }),
-  };
+    };
 
     // Get all products without pagination
     const products = await models.Product.findAll({
@@ -311,7 +311,6 @@ const deleteProduct = async (req, res) => {
   }
 };
 
-
 // Get Detailed product by product_id
 const getAllProductDetailByProductId = async (req, res) => {
   try {
@@ -322,7 +321,7 @@ const getAllProductDetailByProductId = async (req, res) => {
     }
 
     const query = `
-      SELECT 
+      SELECT
         p.id AS product_id,
         p.product_name,
         p.sku_id,
@@ -373,11 +372,15 @@ const getAllProductDetailByProductId = async (req, res) => {
 
     let addon_product_ids = [];
     let addon_products = [];
-    const isAddOn = rows?.[0]?.is_addOn === true || rows?.[0]?.is_addOn === 1 || rows?.[0]?.is_addOn === 'true';
+    const isAddOn =
+      rows?.[0]?.is_addOn === true ||
+      rows?.[0]?.is_addOn === 1 ||
+      rows?.[0]?.is_addOn === "true";
     if (isAddOn) {
       // Use a single raw query to join mapping with product to get fields
-      const [addonRows] = await sequelize.query(`
-        SELECT 
+      const [addonRows] = await sequelize.query(
+        `
+        SELECT
           pa.id,
           pa.addon_product_id,
           p.product_name,
@@ -387,9 +390,11 @@ const getAllProductDetailByProductId = async (req, res) => {
         JOIN products p ON p.id = pa.addon_product_id
         WHERE pa.product_id = :pid
         ORDER BY pa.id ASC
-      `, { replacements: { pid: +product_id } });
+      `,
+        { replacements: { pid: +product_id } }
+      );
       addon_products = addonRows;
-      addon_product_ids = addonRows.map(r => r.addon_product_id);
+      addon_product_ids = addonRows.map((r) => r.addon_product_id);
     }
 
     return commonService.okResponse(res, { rows, addon_products });
@@ -401,15 +406,10 @@ const getAllProductDetailByProductId = async (req, res) => {
 // Get details for Web list page (with filters and search)
 const getAllProductDetails = async (req, res) => {
   try {
-    const {
-      material_type_id,
-      category_id,
-      subcategory_id,
-      search,
-    } = req.query;
+    const { material_type_id, category_id, subcategory_id, search } = req.query;
 
     let query = `
-      SELECT 
+      SELECT
         p.id,
         p.product_code,
         p.product_name,
@@ -475,7 +475,7 @@ const getAllProductDetails = async (req, res) => {
 
     query += `
       GROUP BY p.id, mt.material_type
-      ORDER BY p.id ASC`;
+      ORDER BY p.id DESC`;
 
     const [rows] = await sequelize.query(query, { replacements });
     return commonService.okResponse(res, { products: rows });
