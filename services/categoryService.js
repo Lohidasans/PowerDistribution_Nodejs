@@ -1,4 +1,4 @@
-const { models } = require("../models/index");
+const { models, sequelize } = require("../models/index");
 const commonService = require("./commonService");
 const enMessage = require("../constants/en.json");
 
@@ -35,12 +35,8 @@ const getAllCategories = async (req, res) => {
     const { materialType, search } = req.query;
 
     let query = `
-      SELECT
-        c.id,
-        c.category_name,
-        c.category_image_url,
-        c.material_type_id,
-        mt.material_type AS material_type
+      SELECT c.id, c.category_name, c.category_image_url, c.material_type_id,
+             mt.material_type, mt.material_image_url
       FROM categories c
       LEFT JOIN "materialTypes" mt ON mt.id = c.material_type_id
       WHERE 1=1
@@ -56,11 +52,10 @@ const getAllCategories = async (req, res) => {
 
     // Search across fields
     if (search) {
-      const searchableFields = [
-        "c.category_name",
-        "mt.material_type"
-      ];
-      query += ` AND (${searchableFields.map(f => `${f} ILIKE :search`).join(" OR ")})`;
+      const searchableFields = ["c.category_name", "mt.material_type"];
+      query += ` AND (${searchableFields
+        .map((f) => `${f} ILIKE :search`)
+        .join(" OR ")})`;
       replacements.search = `%${search}%`;
     }
 
@@ -83,6 +78,13 @@ const listCategories = async (req, res) => {
 
     const items = await models.Category.findAll({
       where,
+      include: [
+        {
+          model: models.MaterialType,
+          attributes: ["material_type", "material_image_url"],
+          as: "materialType",
+        },
+      ],
       order: [["created_at", "DESC"]],
     });
 

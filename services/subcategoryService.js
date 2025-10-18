@@ -1,4 +1,4 @@
-const { models } = require("../models/index");
+const { models, sequelize } = require("../models/index");
 const commonService = require("../services/commonService");
 const enMessage = require("../constants/en.json");
 const { buildSearchCondition } = require("../helpers/queryHelper");
@@ -92,7 +92,8 @@ const getAllSubCategories = async (req, res) => {
         sc.category_id,
         c.category_name,
         c.category_image_url,
-        mt.material_type AS material_type
+        mt.material_type AS material_type,
+        mt.material_image_url
       FROM "subcategories" sc
       LEFT JOIN categories c ON c.id = sc.category_id
       LEFT JOIN "materialTypes" mt ON mt.id = c.material_type_id
