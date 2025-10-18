@@ -68,7 +68,7 @@ const listVendors = async (req, res) => {
     // Base SQL query
     let query = `
       SELECT 
-        v.id, v.vendor_code, v.vendor_name, v.proprietor_name, v.mobile AS vendor_mobile,
+        v.id, v.vendor_code, v.vendor_name, v.proprietor_name, v.mobile, v.vendor_image_url,
         b.branch_name, b.contact_person, b.mobile AS branch_mobile,
         m.material_type
       FROM vendors v
