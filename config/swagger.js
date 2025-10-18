@@ -55,6 +55,66 @@ const options = {
             }
           }
         },
+        ProductListDetailsResponse: {
+          type: "object",
+          properties: {
+            products: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  id: { type: "integer" },
+                  product_code: { type: "string" },
+                  product_name: { type: "string" },
+                  description: { type: "string" },
+                  is_published: { type: "boolean" },
+                  image_urls: { type: "array", items: { type: "string" } },
+                  qr_image_url: { type: "string" },
+                  vendor_id: { type: "integer" },
+                  material_type_id: { type: "integer" },
+                  category_id: { type: "integer" },
+                  subcategory_id: { type: "integer" },
+                  grn_id: { type: "integer" },
+                  branch_id: { type: "integer" },
+                  sku_id: { type: "string" },
+                  hsn_code: { type: "string" },
+                  purity: { type: "number", format: "float" },
+                  product_type: { type: "string" },
+                  variation_type: { type: "string" },
+                  product_variations: { type: "string" },
+                  is_addOn: { type: "boolean" },
+                  total_grn_value: { type: "number", format: "float" },
+                  total_products: { type: "integer" },
+                  remaining_weight: { type: "number", format: "float" },
+                  created_at: { type: "string", format: "date-time" },
+                  updated_at: { type: "string", format: "date-time" },
+                  deleted_at: { type: "string", format: "date-time", nullable: true },
+                  variation_count: { type: "integer" },
+                  material_type: { type: "string" }
+                }
+              }
+            }
+          }
+        },
+        ProductAddOnCreateInput: {
+          type: "object",
+          properties: {
+            product_id: { type: "integer" },
+            addon_product_id: { type: "integer" }
+          },
+          required: ["product_id", "addon_product_id"]
+        },
+        ProductAddOn: {
+          type: "object",
+          properties: {
+            id: { type: "integer" },
+            product_id: { type: "integer" },
+            addon_product_id: { type: "integer" },
+            created_at: { type: "string", format: "date-time" },
+            updated_at: { type: "string", format: "date-time" },
+            deleted_at: { type: "string", format: "date-time", nullable: true }
+          }
+        },
         ProductCreateInput: {
           type: "object",
           properties: {

@@ -167,7 +167,7 @@ const getAllProducts = async (req, res) => {
       ...(is_published !== undefined && {
         is_published: is_published === "true",
       }),
-    };
+  };
 
     // Get all products without pagination
     const products = await models.Product.findAll({
@@ -312,8 +312,8 @@ const deleteProduct = async (req, res) => {
 };
 
 
-// Detailed product page rows 
-const getProductDetailRows = async (req, res) => {
+// Get Detailed product by product_id
+const getAllProductDetailByProductId = async (req, res) => {
   try {
     const { product_id } = req.query;
 
@@ -370,12 +370,119 @@ const getProductDetailRows = async (req, res) => {
     const replacements = { productId: +product_id };
 
     const [rows] = await sequelize.query(query, { replacements });
-    return commonService.okResponse(res, { rows });
+
+    let addon_product_ids = [];
+    let addon_products = [];
+    const isAddOn = rows?.[0]?.is_addOn === true || rows?.[0]?.is_addOn === 1 || rows?.[0]?.is_addOn === 'true';
+    if (isAddOn) {
+      // Use a single raw query to join mapping with product to get fields
+      const [addonRows] = await sequelize.query(`
+        SELECT 
+          pa.id,
+          pa.addon_product_id,
+          p.product_name,
+          p.sku_id,
+          p.image_urls
+        FROM "productAddOns" pa
+        JOIN products p ON p.id = pa.addon_product_id
+        WHERE pa.product_id = :pid
+        ORDER BY pa.id ASC
+      `, { replacements: { pid: +product_id } });
+      addon_products = addonRows;
+      addon_product_ids = addonRows.map(r => r.addon_product_id);
+    }
+
+    return commonService.okResponse(res, { rows, addon_products });
   } catch (err) {
     return commonService.handleError(res, err);
   }
 };
 
+// Get details for Web list page (with filters and search)
+const getAllProductDetails = async (req, res) => {
+  try {
+    const {
+      material_type_id,
+      category_id,
+      subcategory_id,
+      search,
+    } = req.query;
+
+    let query = `
+      SELECT 
+        p.id,
+        p.product_code,
+        p.product_name,
+        p.description,
+        p.is_published,
+        p.image_urls,
+        p.qr_image_url,
+        p.vendor_id,
+        p.material_type_id,
+        p.category_id,
+        p.subcategory_id,
+        p.grn_id,
+        p.branch_id,
+        p.sku_id,
+        p.hsn_code,
+        p.purity,
+        p.product_type,
+        p.variation_type,
+        p.product_variations,
+        p."is_addOn",
+        p.total_grn_value,
+        p.total_products,
+        p.remaining_weight,
+        p.created_at,
+        p.updated_at,
+        p.deleted_at,
+        COUNT(pid.id) AS variation_count,
+        mt.material_type
+      FROM products p
+      LEFT JOIN "productItemDetails" pid ON pid.product_id = p.id
+      LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
+      WHERE 1=1`;
+
+    const replacements = {};
+
+    if (material_type_id) {
+      query += ` AND p.material_type_id = :material_type_id`;
+      replacements.material_type_id = +material_type_id;
+    }
+    if (category_id) {
+      query += ` AND p.category_id = :category_id`;
+      replacements.category_id = +category_id;
+    }
+    if (subcategory_id) {
+      query += ` AND p.subcategory_id = :subcategory_id`;
+      replacements.subcategory_id = +subcategory_id;
+    }
+
+    if (search) {
+      const like = `%${search}%`;
+      query += ` AND (
+        p.product_name ILIKE :like OR
+        p.product_code ILIKE :like OR
+        p.sku_id ILIKE :like OR
+        p.description ILIKE :like OR
+        p.hsn_code ILIKE :like OR
+        p.product_type ILIKE :like OR
+        p.variation_type ILIKE :like OR
+        mt.material_type ILIKE :like
+      )`;
+      replacements.like = like;
+    }
+
+    query += `
+      GROUP BY p.id, mt.material_type
+      ORDER BY p.id ASC`;
+
+    const [rows] = await sequelize.query(query, { replacements });
+    return commonService.okResponse(res, { products: rows });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
 
 module.exports = {
   createProduct,
@@ -384,5 +491,6 @@ module.exports = {
   updateProduct,
   deleteProduct,
   generateSkuId,
-  getProductDetailRows,
+  getAllProductDetailByProductId,
+  getAllProductDetails,
 };

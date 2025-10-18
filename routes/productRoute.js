@@ -5,8 +5,9 @@ const svc = require("../services/productService");
 // CRUD
 router.post("/products", svc.createProduct);
 router.get("/products", svc.getAllProducts);
-router.get("/products/generateSku", svc.generateSkuId);
-router.get("/products/details", svc.getProductDetailRows);
+router.post("/products/generateSku", svc.generateSkuId);
+router.get("/products/details", svc.getAllProductDetailByProductId);
+router.get("/products/list-details", svc.getAllProductDetails);
 router.get("/products/:id", svc.getProductById);
 router.put("/products/:id", svc.updateProduct);
 router.delete("/products/:id", svc.deleteProduct);
@@ -38,6 +39,65 @@ module.exports = router;
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ApiResponse'
+ */
+/**
+ * @openapi
+ * /api/v1/products/details:
+ *   get:
+ *     summary: Get detailed product rows (product + items + additional details)
+ *     tags: [Product]
+ *     parameters:
+ *       - in: query
+ *         name: product_id
+ *         required: true
+ *         schema: { type: integer }
+ *         description: Product ID to fetch
+ *     responses:
+ *       200:
+ *         description: OK
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ProductDetailRowsResponse'
+ *       204:
+ *         description: No Content
+ */
+/**
+ * @openapi
+ * /api/v1/products/list-details:
+ *   get:
+ *     summary: Get products for web list with filters and search (includes variation_count)
+ *     tags: [Product]
+ *     parameters:
+ *       - in: query
+ *         name: material_type_id
+ *         schema: { type: integer }
+ *       - in: query
+ *         name: category_id
+ *         schema: { type: integer }
+ *       - in: query
+ *         name: subcategory_id
+ *         schema: { type: integer }
+ *       - in: query
+ *         name: vendor_id
+ *         schema: { type: integer }
+ *       - in: query
+ *         name: product_type
+ *         schema: { type: string, enum: ["Weight Based", "Piece Rate"] }
+ *       - in: query
+ *         name: is_published
+ *         schema: { type: boolean }
+ *       - in: query
+ *         name: search
+ *         schema: { type: string }
+ *         description: Case-insensitive search across product fields
+ *     responses:
+ *       200:
+ *         description: OK
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ProductListDetailsResponse'
  */
 /**
  * @openapi
@@ -100,13 +160,13 @@ module.exports = router;
  */
 /**
  * @openapi
- * /api/v1/products/details/{id}:
+ * /api/v1/products/details:
  *   get:
  *     summary: Get detailed product rows (product + items + additional details)
  *     tags: [Product]
  *     parameters:
- *       - in: path
- *         name: id
+ *       - in: query
+ *         name: product_id
  *         required: true
  *         schema: { type: integer }
  *         description: Product ID to fetch
