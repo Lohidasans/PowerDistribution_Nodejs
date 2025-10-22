@@ -77,6 +77,9 @@ const listVendors = async (req, res) => {
         v.mobile,
         v.vendor_image_url,
         v.email,
+        v.country_id,
+        v.state_id,
+        v.district_id,
         v.visibilities,
         (
           SELECT COALESCE(

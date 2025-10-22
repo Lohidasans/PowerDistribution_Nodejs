@@ -24,21 +24,17 @@ module.exports = (sequelize, DataTypes) => {
                 type: DataTypes.STRING,
                 allowNull: false,
             },
-            country: {
+            country_id: {
                 type: DataTypes.STRING,
                 allowNull: false,
             },
-            state: {
+            state_id: {
                 type: DataTypes.STRING,
                 allowNull: false,
             },
-            district: {
+            district_id: {
                 type: DataTypes.STRING,
                 allowNull: true,
-            },
-            city: {
-                type: DataTypes.STRING,
-                allowNull: false,
             },
             pin_code: {
                 type: DataTypes.STRING,
@@ -49,7 +45,7 @@ module.exports = (sequelize, DataTypes) => {
                 allowNull: false,
             },
             relationship: {
-                type: DataTypes.STRING,
+                type: DataTypes.ENUM("Father", "Mother", "Guardian"),
                 allowNull: false,
             },
             emergency_contact_number: {

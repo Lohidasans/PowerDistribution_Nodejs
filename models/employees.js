@@ -21,12 +21,12 @@ module.exports = (sequelize, DataTypes) => {
                 type: DataTypes.STRING,
                 allowNull: false,
             },
-            department: {
-                type: DataTypes.STRING,
+            department_id: {
+                type: DataTypes.INTEGER,
                 allowNull: false,
             },
-            designation: {
-                type: DataTypes.STRING,
+            designation_id: {
+                type: DataTypes.INTEGER,
                 allowNull: false,
             },
             joining_date: {
@@ -45,8 +45,8 @@ module.exports = (sequelize, DataTypes) => {
                 type: DataTypes.DATEONLY,
                 allowNull: false,
             },
-            branch: {
-                type: DataTypes.STRING,
+            branch_id: {
+                type: DataTypes.INTEGER,
                 allowNull: false,
             },
             status: {

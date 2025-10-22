@@ -46,16 +46,16 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.TEXT,
         allowNull: true,
       },
-      country: {
-        type: DataTypes.STRING,
+      country_id: {
+        type: DataTypes.INTEGER,
         allowNull: true,
       },
-      state: {
-        type: DataTypes.STRING,
+      state_id: {
+        type: DataTypes.INTEGER,
         allowNull: true,
       },
-      district: {
-        type: DataTypes.STRING,
+      district_id: {
+        type: DataTypes.INTEGER,
         allowNull: true,
       },
       pin_code: {
