@@ -436,6 +436,8 @@ const getAllProductDetails = async (req, res) => {
         p.created_at,
         p.updated_at,
         p.deleted_at,
+        COALESCE(SUM(COALESCE(pid.quantity, 0)), 0) AS total_quantity,
+        COALESCE(SUM(COALESCE(pid.quantity, 0) * COALESCE(pid.net_weight, 0)), 0) AS total_weight,
         COUNT(pid.id) AS variation_count,
         mt.material_type
       FROM products p
