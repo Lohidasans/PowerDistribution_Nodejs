@@ -21,6 +21,8 @@ const Employee = require('./employees')(sequelize, Sequelize.DataTypes);
 const EmployeeContact = require('./employeeContacts')(sequelize, Sequelize.DataTypes);
 const EmployeeExperience = require('./employeeExperiences')(sequelize, Sequelize.DataTypes);
 const EmployeeIncentive = require('./employeeIncentives')(sequelize, Sequelize.DataTypes);
+const EmployeeDepartment = require('./employeeDepartments')(sequelize, Sequelize.DataTypes);
+const EmployeeDesignation = require('./employeeDesignations')(sequelize, Sequelize.DataTypes);
 
 //Collection and UOM related modes
 const MaterialType = require('./materialTypes')(sequelize, Sequelize.DataTypes);
@@ -56,6 +58,8 @@ const models = {
   EmployeeContact,
   EmployeeExperience,
   EmployeeIncentive,
+  EmployeeDepartment,
+  EmployeeDesignation,
   MaterialType,
   Category,
   Subcategory,
