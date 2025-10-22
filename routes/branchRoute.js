@@ -8,6 +8,7 @@ branchRouter.get("/branch/dropdown", branchService.branchDropdownList);
 branchRouter.get("/branch/:id", branchService.getBranchById);
 branchRouter.put("/branch/:id", branchService.updateBranch);
 branchRouter.delete("/branch/:id", branchService.deleteBranch);
+branchRouter.post("/branch/code", branchService.generateBranchCode); 
 
 module.exports = branchRouter;
 /**
@@ -15,6 +16,27 @@ module.exports = branchRouter;
  * tags:
  *   - name: Branch
  *     description: Branch management
+ */
+/**
+ * @openapi
+ * /api/v1/branch/code:
+ *   post:
+ *     summary: Generate next branch code
+ *     tags: [Branch]
+ *     responses:
+ *       200:
+ *         description: OK
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 statusCode: { type: integer }
+ *                 message: { type: string }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     branch_code: { type: string, example: "BR 01/24-25" }
  */
 /**
  * @openapi

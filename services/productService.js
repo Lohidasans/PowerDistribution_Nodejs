@@ -2,6 +2,7 @@ const { models, sequelize } = require("../models");
 const commonService = require("../services/commonService");
 const message = require("../constants/en.json");
 const { buildSearchCondition } = require("../helpers/queryHelper");
+const generateAutoCode = require("../helpers/codeGeneration");
 
 // Main Create Product API
 const createProduct = async (req, res) => {
@@ -188,24 +189,9 @@ const getAllProducts = async (req, res) => {
 
 const generateSkuId = async (req, res) => {
   try {
-    // Fetch last product's SKU
-    const lastProduct = await models.Product.findOne({
-      order: [["id", "DESC"]],
-      attributes: ["sku_id"],
-    });
+    const skuId = await generateAutoCode(models.Product, "sku_id", "SKU-GN");
 
-    // Determine next SKU number
-    let nextSkuNumber = 1;
-    if (lastProduct?.sku_id) {
-      const match = lastProduct.sku_id.match(/(\d+)$/);
-      if (match) nextSkuNumber = parseInt(match[1]) + 1;
-    }
-
-    // Generate new SKU (e.g. SKU-GN-0001)
-    const newSkuId = `SKU-GN-${String(nextSkuNumber).padStart(4, "0")}`;
-
-    // Send response
-    return commonService.okResponse(res, { sku_id: newSkuId });
+    return commonService.okResponse(res, { sku_id: skuId });
   } catch (err) {
     return commonService.handleError(res, err);
   }

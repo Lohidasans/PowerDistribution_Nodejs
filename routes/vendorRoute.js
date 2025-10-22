@@ -9,9 +9,31 @@ vendorRouter.get("/vendors/dropdown", vendorService.listVendorDropdown);
 vendorRouter.get("/vendors/:id", vendorService.getVendorById);
 vendorRouter.put("/vendors/:id", vendorService.updateVendor);
 vendorRouter.delete("/vendors/:id", vendorService.deleteVendor);
+vendorRouter.post("/vendors/code", vendorService.generateVendorCode); 
 
 module.exports = vendorRouter;
 
+/**
+ * @openapi
+ * /api/v1/vendors/code:
+ *   post:
+ *     summary: Generate next vendor code
+ *     tags: [Vendor]
+ *     responses:
+ *       200:
+ *         description: OK
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 statusCode: { type: integer }
+ *                 message: { type: string }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     vendor_code: { type: string, example: "VEN 01/24-25" }
+ */
 /**
  * @openapi
  * tags:

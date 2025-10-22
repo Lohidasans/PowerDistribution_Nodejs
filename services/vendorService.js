@@ -1,6 +1,7 @@
 const { sequelize, models } = require("../models/index");
 const commonService = require("./commonService");
 const message = require("../constants/en.json");
+const generateAutoCode = require("../helpers/codeGeneration");
 
 const createVendor = async (req, res) => {
   try {
@@ -188,6 +189,15 @@ const deleteVendor = async (req, res) => {
   }
 };
 
+const generateVendorCode = async (req, res) => {
+  try {
+    const code = await generateAutoCode(models.Vendor, "vendor_code", "VEN");
+    return commonService.okResponse(res, { vendor_code: code });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
 module.exports = {
   createVendor,
   listVendors,
@@ -195,4 +205,5 @@ module.exports = {
   getVendorById,
   updateVendor,
   deleteVendor,
+  generateVendorCode
 };

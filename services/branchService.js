@@ -3,6 +3,7 @@ const message = require("../constants/en.json");
 const { Op } = require("sequelize");
 const commonService = require("../services/commonService");
 const { buildSearchCondition } = require("../helpers/queryHelper");
+const generateAutoCode = require("../helpers/codeGeneration");
 
 // Create a new Branch
 const createBranch = async (req, res) => {
@@ -108,6 +109,15 @@ const branchDropdownList = async (req, res) => {
     }
 };
 
+const generateBranchCode = async (req, res) => {
+    try {
+        const code = await generateAutoCode(models.Branch, "branch_no", "BR");
+        return commonService.okResponse(res, { branch_code: code });
+    } catch (err) {
+        return commonService.handleError(res, err);
+    }
+};
+
 module.exports = {
   createBranch,
   listBranches,
@@ -115,4 +125,5 @@ module.exports = {
   updateBranch,
   deleteBranch,
   branchDropdownList,
+  generateBranchCode
 };
