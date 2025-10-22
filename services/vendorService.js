@@ -1,6 +1,6 @@
 const { sequelize, models } = require("../models/index");
 const commonService = require("./commonService");
-const enMessage = require("../constants/en.json");
+const message = require("../constants/en.json");
 
 const createVendor = async (req, res) => {
   try {
@@ -21,15 +21,16 @@ const createVendor = async (req, res) => {
       opening_balance,
       opening_balance_type,
       payment_terms,
-      branch_id,
-      visibility,
+      material_type_ids,
+      branch_ids,
+      visibilities,
       status,
     } = req.body;
 
     if (!vendor_code || !vendor_name || !email) {
       return commonService.badRequest(
         res,
-        "vendor_code, vendor_name and email are required"
+        message.vendor.required
       );
     }
 
@@ -50,8 +51,9 @@ const createVendor = async (req, res) => {
       opening_balance,
       opening_balance_type,
       payment_terms,
-      branch_id,
-      visibility,
+      material_type_ids,
+      branch_ids,
+      visibilities,
       status,
     });
 
@@ -65,15 +67,36 @@ const listVendors = async (req, res) => {
   try {
     const { materialType, search } = req.query;
 
-    // Base SQL query
+    // Base SQL with array joins and aggregation
     let query = `
       SELECT 
-        v.id, v.vendor_code, v.vendor_name, v.proprietor_name, v.mobile, v.vendor_image_url,
-        b.branch_name, b.contact_person, b.mobile AS branch_mobile,
-        m.material_type
+        v.id,
+        v.vendor_code,
+        v.vendor_name,
+        v.proprietor_name,
+        v.mobile,
+        v.vendor_image_url,
+        v.email,
+        v.visibilities,
+        (
+          SELECT COALESCE(
+            json_agg(json_build_object('id', mt.id, 'name', mt.material_type) ORDER BY array_position(v.material_type_ids, mt.id)),
+            '[]'::json
+          )
+          FROM "materialTypes" mt
+          WHERE mt.id = ANY(v.material_type_ids)
+        ) AS material_types_detailed,
+        (
+          SELECT COALESCE(
+            json_agg(json_build_object('id', b2.id, 'name', b2.branch_name) ORDER BY array_position(v.branch_ids, b2.id)),
+            '[]'::json
+          )
+          FROM branches b2
+          WHERE b2.id = ANY(v.branch_ids)
+        ) AS branch_names_detailed
       FROM vendors v
-      LEFT JOIN branches b ON b.id = v.branch_id
-      LEFT JOIN "materialTypes" m ON m.id = v.material_type_id
+      LEFT JOIN branches b ON b.id = ANY(v.branch_ids)
+      LEFT JOIN "materialTypes" m ON m.id = ANY(v.material_type_ids)
       WHERE 1=1`;
 
     const replacements = {};
@@ -86,14 +109,14 @@ const listVendors = async (req, res) => {
 
     if (search) {
       const fields = [
-        "v.vendor_name", "v.proprietor_name", "v.mobile",
-        "b.branch_name", "b.contact_person", "b.mobile", "m.material_type"
+        "v.vendor_name", "v.proprietor_name", "v.mobile", "v.email",
+        "b.branch_name", "m.material_type"
       ];
       query += ` AND (${fields.map(field => `${field} ILIKE :search`).join(" OR ")})`;
       replacements.search = `%${search}%`;
     }
 
-    query += ` ORDER BY v.vendor_name ASC`;
+    query += ` GROUP BY v.id ORDER BY v.vendor_name ASC`;
 
     const [vendors] = await sequelize.query(query, { replacements });
 
@@ -134,9 +157,12 @@ const updateVendor = async (req, res) => {
     const { id } = req.params;
     const vendor = await models.Vendor.findByPk(id);
     if (!vendor) {
-      return commonService.notFound(res, "Vendor not found");
+      return commonService.notFound(res, message.vendor.notFound);
     }
-
+    
+    if (!req.body.vendor_name || !req.body.email) {
+      return commonService.badRequest(res, message.vendor.required);
+    }
     await vendor.update(req.body);
     return commonService.okResponse(res, { vendor });
   } catch (err) {
@@ -149,13 +175,11 @@ const deleteVendor = async (req, res) => {
     const { id } = req.params;
     const vendor = await models.Vendor.findByPk(id);
     if (!vendor) {
-      return commonService.notFound(res, "Vendor not found");
+      return commonService.notFound(res, message.vendor.notFound);
     }
 
     await vendor.destroy();
-    return commonService.okResponse(res, {
-      message: "Vendor deleted successfully",
-    });
+    return commonService.noContentResponse(res);
   } catch (err) {
     return commonService.handleError(res, err);
   }

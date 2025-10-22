@@ -37,5 +37,9 @@
     "requiredVariantType": "Variant type is required.",
     "alreadyExists": "Variant with this type already exists.",
     "invalidData": "Invalid variant data provided."
+  },
+  "vendor": {
+    "required": "VendorCode, VendorName and Email are required",
+    "notFound": "Vendor not found"
   }
 }

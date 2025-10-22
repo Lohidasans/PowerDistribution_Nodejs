@@ -115,6 +115,32 @@ const options = {
             deleted_at: { type: "string", format: "date-time", nullable: true }
           }
         },
+        VendorCreateInput: {
+          type: "object",
+          properties: {
+            vendor_image_url: { type: "string" },
+            vendor_code: { type: "string" },
+            vendor_name: { type: "string" },
+            proprietor_name: { type: "string" },
+            email: { type: "string", format: "email" },
+            mobile: { type: "string" },
+            pan_no: { type: "string" },
+            gst_no: { type: "string" },
+            address: { type: "string" },
+            country: { type: "string" },
+            state: { type: "string" },
+            district: { type: "string" },
+            pin_code: { type: "string" },
+            opening_balance: { type: "number", format: "float" },
+            opening_balance_type: { type: "string", enum: ["Credit", "Debit"] },
+            payment_terms: { type: "string" },
+            material_type_ids: { type: "array", items: { type: "integer" } },
+            branch_ids: { type: "array", items: { type: "integer" } },
+            visibility: { type: "array", items: { type: "string" } },
+            status: { type: "string", enum: ["Active", "Inactive"] }
+          },
+          required: ["vendor_code", "vendor_name", "email"]
+        },
         ProductCreateInput: {
           type: "object",
           properties: {

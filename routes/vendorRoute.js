@@ -40,7 +40,14 @@ module.exports = vendorRouter;
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/Vendor'
+ *             $ref: '#/components/schemas/VendorCreateInput'
+ *           example:
+ *             vendor_code: "VEN/01/24-25"
+ *             vendor_name: "Golden Hub Pvt. Ltd."
+ *             email: "info@goldhub.com"
+ *             material_type_ids: [1, 2]
+ *             branch_ids: [3, 5]
+ *             visibilities: [1, 4]
  *     responses:
  *       201:
  *         description: Created

@@ -74,16 +74,16 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.STRING, //  10 days, 30 days
         allowNull: true,
       },
-      material_type_id: {
-        type: DataTypes.INTEGER,
+      material_type_ids: {
+        type: DataTypes.ARRAY(DataTypes.INTEGER), // multiple material type IDs
         allowNull: true,
       },
-      branch_id: {
-        type: DataTypes.INTEGER, // Foreign key to Branch table
+      branch_ids: {
+        type: DataTypes.ARRAY(DataTypes.INTEGER), // multiple branch IDs
         allowNull: true,
       },
-      visibility: {
-        type: DataTypes.STRING, //  HMK Silvers, ShineCraft Silver
+      visibilities: {
+        type: DataTypes.ARRAY(DataTypes.INTEGER), // multiple names e.g., ["HMK Silvers", "ShineCraft Silver"]
         allowNull: true,
       },
       status: {
