@@ -55,25 +55,23 @@ module.exports = router;
  *     responses:
  *       200:
  *         description: OK
- * 
- *  put:
- *    summary: Update user by ID
- *   tags: [User]
- *   parameters:
- *    - in: path
- *    name: id
- *    required: true
- *   schema: { type: integer }  
- *  requestBody:
- *     required: true
- *    content:
- *      application/json:
- *       schema:
- *        $ref: '#/components/schemas/User'
- *   responses:
- *     200:
- *    description: OK
- * 
+ *   put:
+ *     summary: Update user by ID
+ *     tags: [User]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/User'
+ *     responses:
+ *       200:
+ *         description: OK
  *   delete:
  *     summary: Delete user (soft)
  *     tags: [User]

@@ -4,6 +4,10 @@ const vendorContactService = require("../services/vendorSpocDetailsService");
 
 // CRUD
 router.post("/vendor-SpocDetails", vendorContactService.createVendorContact);
+router.put(
+  "/vendor-SpocDetails/vendor/:vendor_id",
+  vendorContactService.updateVendorContactsByVendor
+);
 router.get("/vendor-SpocDetails", vendorContactService.listVendorContacts);
 router.get(
   "/vendor-SpocDetails/:id",
@@ -33,7 +37,7 @@ module.exports = router;
  *       200:
  *         description: OK
  *   post:
- *     summary: Create VendorSpocDetails
+ *     summary: Bulk create VendorSpocDetails
  *     tags: [VendorSpocDetails]
  *     requestBody:
  *       required: true
@@ -41,19 +45,53 @@ module.exports = router;
  *         application/json:
  *           schema:
  *             type: object
- *             required: [vendor_id]
+ *             required: [vendor_id, contacts]
  *             properties:
  *               vendor_id:
  *                 type: integer
- *               contact_name:
- *                 type: string
- *               designation:
- *                 type: string
- *               mobile:
- *                 type: string
+ *               contacts:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     contact_name: { type: string }
+ *                     designation: { type: string }
+ *                     mobile: { type: string }
  *     responses:
  *       201:
  *         description: Created
+ */
+
+/**
+ * @openapi
+ * /api/v1/vendor-SpocDetails/vendor/{vendor_id}:
+ *   put:
+ *     summary: Replace all contacts for a vendor (bulk update)
+ *     tags: [VendorSpocDetails]
+ *     parameters:
+ *       - in: path
+ *         name: vendor_id
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [contacts]
+ *             properties:
+ *               contacts:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     contact_name: { type: string }
+ *                     designation: { type: string }
+ *                     mobile: { type: string }
+ *     responses:
+ *       200:
+ *         description: OK
  */
 
 /**
