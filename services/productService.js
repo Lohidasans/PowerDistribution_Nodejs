@@ -310,7 +310,7 @@ const deleteProduct = async (req, res) => {
   }
 };
 
-// Get Detailed product by product_id
+// Get Detailed product by product_id - mobile
 const getAllProductDetailByProductId = async (req, res) => {
   try {
     const { product_id } = req.query;
@@ -479,7 +479,49 @@ const getAllProductDetails = async (req, res) => {
       ORDER BY p.id DESC`;
 
     const [rows] = await sequelize.query(query, { replacements });
-    return commonService.okResponse(res, { products: rows });
+
+    // Attach nested itemDetails with additional_details per product
+    let products = rows;
+    if (products.length) {
+      const productIds = products.map((p) => p.id);
+      const itemDetails = await models.ProductItemDetail.findAll({
+        where: { product_id: productIds },
+        order: [["id", "ASC"]],
+      });
+
+      const itemIds = itemDetails.map((it) => it.id);
+      const additionalDetails = itemIds.length
+        ? await models.ProductAdditionalDetail.findAll({ where: { item_detail_id: itemIds } })
+        : [];
+
+      // Group additional by item_detail_id
+      const addsByItem = additionalDetails.reduce((acc, add) => {
+        const key = String(add.item_detail_id);
+        (acc[key] = acc[key] || []).push(add);
+        return acc;
+      }, {});
+
+      // Attach additional_details to items
+      const itemsWithAdds = itemDetails.map((it) => ({
+        ...it.get({ plain: true }),
+        additional_details: addsByItem[String(it.id)] || [],
+      }));
+
+      // Group items by product_id
+      const itemsByProduct = itemsWithAdds.reduce((acc, it) => {
+        const key = String(it.product_id);
+        (acc[key] = acc[key] || []).push(it);
+        return acc;
+      }, {});
+
+      // Merge into products
+      products = products.map((p) => ({
+        ...p,
+        itemDetails: itemsByProduct[String(p.id)] || [],
+      }));
+    }
+
+    return commonService.okResponse(res, { products });
   } catch (err) {
     return commonService.handleError(res, err);
   }
