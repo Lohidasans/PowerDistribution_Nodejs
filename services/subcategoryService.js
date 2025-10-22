@@ -64,7 +64,7 @@ const listSubcategoriesDropdown = async (req, res) => {
     const { materialType_id, category_id } = req.query;
     const where = {};
 
-    if (materialType_id) where.materialType_id = materialType_id;
+    if (materialType_id) where.materialtype_id = materialType_id;
     if (category_id) where.category_id = category_id;
 
     const items = await models.Subcategory.findAll({
