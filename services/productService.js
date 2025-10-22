@@ -233,10 +233,23 @@ const getProductById = async (req, res) => {
       }),
     ]);
 
+    // Group additional details by item_detail_id
+    const addsByItem = additionalDetails.reduce((acc, add) => {
+      const key = String(add.item_detail_id);
+      (acc[key] = acc[key] || []).push(add);
+      return acc;
+    }, {});
+
+    // Attach additional_details to their respective item_detail
+    const itemsWithAdds = itemDetails.map((it) => ({
+      ...it.get({ plain: true }),
+      additional_details: addsByItem[it.id] || [],
+    }));
+
+    // Final structured response
     return commonService.okResponse(res, {
       product: row,
-      item_details: itemDetails,
-      additional_details: additionalDetails,
+      item_details: itemsWithAdds,
     });
   } catch (err) {
     return commonService.handleError(res, err);
