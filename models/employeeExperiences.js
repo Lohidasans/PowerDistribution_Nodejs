@@ -1,6 +1,6 @@
 module.exports = (sequelize, DataTypes) => {
     const EmployeeExperience = sequelize.define(
-        "employeeExperiences",
+        "employee_experiences",
         {
             id: {
                 allowNull: false,
