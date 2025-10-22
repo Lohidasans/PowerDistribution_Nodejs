@@ -1,4 +1,4 @@
-const swaggerJsdoc = require('swagger-jsdoc');
+const swaggerJsdoc = require("swagger-jsdoc");
 
 const options = {
   definition: {
@@ -29,7 +29,7 @@ const options = {
             label_name: { type: "string" },
             unit: { type: "string" },
             price: { type: "number", format: "float" },
-            visibility: { type: "string", enum: ["Show", "Hide"] }
+            visibility: { type: "string", enum: ["Show", "Hide"] },
           },
           required: ["label_name"],
         },
@@ -38,7 +38,9 @@ const options = {
           properties: {
             sku_id: { type: "string" },
             variation_name: { type: "string" },
-            variation_value: { oneOf: [{ type: "string" }, { type: "number" }] },
+            variation_value: {
+              oneOf: [{ type: "string" }, { type: "number" }],
+            },
             gross_weight: { type: "number", format: "float" },
             net_weight: { type: "number", format: "float" },
             stone_weight: { type: "number", format: "float" },
@@ -51,9 +53,11 @@ const options = {
             height: { type: "number", format: "float" },
             additional_details: {
               type: "array",
-              items: { $ref: '#/components/schemas/ProductAdditionalDetailInput' }
-            }
-          }
+              items: {
+                $ref: "#/components/schemas/ProductAdditionalDetailInput",
+              },
+            },
+          },
         },
         ProductListDetailsResponse: {
           type: "object",
@@ -88,21 +92,25 @@ const options = {
                   remaining_weight: { type: "number", format: "float" },
                   created_at: { type: "string", format: "date-time" },
                   updated_at: { type: "string", format: "date-time" },
-                  deleted_at: { type: "string", format: "date-time", nullable: true },
+                  deleted_at: {
+                    type: "string",
+                    format: "date-time",
+                    nullable: true,
+                  },
                   variation_count: { type: "integer" },
-                  material_type: { type: "string" }
-                }
-              }
-            }
-          }
+                  material_type: { type: "string" },
+                },
+              },
+            },
+          },
         },
         ProductAddOnCreateInput: {
           type: "object",
           properties: {
             product_id: { type: "integer" },
-            addon_product_id: { type: "integer" }
+            addon_product_id: { type: "integer" },
           },
-          required: ["product_id", "addon_product_id"]
+          required: ["product_id", "addon_product_id"],
         },
         ProductAddOn: {
           type: "object",
@@ -112,8 +120,8 @@ const options = {
             addon_product_id: { type: "integer" },
             created_at: { type: "string", format: "date-time" },
             updated_at: { type: "string", format: "date-time" },
-            deleted_at: { type: "string", format: "date-time", nullable: true }
-          }
+            deleted_at: { type: "string", format: "date-time", nullable: true },
+          },
         },
         VendorCreateInput: {
           type: "object",
@@ -137,9 +145,9 @@ const options = {
             material_type_ids: { type: "array", items: { type: "integer" } },
             branch_ids: { type: "array", items: { type: "integer" } },
             visibility: { type: "array", items: { type: "string" } },
-            status: { type: "string", enum: ["Active", "Inactive"] }
+            status: { type: "string", enum: ["Active", "Inactive"] },
           },
-          required: ["vendor_code", "vendor_name", "email"]
+          required: ["vendor_code", "vendor_name", "email"],
         },
         ProductCreateInput: {
           type: "object",
@@ -157,14 +165,20 @@ const options = {
             branch_id: { type: "integer" },
             hsn_code: { type: "string" },
             purity: { type: "number", format: "float" },
-            product_type: { type: "string", enum: ["Weight Based", "Piece Rate"] },
-            variation_type: { type: "string", enum: ["Without Variations", "With Variations"] },
+            product_type: {
+              type: "string",
+              enum: ["Weight Based", "Piece Rate"],
+            },
+            variation_type: {
+              type: "string",
+              enum: ["Without Variations", "With Variations"],
+            },
             product_variation: { type: "string" },
             is_addOn: { type: "boolean" },
             item_details: {
               type: "array",
-              items: { $ref: '#/components/schemas/ProductItemDetailInput' }
-            }
+              items: { $ref: "#/components/schemas/ProductItemDetailInput" },
+            },
           },
           required: [
             "product_name",
@@ -177,8 +191,8 @@ const options = {
             "hsn_code",
             "purity",
             "product_type",
-            "variation_type"
-          ]
+            "variation_type",
+          ],
         },
         Branch: {
           type: "object",
@@ -247,18 +261,22 @@ const options = {
         KycUpdateByEntityInput: {
           type: "object",
           properties: {
-            entity_type: { type: "string", enum: ["branch", "vendor", "employee"] },
+            entity_type: {
+              type: "string",
+              enum: ["branch", "vendor", "employee"],
+            },
             entity_id: { type: "integer" },
             documents: {
               type: "array",
-              description: "Documents to update for the given entity. Each item must include id.",
+              description:
+                "Documents to update for the given entity. Each item must include id.",
               items: {
                 type: "object",
                 properties: {
                   id: { type: "integer" },
                   doc_type: { type: "string" },
                   doc_number: { type: "string" },
-                  file_url: { type: "string" }
+                  file_url: { type: "string" },
                 },
                 required: ["id"],
               },
@@ -280,12 +298,18 @@ const options = {
         Category: {
           type: "object",
           properties: {
-            material_type_id: { type: "integer", description: "ID of the associated material type", },
+            material_type_id: {
+              type: "integer",
+              description: "ID of the associated material type",
+            },
             category_name: { type: "string" },
-            category_image_url: {type: "string", description: "Image URL for the category", },
+            category_image_url: {
+              type: "string",
+              description: "Image URL for the category",
+            },
             description: { type: "string" },
             sort_order: { type: "integer" },
-            status: { type: "string", enum: ["Active", "Inactive"], },
+            status: { type: "string", enum: ["Active", "Inactive"] },
             material_type: { type: "string" },
           },
           required: ["material_type", "category_name", "material_type"],
@@ -293,10 +317,19 @@ const options = {
         Subcategory: {
           type: "object",
           properties: {
-            materialType_id: { type: "integer", description: "ID of the associated material type"},
-            category_id: { type: "integer",description: "ID of the associated category",},
+            materialType_id: {
+              type: "integer",
+              description: "ID of the associated material type",
+            },
+            category_id: {
+              type: "integer",
+              description: "ID of the associated category",
+            },
             subcategory_name: { type: "string" },
-            subcategory_image_url: { type: "string",description: "Image URL for the subcategory",},
+            subcategory_image_url: {
+              type: "string",
+              description: "Image URL for the subcategory",
+            },
             reorder_level: { type: "integer" },
             making_changes: { type: "integer" },
             margin: { type: "number", format: "float" },
@@ -306,9 +339,12 @@ const options = {
         Variant: {
           type: "object",
           properties: {
-            product_id: { type: "integer", description: "Optional: link variant to a product" },
+            product_id: {
+              type: "integer",
+              description: "Optional: link variant to a product",
+            },
             variant_type: { type: "string" },
-            status: { type: "string", enum: ["Active", "Inactive"] }
+            status: { type: "string", enum: ["Active", "Inactive"] },
           },
           required: ["variant_type"],
         },
@@ -317,7 +353,7 @@ const options = {
           properties: {
             product_id: { type: "integer" },
             variant_type: { type: "string" },
-            values: { type: "array", items: { type: "string" } }
+            values: { type: "array", items: { type: "string" } },
           },
           required: ["variant_type", "values"],
         },
@@ -335,26 +371,26 @@ const options = {
         VariantCreateResponse: {
           type: "object",
           properties: {
-            variant: { $ref: '#/components/schemas/Variant' },
+            variant: { $ref: "#/components/schemas/Variant" },
             variant_values: {
               type: "array",
-              items: { $ref: '#/components/schemas/VariantValue' }
-            }
-          }
+              items: { $ref: "#/components/schemas/VariantValue" },
+            },
+          },
         },
         VariantListItem: {
           type: "object",
           properties: {
             S_No: { type: "integer" },
             "Variant Type": { type: "string" },
-            Values: { type: "string", description: "Comma separated values" }
-          }
+            Values: { type: "string", description: "Comma separated values" },
+          },
         },
         SkuResponse: {
           type: "object",
           properties: {
-            sku_id: { type: "string", example: "SKU-GN-0007" }
-          }
+            sku_id: { type: "string", example: "SKU-GN-0007" },
+          },
         },
         ProductDetailRowsResponse: {
           type: "object",
@@ -395,11 +431,11 @@ const options = {
                   label_name: { type: "string" },
                   unit: { type: "string" },
                   addon_price: { type: "number", format: "float" },
-                  visibility: { type: "string" }
-                }
-              }
-            }
-          }
+                  visibility: { type: "string" },
+                },
+              },
+            },
+          },
         },
         User: {
           type: "object",
@@ -474,14 +510,59 @@ const options = {
             sku_id: { type: "string" },
             hsn_code: { type: "string" },
             purity: { type: "number", format: "float" },
-            product_type: { type: "string", enum: ["Weight Based", "Piece Rate"] },
-            variation_type: { type: "string", enum: ["Without Variations", "With Variations"] },
+            product_type: {
+              type: "string",
+              enum: ["Weight Based", "Piece Rate"],
+            },
+            variation_type: {
+              type: "string",
+              enum: ["Without Variations", "With Variations"],
+            },
             product_variation: { type: "string" },
             is_addOn: { type: "boolean" },
             total_grn_value: { type: "number", format: "float" },
             total_products: { type: "integer" },
             remaining_weight: { type: "number", format: "float" },
           },
+        },
+        Country: {
+          type: "object",
+          properties: {
+            country_name: { type: "string" },
+            short_name: { type: "string" },
+            currency_symbol: { type: "string" },
+            country_code: { type: "string" },
+            country_image_url: { type: "string" },
+          },
+          required: ["country_name", "short_name", "currency_symbol"],
+        },
+        State: {
+          type: "object",
+          properties: {
+            country_id: {
+              type: "integer",
+              description: "ID of the associated country",
+            },
+            state_code: { type: "string" },
+            state_name: { type: "string" },
+          },
+          required: ["country_id", "state_code", "state_name"],
+        },
+        District: {
+          type: "object",
+          properties: {
+            country_id: {
+              type: "integer",
+              description: "ID of the associated country",
+            },
+            state_id: {
+              type: "integer",
+              description: "ID of the associated state",
+            },
+            short_name: { type: "string" },
+            district_name: { type: "string" },
+          },
+          required: ["country_id", "state_id", "short_name", "district_name"],
         },
       },
     },

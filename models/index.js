@@ -1,6 +1,10 @@
 const Sequelize = require('sequelize');
 const { sequelize } = require('../config/dbConfig');
 
+const Country = require('./country')(sequelize, Sequelize.DataTypes);
+const State = require('./state')(sequelize, Sequelize.DataTypes);
+const District = require('./districts')(sequelize, Sequelize.DataTypes);
+
 const Permission = require('./permissions')(sequelize, Sequelize.DataTypes);
 const Role = require('./roles')(sequelize, Sequelize.DataTypes);
 const RolePermission = require('./rolePermissions')(sequelize, Sequelize.DataTypes);
@@ -72,6 +76,9 @@ const models = {
   ProductItemDetail,
   ProductAdditionalDetail,
   ProductAddOn,
+  Country,
+  State,
+  District,
 };
 
 Object.values(models).forEach((model) => {
