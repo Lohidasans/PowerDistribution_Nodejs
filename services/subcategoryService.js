@@ -12,7 +12,7 @@ const createSubcategory = async (req, res) => {
       subcategory_image_url,
       reorder_level,
       making_changes,
-      Margin,
+      margin,
     } = req.body;
 
     if (!materialType_id || !category_id || !subcategory_name)
@@ -28,7 +28,7 @@ const createSubcategory = async (req, res) => {
       subcategory_image_url,
       reorder_level,
       making_changes,
-      Margin,
+      margin,
     });
 
     return commonService.createdResponse(res, { subcategory: row });
@@ -90,6 +90,8 @@ const getAllSubCategories = async (req, res) => {
         sc.subcategory_image_url,
         sc.reorder_level,
         sc.category_id,
+        sc.making_changes,
+        sc.margin,
         c.category_name,
         c.category_image_url,
         mt.material_type AS material_type,
