@@ -23,7 +23,6 @@ const createVendor = async (req, res) => {
       opening_balance_type,
       payment_terms,
       material_type_ids,
-      branch_ids,
       visibilities,
       status,
     } = req.body;
@@ -53,7 +52,6 @@ const createVendor = async (req, res) => {
       opening_balance_type,
       payment_terms,
       material_type_ids,
-      branch_ids,
       visibilities,
       status,
     });
@@ -89,17 +87,8 @@ const listVendors = async (req, res) => {
           )
           FROM "materialTypes" mt
           WHERE mt.id = ANY(v.material_type_ids)
-        ) AS material_types_detailed,
-        (
-          SELECT COALESCE(
-            json_agg(json_build_object('id', b2.id, 'name', b2.branch_name) ORDER BY array_position(v.branch_ids, b2.id)),
-            '[]'::json
-          )
-          FROM branches b2
-          WHERE b2.id = ANY(v.branch_ids)
-        ) AS branch_names_detailed
+        ) AS material_types_detailed
       FROM vendors v
-      LEFT JOIN branches b ON b.id = ANY(v.branch_ids)
       LEFT JOIN "materialTypes" m ON m.id = ANY(v.material_type_ids)
       WHERE 1=1`;
 
@@ -113,9 +102,7 @@ const listVendors = async (req, res) => {
 
     if (search) {
       const fields = [
-        "v.vendor_name", "v.proprietor_name", "v.mobile", "v.email",
-        "b.branch_name", "m.material_type"
-      ];
+        "v.vendor_name", "v.proprietor_name", "v.mobile", "v.email", "m.material_type"];
       query += ` AND (${fields.map(field => `${field} ILIKE :search`).join(" OR ")})`;
       replacements.search = `%${search}%`;
     }
@@ -148,7 +135,7 @@ const getVendorById = async (req, res) => {
     const { id } = req.params;
     const vendor = await models.Vendor.findByPk(id);
     if (!vendor) {
-      return commonService.notFound(res, "Vendor not found");
+      return commonService.notFound(res, message.vendor.notFound);
     }
     return commonService.okResponse(res, { vendor });
   } catch (err) {

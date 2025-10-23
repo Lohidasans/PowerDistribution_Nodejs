@@ -33,17 +33,19 @@ const listBranches = async (req, res) => {
     try {
         const searchKey = req.query.search || "";
         const status = req.query.status || "";
-        const city = req.query.city || "";
+        const state_id = req.query.state_id || "";
+        const district_id = req.query.district_id || "";
 
         const where = {};
         // Add search condition
-        const searchCondition = buildSearchCondition(searchKey, ["branch_no", "branch_name", "contact_person", "city", "state"]);
+        const searchCondition = buildSearchCondition(searchKey, ["branch_no", "branch_name", "contact_person"]);
         if (searchCondition) {
             Object.assign(where, searchCondition);
         }
         // Add filters
         if (status) where.status = status;
-        if (city) where.city = city; 
+        if (state_id) where.state_id = state_id;
+        if (district_id) where.district_id = district_id;
 
         const branches = await models.Branch.findAll({ where, order: [["created_at", "DESC"]], });
         return commonService.okResponse(res, { branches });
