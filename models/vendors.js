@@ -71,15 +71,11 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: true,
       },
       payment_terms: {
-        type: DataTypes.STRING, //  10 days, 30 days
+        type: DataTypes.ENUM("10days", "15days", "20days", "25days", "30days"),
         allowNull: true,
       },
       material_type_ids: {
         type: DataTypes.ARRAY(DataTypes.INTEGER), // multiple material type IDs
-        allowNull: true,
-      },
-      branch_ids: {
-        type: DataTypes.ARRAY(DataTypes.INTEGER), // multiple branch IDs
         allowNull: true,
       },
       visibilities: {

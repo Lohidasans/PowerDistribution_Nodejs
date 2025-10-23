@@ -33,12 +33,12 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.TEXT,
         allowNull: true,
       },
-      state: {
-        type: DataTypes.STRING,
-        allowNull: true,
+      district_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true
       },
-      city: {
-        type: DataTypes.STRING,
+      state_id: {
+        type: DataTypes.INTEGER,
         allowNull: true,
       },
       pin_code: {
