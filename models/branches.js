@@ -75,5 +75,12 @@ module.exports = (sequelize, DataTypes) => {
     });
   };
 
+  Branch.associate = (models) => {
+    Branch.hasMany(models.Employee, {
+      foreignKey: "branch_id",
+      as: "employees",
+    });
+  };
+
   return Branch;
 };

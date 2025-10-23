@@ -4,15 +4,24 @@ const employeeSvc = require("../services/employeeService");
 const empContactSvc = require("../services/employeeContactService");
 const empExpSvc = require("../services/employeeExperienceService");
 
-// Employees
+// Employee Experiences 
+router.post("/employees/experiences/bulk", empExpSvc.createEmployeeExperiences);
+router.get("/employees/experiences", empExpSvc.getAllEmployeeExperiences);
+router.get("/employees/experiences/dropdown",empExpSvc.listEmployeeExperienceDropdown);
+router.get("/employees/experience/:id", empExpSvc.getEmployeeExperienceById);
+router.put("/employees/experience/:id", empExpSvc.updateEmployeeExperience);
+router.delete("/employees/experience/:id", empExpSvc.deleteEmployeeExperience);
+
+// Employees CRUD
 router.post("/employees", employeeSvc.createEmployee);
 router.get("/employees", employeeSvc.listEmployees);
+router.get("/employees/dropdown", employeeSvc.listEmployeeDropdown);
+router.get("/employees/:id", employeeSvc.getEmployeeById);
+router.put("/employees/:id", employeeSvc.updateEmployee);
+router.delete("/employees/:id", employeeSvc.deleteEmployee);
 
-// Contacts
+// Employee Contacts
 router.post("/employees/contacts", empContactSvc.createEmployeeContact);
-
-// Experiences (bulk)
-router.post("/employees/experiences/bulk", empExpSvc.bulkCreateExperiences);
 
 module.exports = router;
 
@@ -50,7 +59,7 @@ module.exports = router;
  *       200:
  *         description: OK
  *   post:
- *     summary: Create employee
+ *     summary: Create a new employee (with optional contact)
  *     tags: [Employee]
  *     requestBody:
  *       required: true
@@ -60,14 +69,69 @@ module.exports = router;
  *             $ref: '#/components/schemas/EmployeeCreateInput'
  *     responses:
  *       201:
- *         description: Created
+ *         description: Employee created successfully
+ */
+
+/**
+ * @openapi
+ * /api/v1/employees/{id}:
+ *   get:
+ *     summary: Get an employee by ID
+ *     tags: [Employee]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200:
+ *         description: Employee retrieved successfully
+ *   put:
+ *     summary: Update an employee (and contact)
+ *     tags: [Employee]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/EmployeeUpdateInput'
+ *     responses:
+ *       200:
+ *         description: Employee updated successfully
+ *   delete:
+ *     summary: Delete an employee
+ *     tags: [Employee]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       204:
+ *         description: Employee deleted successfully
+ */
+
+/**
+ * @openapi
+ * /api/v1/employees/dropdown:
+ *   get:
+ *     summary: Get employee dropdown list
+ *     tags: [Employee]
+ *     responses:
+ *       200:
+ *         description: OK
  */
 
 /**
  * @openapi
  * /api/v1/employees/contacts:
  *   post:
- *     summary: Create employee contact
+ *     summary: Create a contact for an employee
  *     tags: [EmployeeContact]
  *     requestBody:
  *       required: true
@@ -77,7 +141,7 @@ module.exports = router;
  *             $ref: '#/components/schemas/EmployeeContactCreateInput'
  *     responses:
  *       201:
- *         description: Created
+ *         description: Employee contact created successfully
  */
 
 /**
@@ -94,5 +158,70 @@ module.exports = router;
  *             $ref: '#/components/schemas/EmployeeExperienceBulkCreateInput'
  *     responses:
  *       201:
- *         description: Created
+ *         description: Employee experiences created successfully
+ */
+
+/**
+ * @openapi
+ * /api/v1/employees/experiences/{employee_id}:
+ *   get:
+ *     summary: Get all experiences of an employee
+ *     tags: [EmployeeExperience]
+ *     parameters:
+ *       - in: path
+ *         name: employee_id
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200:
+ *         description: Employee experiences retrieved successfully
+ */
+
+/**
+ * @openapi
+ * /api/v1/employees/experience/{id}:
+ *   get:
+ *     summary: Get a single employee experience by ID
+ *     tags: [EmployeeExperience]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200:
+ *         description: Employee experience retrieved successfully
+ *   put:
+ *     summary: Update an employee experience
+ *     tags: [EmployeeExperience]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200:
+ *         description: Employee experience updated successfully
+ *   delete:
+ *     summary: Delete an employee experience
+ *     tags: [EmployeeExperience]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       204:
+ *         description: Employee experience deleted successfully
+ */
+
+/**
+ * @openapi
+ * /api/v1/employees/experiences/dropdown/list:
+ *   get:
+ *     summary: Get employee experiences dropdown list
+ *     tags: [EmployeeExperience]
+ *     responses:
+ *       200:
+ *         description: OK
  */

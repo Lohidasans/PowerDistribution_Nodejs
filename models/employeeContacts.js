@@ -63,5 +63,12 @@ module.exports = (sequelize, DataTypes) => {
         }
     );
 
+    EmployeeContact.associate = (models) => {
+      EmployeeContact.belongsTo(models.Employee, {
+        foreignKey: "employee_id",
+        as: "employee",
+      });
+    };
+
     return EmployeeContact;
 };
