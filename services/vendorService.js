@@ -87,8 +87,17 @@ const listVendors = async (req, res) => {
           )
           FROM "materialTypes" mt
           WHERE mt.id = ANY(v.material_type_ids)
-        ) AS material_types_detailed
+        ) AS material_types_detailed,
+        (
+          SELECT COALESCE(
+            json_agg(json_build_object('id', b2.id, 'name', b2.branch_name) ORDER BY array_position(v.visibilities, b2.id)),
+            '[]'::json
+          )
+          FROM branches b2
+          WHERE b2.id = ANY(v.visibilities)
+        ) AS visibilities_names_detailed
       FROM vendors v
+      LEFT JOIN branches b ON b.id = ANY(v.visibilities)
       LEFT JOIN "materialTypes" m ON m.id = ANY(v.material_type_ids)
       WHERE 1=1`;
 
