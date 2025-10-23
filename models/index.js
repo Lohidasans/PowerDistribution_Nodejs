@@ -8,6 +8,7 @@ const District = require('./districts')(sequelize, Sequelize.DataTypes);
 const Permission = require('./permissions')(sequelize, Sequelize.DataTypes);
 const Role = require('./roles')(sequelize, Sequelize.DataTypes);
 const RolePermission = require('./rolePermissions')(sequelize, Sequelize.DataTypes);
+const Customer = require('./customer')(sequelize, Sequelize.DataTypes);
 
 // Branch related models
 const Branch = require('./branches')(sequelize, Sequelize.DataTypes);
@@ -79,6 +80,7 @@ const models = {
   Country,
   State,
   District,
+  Customer,
 };
 
 Object.values(models).forEach((model) => {

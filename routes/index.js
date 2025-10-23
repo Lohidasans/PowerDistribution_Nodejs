@@ -14,6 +14,7 @@ const VendorRoutes = require("./vendorRoute");
 const ProductRouter = require("./productRoute");
 const GrnRouter = require("./grnRoute");
 const ProductAddOnRoute = require("./productAddOnRoute");
+const CustomerRoute = require("./customerRoute");
 const CountryRoute = require("./countryRoute");
 const StateRoute = require("./stateRoute");
 const DistrictRoute = require("./districtRoute");
@@ -37,6 +38,7 @@ module.exports = (app) => {
   app.use("/api/v1", GrnRouter);
   app.use("/api/v1", VariantRouter);
   app.use("/api/v1", ProductAddOnRoute);
+  app.use("/api/v1", CustomerRoute);
   app.use("/api/v1", CountryRoute);
   app.use("/api/v1", StateRoute);
   app.use("/api/v1", DistrictRoute);
