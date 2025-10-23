@@ -85,7 +85,7 @@ module.exports = invoiceSettingsRouter;
  *       201:
  *         description: Created
  *       400:
- *         description: Bad Request - Invoice setting already exists for branch or branch not found
+ *         description: Bad Request - Sequence name already exists for this branch or branch not found
  */
 /**
  * @openapi
@@ -116,15 +116,15 @@ module.exports = invoiceSettingsRouter;
  *             example:
  *               invoiceSettings:
  *                 - branch_id: 1
- *                   sequence_name: "INV-BRANCH-1"
+ *                   sequence_name: "INV_SEQUENCE_1"
  *                   invoice_prefix: "INV"
  *                   invoice_suffix: "B1"
  *                   invoice_start_no: 1000
  *                   status_id: 1
- *                 - branch_id: 2
- *                   sequence_name: "INV-BRANCH-2"
- *                   invoice_prefix: "INV"
- *                   invoice_suffix: "B2"
+ *                 - branch_id: 1
+ *                   sequence_name: "BILL_SEQUENCE_1"
+ *                   invoice_prefix: "BILL"
+ *                   invoice_suffix: "B1"
  *                   invoice_start_no: 2000
  *                   status_id: 1
  *     responses:
@@ -141,7 +141,7 @@ module.exports = invoiceSettingsRouter;
  *                   items:
  *                     type: object
  *       400:
- *         description: Bad Request - Validation errors, duplicate branches, or branches not found
+ *         description: Bad Request - Validation errors, duplicate sequence names for same branch, or branches not found
  */
 /**
  * @openapi

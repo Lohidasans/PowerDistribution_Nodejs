@@ -15,15 +15,18 @@ const create = async (req, res) => {
       status_id = 1,
     } = req.body;
 
-    // Check if invoice setting already exists for this branch
-    const invoiceSettingExists = await models.InvoiceSetting.findOne({
-      where: { branch_id },
+    // Check if sequence name already exists for this branch
+    const sequenceExists = await models.InvoiceSetting.findOne({
+      where: {
+        branch_id,
+        sequence_name,
+      },
     });
 
-    if (invoiceSettingExists) {
+    if (sequenceExists) {
       return commonService.badRequest(
         res,
-        "Invoice setting already exists for this branch"
+        "Invoice setting with this sequence name already exists for this branch"
       );
     }
 
@@ -69,45 +72,61 @@ const bulkCreate = async (req, res) => {
       .map((setting) => setting.branch_id)
       .filter((id) => id);
 
-    // Check for duplicate branch_ids in the request
-    const duplicateBranchIds = branchIds.filter(
-      (id, index) => branchIds.indexOf(id) !== index
-    );
-    if (duplicateBranchIds.length > 0) {
-      return commonService.badRequest(
-        res,
-        `Duplicate branch_ids found in request: ${duplicateBranchIds.join(
-          ", "
-        )}`
-      );
+    // Check for duplicate sequence_name within same branch_id in the request
+    const branchSequenceMap = new Map();
+    for (let i = 0; i < invoiceSettings.length; i++) {
+      const setting = invoiceSettings[i];
+      const key = `${setting.branch_id}_${setting.sequence_name}`;
+
+      if (branchSequenceMap.has(key)) {
+        errors.push(
+          `Duplicate sequence_name '${setting.sequence_name}' found for branch_id ${setting.branch_id} in request`
+        );
+      } else {
+        branchSequenceMap.set(key, i);
+      }
     }
 
-    // Check if any of these branches already have invoice settings
-    const existingInvoiceSettings = await models.InvoiceSetting.findAll({
-      where: { branch_id: { [Op.in]: branchIds } },
-      attributes: ["branch_id"],
+    if (errors.length > 0) {
+      return commonService.badRequest(res, {
+        message: "Validation failed",
+        errors: errors,
+      });
+    }
+
+    // Check if any sequence names already exist for their respective branches
+    const existingSequences = await models.InvoiceSetting.findAll({
+      where: {
+        [Op.or]: invoiceSettings.map((setting) => ({
+          branch_id: setting.branch_id,
+          sequence_name: setting.sequence_name,
+        })),
+      },
+      attributes: ["branch_id", "sequence_name"],
     });
 
-    const existingBranchIds = existingInvoiceSettings.map(
-      (setting) => setting.branch_id
-    );
-    if (existingBranchIds.length > 0) {
+    if (existingSequences.length > 0) {
+      const existingCombinations = existingSequences.map(
+        (setting) =>
+          `branch_id: ${setting.branch_id}, sequence_name: '${setting.sequence_name}'`
+      );
       return commonService.badRequest(
         res,
-        `Invoice settings already exist for branches: ${existingBranchIds.join(
-          ", "
+        `Invoice settings with these combinations already exist: ${existingCombinations.join(
+          "; "
         )}`
       );
     }
 
     // Verify all branches exist
+    const uniqueBranchIds = [...new Set(branchIds)];
     const branches = await models.Branch.findAll({
-      where: { id: { [Op.in]: branchIds } },
+      where: { id: { [Op.in]: uniqueBranchIds } },
       attributes: ["id"],
     });
 
     const foundBranchIds = branches.map((branch) => branch.id);
-    const missingBranchIds = branchIds.filter(
+    const missingBranchIds = uniqueBranchIds.filter(
       (id) => !foundBranchIds.includes(id)
     );
 
@@ -276,23 +295,32 @@ const update = async (req, res) => {
     );
     if (!invoiceSetting) return;
 
-    // Check if the new branch_id already has an invoice setting (excluding current record)
-    if (branch_id && branch_id !== invoiceSetting.branch_id) {
-      const invoiceSettingExists = await models.InvoiceSetting.findOne({
+    // Check if sequence name already exists for the branch (excluding current record)
+    const finalBranchId = branch_id || invoiceSetting.branch_id;
+    const finalSequenceName = sequence_name || invoiceSetting.sequence_name;
+
+    if (
+      (branch_id && branch_id !== invoiceSetting.branch_id) ||
+      (sequence_name && sequence_name !== invoiceSetting.sequence_name)
+    ) {
+      const sequenceExists = await models.InvoiceSetting.findOne({
         where: {
-          branch_id,
+          branch_id: finalBranchId,
+          sequence_name: finalSequenceName,
           id: { [Op.ne]: id },
         },
       });
 
-      if (invoiceSettingExists) {
+      if (sequenceExists) {
         return commonService.badRequest(
           res,
-          "Invoice setting already exists for this branch"
+          "Invoice setting with this sequence name already exists for this branch"
         );
       }
+    }
 
-      // Verify new branch exists
+    // Verify branch exists if branch_id is being updated
+    if (branch_id && branch_id !== invoiceSetting.branch_id) {
       const branch = await models.Branch.findByPk(branch_id);
       if (!branch) {
         return commonService.badRequest(res, "Branch not found");

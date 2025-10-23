@@ -11,7 +11,6 @@ module.exports = (sequelize, DataTypes) => {
       branch_id: {
         type: DataTypes.INTEGER,
         allowNull: false,
-        unique: true, // one-to-one with branch
         references: {
           model: "branches",
           key: "id",
@@ -48,6 +47,13 @@ module.exports = (sequelize, DataTypes) => {
       updatedAt: "updated_at",
       paranoid: true,
       deletedAt: "deleted_at",
+      indexes: [
+        {
+          unique: true,
+          fields: ["branch_id", "sequence_name"],
+          name: "invoice_settings_branch_sequence_unique",
+        },
+      ],
     }
   );
 
