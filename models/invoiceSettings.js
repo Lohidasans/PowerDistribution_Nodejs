@@ -31,12 +31,18 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.STRING,
         allowNull: true,
       },
+      status_id: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 1,
+      },
       invoice_start_no: {
         type: DataTypes.INTEGER,
         allowNull: true,
       },
     },
     {
+      tableName: "invoice_settings",
       timestamps: true,
       createdAt: "created_at",
       updatedAt: "updated_at",
