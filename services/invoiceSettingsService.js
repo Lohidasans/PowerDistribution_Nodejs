@@ -49,6 +49,125 @@ const create = async (req, res) => {
   }
 };
 
+// Bulk Create Invoice Settings
+const bulkCreate = async (req, res) => {
+  try {
+    const { invoiceSettings } = req.body;
+
+    // Validate input
+    if (!Array.isArray(invoiceSettings) || invoiceSettings.length === 0) {
+      return commonService.badRequest(
+        res,
+        "invoiceSettings array is required and cannot be empty"
+      );
+    }
+
+    // Validate each invoice setting object
+    const errors = [];
+    const validInvoiceSettings = [];
+    const branchIds = invoiceSettings
+      .map((setting) => setting.branch_id)
+      .filter((id) => id);
+
+    // Check for duplicate branch_ids in the request
+    const duplicateBranchIds = branchIds.filter(
+      (id, index) => branchIds.indexOf(id) !== index
+    );
+    if (duplicateBranchIds.length > 0) {
+      return commonService.badRequest(
+        res,
+        `Duplicate branch_ids found in request: ${duplicateBranchIds.join(
+          ", "
+        )}`
+      );
+    }
+
+    // Check if any of these branches already have invoice settings
+    const existingInvoiceSettings = await models.InvoiceSetting.findAll({
+      where: { branch_id: { [Op.in]: branchIds } },
+      attributes: ["branch_id"],
+    });
+
+    const existingBranchIds = existingInvoiceSettings.map(
+      (setting) => setting.branch_id
+    );
+    if (existingBranchIds.length > 0) {
+      return commonService.badRequest(
+        res,
+        `Invoice settings already exist for branches: ${existingBranchIds.join(
+          ", "
+        )}`
+      );
+    }
+
+    // Verify all branches exist
+    const branches = await models.Branch.findAll({
+      where: { id: { [Op.in]: branchIds } },
+      attributes: ["id"],
+    });
+
+    const foundBranchIds = branches.map((branch) => branch.id);
+    const missingBranchIds = branchIds.filter(
+      (id) => !foundBranchIds.includes(id)
+    );
+
+    if (missingBranchIds.length > 0) {
+      return commonService.badRequest(
+        res,
+        `Branches not found: ${missingBranchIds.join(", ")}`
+      );
+    }
+
+    // Validate and prepare data for each invoice setting
+    for (let i = 0; i < invoiceSettings.length; i++) {
+      const setting = invoiceSettings[i];
+      const index = i + 1;
+
+      if (!setting.branch_id) {
+        errors.push(`Item ${index}: branch_id is required`);
+        continue;
+      }
+
+      if (!setting.sequence_name) {
+        errors.push(`Item ${index}: sequence_name is required`);
+        continue;
+      }
+
+      validInvoiceSettings.push({
+        branch_id: setting.branch_id,
+        sequence_name: setting.sequence_name,
+        invoice_prefix: setting.invoice_prefix || null,
+        invoice_suffix: setting.invoice_suffix || null,
+        invoice_start_no: setting.invoice_start_no || null,
+        status_id: setting.status_id || 1,
+      });
+    }
+
+    if (errors.length > 0) {
+      return commonService.badRequest(res, {
+        message: "Validation failed",
+        errors: errors,
+      });
+    }
+
+    // Bulk create invoice settings
+    const createdInvoiceSettings = await models.InvoiceSetting.bulkCreate(
+      validInvoiceSettings,
+      {
+        returning: true,
+        validate: true,
+      }
+    );
+
+    return commonService.createdResponse(res, {
+      message: `${createdInvoiceSettings.length} invoice settings created successfully`,
+      invoiceSettings: createdInvoiceSettings,
+    });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
 // List Invoice Settings with optional search and branch filter
 const list = async (req, res) => {
   try {
@@ -246,6 +365,7 @@ const toggleStatus = async (req, res) => {
 
 module.exports = {
   create,
+  bulkCreate,
   list,
   getById,
   getByBranchId,

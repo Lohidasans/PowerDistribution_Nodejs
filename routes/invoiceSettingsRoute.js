@@ -3,12 +3,31 @@ var invoiceSettingsRouter = express.Router();
 const invoiceSettingsService = require("../services/invoiceSettingsService");
 
 invoiceSettingsRouter.post("/invoice-settings", invoiceSettingsService.create);
+invoiceSettingsRouter.post(
+  "/invoice-settings/bulk",
+  invoiceSettingsService.bulkCreate
+);
 invoiceSettingsRouter.get("/invoice-settings", invoiceSettingsService.list);
-invoiceSettingsRouter.get("/invoice-settings/:id", invoiceSettingsService.getById);
-invoiceSettingsRouter.get("/invoice-settings/branch/:branchId", invoiceSettingsService.getByBranchId);
-invoiceSettingsRouter.put("/invoice-settings/:id", invoiceSettingsService.update);
-invoiceSettingsRouter.patch("/invoice-settings/:id/status", invoiceSettingsService.toggleStatus);
-invoiceSettingsRouter.delete("/invoice-settings/:id", invoiceSettingsService.remove);
+invoiceSettingsRouter.get(
+  "/invoice-settings/:id",
+  invoiceSettingsService.getById
+);
+invoiceSettingsRouter.get(
+  "/invoice-settings/branch/:branchId",
+  invoiceSettingsService.getByBranchId
+);
+invoiceSettingsRouter.put(
+  "/invoice-settings/:id",
+  invoiceSettingsService.update
+);
+invoiceSettingsRouter.patch(
+  "/invoice-settings/:id/status",
+  invoiceSettingsService.toggleStatus
+);
+invoiceSettingsRouter.delete(
+  "/invoice-settings/:id",
+  invoiceSettingsService.remove
+);
 
 module.exports = invoiceSettingsRouter;
 
@@ -67,6 +86,62 @@ module.exports = invoiceSettingsRouter;
  *         description: Created
  *       400:
  *         description: Bad Request - Invoice setting already exists for branch or branch not found
+ */
+/**
+ * @openapi
+ * /api/v1/invoice-settings/bulk:
+ *   post:
+ *     summary: Bulk create invoice settings
+ *     tags: [Invoice Settings]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               invoiceSettings:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     branch_id: { type: integer }
+ *                     sequence_name: { type: string }
+ *                     invoice_prefix: { type: string }
+ *                     invoice_suffix: { type: string }
+ *                     invoice_start_no: { type: integer }
+ *                     status_id: { type: integer, default: 1 }
+ *                   required: [branch_id, sequence_name]
+ *             required: [invoiceSettings]
+ *             example:
+ *               invoiceSettings:
+ *                 - branch_id: 1
+ *                   sequence_name: "INV-BRANCH-1"
+ *                   invoice_prefix: "INV"
+ *                   invoice_suffix: "B1"
+ *                   invoice_start_no: 1000
+ *                   status_id: 1
+ *                 - branch_id: 2
+ *                   sequence_name: "INV-BRANCH-2"
+ *                   invoice_prefix: "INV"
+ *                   invoice_suffix: "B2"
+ *                   invoice_start_no: 2000
+ *                   status_id: 1
+ *     responses:
+ *       201:
+ *         description: Created - Invoice settings created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message: { type: string }
+ *                 invoiceSettings:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *       400:
+ *         description: Bad Request - Validation errors, duplicate branches, or branches not found
  */
 /**
  * @openapi
