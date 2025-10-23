@@ -405,9 +405,9 @@ const getAllProductDetailByProductId = async (req, res) => {
 // Get details for Web list page (with filters and search)
 const getAllProductDetails = async (req, res) => {
   try {
-    const { material_type_id, category_id, subcategory_id, search } = req.query;
+    const { material_type_id, category_id, subcategory_id, grn_id, search } = req.query;
 
-    let query = `
+    let query = ` 
       SELECT
         p.id,
         p.product_code,
@@ -457,6 +457,10 @@ const getAllProductDetails = async (req, res) => {
     if (subcategory_id) {
       query += ` AND p.subcategory_id = :subcategory_id`;
       replacements.subcategory_id = +subcategory_id;
+    }
+    if (grn_id) {
+      query += ` AND p.grn_id = :grn_id`;
+      replacements.grn_id = +grn_id;
     }
 
     if (search) {

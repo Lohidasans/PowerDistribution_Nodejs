@@ -20,6 +20,7 @@ const StateRoute = require("./stateRoute");
 const DistrictRoute = require("./districtRoute");
 const EmployeeRouter = require("./employeeRoute");
 const InvoiceSettingsRouter = require("./invoiceSettingsRoute");
+const SchemeRoute = require("./schemeRoute");
 const UomRouter = require("./uomRoute");
 const LedgerGroupRouter = require("./ledgerGroupRoute");
 const LedgerRouter = require("./ledgerRoute");
@@ -46,6 +47,7 @@ module.exports = (app) => {
   app.use("/api/v1", DistrictRoute);
   app.use("/api/v1", EmployeeRouter);
   app.use("/api/v1", InvoiceSettingsRouter);
+  app.use("/api/v1", SchemeRoute);
   app.use("/api/v1", UomRouter);
   app.use("/api/v1", LedgerGroupRouter);
   app.use("/api/v1", LedgerRouter);
