@@ -149,6 +149,61 @@ const options = {
           },
           required: ["vendor_code", "vendor_name", "email"],
         },
+        EmployeeCreateInput: {
+          type: "object",
+          properties: {
+            profile_image_url: { type: "string" },
+            employee_no: { type: "string" },
+            employee_name: { type: "string" },
+            department_id: { type: "integer" },
+            designation_id: { type: "integer" },
+            joining_date: { type: "string", format: "date" },
+            employment_type: { type: "string", enum: ["Full-Time", "Part-Time", "Contract"] },
+            gender: { type: "string", enum: ["Male", "Female", "Other"] },
+            date_of_birth: { type: "string", format: "date" },
+            branch_id: { type: "integer" },
+            status: { type: "string", enum: ["Active", "Inactive"] }
+          },
+          required: ["employee_no", "employee_name", "department_id", "designation_id", "joining_date", "employment_type", "gender", "date_of_birth", "branch_id"]
+        },
+        EmployeeContactCreateInput: {
+          type: "object",
+          properties: {
+            employee_id: { type: "integer" },
+            mobile_number: { type: "string" },
+            email_id: { type: "string", format: "email" },
+            address: { type: "string" },
+            country_id: { type: "string" },
+            state_id: { type: "string" },
+            district_id: { type: "string" },
+            pin_code: { type: "string" },
+            emergency_contact_person: { type: "string" },
+            relationship: { type: "string", enum: ["Father", "Mother", "Guardian"] },
+            emergency_contact_number: { type: "string" }
+          },
+          required: ["employee_id","mobile_number","email_id","address","country_id","state_id","pin_code","emergency_contact_person","relationship","emergency_contact_number"]
+        },
+        EmployeeExperienceBulkCreateInput: {
+          type: "object",
+          properties: {
+            employee_id: { type: "integer" },
+            experiences: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  organization_name: { type: "string" },
+                  role: { type: "string" },
+                  duration_from: { type: "string", format: "date" },
+                  duration_to: { type: "string", format: "date" },
+                  location: { type: "string" }
+                },
+                required: ["organization_name","role","duration_from","duration_to"]
+              }
+            }
+          },
+          required: ["employee_id","experiences"]
+        },
         ProductCreateInput: {
           type: "object",
           properties: {

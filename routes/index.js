@@ -17,6 +17,7 @@ const ProductAddOnRoute = require("./productAddOnRoute");
 const CountryRoute = require("./countryRoute");
 const StateRoute = require("./stateRoute");
 const DistrictRoute = require("./districtRoute");
+const EmployeeRouter = require("./employeeRoute");
 
 module.exports = (app) => {
   app.use("/api/v1", RoleRouter);
@@ -38,4 +39,5 @@ module.exports = (app) => {
   app.use("/api/v1", CountryRoute);
   app.use("/api/v1", StateRoute);
   app.use("/api/v1", DistrictRoute);
+  app.use("/api/v1", EmployeeRouter);
 };
