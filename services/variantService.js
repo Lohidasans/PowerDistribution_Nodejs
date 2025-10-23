@@ -64,6 +64,32 @@ const createVariantValues = async (variantId, values, transaction) => {
   return created;
 };
 
+const getByIdVariant = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const variant = await models.Variant.findByPk(id, {
+      include: [
+        {
+          model: models.VariantValue,
+          as: "variant_values",
+          attributes: ["id", "value", "sort_order", "status"],
+          where: { status: "Active" },
+          required: false,
+        },
+      ],
+    });
+
+    if (!variant) {
+      return commonService.notFound(res, enMessage.failure.variantNotFound);
+    }
+
+    return commonService.okResponse(res, { variant });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
 const deleteVariant = async (req, res) => {
   try {
     const { id } = req.params;
@@ -166,6 +192,7 @@ const updateVariant = async (req, res) => {
 
 module.exports = {
   createVariant,
+  getByIdVariant,
   updateVariant,
   deleteVariant,
   listVariantWithValues,

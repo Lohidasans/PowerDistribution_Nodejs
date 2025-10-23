@@ -35,7 +35,7 @@ const getAllStates = async (req, res) => {
         s.country_id,
         s.state_code,
         s.state_name,
-        c.country_name
+        c.short_name AS country_short_name
       FROM states s
       LEFT JOIN countries c ON c.id = s.country_id
       WHERE s.deleted_at IS NULL

@@ -4,6 +4,7 @@ const variantService = require("../services/variantService");
 
 variantRouter.post("/variant", variantService.createVariant);
 variantRouter.get("/variants", variantService.listVariantWithValues);
+variantRouter.get("/variant/:id", variantService.getByIdVariant);
 variantRouter.put("/variant/:id", variantService.updateVariant);
 variantRouter.delete("/variant/:id", variantService.deleteVariant);
 
@@ -26,6 +27,80 @@ module.exports = variantRouter;
  *       200:
  *         description: OK
  */
+
+/**
+ * @openapi
+ * /api/v1/variant/{id}:
+ *   get:
+ *     summary: Get a variant by ID with its values
+ *     tags: [Variant]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *         description: The variant ID
+ *     responses:
+ *       200:
+ *         description: Variant retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Success"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     variant:
+ *                       type: object
+ *                       properties:
+ *                         id:
+ *                           type: integer
+ *                           example: 1
+ *                         variant_type:
+ *                           type: string
+ *                           example: "Size"
+ *                         product_id:
+ *                           type: integer
+ *                           example: 3
+ *                         status:
+ *                           type: string
+ *                           example: "Active"
+ *                         variant_values:
+ *                           type: array
+ *                           items:
+ *                             type: object
+ *                             properties:
+ *                               id:
+ *                                 type: integer
+ *                                 example: 1
+ *                               value:
+ *                                 type: string
+ *                                 example: "Small"
+ *                               sort_order:
+ *                                 type: integer
+ *                                 example: 1
+ *                               status:
+ *                                 type: string
+ *                                 example: "Active"
+ *       404:
+ *         description: Variant not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiResponse'
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiResponse'
 
 /**
  * @openapi
