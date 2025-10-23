@@ -1,0 +1,179 @@
+var express = require("express");
+var invoiceSettingsRouter = express.Router();
+const invoiceSettingsService = require("../services/invoiceSettingsService");
+
+invoiceSettingsRouter.post("/invoice-settings", invoiceSettingsService.create);
+invoiceSettingsRouter.get("/invoice-settings", invoiceSettingsService.list);
+invoiceSettingsRouter.get("/invoice-settings/:id", invoiceSettingsService.getById);
+invoiceSettingsRouter.get("/invoice-settings/branch/:branchId", invoiceSettingsService.getByBranchId);
+invoiceSettingsRouter.put("/invoice-settings/:id", invoiceSettingsService.update);
+invoiceSettingsRouter.patch("/invoice-settings/:id/status", invoiceSettingsService.toggleStatus);
+invoiceSettingsRouter.delete("/invoice-settings/:id", invoiceSettingsService.remove);
+
+module.exports = invoiceSettingsRouter;
+
+/**
+ * @openapi
+ * tags:
+ *   - name: Invoice Settings
+ *     description: Invoice settings management
+ */
+/**
+ * @openapi
+ * /api/v1/invoice-settings:
+ *   get:
+ *     summary: List invoice settings
+ *     tags: [Invoice Settings]
+ *     parameters:
+ *       - in: query
+ *         name: search
+ *         schema: { type: string }
+ *         description: Search by sequence name, prefix, or suffix
+ *       - in: query
+ *         name: branch_id
+ *         schema: { type: integer }
+ *         description: Filter by branch ID
+ *     responses:
+ *       200:
+ *         description: OK
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 invoiceSettings:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *   post:
+ *     summary: Create invoice setting
+ *     tags: [Invoice Settings]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               branch_id: { type: integer }
+ *               sequence_name: { type: string }
+ *               invoice_prefix: { type: string }
+ *               invoice_suffix: { type: string }
+ *               invoice_start_no: { type: integer }
+ *               status_id: { type: integer, default: 1 }
+ *             required: [branch_id, sequence_name]
+ *     responses:
+ *       201:
+ *         description: Created
+ *       400:
+ *         description: Bad Request - Invoice setting already exists for branch or branch not found
+ */
+/**
+ * @openapi
+ * /api/v1/invoice-settings/{id}:
+ *   get:
+ *     summary: Get invoice setting by ID
+ *     tags: [Invoice Settings]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200:
+ *         description: OK
+ *       404:
+ *         description: Not Found
+ *   put:
+ *     summary: Update invoice setting
+ *     tags: [Invoice Settings]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               branch_id: { type: integer }
+ *               sequence_name: { type: string }
+ *               invoice_prefix: { type: string }
+ *               invoice_suffix: { type: string }
+ *               invoice_start_no: { type: integer }
+ *               status_id: { type: integer }
+ *     responses:
+ *       200:
+ *         description: OK
+ *       400:
+ *         description: Bad Request
+ *       404:
+ *         description: Not Found
+ *   delete:
+ *     summary: Delete invoice setting (soft)
+ *     tags: [Invoice Settings]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       204:
+ *         description: No Content
+ *       404:
+ *         description: Not Found
+ */
+/**
+ * @openapi
+ * /api/v1/invoice-settings/branch/{branchId}:
+ *   get:
+ *     summary: Get invoice setting by branch ID
+ *     tags: [Invoice Settings]
+ *     parameters:
+ *       - in: path
+ *         name: branchId
+ *         required: true
+ *         schema: { type: integer }
+ *         description: Branch ID to get invoice setting for
+ *     responses:
+ *       200:
+ *         description: OK
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 invoiceSetting:
+ *                   type: object
+ *       404:
+ *         description: Invoice setting not found for this branch
+ */
+/**
+ * @openapi
+ * /api/v1/invoice-settings/{id}/status:
+ *   patch:
+ *     summary: Toggle invoice setting status
+ *     tags: [Invoice Settings]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               status_id: { type: integer }
+ *             required: [status_id]
+ *     responses:
+ *       200:
+ *         description: OK
+ *       404:
+ *         description: Not Found
+ */
