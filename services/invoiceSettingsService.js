@@ -11,7 +11,6 @@ const create = async (req, res) => {
       sequence_name,
       invoice_prefix,
       invoice_suffix,
-      invoice_start_no,
       status_id = 1,
     } = req.body;
 
@@ -42,7 +41,6 @@ const create = async (req, res) => {
       sequence_name,
       invoice_prefix,
       invoice_suffix,
-      invoice_start_no,
       status_id,
     });
 

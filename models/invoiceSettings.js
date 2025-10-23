@@ -11,12 +11,6 @@ module.exports = (sequelize, DataTypes) => {
       branch_id: {
         type: DataTypes.INTEGER,
         allowNull: false,
-        references: {
-          model: "branches",
-          key: "id",
-        },
-        onUpdate: "CASCADE",
-        onDelete: "RESTRICT",
       },
       sequence_name: {
         type: DataTypes.STRING,
