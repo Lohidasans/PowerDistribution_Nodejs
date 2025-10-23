@@ -1,52 +1,85 @@
-const Sequelize = require('sequelize');
-const { sequelize } = require('../config/dbConfig');
+const Sequelize = require("sequelize");
+const { sequelize } = require("../config/dbConfig");
 
-const Country = require('./country')(sequelize, Sequelize.DataTypes);
-const State = require('./state')(sequelize, Sequelize.DataTypes);
-const District = require('./districts')(sequelize, Sequelize.DataTypes);
+const Country = require("./country")(sequelize, Sequelize.DataTypes);
+const State = require("./state")(sequelize, Sequelize.DataTypes);
+const District = require("./districts")(sequelize, Sequelize.DataTypes);
 
-const Permission = require('./permissions')(sequelize, Sequelize.DataTypes);
-const Role = require('./roles')(sequelize, Sequelize.DataTypes);
-const RolePermission = require('./rolePermissions')(sequelize, Sequelize.DataTypes);
-const Customer = require('./customer')(sequelize, Sequelize.DataTypes);
+const Permission = require("./permissions")(sequelize, Sequelize.DataTypes);
+const Role = require("./roles")(sequelize, Sequelize.DataTypes);
+const RolePermission = require("./rolePermissions")(
+  sequelize,
+  Sequelize.DataTypes
+);
+const Customer = require("./customer")(sequelize, Sequelize.DataTypes);
 
 // Branch related models
-const Branch = require('./branches')(sequelize, Sequelize.DataTypes);
-const BankAccount = require('./bankAccounts')(sequelize, Sequelize.DataTypes);
-const KycDocument = require('./kycDocuments')(sequelize, Sequelize.DataTypes);
-const InvoiceSetting = require('./invoiceSettings')(sequelize, Sequelize.DataTypes);
-const User = require('./users')(sequelize, Sequelize.DataTypes);
+const Branch = require("./branches")(sequelize, Sequelize.DataTypes);
+const BankAccount = require("./bankAccounts")(sequelize, Sequelize.DataTypes);
+const KycDocument = require("./kycDocuments")(sequelize, Sequelize.DataTypes);
+const InvoiceSetting = require("./invoiceSettings")(
+  sequelize,
+  Sequelize.DataTypes
+);
+const User = require("./users")(sequelize, Sequelize.DataTypes);
 
 // Vendor related models
-const Vendor = require('./vendors')(sequelize, Sequelize.DataTypes);
-const VendorSpocDetails = require('./vendorSpocDetails')(sequelize, Sequelize.DataTypes);
+const Vendor = require("./vendors")(sequelize, Sequelize.DataTypes);
+const VendorSpocDetails = require("./vendorSpocDetails")(
+  sequelize,
+  Sequelize.DataTypes
+);
 
 // Employee related models
-const Employee = require('./employees')(sequelize, Sequelize.DataTypes);
-const EmployeeContact = require('./employeeContacts')(sequelize, Sequelize.DataTypes);
-const EmployeeExperience = require('./employeeExperiences')(sequelize, Sequelize.DataTypes);
-const EmployeeIncentive = require('./employeeIncentives')(sequelize, Sequelize.DataTypes);
-const EmployeeDepartment = require('./employeeDepartments')(sequelize, Sequelize.DataTypes);
-const EmployeeDesignation = require('./employeeDesignations')(sequelize, Sequelize.DataTypes);
+const Employee = require("./employees")(sequelize, Sequelize.DataTypes);
+const EmployeeContact = require("./employeeContacts")(
+  sequelize,
+  Sequelize.DataTypes
+);
+const EmployeeExperience = require("./employeeExperiences")(
+  sequelize,
+  Sequelize.DataTypes
+);
+const EmployeeIncentive = require("./employeeIncentives")(
+  sequelize,
+  Sequelize.DataTypes
+);
+const EmployeeDepartment = require("./employeeDepartments")(
+  sequelize,
+  Sequelize.DataTypes
+);
+const EmployeeDesignation = require("./employeeDesignations")(
+  sequelize,
+  Sequelize.DataTypes
+);
 
 //Collection and UOM related modes
-const MaterialType = require('./materialTypes')(sequelize, Sequelize.DataTypes);
-const Category = require('./categories')(sequelize, Sequelize.DataTypes);
-const Subcategory = require('./subcategories')(sequelize, Sequelize.DataTypes);
-const Variant = require('./variants')(sequelize, Sequelize.DataTypes);
-const VariantValue = require('./variantValues')(sequelize, Sequelize.DataTypes);
-const Uom = require('./uom')(sequelize, Sequelize.DataTypes);
+const MaterialType = require("./materialTypes")(sequelize, Sequelize.DataTypes);
+const Category = require("./categories")(sequelize, Sequelize.DataTypes);
+const Subcategory = require("./subcategories")(sequelize, Sequelize.DataTypes);
+const Variant = require("./variants")(sequelize, Sequelize.DataTypes);
+const VariantValue = require("./variantValues")(sequelize, Sequelize.DataTypes);
+const Uom = require("./uom")(sequelize, Sequelize.DataTypes);
 
 // Products related models
-const Product = require('./products')(sequelize, Sequelize.DataTypes);
-const ProductItemDetail = require('./productItemDetails')(sequelize, Sequelize.DataTypes);
-const ProductAdditionalDetail = require('./productAdditionalDetails')(sequelize, Sequelize.DataTypes);
-const ProductAddOn = require('./productAddOns')(sequelize, Sequelize.DataTypes);
+const Product = require("./products")(sequelize, Sequelize.DataTypes);
+const ProductItemDetail = require("./productItemDetails")(
+  sequelize,
+  Sequelize.DataTypes
+);
+const ProductAdditionalDetail = require("./productAdditionalDetails")(
+  sequelize,
+  Sequelize.DataTypes
+);
+const ProductAddOn = require("./productAddOns")(sequelize, Sequelize.DataTypes);
 
 // GRN related models
-const Grn = require('./grns')(sequelize, Sequelize.DataTypes);
-const GrnItem = require('./grnItems')(sequelize, Sequelize.DataTypes);
+const Grn = require("./grns")(sequelize, Sequelize.DataTypes);
+const GrnItem = require("./grnItems")(sequelize, Sequelize.DataTypes);
 
+// Ledger related models
+const LedgerGroup = require("./ledgerGroup")(sequelize, Sequelize.DataTypes);
+const Ledger = require("./ledger")(sequelize, Sequelize.DataTypes);
 
 const models = {
   Permission,
@@ -81,6 +114,8 @@ const models = {
   State,
   District,
   Customer,
+  LedgerGroup,
+  Ledger,
 };
 
 Object.values(models).forEach((model) => {
@@ -98,4 +133,4 @@ Object.values(models).forEach((model) => {
   }
 })();
 
-module.exports = { sequelize, models }; 
+module.exports = { sequelize, models };
