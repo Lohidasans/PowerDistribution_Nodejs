@@ -35,7 +35,7 @@ module.exports = (sequelize, DataTypes) => {
       },
       district_id: {
         type: DataTypes.INTEGER,
-        allowNull: true
+        allowNull: true,
       },
       state_id: {
         type: DataTypes.INTEGER,
@@ -67,6 +67,13 @@ module.exports = (sequelize, DataTypes) => {
       deletedAt: "deleted_at",
     }
   );
+
+  Branch.associate = (models) => {
+    Branch.hasOne(models.InvoiceSetting, {
+      foreignKey: "branch_id",
+      as: "invoiceSetting",
+    });
+  };
 
   return Branch;
 };

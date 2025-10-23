@@ -51,5 +51,12 @@ module.exports = (sequelize, DataTypes) => {
     }
   );
 
+  InvoiceSetting.associate = (models) => {
+    InvoiceSetting.belongsTo(models.Branch, {
+      foreignKey: "branch_id",
+      as: "branch",
+    });
+  };
+
   return InvoiceSetting;
 };

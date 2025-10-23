@@ -101,7 +101,7 @@ const getById = async (req, res) => {
     });
 
     if (!invoiceSetting) {
-      return commonService.notFound(res, message.failure.notFound);
+      return commonService.badRequest(res, message.failure.notFound);
     }
 
     return commonService.okResponse(res, { invoiceSetting });
