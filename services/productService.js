@@ -471,10 +471,10 @@ const getAllProductDetails = async (req, res) => {
         p.sku_id ILIKE :like OR
         p.description ILIKE :like OR
         p.hsn_code ILIKE :like OR
-        p.product_type ILIKE :like OR
-        p.variation_type ILIKE :like OR
+        p.product_type::text ILIKE :like OR
+        p.variation_type::text ILIKE :like OR
         mt.material_type ILIKE :like
-      )`;
+    )`;
       replacements.like = like;
     }
 
