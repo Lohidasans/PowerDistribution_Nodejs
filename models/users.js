@@ -9,7 +9,7 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.INTEGER,
       },
       entity_type: {
-        type: DataTypes.ENUM("branch", "vendor", "employee"),
+        type: DataTypes.ENUM("branch", "vendor", "employee","superadmin"),
         allowNull: false,
       },
       entity_id: {

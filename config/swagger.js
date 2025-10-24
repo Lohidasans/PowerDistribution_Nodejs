@@ -1,4 +1,5 @@
 const swaggerJsdoc = require("swagger-jsdoc");
+const state = require("../models/state");
 
 const options = {
   definition: {
@@ -141,7 +142,10 @@ const options = {
             pin_code: { type: "string" },
             opening_balance: { type: "number", format: "float" },
             opening_balance_type: { type: "string", enum: ["Credit", "Debit"] },
-            payment_terms: { type: "string", enum: ["10days", "15days", "20days", "25days", "30days"] },
+            payment_terms: {
+              type: "string",
+              enum: ["10days", "15days", "20days", "25days", "30days"],
+            },
             material_type_ids: { type: "array", items: { type: "integer" } },
             visibilities: { type: "array", items: { type: "integer" } },
             status: { type: "string", enum: ["Active", "Inactive"] },
@@ -157,13 +161,26 @@ const options = {
             department_id: { type: "integer" },
             designation_id: { type: "integer" },
             joining_date: { type: "string", format: "date" },
-            employment_type: { type: "string", enum: ["Full-Time", "Part-Time", "Contract"] },
+            employment_type: {
+              type: "string",
+              enum: ["Full-Time", "Part-Time", "Contract"],
+            },
             gender: { type: "string", enum: ["Male", "Female", "Other"] },
             date_of_birth: { type: "string", format: "date" },
             branch_id: { type: "integer" },
-            status: { type: "string", enum: ["Active", "Inactive"] }
+            status: { type: "string", enum: ["Active", "Inactive"] },
           },
-          required: ["employee_no", "employee_name", "department_id", "designation_id", "joining_date", "employment_type", "gender", "date_of_birth", "branch_id"]
+          required: [
+            "employee_no",
+            "employee_name",
+            "department_id",
+            "designation_id",
+            "joining_date",
+            "employment_type",
+            "gender",
+            "date_of_birth",
+            "branch_id",
+          ],
         },
         EmployeeContactCreateInput: {
           type: "object",
@@ -177,10 +194,24 @@ const options = {
             district_id: { type: "string" },
             pin_code: { type: "string" },
             emergency_contact_person: { type: "string" },
-            relationship: { type: "string", enum: ["Father", "Mother", "Guardian"] },
-            emergency_contact_number: { type: "string" }
+            relationship: {
+              type: "string",
+              enum: ["Father", "Mother", "Guardian"],
+            },
+            emergency_contact_number: { type: "string" },
           },
-          required: ["employee_id","mobile_number","email_id","address","country_id","state_id","pin_code","emergency_contact_person","relationship","emergency_contact_number"]
+          required: [
+            "employee_id",
+            "mobile_number",
+            "email_id",
+            "address",
+            "country_id",
+            "state_id",
+            "pin_code",
+            "emergency_contact_person",
+            "relationship",
+            "emergency_contact_number",
+          ],
         },
         EmployeeExperienceBulkCreateInput: {
           type: "object",
@@ -195,13 +226,18 @@ const options = {
                   role: { type: "string" },
                   duration_from: { type: "string", format: "date" },
                   duration_to: { type: "string", format: "date" },
-                  location: { type: "string" }
+                  location: { type: "string" },
                 },
-                required: ["organization_name","role","duration_from","duration_to"]
-              }
-            }
+                required: [
+                  "organization_name",
+                  "role",
+                  "duration_from",
+                  "duration_to",
+                ],
+              },
+            },
           },
-          required: ["employee_id","experiences"]
+          required: ["employee_id", "experiences"],
         },
         ProductCreateInput: {
           type: "object",
@@ -533,7 +569,10 @@ const options = {
             pin_code: { type: "string" },
             opening_balance: { type: "number", format: "float" },
             opening_balance_type: { type: "string", enum: ["Debit", "Credit"] },
-            payment_terms: { type: "string", enum: ["10days", "15days", "20days", "25days", "30days"] },
+            payment_terms: {
+              type: "string",
+              enum: ["10days", "15days", "20days", "25days", "30days"],
+            },
             material_type_ids: { type: "array", items: { type: "integer" } },
             visibilities: { type: "array", items: { type: "integer" } },
             status: { type: "string", enum: ["Active", "Inactive"] },
@@ -684,13 +723,26 @@ const options = {
             department_id: { type: "integer" },
             designation_id: { type: "integer" },
             joining_date: { type: "string", format: "date" },
-            employment_type: { type: "string", enum: ["Full-Time", "Part-Time", "Contract"] },
+            employment_type: {
+              type: "string",
+              enum: ["Full-Time", "Part-Time", "Contract"],
+            },
             gender: { type: "string", enum: ["Male", "Female", "Other"] },
             date_of_birth: { type: "string", format: "date" },
             branch_id: { type: "integer" },
-            status: { type: "string", enum: ["Active", "Inactive"] }
+            status: { type: "string", enum: ["Active", "Inactive"] },
           },
-          required: ["employee_no", "employee_name", "department_id", "designation_id", "joining_date", "employment_type", "gender", "date_of_birth", "branch_id"]
+          required: [
+            "employee_no",
+            "employee_name",
+            "department_id",
+            "designation_id",
+            "joining_date",
+            "employment_type",
+            "gender",
+            "date_of_birth",
+            "branch_id",
+          ],
         },
         EmployeeContactCreateInput: {
           type: "object",
@@ -704,10 +756,53 @@ const options = {
             district_id: { type: "string" },
             pin_code: { type: "string" },
             emergency_contact_person: { type: "string" },
-            relationship: { type: "string", enum: ["Father", "Mother", "Guardian"] },
-            emergency_contact_number: { type: "string" }
+            relationship: {
+              type: "string",
+              enum: ["Father", "Mother", "Guardian"],
+            },
+            emergency_contact_number: { type: "string" },
           },
-          required: ["employee_id", "mobile_number", "email_id", "address", "country_id", "state_id", "pin_code", "emergency_contact_person", "relationship", "emergency_contact_number"]
+          required: [
+            "employee_id",
+            "mobile_number",
+            "email_id",
+            "address",
+            "country_id",
+            "state_id",
+            "pin_code",
+            "emergency_contact_person",
+            "relationship",
+            "emergency_contact_number",
+          ],
+        },
+        SuperAdminProfileCreateInput: {
+          type: "object",
+          properties: {
+            company_name: { type: "string" },
+            proprietor: { type: "string" },
+            mobile: { type: "string" },
+            email: { type: "string", format: "email" },
+            address: { type: "string" },
+            state_id: { type: "integer" },
+            district_id: { type: "integer" },
+            pin_code: { type: "string" },
+            branch_sequence_type: {type: "integer", enum: ["prefix", "suffix"],},
+            branch_sequence_value: { type: "string" },
+            joining_date: { type: "string", format: "date" },
+          },
+          required: [
+            "company_name",
+            "proprietor",
+            "mobile",
+            "email",
+            "address",
+            "state_id",
+            "district_id",
+            "pin_code",
+            "branch_sequence_type",
+            "branch_sequence_value",
+            "joining_date",
+          ],
         },
       },
     },

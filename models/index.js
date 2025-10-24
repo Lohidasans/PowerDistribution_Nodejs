@@ -79,6 +79,11 @@ const GrnItem = require("./grnItems")(sequelize, Sequelize.DataTypes);
 const LedgerGroup = require("./ledgerGroup")(sequelize, Sequelize.DataTypes);
 const Ledger = require("./ledger")(sequelize, Sequelize.DataTypes);
 
+const SuperAdminProfile = require("./superAdminProfiles")(
+  sequelize,
+  Sequelize.DataTypes
+);
+
 const models = {
   Permission,
   Role,
@@ -115,6 +120,7 @@ const models = {
   LedgerGroup,
   Ledger,
   Scheme,
+  SuperAdminProfile
 };
 
 Object.values(models).forEach((model) => {
