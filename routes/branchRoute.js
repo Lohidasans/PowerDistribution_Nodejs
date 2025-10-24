@@ -55,14 +55,52 @@ module.exports = branchRouter;
  *       200:
  *         description: OK
  *   post:
- *     summary: Create branch
+ *     summary: Create branch with optional bank account, KYC docs, and login (create-only for related entities)
  *     tags: [Branch]
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/Branch'
+ *             type: object
+ *             properties:
+ *               branch_no: { type: string }
+ *               branch_name: { type: string }
+ *               contact_person: { type: string }
+ *               mobile: { type: string }
+ *               email: { type: string }
+ *               address: { type: string }
+ *               district_id: { type: integer }
+ *               state_id: { type: integer }
+ *               pin_code: { type: string }
+ *               gst_no: { type: string }
+ *               signature_url: { type: string }
+ *               status: { type: string, enum: [Active, Inactive] }
+ *               bank_account:
+ *                 type: object
+ *                 description: Optional bank account to create for this branch
+ *                 properties:
+ *                   account_holder_name: { type: string }
+ *                   bank_name: { type: string }
+ *                   ifsc_code: { type: string }
+ *                   account_number: { type: string }
+ *                   bank_branch_name: { type: string }
+ *               kyc_documents:
+ *                 type: array
+ *                 description: Optional list of KYC docs to attach
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     doc_type: { type: string, example: GST }
+ *                     doc_number: { type: string }
+ *                     file_url: { type: string }
+ *               login:
+ *                 type: object
+ *                 description: Optional login to create for this branch
+ *                 properties:
+ *                   email: { type: string }
+ *                   password_hash: { type: string }
+ *                   role_id: { type: integer }
  *     responses:
  *       201:
  *         description: Created
@@ -82,7 +120,7 @@ module.exports = branchRouter;
  *       200:
  *         description: OK
  *   put:
- *     summary: Update branch
+ *     summary: Update branch with optional updates for bank account, KYC docs, and login (update-only; KYC requires id)
  *     tags: [Branch]
  *     parameters:
  *       - in: path
@@ -94,7 +132,43 @@ module.exports = branchRouter;
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/Branch'
+ *             type: object
+ *             properties:
+ *               branch_no: { type: string }
+ *               branch_name: { type: string }
+ *               contact_person: { type: string }
+ *               mobile: { type: string }
+ *               email: { type: string }
+ *               address: { type: string }
+ *               district_id: { type: integer }
+ *               state_id: { type: integer }
+ *               pin_code: { type: string }
+ *               gst_no: { type: string }
+ *               signature_url: { type: string }
+ *               status: { type: string, enum: [Active, Inactive] }
+ *               bank_account:
+ *                 type: object
+ *                 properties:
+ *                   account_holder_name: { type: string }
+ *                   bank_name: { type: string }
+ *                   ifsc_code: { type: string }
+ *                   account_number: { type: string }
+ *                   bank_branch_name: { type: string }
+ *               kyc_documents:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     id: { type: integer, description: Include to update existing KYC }
+ *                     doc_type: { type: string }
+ *                     doc_number: { type: string }
+ *                     file_url: { type: string }
+ *               login:
+ *                 type: object
+ *                 properties:
+ *                   email: { type: string }
+ *                   password_hash: { type: string }
+ *                   role_id: { type: integer }
  *     responses:
  *       200:
  *         description: OK

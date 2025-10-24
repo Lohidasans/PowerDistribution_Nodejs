@@ -67,4 +67,28 @@ module.exports = {
   getUserById,
   updateUser,
   deleteUser,
+  createUserByEntity: async (transaction, entity_type, entity_id, data) => {
+    if (!data || typeof data !== "object") return null;
+    const exists = await models.User.findOne({ where: { entity_type, entity_id }, transaction });
+    if (exists) throw new Error("USER_ALREADY_EXISTS");
+    if (!data.password_hash) throw new Error("PASSWORD_HASH_REQUIRED");
+    return models.User.create({
+      email: data.email || null,
+      password_hash: data.password_hash,
+      role_id: data.role_id || null,
+      entity_type,
+      entity_id,
+    }, { transaction });
+  },
+  updateUserByEntity: async (transaction, entity_type, entity_id, data) => {
+    if (!data || typeof data !== "object") return null;
+    const existing = await models.User.findOne({ where: { entity_type, entity_id }, transaction });
+    if (!existing) return null; // no create on update-only path
+    await existing.update({
+      email: data.email ?? existing.email,
+      password_hash: data.password_hash ?? existing.password_hash,
+      role_id: data.role_id ?? existing.role_id,
+    }, { transaction });
+    return existing;
+  },
 };

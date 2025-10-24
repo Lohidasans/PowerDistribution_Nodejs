@@ -130,4 +130,32 @@ module.exports = {
   getKycDocumentById,
   updateKycDocumentsByEntity,
   deleteKycDocument,
+  updateKycByEntity: async (sequelizeOrT, entity_type, entity_id, documents) => {
+    // Update-only semantics: require id, ignore items without id
+    const transaction = sequelizeOrT?.commit ? sequelizeOrT : undefined;
+    const updated = [];
+    if (!Array.isArray(documents) || documents.length === 0) return updated;
+    for (const doc of documents) {
+      if (!doc.id) {
+        // Ignore rows without id to avoid accidental creates during update
+        continue;
+      }
+      const row = await models.KycDocument.findOne({ where: { id: doc.id, entity_type, entity_id }, transaction });
+      if (row) {
+        await row.update({
+          doc_type: doc.doc_type ?? row.doc_type,
+          doc_number: doc.doc_number ?? row.doc_number,
+          file_url: doc.file_url ?? row.file_url,
+        }, { transaction });
+        updated.push(row);
+      }
+    }
+    return updated;
+  },
+  createKycByEntity: async (sequelizeOrT, entity_type, entity_id, documents) => {
+    const transaction = sequelizeOrT?.commit ? sequelizeOrT : undefined;
+    if (!Array.isArray(documents) || documents.length === 0) return [];
+    const rows = documents.map((d) => ({ ...d, entity_type, entity_id }));
+    return models.KycDocument.bulkCreate(rows, { transaction, returning: true });
+  },
 };
