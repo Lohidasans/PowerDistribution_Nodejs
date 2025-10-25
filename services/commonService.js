@@ -58,6 +58,14 @@ const handleError = (res, err) => {
   });
 };
 
+// Standardized Not Found Response
+const notFound = (res, message) => {
+  return res.status(status.REST_API_STATUSCODE.notFound).send({
+    statusCode: status.REST_API_STATUSCODE.notFound,
+    message,
+  });
+};
+
 module.exports = {
   findById,
   okResponse,
@@ -65,4 +73,5 @@ module.exports = {
   badRequest,
   noContentResponse,
   handleError,
+  notFound
 };

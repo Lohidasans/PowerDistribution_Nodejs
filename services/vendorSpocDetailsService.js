@@ -100,10 +100,45 @@ const deleteVendorContact = async (req, res) => {
   }
 };
 
+// Reusable helpers
+const createVendorSpocsByVendor = async (transaction, vendor_id, contacts) => {
+  if (!Array.isArray(contacts) || contacts.length === 0) return [];
+  const payloads = contacts.map((c) => ({
+    vendor_id,
+    contact_name: c.contact_name ?? null,
+    designation: c.designation ?? null,
+    mobile: c.mobile ?? null,
+  }));
+  return models.VendorSpocDetails.bulkCreate(payloads, { transaction, returning: true });
+};
+
+const updateVendorSpocsByVendor = async (transaction, vendor_id, contacts) => {
+  // Update-only: require id per contact; ignore without id
+  if (!Array.isArray(contacts) || contacts.length === 0) return [];
+  const updated = [];
+  for (const c of contacts) {
+    if (!c.id) continue;
+    const row = await models.VendorSpocDetails.findOne({ where: { id: c.id, vendor_id }, transaction });
+    if (!row) continue;
+    await row.update(
+      {
+        contact_name: c.contact_name ?? row.contact_name,
+        designation: c.designation ?? row.designation,
+        mobile: c.mobile ?? row.mobile,
+      },
+      { transaction }
+    );
+    updated.push(row);
+  }
+  return updated;
+};
+
 module.exports = {
   createVendorContact,
   listVendorContacts,
   getVendorContactById,
   deleteVendorContact,
   updateVendorContactsByVendor,
+  createVendorSpocsByVendor,
+  updateVendorSpocsByVendor,
 };

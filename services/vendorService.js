@@ -2,62 +2,61 @@ const { sequelize, models } = require("../models/index");
 const commonService = require("./commonService");
 const message = require("../constants/en.json");
 const generateAutoCode = require("../helpers/codeGeneration");
+const kycSvc = require("./kycDocumentService");
+const bankSvc = require("./bankAccountService");
+const userSvc = require("./userLoginService");
+const spocSvc = require("./vendorSpocDetailsService");
 
 const createVendor = async (req, res) => {
+  const t = await sequelize.transaction();
   try {
-    const {
-      vendor_image_url,
-      vendor_code,
-      vendor_name,
-      proprietor_name,
-      email,
-      mobile,
-      pan_no,
-      gst_no,
-      address,
-      country,
-      state,
-      district,
-      pin_code,
-      opening_balance,
-      opening_balance_type,
-      payment_terms,
-      material_type_ids,
-      visibilities,
-      status,
-    } = req.body;
+    const { bank_account, kyc_documents, login, spoc_details, ...payload } = req.body || {};
 
+    const { vendor_code, vendor_name, email } = payload;
     if (!vendor_code || !vendor_name || !email) {
-      return commonService.badRequest(
-        res,
-        message.vendor.required
-      );
+      await t.rollback();
+      return commonService.badRequest(res, message.vendor.required);
     }
 
-    const vendor = await models.Vendor.create({
-      vendor_image_url,
-      vendor_code,
-      vendor_name,
-      proprietor_name,
-      email,
-      mobile,
-      pan_no,
-      gst_no,
-      address,
-      country,
-      state,
-      district,
-      pin_code,
-      opening_balance,
-      opening_balance_type,
-      payment_terms,
-      material_type_ids,
-      visibilities,
-      status,
-    });
+    const vendor = await models.Vendor.create(payload, { transaction: t });
 
-    return commonService.createdResponse(res, { vendor });
+    // Bank account (optional) via helper
+    let createdBankAccount = null;
+    if (bank_account && typeof bank_account === "object") {
+      try {
+        createdBankAccount = await bankSvc.createBankAccountByEntity(t, "vendor", vendor.id, bank_account);
+      } catch (e) {
+        await t.rollback();
+        return commonService.badRequest(res, message.requiredEntityIdAndType);
+      }
+    }
+
+    // KYC docs (optional) via reusable create helper
+    let createdKycDocs = [];
+    if (Array.isArray(kyc_documents) && kyc_documents.length) {
+      createdKycDocs = await kycSvc.createKycByEntity(t, "vendor", vendor.id, kyc_documents);
+    }
+
+    // Login (optional) via reusable create helper
+    let createdUser = null;
+    if (login && typeof login === "object") {
+      try {
+        createdUser = await userSvc.createUserByEntity(t, "vendor", vendor.id, login);
+      } catch (e) {
+        await t.rollback();
+        return commonService.badRequest(res, message.failure.requiredFields);
+      }
+    }
+
+    let createdSpocs = [];
+    if (Array.isArray(spoc_details) && spoc_details.length) {
+      createdSpocs = await spocSvc.createVendorSpocsByVendor(t, vendor.id, spoc_details);
+    }
+
+    await t.commit();
+    return commonService.createdResponse(res, { vendor, bank_account: createdBankAccount, kyc_documents: createdKycDocs, login: createdUser, spoc_details: createdSpocs });
   } catch (err) {
+    await t.rollback();
     return commonService.handleError(res, err);
   }
 };
@@ -68,7 +67,7 @@ const listVendors = async (req, res) => {
 
     // Base SQL with array joins and aggregation
     let query = `
-      SELECT 
+      SELECT
         v.id,
         v.vendor_code,
         v.vendor_name,
@@ -146,41 +145,98 @@ const getVendorById = async (req, res) => {
     if (!vendor) {
       return commonService.notFound(res, message.vendor.notFound);
     }
-    return commonService.okResponse(res, { vendor });
+
+    const [bank_account, kyc_documents, login, spoc_details] = await Promise.all([
+      models.BankAccount.findOne({ where: { entity_type: "vendor", entity_id: id } }),
+      models.KycDocument.findAll({ where: { entity_type: "vendor", entity_id: id } }),
+      models.User.findOne({ where: { entity_type: "vendor", entity_id: id } }),
+      models.VendorSpocDetails.findOne({ where: { vendor_id: id } }),
+    ]);
+
+    return commonService.okResponse(res, { vendor, bank_account, kyc_documents, login, spoc_details });
   } catch (err) {
     return commonService.handleError(res, err);
   }
 };
 
 const updateVendor = async (req, res) => {
+  const t = await sequelize.transaction();
   try {
     const { id } = req.params;
     const vendor = await models.Vendor.findByPk(id);
     if (!vendor) {
+      await t.rollback();
       return commonService.notFound(res, message.vendor.notFound);
     }
-    
-    if (!req.body.vendor_name || !req.body.email) {
-      return commonService.badRequest(res, message.vendor.required);
+
+    const { bank_account, kyc_documents, kyc_delete_ids, login, spoc_details, ...payload } = req.body || {};
+
+    if (payload.vendor_name === undefined || payload.email === undefined) {
+      // keep previous behavior optional; no hard-fail unless nulls explicitly passed
     }
-    await vendor.update(req.body);
-    return commonService.okResponse(res, { vendor });
+    await vendor.update(payload, { transaction: t });
+
+    // Update-only bank account via helper 
+    let upsertedBank = null;
+    if (bank_account && typeof bank_account === "object") {
+      try {
+        upsertedBank = await bankSvc.updateBankAccountByEntity(t, "vendor", vendor.id, bank_account);
+      } catch (e) {
+        await t.rollback();
+        return commonService.badRequest(res, message.requiredEntityIdAndType);
+      }
+    }
+
+    // KYC via service helpers
+    let updatedOrCreatedKyc = [];
+    if (Array.isArray(kyc_documents)) {
+      updatedOrCreatedKyc = await kycSvc.updateKycByEntity(t, "vendor", vendor.id, kyc_documents);
+    }
+
+    // Update-only login via helper (no create on update)
+    let upsertedUser = null;
+    if (login && typeof login === "object") {
+      try {
+        upsertedUser = await userSvc.updateUserByEntity(t, "vendor", vendor.id, login);
+      } catch (e) {
+        await t.rollback();
+        return commonService.badRequest(res, message.failure.requiredFields);
+      }
+    }
+
+    let updatedSpocs = [];
+    if (Array.isArray(spoc_details)) {
+      updatedSpocs = await spocSvc.updateVendorSpocsByVendor(t, vendor.id, spoc_details);
+    }
+
+    await t.commit();
+    return commonService.okResponse(res, { vendor, bank_account: upsertedBank, kyc_documents: updatedOrCreatedKyc, login: upsertedUser, spoc_details: updatedSpocs });
   } catch (err) {
+    await t.rollback();
     return commonService.handleError(res, err);
   }
 };
 
 const deleteVendor = async (req, res) => {
+  const t = await sequelize.transaction();
   try {
     const { id } = req.params;
     const vendor = await models.Vendor.findByPk(id);
     if (!vendor) {
+      await t.rollback();
       return commonService.notFound(res, message.vendor.notFound);
     }
 
-    await vendor.destroy();
+    await models.BankAccount.destroy({ where: { entity_type: "vendor", entity_id: id }, transaction: t });
+    await models.KycDocument.destroy({ where: { entity_type: "vendor", entity_id: id }, transaction: t });
+    await models.User.destroy({ where: { entity_type: "vendor", entity_id: id }, transaction: t });
+    await models.VendorSpocDetails.destroy({ where: { vendor_id: id }, transaction: t });
+
+    await vendor.destroy({ transaction: t });
+    await t.commit();
     return commonService.noContentResponse(res);
   } catch (err) {
+    await t.rollback();
     return commonService.handleError(res, err);
   }
 };
