@@ -55,56 +55,14 @@ module.exports = vendorRouter;
  *       200:
  *         description: OK
  *   post:
- *     summary: Create vendor with optional bank account, KYC docs, and login
+ *     summary: Create vendor with optional bank account, KYC docs, SPOC details, and login (create-only for related entities)
  *     tags: [Vendor]
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
- *             type: object
- *             properties:
- *               vendor_image_url: { type: string }
- *               vendor_code: { type: string }
- *               vendor_name: { type: string }
- *               proprietor_name: { type: string }
- *               email: { type: string }
- *               mobile: { type: string }
- *               pan_no: { type: string }
- *               gst_no: { type: string }
- *               address: { type: string }
- *               country: { type: string }
- *               state: { type: string }
- *               district: { type: string }
- *               pin_code: { type: string }
- *               opening_balance: { type: number }
- *               opening_balance_type: { type: string, enum: ["Dr", "Cr"] }
- *               payment_terms: { type: string }
- *               material_type_ids: { type: array, items: { type: integer } }
- *               visibilities: { type: array, items: { type: integer } }
- *               status: { type: string, enum: [Active, Inactive] }
- *               bank_account:
- *                 type: object
- *                 properties:
- *                   account_holder_name: { type: string }
- *                   bank_name: { type: string }
- *                   ifsc_code: { type: string }
- *                   account_number: { type: string }
- *                   bank_branch_name: { type: string }
- *               kyc_documents:
- *                 type: array
- *                 items:
- *                   type: object
- *                   properties:
- *                     doc_type: { type: string }
- *                     doc_number: { type: string }
- *                     file_url: { type: string }
- *               login:
- *                 type: object
- *                 properties:
- *                   email: { type: string }
- *                   password_hash: { type: string }
- *                   role_id: { type: integer }
+ *             $ref: '#/components/schemas/VendorFullCreateInput'
  *     responses:
  *       201:
  *         description: Created
@@ -150,7 +108,7 @@ module.exports = vendorRouter;
  *       200:
  *         description: OK
  *   put:
- *     summary: Update vendor with optional upserts for bank account, KYC docs, and login
+ *     summary: Update vendor with optional updates for bank account, KYC docs, SPOC details, and login (update-only; KYC/SPOC require id)
  *     tags: [Vendor]
  *     parameters:
  *       - in: path
@@ -162,53 +120,7 @@ module.exports = vendorRouter;
  *       content:
  *         application/json:
  *           schema:
- *             type: object
- *             properties:
- *               vendor_image_url: { type: string }
- *               vendor_code: { type: string }
- *               vendor_name: { type: string }
- *               proprietor_name: { type: string }
- *               email: { type: string }
- *               mobile: { type: string }
- *               pan_no: { type: string }
- *               gst_no: { type: string }
- *               address: { type: string }
- *               country: { type: string }
- *               state: { type: string }
- *               district: { type: string }
- *               pin_code: { type: string }
- *               opening_balance: { type: number }
- *               opening_balance_type: { type: string, enum: ["Dr", "Cr"] }
- *               payment_terms: { type: string }
- *               material_type_ids: { type: array, items: { type: integer } }
- *               visibilities: { type: array, items: { type: integer } }
- *               status: { type: string, enum: [Active, Inactive] }
- *               bank_account:
- *                 type: object
- *                 properties:
- *                   account_holder_name: { type: string }
- *                   bank_name: { type: string }
- *                   ifsc_code: { type: string }
- *                   account_number: { type: string }
- *                   bank_branch_name: { type: string }
- *               kyc_documents:
- *                 type: array
- *                 items:
- *                   type: object
- *                   properties:
- *                     id: { type: integer }
- *                     doc_type: { type: string }
- *                     doc_number: { type: string }
- *                     file_url: { type: string }
- *               kyc_delete_ids:
- *                 type: array
- *                 items: { type: integer }
- *               login:
- *                 type: object
- *                 properties:
- *                   email: { type: string }
- *                   password_hash: { type: string }
- *                   role_id: { type: integer }
+ *             $ref: '#/components/schemas/VendorFullUpdateInput'
  *     responses:
  *       200:
  *         description: OK

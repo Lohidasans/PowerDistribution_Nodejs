@@ -117,7 +117,7 @@ const listSuperAdminProfiles = async (req, res) => {
     });
 
     if (!profiles.length) {
-      return commonService.notFound(res, message.failure.recordNotFound);
+      return commonService.notFound(res, message.failure.notFound);
     }
 
     return commonService.okResponse(res, { profiles });
@@ -142,7 +142,7 @@ const listSuperAdminDropdown = async (req, res) => {
     });
 
     if (!profiles.length) {
-      return commonService.notFound(res, message.failure.recordNotFound);
+      return commonService.notFound(res, message.failure.notFound);
     }
 
     return commonService.okResponse(res, { profiles });

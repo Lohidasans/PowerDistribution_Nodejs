@@ -59,14 +59,14 @@ module.exports = router;
  *       200:
  *         description: OK
  *   post:
- *     summary: Create a new employee (with optional contact)
+ *     summary: Create a new employee with optional contact, bank account, KYC docs, experiences, and login (create-only for related entities)
  *     tags: [Employee]
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/EmployeeCreateInput'
+ *             $ref: '#/components/schemas/EmployeeFullCreateInput'
  *     responses:
  *       201:
  *         description: Employee created successfully
@@ -87,7 +87,7 @@ module.exports = router;
  *       200:
  *         description: Employee retrieved successfully
  *   put:
- *     summary: Update an employee (and contact)
+ *     summary: Update an employee with optional updates for contact, bank account, KYC docs, experiences, and login (update-only; KYC/experiences require id)
  *     tags: [Employee]
  *     parameters:
  *       - in: path
@@ -99,7 +99,7 @@ module.exports = router;
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/EmployeeUpdateInput'
+ *             $ref: '#/components/schemas/EmployeeFullUpdateInput'
  *     responses:
  *       200:
  *         description: Employee updated successfully

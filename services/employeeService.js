@@ -1,6 +1,9 @@
 const { models, sequelize } = require("../models");
 const commonService = require("./commonService");
 const enMessage = require("../constants/en.json");
+const bankSvc = require("./bankAccountService");
+const userSvc = require("./userLoginService");
+const kycSvc = require("./kycDocumentService");
 
 const createEmployee = async (req, res) => {
   const transaction = await sequelize.transaction();
@@ -18,6 +21,10 @@ const createEmployee = async (req, res) => {
       branch_id,
       status,
       contact,
+      bank_account,
+      kyc_documents,
+      login,
+      experiences,
     } = req.body;
 
     if (!employee_no || !employee_name || !department_id || !designation_id) {
@@ -53,14 +60,51 @@ const createEmployee = async (req, res) => {
       );
     }
 
+    // Optional: Bank Account via helper
+    let createdBankAccount = null;
+    if (bank_account && typeof bank_account === "object") {
+      try {
+        createdBankAccount = await bankSvc.createBankAccountByEntity(transaction, "employee", employee.id, bank_account);
+      } catch (e) {
+        await transaction.rollback();
+        return commonService.badRequest(res, enMessage.failure.requiredFields);
+      }
+    }
+
+    // Optional: KYC
+    let createdKycDocs = [];
+    if (Array.isArray(kyc_documents) && kyc_documents.length > 0) {
+      createdKycDocs = await kycSvc.createKycByEntity(transaction, "employee", employee.id, kyc_documents);
+    }
+
+    // Optional: Login via helper
+    let createdUser = null;
+    if (login && typeof login === "object") {
+      try {
+        createdUser = await userSvc.createUserByEntity(transaction, "employee", employee.id, login);
+      } catch (e) {
+        await transaction.rollback();
+        return commonService.badRequest(res, enMessage.failure.requiredFields);
+      }
+    }
+
+    // Optional: Experiences
+    let createdExperiences = [];
+    if (Array.isArray(experiences) && experiences.length > 0) {
+      createdExperiences = await createEmployeeExperiences(transaction, employee.id, experiences);
+    }
+
     await transaction.commit();
 
-    // Nested response
     const response = {
       employee: {
         ...employee.get({ plain: true }),
         contacts: createdContact ? createdContact.get({ plain: true }) : null,
       },
+      bank_account: createdBankAccount,
+      kyc_documents: createdKycDocs,
+      login: createdUser,
+      experiences: createdExperiences,
     };
 
     return commonService.createdResponse(res, response);
@@ -95,13 +139,50 @@ const createEmployeeContact = async (
   return contact;
 };
 
+// Helpers: Experiences
+const createEmployeeExperiences = async (transaction, employee_id, experiences) => {
+  const rows = experiences.map((e) => ({
+    employee_id,
+    organization_name: e.organization_name,
+    role: e.role,
+    duration_from: e.duration_from,
+    duration_to: e.duration_to,
+    location: e.location ?? null,
+  }));
+  if (!rows.length) return [];
+  return models.EmployeeExperience.bulkCreate(rows, { transaction, returning: true });
+};
+
+const updateEmployeeExperiences = async (transaction, employee_id, experiences) => {
+  // Update-only: require id for each experience to update
+  const updated = [];
+  if (!Array.isArray(experiences) || !experiences.length) return updated;
+  for (const exp of experiences) {
+    if (!exp.id) continue;
+    const row = await models.EmployeeExperience.findOne({ where: { id: exp.id, employee_id }, transaction });
+    if (!row) continue;
+    await row.update(
+      {
+        organization_name: exp.organization_name ?? row.organization_name,
+        role: exp.role ?? row.role,
+        duration_from: exp.duration_from ?? row.duration_from,
+        duration_to: exp.duration_to ?? row.duration_to,
+        location: exp.location ?? row.location,
+      },
+      { transaction }
+    );
+    updated.push(row);
+  }
+  return updated;
+};
+
 // List employees with optional simple filters
 const listEmployees = async (req, res) => {
   try {
     const { branch_id, department_id, designation_id, search } = req.query;
 
     let query = `
-      SELECT 
+      SELECT
         e.*,
         b.branch_name,
         d.department_name,
@@ -210,10 +291,21 @@ const getEmployeeById = async (req, res) => {
     });
 
     if (!employee)
-      return commonService.notFound(res, enMessage.failure.recordNotFound);
+      return commonService.notFound(res, enMessage.failure.notFound);
+
+    const [bank_account, kyc_documents, login, experiences] = await Promise.all([
+      models.BankAccount.findOne({ where: { entity_type: "employee", entity_id: id } }),
+      models.KycDocument.findAll({ where: { entity_type: "employee", entity_id: id } }),
+      models.User.findOne({ where: { entity_type: "employee", entity_id: id } }),
+      models.EmployeeExperience.findAll({ where: { employee_id: id } }),
+    ]);
 
     const response = {
       employee: employee.get({ plain: true }),
+      bank_account,
+      kyc_documents,
+      login,
+      experiences
     };
 
     return commonService.okResponse(res, response);
@@ -250,12 +342,11 @@ const updateEmployee = async (req, res) => {
     const employee = await models.Employee.findByPk(id);
     if (!employee) {
       await transaction.rollback();
-      return commonService.notFound(res, enMessage.failure.recordNotFound);
+      return commonService.notFound(res, enMessage.failure.notFound);
     }
 
     const {
       profile_image_url,
-      employee_no,
       employee_name,
       department_id,
       designation_id,
@@ -266,12 +357,15 @@ const updateEmployee = async (req, res) => {
       branch_id,
       status,
       contact,
+      bank_account,
+      kyc_documents,
+      login,
+      experiences,
     } = req.body;
 
     await employee.update(
       {
         profile_image_url,
-        employee_no,
         employee_name,
         department_id,
         designation_id,
@@ -290,12 +384,45 @@ const updateEmployee = async (req, res) => {
       const existingContact = await models.EmployeeContact.findOne({
         where: { employee_id: id },
       });
-
       if (existingContact) {
         updatedContact = await existingContact.update(contact, { transaction });
       } else {
         updatedContact = await createEmployeeContact(id, contact, transaction);
       }
+    }
+
+    // Bank account upsert via helper
+    let upsertedBank = null;
+    if (bank_account && typeof bank_account === "object") {
+      try {
+        upsertedBank = await bankSvc.updateBankAccountByEntity(transaction, "employee", employee.id, bank_account);
+      } catch (e) {
+        await transaction.rollback();
+        return commonService.badRequest(res, enMessage.failure.requiredFields);
+      }
+    }
+
+    // KYC via reusable update helper (update-only)
+    let updatedKyc = [];
+    if (Array.isArray(kyc_documents)) {
+      updatedKyc = await kycSvc.updateKycByEntity(transaction, "employee", employee.id, kyc_documents);
+    }
+
+    // Login upsert via helper
+    let upsertedUser = null;
+    if (login && typeof login === "object") {
+      try {
+        upsertedUser = await userSvc.updateUserByEntity(transaction, "employee", employee.id, login);
+      } catch (e) {
+        await transaction.rollback();
+        return commonService.badRequest(res, enMessage.failure.requiredFields);
+      }
+    }
+
+    // Experiences update-only
+    let updatedExperiences = [];
+    if (Array.isArray(experiences)) {
+      updatedExperiences = await updateEmployeeExperiences(transaction, employee.id, experiences);
     }
 
     await transaction.commit();
@@ -305,6 +432,10 @@ const updateEmployee = async (req, res) => {
         ...employee.get({ plain: true }),
         contacts: updatedContact ? updatedContact.get({ plain: true }) : null,
       },
+      bank_account: upsertedBank,
+      kyc_documents: updatedKyc,
+      login: upsertedUser,
+      experiences: updatedExperiences,
     };
 
     return commonService.okResponse(res, response);
@@ -315,18 +446,29 @@ const updateEmployee = async (req, res) => {
 };
 
 const deleteEmployee = async (req, res) => {
+  const t = await sequelize.transaction();
   try {
     const { id } = req.params;
     const employee = await models.Employee.findByPk(id);
 
-    if (!employee)
-      return commonService.notFound(res, enMessage.failure.recordNotFound);
+    if (!employee) {
+      await t.rollback();
+      return commonService.notFound(res, enMessage.failure.notFound);
+    }
 
-    await employee.destroy();
-    return commonService.okResponse(res, {
-      message: enMessage.success.deleted,
-    });
+    // Delete ancillary records
+    await models.BankAccount.destroy({ where: { entity_type: "employee", entity_id: id }, transaction: t });
+    await models.KycDocument.destroy({ where: { entity_type: "employee", entity_id: id }, transaction: t });
+    await models.User.destroy({ where: { entity_type: "employee", entity_id: id }, transaction: t });
+    await models.EmployeeExperience.destroy({ where: { employee_id: id }, transaction: t });
+    await models.EmployeeContact.destroy({ where: { employee_id: id }, transaction: t });
+
+    await employee.destroy({ transaction: t });
+
+    await t.commit();
+    return commonService.noContentResponse(res);
   } catch (err) {
+    await t.rollback();
     return commonService.handleError(res, err);
   }
 };

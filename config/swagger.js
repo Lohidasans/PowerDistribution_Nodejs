@@ -152,6 +152,117 @@ const options = {
           },
           required: ["vendor_code", "vendor_name", "email"],
         },
+        // Nested helpers for create/update across services
+        BankAccountNestedInput: {
+          type: "object",
+          properties: {
+            account_holder_name: { type: "string" },
+            bank_name: { type: "string" },
+            ifsc_code: { type: "string" },
+            account_number: { type: "string" },
+            bank_branch_name: { type: "string" }
+          },
+          required: ["account_holder_name", "bank_name", "ifsc_code", "account_number"]
+        },
+        LoginNestedCreateInput: {
+          type: "object",
+          properties: {
+            email: { type: "string", format: "email" },
+            password_hash: { type: "string" },
+            role_id: { type: "integer" }
+          },
+          required: ["email", "password_hash"]
+        },
+        LoginNestedUpdateInput: {
+          type: "object",
+          properties: {
+            email: { type: "string", format: "email" },
+            password_hash: { type: "string" },
+            role_id: { type: "integer" }
+          }
+        },
+        KycNestedCreateItem: {
+          type: "object",
+          properties: {
+            doc_type: { type: "string" },
+            doc_number: { type: "string" },
+            file_url: { type: "string" }
+          },
+          required: ["doc_type"]
+        },
+        KycNestedUpdateItem: {
+          type: "object",
+          properties: {
+            id: { type: "integer" },
+            doc_type: { type: "string" },
+            doc_number: { type: "string" },
+            file_url: { type: "string" }
+          },
+          required: ["id"]
+        },
+        VendorSpocNestedCreateItem: {
+          type: "object",
+          properties: {
+            contact_name: { type: "string" },
+            designation: { type: "string" },
+            mobile: { type: "string" }
+          }
+        },
+        VendorSpocNestedUpdateItem: {
+          type: "object",
+          properties: {
+            id: { type: "integer" },
+            contact_name: { type: "string" },
+            designation: { type: "string" },
+            mobile: { type: "string" }
+          },
+          required: ["id"]
+        },
+        // Full Vendor payloads (tabs: bank, kyc, spoc, login)
+        VendorFullCreateInput: {
+          type: "object",
+          allOf: [
+            { $ref: "#/components/schemas/VendorCreateInput" },
+            {
+              type: "object",
+              properties: {
+                bank_account: { $ref: "#/components/schemas/BankAccountNestedInput" },
+                kyc_documents: { type: "array", items: { $ref: "#/components/schemas/KycNestedCreateItem" } },
+                spoc_details: { type: "array", items: { $ref: "#/components/schemas/VendorSpocNestedCreateItem" } },
+                login: { $ref: "#/components/schemas/LoginNestedCreateInput" }
+              }
+            }
+          ]
+        },
+        VendorFullUpdateInput: {
+          type: "object",
+          properties: {
+            // vendor core fields are optional on update
+            vendor_image_url: { type: "string" },
+            vendor_code: { type: "string" },
+            vendor_name: { type: "string" },
+            proprietor_name: { type: "string" },
+            email: { type: "string" },
+            mobile: { type: "string" },
+            pan_no: { type: "string" },
+            gst_no: { type: "string" },
+            address: { type: "string" },
+            country_id: { type: "integer" },
+            state_id: { type: "integer" },
+            district_id: { type: "integer" },
+            pin_code: { type: "string" },
+            opening_balance: { type: "number", format: "float" },
+            opening_balance_type: { type: "string", enum: ["Debit", "Credit"] },
+            payment_terms: { type: "string", enum: ["10days", "15days", "20days", "25days", "30days"] },
+            material_type_ids: { type: "array", items: { type: "integer" } },
+            visibilities: { type: "array", items: { type: "integer" } },
+            status: { type: "string", enum: ["Active", "Inactive"] },
+            bank_account: { $ref: "#/components/schemas/BankAccountNestedInput" },
+            kyc_documents: { type: "array", items: { $ref: "#/components/schemas/KycNestedUpdateItem" } },
+            spoc_details: { type: "array", items: { $ref: "#/components/schemas/VendorSpocNestedUpdateItem" } },
+            login: { $ref: "#/components/schemas/LoginNestedUpdateInput" }
+          }
+        },
         EmployeeCreateInput: {
           type: "object",
           properties: {
@@ -181,6 +292,66 @@ const options = {
             "date_of_birth",
             "branch_id",
           ],
+        },
+        EmployeeExperienceNestedCreateItem: {
+          type: "object",
+          properties: {
+            organization_name: { type: "string" },
+            role: { type: "string" },
+            duration_from: { type: "string", format: "date" },
+            duration_to: { type: "string", format: "date" },
+            location: { type: "string" }
+          },
+          required: ["organization_name", "role", "duration_from", "duration_to"]
+        },
+        EmployeeExperienceNestedUpdateItem: {
+          type: "object",
+          properties: {
+            id: { type: "integer" },
+            organization_name: { type: "string" },
+            role: { type: "string" },
+            duration_from: { type: "string", format: "date" },
+            duration_to: { type: "string", format: "date" },
+            location: { type: "string" }
+          },
+          required: ["id"]
+        },
+        EmployeeFullCreateInput: {
+          type: "object",
+          allOf: [
+            { $ref: "#/components/schemas/EmployeeCreateInput" },
+            {
+              type: "object",
+              properties: {
+                contact: { $ref: "#/components/schemas/EmployeeContactCreateInput" },
+                bank_account: { $ref: "#/components/schemas/BankAccountNestedInput" },
+                kyc_documents: { type: "array", items: { $ref: "#/components/schemas/KycNestedCreateItem" } },
+                experiences: { type: "array", items: { $ref: "#/components/schemas/EmployeeExperienceNestedCreateItem" } },
+                login: { $ref: "#/components/schemas/LoginNestedCreateInput" }
+              }
+            }
+          ]
+        },
+        EmployeeFullUpdateInput: {
+          type: "object",
+          properties: {
+            profile_image_url: { type: "string" },
+            employee_no: { type: "string" },
+            employee_name: { type: "string" },
+            department_id: { type: "integer" },
+            designation_id: { type: "integer" },
+            joining_date: { type: "string", format: "date" },
+            employment_type: { type: "string", enum: ["Full-Time", "Part-Time", "Contract"] },
+            gender: { type: "string", enum: ["Male", "Female", "Other"] },
+            date_of_birth: { type: "string", format: "date" },
+            branch_id: { type: "integer" },
+            status: { type: "string", enum: ["Active", "Inactive"] },
+            contact: { $ref: "#/components/schemas/EmployeeContactCreateInput" },
+            bank_account: { $ref: "#/components/schemas/BankAccountNestedInput" },
+            kyc_documents: { type: "array", items: { $ref: "#/components/schemas/KycNestedUpdateItem" } },
+            experiences: { type: "array", items: { $ref: "#/components/schemas/EmployeeExperienceNestedUpdateItem" } },
+            login: { $ref: "#/components/schemas/LoginNestedUpdateInput" }
+          }
         },
         EmployeeContactCreateInput: {
           type: "object",

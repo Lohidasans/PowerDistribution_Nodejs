@@ -61,7 +61,7 @@ const getAllEmployeeExperiences = async (req, res) => {
     });
 
     if (!experiences.length) {
-      return commonService.notFound(res, message.failure.recordNotFound);
+      return commonService.notFound(res, message.failure.notFound);
     }
 
     return commonService.okResponse(res, experiences, message.success.fetched);
@@ -78,7 +78,7 @@ const getEmployeeExperienceById = async (req, res) => {
     const experience = await models.EmployeeExperience.findByPk(id);
 
     if (!experience) {
-      return commonService.notFound(res, message.failure.recordNotFound);
+      return commonService.notFound(res, message.failure.notFound);
     }
 
     return commonService.okResponse(res, { experience });
@@ -95,7 +95,7 @@ const updateEmployeeExperience = async (req, res) => {
 
     const experience = await models.EmployeeExperience.findByPk(id);
     if (!experience) {
-      return commonService.notFound(res, message.failure.recordNotFound);
+      return commonService.notFound(res, message.failure.notFound);
     }
 
     await experience.update({
@@ -121,7 +121,7 @@ const deleteEmployeeExperience = async (req, res) => {
 
     const experience = await models.EmployeeExperience.findByPk(id);
     if (!experience) {
-      return commonService.notFound(res, message.failure.recordNotFound);
+      return commonService.notFound(res, message.failure.notFound);
     }
 
     await experience.destroy();
@@ -148,7 +148,7 @@ const listEmployeeExperienceDropdown = async (req, res) => {
     });
 
     if (!experiences.length) {
-      return commonService.notFound(res, message.failure.recordNotFound);
+      return commonService.notFound(res, message.failure.notFound);
     }
 
     const dropdown = experiences.map((exp) => ({
