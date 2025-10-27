@@ -2,17 +2,25 @@ const { models } = require("../models");
 const commonService = require("../services/commonService");
 const message = require("../constants/en.json");
 
-// Create Product Add-On mapping: product_id -> addon_product_id
 const createProductAddOn = async (req, res) => {
   try {
-    const { product_id, addon_product_id } = req.body || {};
+    const { product_id, addon_product_ids } = req.body || {};
 
-    if (!addon_product_id || !product_id) {
+    // Validate request
+    if (!product_id || !Array.isArray(addon_product_ids) || addon_product_ids.length === 0) {
       return commonService.badRequest(res, message.failure.requiredFields);
     }
 
-    const created = await models.ProductAddOn.create({ product_id, addon_product_id });
-    return commonService.createdResponse(res, created);
+    // Prepare bulk insert data
+    const addOnRecords = addon_product_ids.map((addonId) => ({
+      product_id,
+      addon_product_id: addonId,
+    }));
+
+    // Perform bulk create
+    const createdRecords = await models.ProductAddOn.bulkCreate(addOnRecords);
+
+    return commonService.createdResponse(res, { productAddOns: createdRecords });
   } catch (err) {
     return commonService.handleError(res, err);
   }

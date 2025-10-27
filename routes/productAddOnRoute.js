@@ -18,17 +18,17 @@ module.exports = router;
  * @openapi
  * /api/v1/product-addons:
  *   post:
- *     summary: Create a product add-on mapping
+ *     summary: Bulk create product add-on mappings
  *     tags: [ProductAddOn]
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/ProductAddOnCreateInput'
+ *             $ref: '#/components/schemas/ProductAddOnBulkCreateInput'
  *           example:
  *             product_id: 12
- *             addon_product_id: 45
+ *             addon_product_ids: [45, 46, 47]
  *     responses:
  *       201:
  *         description: Created

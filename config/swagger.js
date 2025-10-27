@@ -60,6 +60,30 @@ const options = {
             },
           },
         },
+        ProductAddonListResponse: {
+          type: "object",
+          properties: {
+            products: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  id: { type: "integer" },
+                  sku_id: { type: "string" },
+                  product_name: { type: "string" },
+                  description: { type: "string" },
+                  image_urls: { type: "array", items: { type: "string" } },
+                  material_type: { type: "string" },
+                  material_image_url: { type: "string" },
+                  category_name: { type: "string" },
+                  category_image_url: { type: "string" },
+                  subcategory_name: { type: "string" },
+                  subcategory_image_url: { type: "string" }
+                }
+              }
+            }
+          }
+        },
         ProductListDetailsResponse: {
           type: "object",
           properties: {
@@ -112,6 +136,18 @@ const options = {
             addon_product_id: { type: "integer" },
           },
           required: ["product_id", "addon_product_id"],
+        },
+        ProductAddOnBulkCreateInput: {
+          type: "object",
+          properties: {
+            product_id: { type: "integer" },
+            addon_product_ids: {
+              type: "array",
+              items: { type: "integer" },
+              description: "Array of product IDs to map as add-ons",
+            },
+          },
+          required: ["product_id", "addon_product_ids"],
         },
         ProductAddOn: {
           type: "object",

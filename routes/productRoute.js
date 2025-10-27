@@ -8,6 +8,7 @@ router.get("/products", svc.getAllProducts);
 router.post("/products/generateSku", svc.generateSkuId);
 router.get("/products/details", svc.getAllProductDetailByProductId);
 router.get("/products/list-details", svc.getAllProductDetails);
+router.get("/products/addon-list", svc.getProductAddonList);
 router.get("/products/:id", svc.getProductById);
 router.put("/products/:id", svc.updateProduct);
 router.delete("/products/:id", svc.deleteProduct);
@@ -19,6 +20,20 @@ module.exports = router;
  * tags:
  *   - name: Product
  *     description: Product management
+ */
+/**
+ * @openapi
+ * /api/v1/products/generateSku:
+ *   post:
+ *     summary: Generate a new SKU ID
+ *     tags: [Product]
+ *     responses:
+ *       200:
+ *         description: Generated SKU
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/SkuResponse'
  */
 /**
  * @openapi
@@ -62,6 +77,68 @@ module.exports = router;
  *       204:
  *         description: No Content
  */
+
+/**
+ * @openapi
+ * /api/v1/products/{id}:
+ *   get:
+ *     summary: Get a product by ID
+ *     tags: [Product]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200:
+ *         description: OK
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiResponse'
+ */
+
+/**
+ * @openapi
+ * /api/v1/products/{id}:
+ *   put:
+ *     summary: Update a product by ID
+ *     tags: [Product]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/ProductCreateInput'
+ *     responses:
+ *       200:
+ *         description: Updated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiResponse'
+ */
+
+/**
+ * @openapi
+ * /api/v1/products/{id}:
+ *   delete:
+ *     summary: Delete a product by ID
+ *     tags: [Product]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       204:
+ *         description: No Content
+ */
 /**
  * @openapi
  * /api/v1/products/list-details:
@@ -98,6 +175,29 @@ module.exports = router;
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ProductListDetailsResponse'
+ */
+/**
+ * @openapi
+ * /api/v1/products/addon-list:
+ *   get:
+ *     summary: Get lightweight product list for Add-On picker with search
+ *     tags: [Product]
+ *     parameters:
+ *       - in: query
+ *         name: search
+ *         schema: { type: string }
+ *         description: Search across sku_id, product_name, description
+ *       - in: query
+ *         name: sku_id
+ *         schema: { type: string }
+ *         description: Optional explicit SKU filter (ILIKE)
+ *     responses:
+ *       200:
+ *         description: OK
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ProductAddonListResponse'
  */
 /**
  * @openapi

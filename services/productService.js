@@ -197,6 +197,64 @@ const generateSkuId = async (req, res) => {
   }
 };
 
+// Lightweight list for Add-On/product picker with joins and search
+const getProductAddonList = async (req, res) => {
+  try {
+    const {
+      search,
+      sku_id
+    } = req.query;
+
+    let base = `
+      FROM products p
+      LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
+      LEFT JOIN "categories" c ON c.id = p.category_id
+      LEFT JOIN "subcategories" s ON s.id = p.subcategory_id
+      WHERE 1=1`;
+
+    const replacements = {};
+
+    if (sku_id) {
+      base += ` AND p.sku_id ILIKE :sku_id`;
+      replacements.sku_id = `%${sku_id}%`;
+    }
+    
+    if (search) {
+      const like = `%${search}%`;
+      base += ` AND (
+        p.sku_id ILIKE :like OR
+        p.product_name ILIKE :like OR
+        p.description ILIKE :like 
+      )`;
+      replacements.like = like;
+    }
+
+    const select = `
+      SELECT
+        p.id,
+        p.sku_id,
+        p.product_name,
+        p.description,
+        p.image_urls,
+        mt.material_type,
+        mt.material_image_url,
+        c.category_name,
+        c.category_image_url,
+        s.subcategory_name,
+        s.subcategory_image_url`;
+
+    const order = ` ORDER BY p.id DESC`;
+
+    const dataQuery = `${select} ${base}${order}`;
+
+    const [rows] = await sequelize.query(dataQuery, { replacements });
+
+    return commonService.okResponse(res, { products: rows });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
 // Get one by ID
 const getProductById = async (req, res) => {
   try {
@@ -393,7 +451,6 @@ const getAllProductDetailByProductId = async (req, res) => {
         { replacements: { pid: +product_id } }
       );
       addon_products = addonRows;
-      addon_product_ids = addonRows.map((r) => r.addon_product_id);
     }
 
     return commonService.okResponse(res, { rows, addon_products });
@@ -540,4 +597,5 @@ module.exports = {
   generateSkuId,
   getAllProductDetailByProductId,
   getAllProductDetails,
+  getProductAddonList,
 };
