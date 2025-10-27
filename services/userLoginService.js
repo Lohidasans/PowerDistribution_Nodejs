@@ -68,20 +68,20 @@ module.exports = {
   updateUser,
   deleteUser,
   createUserByEntity: async (transaction, entity_type, entity_id, data) => {
-    if (!data || typeof data !== "object") return null;
-    const exists = await models.User.findOne({ where: { entity_type, entity_id }, transaction });
-    if (exists) throw new Error("USER_ALREADY_EXISTS");
-    if (!data.password_hash) throw new Error("PASSWORD_HASH_REQUIRED");
-    return models.User.create({
+    if (!data || typeof data !== "object") return { error: enMessage.failure.requiredFields };
+    // Allow multiple users per entity; no uniqueness check on (entity_type, entity_id)
+    if (!data.password_hash) return { error: enMessage.user?.passwordRequired || enMessage.failure.requiredFields };
+    const created = await models.User.create({
       email: data.email || null,
       password_hash: data.password_hash,
       role_id: data.role_id || null,
       entity_type,
       entity_id,
     }, { transaction });
+    return created;
   },
   updateUserByEntity: async (transaction, entity_type, entity_id, data) => {
-    if (!data || typeof data !== "object") return null;
+    if (!data || typeof data !== "object") return { error: enMessage.failure.requiredFields };
     const existing = await models.User.findOne({ where: { entity_type, entity_id }, transaction });
     if (!existing) return null; // no create on update-only path
     await existing.update({
@@ -90,5 +90,37 @@ module.exports = {
       role_id: data.role_id ?? existing.role_id,
     }, { transaction });
     return existing;
+  },
+  // Multiple logins per entity: create-only helper
+  createUsersByEntity: async (transaction, entity_type, entity_id, users) => {
+    if (!Array.isArray(users) || users.length === 0) return [];
+    const rows = users
+      .filter((u) => u && typeof u === "object" && u.password_hash)
+      .map((u) => ({
+        email: u.email || null,
+        password_hash: u.password_hash,
+        role_id: u.role_id || null,
+        entity_type,
+        entity_id,
+      }));
+    if (!rows.length) return { error: enMessage.user?.passwordRequired || enMessage.failure.requiredFields };
+    return models.User.bulkCreate(rows, { transaction, returning: true });
+  },
+  // Multiple logins per entity: update-only helper (requires id)
+  updateUsersByEntity: async (transaction, entity_type, entity_id, users) => {
+    if (!Array.isArray(users) || users.length === 0) return [];
+    const updated = [];
+    for (const u of users) {
+      if (!u || !u.id) continue;
+      const row = await models.User.findOne({ where: { id: u.id, entity_type, entity_id }, transaction });
+      if (!row) continue;
+      await row.update({
+        email: u.email ?? row.email,
+        password_hash: u.password_hash ?? row.password_hash,
+        role_id: u.role_id ?? row.role_id,
+      }, { transaction });
+      updated.push(row);
+    }
+    return updated;
   },
 };

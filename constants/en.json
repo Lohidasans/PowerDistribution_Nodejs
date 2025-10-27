@@ -41,5 +41,8 @@
   "vendor": {
     "required": "VendorCode, VendorName and Email are required",
     "notFound": "Vendor not found"
+  },
+  "user": {
+    "passwordRequired": "Password is required for user login."
   }
 }

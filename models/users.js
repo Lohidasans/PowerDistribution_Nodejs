@@ -9,7 +9,7 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.INTEGER,
       },
       entity_type: {
-        type: DataTypes.ENUM("branch", "vendor", "employee","superadmin"),
+        type: DataTypes.ENUM("branch", "vendor", "employee", "superadmin"),
         allowNull: false,
       },
       entity_id: {
@@ -31,17 +31,13 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.INTEGER,
         allowNull: true,
       },
-    },
+    }, 
     {
       timestamps: true,
       createdAt: "created_at",
       updatedAt: "updated_at",
       paranoid: true,
       deletedAt: "deleted_at",
-      indexes: [
-        { unique: true, fields: ["entity_type", "entity_id"] },
-        { unique: true, fields: ["email"] },
-      ],
     }
   );
 

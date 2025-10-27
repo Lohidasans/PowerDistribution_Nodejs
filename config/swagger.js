@@ -975,6 +975,53 @@ const options = {
             "joining_date",
           ],
         },
+        SuperAdminFullCreateInput: {
+          type: "object",
+          allOf: [
+            { $ref: "#/components/schemas/SuperAdminProfileCreateInput" },
+            {
+              type: "object",
+              properties: {
+                bank_account: { $ref: "#/components/schemas/BankAccountNestedInput" },
+                kyc_documents: { type: "array", items: { $ref: "#/components/schemas/KycNestedCreateItem" } },
+                logins: {
+                  type: "array",
+                  items: { $ref: "#/components/schemas/LoginNestedCreateInput" },
+                  description: "Array of login users to create for superadmin"
+                }
+              }
+            }
+          ]
+        },
+        SuperAdminFullUpdateInput: {
+          type: "object",
+          properties: {
+            company_name: { type: "string" },
+            proprietor: { type: "string" },
+            mobile: { type: "string" },
+            email: { type: "string", format: "email" },
+            address: { type: "string" },
+            state_id: { type: "integer" },
+            district_id: { type: "integer" },
+            pin_code: { type: "string" },
+            branch_sequence_type: { type: "string", enum: ["prefix", "suffix"] },
+            branch_sequence_value: { type: "string" },
+            joining_date: { type: "string", format: "date" },
+            bank_account: { $ref: "#/components/schemas/BankAccountNestedInput" },
+            kyc_documents: { type: "array", items: { $ref: "#/components/schemas/KycNestedUpdateItem" } },
+            logins: {
+              type: "array",
+              items: {
+                type: "object",
+                allOf: [
+                  { $ref: "#/components/schemas/LoginNestedUpdateInput" },
+                  { type: "object", properties: { id: { type: "integer" } }, required: ["id"] }
+                ]
+              },
+              description: "Update-only; each item must include id"
+            }
+          }
+        },
       },
     },
   },

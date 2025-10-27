@@ -1,8 +1,12 @@
 const { models, sequelize } = require("../models/index");
 const commonService = require("./commonService");
 const message = require("../constants/en.json");
+const bankSvc = require("./bankAccountService");
+const kycSvc = require("./kycDocumentService");
+const userSvc = require("./userLoginService");
 
 const createSuperAdminProfile = async (req, res) => {
+  const t = await sequelize.transaction();
   try {
     const {
       company_name,
@@ -16,7 +20,10 @@ const createSuperAdminProfile = async (req, res) => {
       branch_sequence_type,
       branch_sequence_value,
       joining_date,
-    } = req.body;
+      bank_account,
+      kyc_documents,
+      logins,
+    } = req.body || {};
 
     if (
       !company_name ||
@@ -31,25 +38,68 @@ const createSuperAdminProfile = async (req, res) => {
       !branch_sequence_value ||
       !joining_date
     ) {
-      return commonService.badRequest(res, message.superAdminProfile?.required);
+      await t.rollback();
+      return commonService.badRequest(res, message.superAdminProfile?.required || message.failure.requiredFields);
     }
 
-    const profile = await models.SuperAdminProfile.create({
-      company_name,
-      proprietor,
-      mobile_number,
-      email_id,
-      address,
-      district_id,
-      state_id,
-      pin_code,
-      branch_sequence_type,
-      branch_sequence_value,
-      joining_date,
-    });
+    const profile = await models.SuperAdminProfile.create(
+      {
+        company_name,
+        proprietor,
+        mobile_number,
+        email_id,
+        address,
+        district_id,
+        state_id,
+        pin_code,
+        branch_sequence_type,
+        branch_sequence_value,
+        joining_date,
+      },
+      { transaction: t }
+    );
 
-    return commonService.createdResponse(res, { profile });
+    // Optional: single bank account via helper
+    let createdBankAccount = null;
+    if (bank_account && typeof bank_account === "object") {
+      try {
+        createdBankAccount = await bankSvc.createBankAccountByEntity(t, "superadmin", profile.id, bank_account);
+      } catch (e) {
+        await t.rollback();
+        return commonService.badRequest(res, message.requiredEntityIdAndType);
+      }
+    }
+
+    // Optional: multiple KYC via helper
+    let createdKycDocs = [];
+    if (Array.isArray(kyc_documents) && kyc_documents.length > 0) {
+      createdKycDocs = await kycSvc.createKycByEntity(t, "superadmin", profile.id, kyc_documents);
+    }
+
+    // Optional: multiple logins via helper (array)
+    let createdUsers = [];
+    if (logins && !Array.isArray(logins)) {
+      await t.rollback();
+      return commonService.badRequest(res, message.failure.badRequest);
+    }
+    if (Array.isArray(logins) && logins.length > 0) {
+      const result = await userSvc.createUsersByEntity(t, "superadmin", profile.id, logins);
+      if (result && result.error) {
+        await t.rollback();
+        return commonService.badRequest(res, result.error);
+      }
+      createdUsers = result || [];
+    }
+
+    await t.commit();
+    return commonService.createdResponse(res, {
+      profile,
+      bank_account: createdBankAccount,
+      kyc_documents: createdKycDocs,
+      logins: createdUsers,
+    });
   } catch (err) {
+    await t.rollback();
     return commonService.handleError(res, err);
   }
 };
@@ -153,24 +203,33 @@ const listSuperAdminDropdown = async (req, res) => {
 
 
 const getSuperAdminProfileById = async (req, res) => {
-  const entity = await commonService.findById(
-    models.SuperAdminProfile,
-    req.params.id,
-    res
-  );
-  if (!entity) return;
-  return commonService.okResponse(res, { profile: entity });
+  try {
+    const { id } = req.params;
+    const profile = await commonService.findById(models.SuperAdminProfile, id, res);
+    if (!profile) return;
+
+    const [bank_account, kyc_documents, logins] = await Promise.all([
+      models.BankAccount.findOne({ where: { entity_type: "superadmin", entity_id: id } }),
+      models.KycDocument.findAll({ where: { entity_type: "superadmin", entity_id: id } }),
+      models.User.findAll({ where: { entity_type: "superadmin", entity_id: id } }),
+    ]);
+
+    return commonService.okResponse(res, { profile, bank_account, kyc_documents, logins });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
 };
 
 const updateSuperAdminProfile = async (req, res) => {
-  const entity = await commonService.findById(
-    models.SuperAdminProfile,
-    req.params.id,
-    res
-  );
-  if (!entity) return;
-
+  const t = await sequelize.transaction();
   try {
+    const { id } = req.params;
+    const entity = await commonService.findById(models.SuperAdminProfile, id, res);
+    if (!entity) {
+      await t.rollback();
+      return;
+    }
+
     const {
       company_name,
       proprietor,
@@ -183,40 +242,87 @@ const updateSuperAdminProfile = async (req, res) => {
       branch_sequence_type,
       branch_sequence_value,
       joining_date,
-    } = req.body;
+      bank_account,
+      kyc_documents,
+      logins,
+    } = req.body || {};
 
-    await entity.update({
-      company_name,
-      proprietor,
-      mobile_number,
-      email_id,
-      address,
-      district_id,
-      state_id,
-      pin_code,
-      branch_sequence_type,
-      branch_sequence_value,
-      joining_date,
+    await entity.update(
+      {
+        company_name,
+        proprietor,
+        mobile_number,
+        email_id,
+        address,
+        district_id,
+        state_id,
+        pin_code,
+        branch_sequence_type,
+        branch_sequence_value,
+        joining_date,
+      },
+      { transaction: t }
+    );
+
+    // Update-only bank account
+    let upsertedBank = null;
+    if (bank_account && typeof bank_account === "object") {
+      try {
+        upsertedBank = await bankSvc.updateBankAccountByEntity(t, "superadmin", entity.id, bank_account);
+      } catch (e) {
+        await t.rollback();
+        return commonService.handleError(res, e);
+      }
+    }
+
+    // KYC update-only
+    let updatedKyc = [];
+    if (Array.isArray(kyc_documents)) {
+      updatedKyc = await kycSvc.updateKycByEntity(t, "superadmin", entity.id, kyc_documents);
+    }
+
+    // Logins update-only (array required if provided)
+    let updatedLogins = [];
+    if (logins !== undefined) {
+      if (!Array.isArray(logins)) {
+        await t.rollback();
+        return commonService.badRequest(res, message.failure.badRequest);
+      }
+      updatedLogins = await userSvc.updateUsersByEntity(t, "superadmin", entity.id, logins);
+    }
+
+    await t.commit();
+    return commonService.okResponse(res, {
+      profile: entity,
+      bank_account: upsertedBank,
+      kyc_documents: updatedKyc,
+      logins: updatedLogins,
     });
-
-    return commonService.okResponse(res, { profile: entity });
   } catch (err) {
+    await t.rollback();
     return commonService.handleError(res, err);
   }
 };
 
 const deleteSuperAdminProfile = async (req, res) => {
-  const entity = await commonService.findById(
-    models.SuperAdminProfile,
-    req.params.id,
-    res
-  );
-  if (!entity) return;
-
+  const t = await sequelize.transaction();
   try {
-    await entity.destroy();
+    const entity = await commonService.findById(models.SuperAdminProfile, req.params.id, res);
+    if (!entity) {
+      await t.rollback();
+      return;
+    }
+
+    // Delete ancillary records
+    await models.BankAccount.destroy({ where: { entity_type: "superadmin", entity_id: entity.id }, transaction: t });
+    await models.KycDocument.destroy({ where: { entity_type: "superadmin", entity_id: entity.id }, transaction: t });
+    await models.User.destroy({ where: { entity_type: "superadmin", entity_id: entity.id }, transaction: t });
+
+    await entity.destroy({ transaction: t });
+    await t.commit();
     return commonService.noContentResponse(res);
   } catch (err) {
+    await t.rollback();
     return commonService.handleError(res, err);
   }
 };

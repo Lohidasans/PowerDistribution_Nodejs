@@ -51,14 +51,14 @@ module.exports = superAdminRouter;
  *       200:
  *         description: OK
  *   post:
- *     summary: Create Super Admin Profile
+ *     summary: Create Super Admin Profile with optional bank account, KYC docs, and multiple logins
  *     tags: [SuperAdminProfile]
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/SuperAdminProfileCreateInput'
+ *             $ref: '#/components/schemas/SuperAdminFullCreateInput'
  *     responses:
  *       201:
  *         description: Created
@@ -104,7 +104,7 @@ module.exports = superAdminRouter;
  *       200:
  *         description: OK
  *   put:
- *     summary: Update Super Admin Profile
+ *     summary: Update Super Admin Profile with optional updates for bank account, KYC docs, and multiple logins (update-only; KYC/logins require id)
  *     tags: [SuperAdminProfile]
  *     parameters:
  *       - in: path
@@ -116,7 +116,7 @@ module.exports = superAdminRouter;
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/SuperAdminProfile'
+ *             $ref: '#/components/schemas/SuperAdminFullUpdateInput'
  *     responses:
  *       200:
  *         description: OK
