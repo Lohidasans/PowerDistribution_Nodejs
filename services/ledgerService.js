@@ -34,7 +34,7 @@ const create = async (req, res) => {
     return commonService.createdResponse(res, { ledger: createdLedger });
   } catch (err) {
     console.error("Error creating ledger:", err);
-    return commonService.serverError(res, message.SERVER_ERROR);
+    return commonService.handleError(res, err);
   }
 };
 
@@ -69,7 +69,7 @@ const bulkCreate = async (req, res) => {
     return commonService.createdResponse(res, { ledgers: createdLedgers });
   } catch (err) {
     console.error("Error bulk creating ledgers:", err);
-    return commonService.serverError(res, message.SERVER_ERROR);
+    return commonService.handleError(res, err);
   }
 };
 
@@ -105,7 +105,7 @@ const list = async (req, res) => {
       order: [["created_at", "DESC"]],
     });
 
-    return commonService.successResponse(res, {
+    return commonService.okResponse(res, {
       ledgers,
       pagination: {
         total: count,
@@ -116,7 +116,7 @@ const list = async (req, res) => {
     });
   } catch (err) {
     console.error("Error fetching ledgers:", err);
-    return commonService.serverError(res, message.SERVER_ERROR);
+    return commonService.handleError(res, err);
   }
 };
 
@@ -136,13 +136,13 @@ const getById = async (req, res) => {
     });
 
     if (!ledger) {
-      return commonService.notFoundError(res, "Ledger not found");
+      return commonService.notFound(res, "Ledger not found");
     }
 
-    return commonService.successResponse(res, { ledger });
+    return commonService.okResponse(res, { ledger });
   } catch (err) {
     console.error("Error fetching ledger by ID:", err);
-    return commonService.serverError(res, message.SERVER_ERROR);
+    return commonService.handleError(res, err);
   }
 };
 
@@ -156,7 +156,7 @@ const getByLedgerGroupId = async (req, res) => {
     // Check if ledger group exists
     const ledgerGroup = await models.LedgerGroup.findByPk(ledgerGroupId);
     if (!ledgerGroup) {
-      return commonService.notFoundError(res, "Ledger group not found");
+      return commonService.notFound(res, "Ledger group not found");
     }
 
     const { count, rows: ledgers } = await models.Ledger.findAndCountAll({
@@ -166,7 +166,7 @@ const getByLedgerGroupId = async (req, res) => {
       order: [["created_at", "DESC"]],
     });
 
-    return commonService.successResponse(res, {
+    return commonService.okResponse(res, {
       ledgers,
       pagination: {
         total: count,
@@ -177,7 +177,7 @@ const getByLedgerGroupId = async (req, res) => {
     });
   } catch (err) {
     console.error("Error fetching ledgers by ledger group ID:", err);
-    return commonService.serverError(res, message.SERVER_ERROR);
+    return commonService.handleError(res, err);
   }
 };
 
@@ -190,7 +190,7 @@ const update = async (req, res) => {
     const ledger = await models.Ledger.findByPk(id);
 
     if (!ledger) {
-      return commonService.notFoundError(res, "Ledger not found");
+      return commonService.notFound(res, "Ledger not found");
     }
 
     // If ledger_group_id is provided, check if it exists
@@ -218,10 +218,10 @@ const update = async (req, res) => {
       ],
     });
 
-    return commonService.successResponse(res, { ledger: updatedLedger });
+    return commonService.okResponse(res, { ledger: updatedLedger });
   } catch (err) {
     console.error("Error updating ledger:", err);
-    return commonService.serverError(res, message.SERVER_ERROR);
+    return commonService.handleError(res, err);
   }
 };
 
@@ -233,17 +233,17 @@ const remove = async (req, res) => {
     const ledger = await models.Ledger.findByPk(id);
 
     if (!ledger) {
-      return commonService.notFoundError(res, "Ledger not found");
+      return commonService.notFound(res, "Ledger not found");
     }
 
     await ledger.destroy(); // This uses paranoid deletion (soft delete)
 
-    return commonService.successResponse(res, {
+    return commonService.okResponse(res, {
       message: "Ledger deleted successfully",
     });
   } catch (err) {
     console.error("Error deleting ledger:", err);
-    return commonService.serverError(res, message.SERVER_ERROR);
+    return commonService.handleError(res, err);
   }
 };
 

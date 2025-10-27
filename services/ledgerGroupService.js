@@ -32,7 +32,7 @@ const create = async (req, res) => {
     return commonService.createdResponse(res, { ledgerGroup });
   } catch (err) {
     console.error("Error creating ledger group:", err);
-    return commonService.serverError(res, message.SERVER_ERROR);
+    return commonService.handleError(res, err);
   }
 };
 
@@ -60,7 +60,7 @@ const bulkCreate = async (req, res) => {
     });
   } catch (err) {
     console.error("Error bulk creating ledger groups:", err);
-    return commonService.serverError(res, message.SERVER_ERROR);
+    return commonService.handleError(res, err);
   }
 };
 
@@ -93,7 +93,7 @@ const list = async (req, res) => {
         order: [["created_at", "DESC"]],
       });
 
-    return commonService.successResponse(res, {
+    return commonService.okResponse(res, {
       ledgerGroups,
       pagination: {
         total: count,
@@ -104,7 +104,7 @@ const list = async (req, res) => {
     });
   } catch (err) {
     console.error("Error fetching ledger groups:", err);
-    return commonService.serverError(res, message.SERVER_ERROR);
+    return commonService.handleError(res, err);
   }
 };
 
@@ -116,13 +116,13 @@ const getById = async (req, res) => {
     const ledgerGroup = await models.LedgerGroup.findByPk(id);
 
     if (!ledgerGroup) {
-      return commonService.notFoundError(res, "Ledger group not found");
+      return commonService.notFound(res, "Ledger group not found");
     }
 
-    return commonService.successResponse(res, { ledgerGroup });
+    return commonService.okResponse(res, { ledgerGroup });
   } catch (err) {
     console.error("Error fetching ledger group by ID:", err);
-    return commonService.serverError(res, message.SERVER_ERROR);
+    return commonService.handleError(res, err);
   }
 };
 
@@ -135,7 +135,7 @@ const update = async (req, res) => {
     const ledgerGroup = await models.LedgerGroup.findByPk(id);
 
     if (!ledgerGroup) {
-      return commonService.notFoundError(res, "Ledger group not found");
+      return commonService.notFound(res, "Ledger group not found");
     }
 
     // Check if updating to an existing ledger_group_id
@@ -162,10 +162,10 @@ const update = async (req, res) => {
       status_id: status_id !== undefined ? status_id : ledgerGroup.status_id,
     });
 
-    return commonService.successResponse(res, { ledgerGroup });
+    return commonService.okResponse(res, { ledgerGroup });
   } catch (err) {
     console.error("Error updating ledger group:", err);
-    return commonService.serverError(res, message.SERVER_ERROR);
+    return commonService.handleError(res, err);
   }
 };
 
@@ -182,18 +182,18 @@ const toggleStatus = async (req, res) => {
     const ledgerGroup = await models.LedgerGroup.findByPk(id);
 
     if (!ledgerGroup) {
-      return commonService.notFoundError(res, "Ledger group not found");
+      return commonService.notFound(res, "Ledger group not found");
     }
 
     await ledgerGroup.update({ status_id });
 
-    return commonService.successResponse(res, {
+    return commonService.okResponse(res, {
       ledgerGroup,
       message: `Ledger group status updated to ${status_id}`,
     });
   } catch (err) {
     console.error("Error toggling ledger group status:", err);
-    return commonService.serverError(res, message.SERVER_ERROR);
+    return commonService.handleError(res, err);
   }
 };
 
@@ -205,17 +205,17 @@ const remove = async (req, res) => {
     const ledgerGroup = await models.LedgerGroup.findByPk(id);
 
     if (!ledgerGroup) {
-      return commonService.notFoundError(res, "Ledger group not found");
+      return commonService.notFound(res, "Ledger group not found");
     }
 
     await ledgerGroup.destroy(); // This uses paranoid deletion (soft delete)
 
-    return commonService.successResponse(res, {
+    return commonService.okResponse(res, {
       message: "Ledger group deleted successfully",
     });
   } catch (err) {
     console.error("Error deleting ledger group:", err);
-    return commonService.serverError(res, message.SERVER_ERROR);
+    return commonService.handleError(res, err);
   }
 };
 
