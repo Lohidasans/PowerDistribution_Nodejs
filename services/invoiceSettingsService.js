@@ -185,6 +185,181 @@ const bulkCreate = async (req, res) => {
   }
 };
 
+// Bulk Update Invoice Settings
+const bulkUpdate = async (req, res) => {
+  try {
+    const { invoiceSettings } = req.body;
+
+    // Validate input
+    if (!Array.isArray(invoiceSettings) || invoiceSettings.length === 0) {
+      return commonService.badRequest(
+        res,
+        "invoiceSettings array is required and cannot be empty"
+      );
+    }
+
+    // Validate each invoice setting object has an ID
+    const errors = [];
+    const validInvoiceSettings = [];
+    const updateIds = [];
+
+    for (let i = 0; i < invoiceSettings.length; i++) {
+      const setting = invoiceSettings[i];
+      const index = i + 1;
+
+      if (!setting.id) {
+        errors.push(`Item ${index}: id is required for update`);
+        continue;
+      }
+
+      updateIds.push(setting.id);
+      validInvoiceSettings.push(setting);
+    }
+
+    if (errors.length > 0) {
+      return commonService.badRequest(res, {
+        message: "Validation failed",
+        errors: errors,
+      });
+    }
+
+    // Check if all invoice settings exist
+    const existingSettings = await models.InvoiceSetting.findAll({
+      where: { id: { [Op.in]: updateIds } },
+      attributes: ["id", "branch_id", "invoice_sequence_name_id"],
+    });
+
+    const foundIds = existingSettings.map((setting) => setting.id);
+    const missingIds = updateIds.filter((id) => !foundIds.includes(id));
+
+    if (missingIds.length > 0) {
+      return commonService.badRequest(
+        res,
+        `Invoice settings not found: ${missingIds.join(", ")}`
+      );
+    }
+
+    // Validate branch_id changes and sequence name uniqueness
+    const branchIds = [];
+    for (let i = 0; i < validInvoiceSettings.length; i++) {
+      const setting = validInvoiceSettings[i];
+      const existingSetting = existingSettings.find(
+        (es) => es.id === setting.id
+      );
+      const index = i + 1;
+
+      // If branch_id is being updated, collect it for validation
+      if (
+        setting.branch_id &&
+        setting.branch_id !== existingSetting.branch_id
+      ) {
+        branchIds.push(setting.branch_id);
+      }
+
+      // Check for duplicate sequence name within same branch for updates
+      if (
+        (setting.branch_id &&
+          setting.branch_id !== existingSetting.branch_id) ||
+        (setting.invoice_sequence_name_id &&
+          setting.invoice_sequence_name_id !==
+            existingSetting.invoice_sequence_name_id)
+      ) {
+        const finalBranchId = setting.branch_id || existingSetting.branch_id;
+        const finalSequenceName =
+          setting.invoice_sequence_name_id ||
+          existingSetting.invoice_sequence_name_id;
+
+        const sequenceExists = await models.InvoiceSetting.findOne({
+          where: {
+            branch_id: finalBranchId,
+            invoice_sequence_name_id: finalSequenceName,
+            id: { [Op.ne]: setting.id },
+          },
+        });
+
+        if (sequenceExists) {
+          errors.push(
+            `Item ${index}: Invoice setting with sequence name '${finalSequenceName}' already exists for branch ${finalBranchId}`
+          );
+        }
+      }
+    }
+
+    // Verify all new branches exist
+    if (branchIds.length > 0) {
+      const uniqueBranchIds = [...new Set(branchIds)];
+      const branches = await models.Branch.findAll({
+        where: { id: { [Op.in]: uniqueBranchIds } },
+        attributes: ["id"],
+      });
+
+      const foundBranchIds = branches.map((branch) => branch.id);
+      const missingBranchIds = uniqueBranchIds.filter(
+        (id) => !foundBranchIds.includes(id)
+      );
+
+      if (missingBranchIds.length > 0) {
+        errors.push(`Branches not found: ${missingBranchIds.join(", ")}`);
+      }
+    }
+
+    if (errors.length > 0) {
+      return commonService.badRequest(res, {
+        message: "Validation failed",
+        errors: errors,
+      });
+    }
+
+    // Perform bulk update
+    const updatedInvoiceSettings = [];
+    for (const setting of validInvoiceSettings) {
+      const existingSetting = existingSettings.find(
+        (es) => es.id === setting.id
+      );
+
+      const invoiceSettingRecord = await models.InvoiceSetting.findByPk(
+        setting.id
+      );
+
+      await invoiceSettingRecord.update({
+        branch_id:
+          setting.branch_id !== undefined
+            ? setting.branch_id
+            : invoiceSettingRecord.branch_id,
+        invoice_sequence_name_id:
+          setting.invoice_sequence_name_id !== undefined
+            ? setting.invoice_sequence_name_id
+            : invoiceSettingRecord.invoice_sequence_name_id,
+        invoice_prefix:
+          setting.invoice_prefix !== undefined
+            ? setting.invoice_prefix
+            : invoiceSettingRecord.invoice_prefix,
+        invoice_suffix:
+          setting.invoice_suffix !== undefined
+            ? setting.invoice_suffix
+            : invoiceSettingRecord.invoice_suffix,
+        invoice_start_no:
+          setting.invoice_start_no !== undefined
+            ? setting.invoice_start_no
+            : invoiceSettingRecord.invoice_start_no,
+        status_id:
+          setting.status_id !== undefined
+            ? setting.status_id
+            : invoiceSettingRecord.status_id,
+      });
+
+      updatedInvoiceSettings.push(invoiceSettingRecord);
+    }
+
+    return commonService.okResponse(res, {
+      message: `${updatedInvoiceSettings.length} invoice settings updated successfully`,
+      invoiceSettings: updatedInvoiceSettings,
+    });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
 // List Invoice Settings with optional search and branch filter
 const list = async (req, res) => {
   try {
@@ -395,6 +570,7 @@ const toggleStatus = async (req, res) => {
 module.exports = {
   create,
   bulkCreate,
+  bulkUpdate,
   list,
   getById,
   getByBranchId,

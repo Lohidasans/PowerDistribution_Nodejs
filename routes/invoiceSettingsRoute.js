@@ -7,6 +7,10 @@ invoiceSettingsRouter.post(
   "/invoice-settings/bulk",
   invoiceSettingsService.bulkCreate
 );
+invoiceSettingsRouter.put(
+  "/invoice-settings/bulk",
+  invoiceSettingsService.bulkUpdate
+);
 invoiceSettingsRouter.get("/invoice-settings", invoiceSettingsService.list);
 invoiceSettingsRouter.get(
   "/invoice-settings/:id",
@@ -140,8 +144,69 @@ module.exports = invoiceSettingsRouter;
  *                   type: array
  *                   items:
  *                     type: object
+       400:
+         description: Bad Request - Validation errors, duplicate sequence names for same branch, or branches not found
+ */
+/**
+ * @openapi
+ * /api/v1/invoice-settings/bulk:
+ *   put:
+ *     summary: Bulk update invoice settings
+ *     tags: [Invoice Settings]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               invoiceSettings:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     id: { type: integer }
+ *                     branch_id: { type: integer }
+ *                     invoice_sequence_name_id: { type: string }
+ *                     invoice_prefix: { type: string }
+ *                     invoice_suffix: { type: string }
+ *                     invoice_start_no: { type: integer }
+ *                     status_id: { type: integer }
+ *                   required: [id]
+ *             required: [invoiceSettings]
+ *             example:
+ *               invoiceSettings:
+ *                 - id: 1
+ *                   branch_id: 1
+ *                   invoice_sequence_name_id: "INV_SEQUENCE_1"
+ *                   invoice_prefix: "INV_UPD"
+ *                   invoice_suffix: "B1"
+ *                   invoice_start_no: 1500
+ *                   status_id: 1
+ *                 - id: 2
+ *                   branch_id: 2
+ *                   invoice_sequence_name_id: "BILL_SEQUENCE_1"
+ *                   invoice_prefix: "BILL_UPD"
+ *                   invoice_suffix: "B2"
+ *                   invoice_start_no: 2500
+ *                   status_id: 1
+ *     responses:
+ *       200:
+ *         description: OK - Invoice settings updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message: { type: string }
+ *                 invoiceSettings:
+ *                   type: array
+ *                   items:
+ *                     type: object
  *       400:
- *         description: Bad Request - Validation errors, duplicate sequence names for same branch, or branches not found
+ *         description: Bad Request - Validation errors, invoice settings not found, duplicate sequence names for same branch, or branches not found
+ *       404:
+ *         description: Not Found - One or more invoice settings not found
  */
 /**
  * @openapi
