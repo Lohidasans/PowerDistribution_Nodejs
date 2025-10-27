@@ -44,5 +44,20 @@ module.exports = (sequelize, DataTypes) => {
     }
   );
 
+  // Define associations
+  InvoiceSetting.associate = function (models) {
+    // Association with Branch
+    InvoiceSetting.belongsTo(models.Branch, {
+      foreignKey: "branch_id",
+      as: "branch",
+    });
+
+    // Association with InvoiceSettingEnum
+    InvoiceSetting.belongsTo(models.InvoiceSettingEnum, {
+      foreignKey: "invoice_sequence_name_id",
+      as: "invoiceSequenceName",
+    });
+  };
+
   return InvoiceSetting;
 };

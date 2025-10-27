@@ -11,7 +11,10 @@ invoiceSettingsRouter.put(
   "/invoice-settings/bulk",
   invoiceSettingsService.bulkUpdate
 );
-invoiceSettingsRouter.get("/invoice-settings", invoiceSettingsService.list);
+invoiceSettingsRouter.get(
+  "/invoice-settings",
+  invoiceSettingsService.listWithRawQuery
+);
 invoiceSettingsRouter.get(
   "/invoice-settings/:id",
   invoiceSettingsService.getById

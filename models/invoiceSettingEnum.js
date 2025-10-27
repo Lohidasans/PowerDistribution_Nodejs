@@ -1,5 +1,5 @@
 module.exports = (sequelize, DataTypes) => {
-  const Branch = sequelize.define(
+  const InvoiceSettingEnum = sequelize.define(
     "invoiceSettingEnum",
     {
       id: {
@@ -32,5 +32,14 @@ module.exports = (sequelize, DataTypes) => {
     }
   );
 
-  return Branch;
+  // Define associations
+  InvoiceSettingEnum.associate = function (models) {
+    // Reverse association with InvoiceSettings
+    InvoiceSettingEnum.hasMany(models.InvoiceSetting, {
+      foreignKey: "invoice_sequence_name_id",
+      as: "invoiceSettings",
+    });
+  };
+
+  return InvoiceSettingEnum;
 };

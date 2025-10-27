@@ -69,13 +69,11 @@ module.exports = (sequelize, DataTypes) => {
   );
 
   Branch.associate = (models) => {
-    Branch.hasOne(models.InvoiceSetting, {
+    Branch.hasMany(models.InvoiceSetting, {
       foreignKey: "branch_id",
-      as: "invoiceSetting",
+      as: "invoiceSettings",
     });
-  };
 
-  Branch.associate = (models) => {
     Branch.hasMany(models.Employee, {
       foreignKey: "branch_id",
       as: "employees",

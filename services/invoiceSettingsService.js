@@ -1,4 +1,4 @@
-const { models } = require("../models/index");
+const { models, sequelize } = require("../models/index");
 const { Op } = require("sequelize");
 const commonService = require("../services/commonService");
 const message = require("../constants/en.json");
@@ -367,12 +367,30 @@ const list = async (req, res) => {
     const branchId = req.query.branch_id;
 
     let whereClause = {};
+    let includeClause = [
+      {
+        model: models.Branch,
+        as: "branch",
+        attributes: ["id", "branch_name", "branch_no"],
+      },
+      {
+        model: models.InvoiceSettingEnum,
+        as: "invoiceSequenceName",
+        attributes: ["id", "invoice_setting_enum", "status"],
+        required: false, // LEFT JOIN
+      },
+    ];
 
     if (searchKey) {
       whereClause[Op.or] = [
-        { invoice_sequence_name_id: { [Op.iLike]: `%${searchKey}%` } },
         { invoice_prefix: { [Op.iLike]: `%${searchKey}%` } },
         { invoice_suffix: { [Op.iLike]: `%${searchKey}%` } },
+        // Search in invoice_setting_enum table
+        {
+          "$invoiceSequenceName.invoice_setting_enum$": {
+            [Op.iLike]: `%${searchKey}%`,
+          },
+        },
       ];
     }
 
@@ -382,13 +400,7 @@ const list = async (req, res) => {
 
     const invoiceSettings = await models.InvoiceSetting.findAll({
       where: whereClause,
-      include: [
-        {
-          model: models.Branch,
-          as: "branch",
-          attributes: ["id", "branch_name", "branch_no"],
-        },
-      ],
+      include: includeClause,
       order: [["created_at", "DESC"]],
     });
 
@@ -407,6 +419,12 @@ const getById = async (req, res) => {
           model: models.Branch,
           as: "branch",
           attributes: ["id", "branch_name", "branch_no"],
+        },
+        {
+          model: models.InvoiceSettingEnum,
+          as: "invoiceSequenceName",
+          attributes: ["id", "invoice_setting_enum", "status"],
+          required: false, // LEFT JOIN
         },
       ],
     });
@@ -431,6 +449,12 @@ const getByBranchId = async (req, res) => {
           model: models.Branch,
           as: "branch",
           attributes: ["id", "branch_name", "branch_no"],
+        },
+        {
+          model: models.InvoiceSettingEnum,
+          as: "invoiceSequenceName",
+          attributes: ["id", "invoice_setting_enum", "status"],
+          required: false, // LEFT JOIN
         },
       ],
     });
@@ -567,11 +591,65 @@ const toggleStatus = async (req, res) => {
   }
 };
 
+// List Invoice Settings with Raw Query (Alternative approach)
+const listWithRawQuery = async (req, res) => {
+  try {
+    const searchKey = req.query.search || "";
+    const branchId = req.query.branch_id;
+
+    const query = `
+      SELECT
+          inv.id,
+          inv.branch_id,
+          inv.invoice_sequence_name_id,
+          inv.invoice_prefix,
+          inv.invoice_suffix,
+          inv.invoice_start_no,
+          inv.status_id,
+          inv.created_at,
+          inv.updated_at,
+          b.branch_name,
+          b.branch_no,
+          ise.invoice_setting_enum,
+          ise.status as enum_status
+      FROM invoice_settings inv
+      LEFT JOIN branches b ON inv.branch_id = b.id
+      LEFT JOIN invoice_setting_enum ise ON inv.invoice_sequence_name_id = ise.id
+      WHERE
+          (:branchId IS NULL OR inv.branch_id = :branchId)
+          AND (
+              :searchKey = ''
+              OR inv.invoice_prefix ILIKE :searchPattern
+              OR inv.invoice_suffix ILIKE :searchPattern
+              OR ise.invoice_setting_enum ILIKE :searchPattern
+          )
+          AND inv.deleted_at IS NULL
+      ORDER BY inv.created_at DESC;
+    `;
+
+    const replacements = {
+      branchId: branchId || null,
+      searchKey,
+      searchPattern: `%${searchKey}%`,
+    };
+
+    const results = await sequelize.query(query, {
+      replacements,
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    return commonService.okResponse(res, { invoiceSettings: results });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
 module.exports = {
   create,
   bulkCreate,
   bulkUpdate,
   list,
+  listWithRawQuery,
   getById,
   getByBranchId,
   update,
