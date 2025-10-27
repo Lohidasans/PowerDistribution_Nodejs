@@ -35,6 +35,14 @@ const createMaterialType = async (req, res) => {
 
     return commonService.createdResponse(res, { materialType: row });
   } catch (err) {
+    // Handle duplication or race condition (unique constraint)
+    if (err.name === "SequelizeUniqueConstraintError") {
+      return commonService.badRequest(
+        res,
+        enMessage.materialType.duplication
+      );
+    }
+
     return commonService.handleError(res, err);
   }
 };
