@@ -6,10 +6,13 @@ const State = require("./state")(sequelize, Sequelize.DataTypes);
 const District = require("./districts")(sequelize, Sequelize.DataTypes);
 
 const Customer = require("./customer")(sequelize, Sequelize.DataTypes);
-const Permission = require('./permissions')(sequelize, Sequelize.DataTypes);
-const Role = require('./roles')(sequelize, Sequelize.DataTypes);
-const RolePermission = require('./rolePermissions')(sequelize, Sequelize.DataTypes);
-const Scheme = require('./schemes')(sequelize, Sequelize.DataTypes);
+const Permission = require("./permissions")(sequelize, Sequelize.DataTypes);
+const Role = require("./roles")(sequelize, Sequelize.DataTypes);
+const RolePermission = require("./rolePermissions")(
+  sequelize,
+  Sequelize.DataTypes
+);
+const Scheme = require("./schemes")(sequelize, Sequelize.DataTypes);
 
 // Branch related models
 const Branch = require("./branches")(sequelize, Sequelize.DataTypes);
@@ -83,7 +86,10 @@ const SuperAdminProfile = require("./superAdminProfiles")(
   sequelize,
   Sequelize.DataTypes
 );
-
+const InvoiceSettingEnum = require("./invoiceSettingEnum")(
+  sequelize,
+  Sequelize.DataTypes
+);
 const models = {
   Permission,
   Role,
@@ -120,7 +126,8 @@ const models = {
   LedgerGroup,
   Ledger,
   Scheme,
-  SuperAdminProfile
+  SuperAdminProfile,
+  InvoiceSettingEnum,
 };
 
 Object.values(models).forEach((model) => {

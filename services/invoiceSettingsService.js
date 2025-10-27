@@ -8,7 +8,7 @@ const create = async (req, res) => {
   try {
     const {
       branch_id,
-      sequence_name,
+      invoice_sequence_name_id,
       invoice_prefix,
       invoice_suffix,
       status_id = 1,
@@ -18,7 +18,7 @@ const create = async (req, res) => {
     const sequenceExists = await models.InvoiceSetting.findOne({
       where: {
         branch_id,
-        sequence_name,
+        invoice_sequence_name_id,
       },
     });
 
@@ -38,7 +38,7 @@ const create = async (req, res) => {
     // Create new invoice setting
     const invoiceSetting = await models.InvoiceSetting.create({
       branch_id,
-      sequence_name,
+      invoice_sequence_name_id,
       invoice_prefix,
       invoice_suffix,
       status_id,
@@ -70,15 +70,15 @@ const bulkCreate = async (req, res) => {
       .map((setting) => setting.branch_id)
       .filter((id) => id);
 
-    // Check for duplicate sequence_name within same branch_id in the request
+    // Check for duplicate invoice_sequence_name_id within same branch_id in the request
     const branchSequenceMap = new Map();
     for (let i = 0; i < invoiceSettings.length; i++) {
       const setting = invoiceSettings[i];
-      const key = `${setting.branch_id}_${setting.sequence_name}`;
+      const key = `${setting.branch_id}_${setting.invoice_sequence_name_id}`;
 
       if (branchSequenceMap.has(key)) {
         errors.push(
-          `Duplicate sequence_name '${setting.sequence_name}' found for branch_id ${setting.branch_id} in request`
+          `Duplicate invoice_sequence_name_id '${setting.invoice_sequence_name_id}' found for branch_id ${setting.branch_id} in request`
         );
       } else {
         branchSequenceMap.set(key, i);
@@ -97,16 +97,16 @@ const bulkCreate = async (req, res) => {
       where: {
         [Op.or]: invoiceSettings.map((setting) => ({
           branch_id: setting.branch_id,
-          sequence_name: setting.sequence_name,
+          invoice_sequence_name_id: setting.invoice_sequence_name_id,
         })),
       },
-      attributes: ["branch_id", "sequence_name"],
+      attributes: ["branch_id", "invoice_sequence_name_id"],
     });
 
     if (existingSequences.length > 0) {
       const existingCombinations = existingSequences.map(
         (setting) =>
-          `branch_id: ${setting.branch_id}, sequence_name: '${setting.sequence_name}'`
+          `branch_id: ${setting.branch_id}, invoice_sequence_name_id: '${setting.invoice_sequence_name_id}'`
       );
       return commonService.badRequest(
         res,
@@ -145,14 +145,14 @@ const bulkCreate = async (req, res) => {
         continue;
       }
 
-      if (!setting.sequence_name) {
-        errors.push(`Item ${index}: sequence_name is required`);
+      if (!setting.invoice_sequence_name_id) {
+        errors.push(`Item ${index}: invoice_sequence_name_id is required`);
         continue;
       }
 
       validInvoiceSettings.push({
         branch_id: setting.branch_id,
-        sequence_name: setting.sequence_name,
+        invoice_sequence_name_id: setting.invoice_sequence_name_id,
         invoice_prefix: setting.invoice_prefix || null,
         invoice_suffix: setting.invoice_suffix || null,
         invoice_start_no: setting.invoice_start_no || null,
@@ -195,7 +195,7 @@ const list = async (req, res) => {
 
     if (searchKey) {
       whereClause[Op.or] = [
-        { sequence_name: { [Op.iLike]: `%${searchKey}%` } },
+        { invoice_sequence_name_id: { [Op.iLike]: `%${searchKey}%` } },
         { invoice_prefix: { [Op.iLike]: `%${searchKey}%` } },
         { invoice_suffix: { [Op.iLike]: `%${searchKey}%` } },
       ];
@@ -279,7 +279,7 @@ const update = async (req, res) => {
     const { id } = req.params;
     const {
       branch_id,
-      sequence_name,
+      invoice_sequence_name_id,
       invoice_prefix,
       invoice_suffix,
       invoice_start_no,
@@ -295,16 +295,18 @@ const update = async (req, res) => {
 
     // Check if sequence name already exists for the branch (excluding current record)
     const finalBranchId = branch_id || invoiceSetting.branch_id;
-    const finalSequenceName = sequence_name || invoiceSetting.sequence_name;
+    const finalSequenceName =
+      invoice_sequence_name_id || invoiceSetting.invoice_sequence_name_id;
 
     if (
       (branch_id && branch_id !== invoiceSetting.branch_id) ||
-      (sequence_name && sequence_name !== invoiceSetting.sequence_name)
+      (invoice_sequence_name_id &&
+        invoice_sequence_name_id !== invoiceSetting.invoice_sequence_name_id)
     ) {
       const sequenceExists = await models.InvoiceSetting.findOne({
         where: {
           branch_id: finalBranchId,
-          sequence_name: finalSequenceName,
+          invoice_sequence_name_id: finalSequenceName,
           id: { [Op.ne]: id },
         },
       });
@@ -328,7 +330,8 @@ const update = async (req, res) => {
     // Update invoice setting
     await invoiceSetting.update({
       branch_id: branch_id || invoiceSetting.branch_id,
-      sequence_name: sequence_name || invoiceSetting.sequence_name,
+      invoice_sequence_name_id:
+        invoice_sequence_name_id || invoiceSetting.invoice_sequence_name_id,
       invoice_prefix:
         invoice_prefix !== undefined
           ? invoice_prefix

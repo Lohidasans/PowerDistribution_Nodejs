@@ -12,8 +12,8 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.INTEGER,
         allowNull: false,
       },
-      sequence_name: {
-        type: DataTypes.STRING,
+      invoice_sequence_name_id: {
+        type: DataTypes.INTEGER,
         allowNull: false,
       },
       invoice_prefix: {
@@ -41,22 +41,8 @@ module.exports = (sequelize, DataTypes) => {
       updatedAt: "updated_at",
       paranoid: true,
       deletedAt: "deleted_at",
-      indexes: [
-        {
-          unique: true,
-          fields: ["branch_id", "sequence_name"],
-          name: "invoice_settings_branch_sequence_unique",
-        },
-      ],
     }
   );
-
-  InvoiceSetting.associate = (models) => {
-    InvoiceSetting.belongsTo(models.Branch, {
-      foreignKey: "branch_id",
-      as: "branch",
-    });
-  };
 
   return InvoiceSetting;
 };
