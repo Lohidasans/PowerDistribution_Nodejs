@@ -31,7 +31,7 @@
   "materialType": {
     "required": "Material type is required.",
     "alreadyExists": "Material type already exists.",
-    "duplication":"The creation process appears to be duplicated; kindly review the action before proceeding."
+    "duplication":"The creation process appears to be duplicated."
   },
   "variant": {
     "notFound": "Variant not found.",

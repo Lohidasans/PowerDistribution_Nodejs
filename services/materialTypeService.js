@@ -49,10 +49,15 @@ const createMaterialType = async (req, res) => {
 
 const listMaterialTypes = async (req, res) => {
   try {
-    const { search = "" } = req.query;
+    const { search = "", material_type } = req.query;
     const where = {};
     const searchCondition = buildSearchCondition(search, ["material_type"]);
     if (searchCondition) Object.assign(where, searchCondition);
+
+    // Additional explicit filter by material_type query (case-insensitive, partial)
+    if (material_type && typeof material_type === "string" && material_type.trim()) {
+      where.material_type = { [Op.iLike]: `%${material_type.trim()}%` };
+    }
 
     const items = await models.MaterialType.findAll({
       where,

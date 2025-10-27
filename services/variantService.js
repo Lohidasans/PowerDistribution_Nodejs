@@ -109,20 +109,34 @@ const deleteVariant = async (req, res) => {
 
 const listVariantWithValues = async (req, res) => {
   try {
-    const [rows] = await sequelize.query(`SELECT
-            v.id AS "id",
-            v.variant_type,
-            STRING_AGG(vv.value, ', ' ORDER BY vv.id) AS "Values"
-          FROM
-            variants v
-          LEFT JOIN
-            "variantValues" vv ON vv.variant_id = v.id
-          WHERE
-            v.deleted_at IS NULL AND vv.deleted_at IS NULL
-          GROUP BY
-            v.id, v.variant_type
-          ORDER BY
-            v.id ASC`);
+    const search = (req.query.search || "").trim();
+
+    // Build SQL with LEFT JOIN (keep variants without values) and optional search
+    const sql = `
+      SELECT
+        v.id AS "id",
+        v.variant_type,
+        COALESCE(STRING_AGG(vv.value, ', ' ORDER BY vv.id), '') AS "Values"
+      FROM
+        variants v
+      LEFT JOIN
+        "variantValues" vv
+          ON vv.variant_id = v.id
+         AND vv.deleted_at IS NULL
+      WHERE
+        v.deleted_at IS NULL
+        ${search ? `AND (
+            v.variant_type ILIKE :search
+            OR EXISTS (
+              SELECT 1 FROM "variantValues" vv2
+               WHERE vv2.variant_id = v.id AND vv2.deleted_at IS NULL AND vv2.value ILIKE :search
+            )
+        )` : ''}
+      GROUP BY v.id, v.variant_type
+      ORDER BY v.id ASC`;
+
+    const replacements = search ? { search: `%${search}%` } : {};
+    const [rows] = await sequelize.query(sql, { replacements });
     return commonService.okResponse(res, { variants: rows });
   } catch (err) {
     return commonService.handleError(res, err);
