@@ -31,19 +31,6 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
         defaultValue: 0,
       },
-      making_changes: {
-        type: DataTypes.INTEGER,
-        allowNull: false,
-      },
-      margin: {
-        type: DataTypes.FLOAT,
-        allowNull: false,  
-        defaultValue: 0,
-      },
-      description: {
-        type: DataTypes.TEXT,
-        allowNull: true,
-      },
       status: {
         type: DataTypes.ENUM("Active", "Inactive"),
         allowNull: false,
