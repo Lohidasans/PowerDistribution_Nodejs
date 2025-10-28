@@ -1,4 +1,4 @@
-const { models } = require("../models");
+const { models, sequelize } = require("../models");
 const commonService = require("../services/commonService");
 const message = require("../constants/en.json");
 
@@ -17,8 +17,16 @@ const createProductAddOn = async (req, res) => {
       addon_product_id: addonId,
     }));
 
-    // Perform bulk create
-    const createdRecords = await models.ProductAddOn.bulkCreate(addOnRecords);
+    // In a transaction: mark product as is_addOn=true, then bulk create mappings
+    const createdRecords = await sequelize.transaction(async (t) => {
+      await models.Product.update(
+        { is_addOn: true },
+        { where: { id: product_id }, transaction: t }
+      );
+
+      const rows = await models.ProductAddOn.bulkCreate(addOnRecords, { transaction: t });
+      return rows;
+    });
 
     return commonService.createdResponse(res, { productAddOns: createdRecords });
   } catch (err) {
