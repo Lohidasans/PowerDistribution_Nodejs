@@ -50,6 +50,41 @@ const createVariant = async (req, res) => {
   }
 };
 
+// Bulk create variants with their values
+const createVariantsBulk = async (req, res) => {
+  const transaction = await sequelize.transaction();
+  try {
+    const { variants } = req.body || {};
+
+    if (!Array.isArray(variants) || variants.length === 0) {
+      await transaction.rollback();
+      return commonService.badRequest(res, enMessage.failure.requiredFields);
+    }
+
+    const created = [];
+    for (const item of variants) {
+      const { variant_type, product_id, values } = item || {};
+      if (!variant_type || !Array.isArray(values) || values.length === 0) {
+        await transaction.rollback();
+        return commonService.badRequest(res, enMessage.failure.requiredVariantType);
+      }
+
+      const variant = await models.Variant.create(
+        { variant_type, product_id },
+        { transaction }
+      );
+      const vals = await createVariantValues(variant.id, values, transaction);
+      created.push({ variant, variant_values: vals });
+    }
+
+    await transaction.commit();
+    return commonService.createdResponse(res, { items: created });
+  } catch (err) {
+    await transaction.rollback();
+    return commonService.handleError(res, err);
+  }
+};
+
 const createVariantValues = async (variantId, values, transaction) => {
   const payload = values.map((value) => ({
     variant_id: variantId,
@@ -210,4 +245,5 @@ module.exports = {
   updateVariant,
   deleteVariant,
   listVariantWithValues,
+  createVariantsBulk,
 };
