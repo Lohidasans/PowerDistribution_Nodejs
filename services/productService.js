@@ -212,7 +212,8 @@ const getProductAddonList = async (req, res) => {
   try {
     const {
       search,
-      sku_id
+      sku_id,
+      product_ids 
     } = req.query;
 
     let base = `
@@ -226,7 +227,7 @@ const getProductAddonList = async (req, res) => {
 
     if (sku_id) {
       base += ` AND p.sku_id ILIKE :sku_id`;
-      replacements.sku_id = `%${sku_id}%`;
+      replacements.sku_id = sku_id;
     }
     
     if (search) {
@@ -237,6 +238,24 @@ const getProductAddonList = async (req, res) => {
         p.description ILIKE :like 
       )`;
       replacements.like = like;
+    }
+    // Product IDs filter (supports multiple IDs)
+    if (product_ids) {
+      let ids = product_ids;
+
+      // Parse JSON array string like "[1,2,3]"
+      if (typeof ids === "string") {
+        try {
+          ids = JSON.parse(ids);
+        } catch {
+          ids = ids.split(",").map(id => Number(id.trim())).filter(Boolean);
+        }
+      }
+
+      if (Array.isArray(ids) && ids.length > 0) {
+        base += ` AND p.id IN (:product_ids)`;
+        replacements.product_ids = ids;
+      }
     }
 
     const select = `
@@ -300,10 +319,36 @@ const getProductById = async (req, res) => {
       additional_details: addsByItem[it.id] || [],
     }));
 
+    // If product has add-ons, fetch mapped add-on product info
+    let addon_products = [];
+    const isAddOn =
+      row.is_addOn === true ||
+      row.is_addOn === 1 ||
+      row.is_addOn === "true";
+    if (isAddOn) {
+      const [addonRows] = await sequelize.query(
+        `
+        SELECT
+          pa.id,
+          pa.addon_product_id,
+          p.product_name,
+          p.sku_id,
+          p.image_urls
+        FROM "productAddOns" pa
+        JOIN products p ON p.id = pa.addon_product_id
+        WHERE pa.product_id = :pid
+        ORDER BY pa.id ASC
+      `,
+        { replacements: { pid: +row.id } }
+      );
+      addon_products = addonRows;
+    }
+
     // Final structured response
     return commonService.okResponse(res, {
       product: row,
       item_details: itemsWithAdds,
+      addon_products,
     });
   } catch (err) {
     return commonService.handleError(res, err);
