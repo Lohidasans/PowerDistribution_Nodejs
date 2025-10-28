@@ -14,6 +14,7 @@ router.delete("/employees/experience/:id", empExpSvc.deleteEmployeeExperience);
 
 // Employees CRUD
 router.post("/employees", employeeSvc.createEmployee);
+router.post("/employees/code", employeeSvc.generateEmployeeCode);
 router.get("/employees", employeeSvc.listEmployees);
 router.get("/employees/dropdown", employeeSvc.listEmployeeDropdown);
 router.get("/employees/:id", employeeSvc.getEmployeeById);

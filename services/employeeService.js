@@ -4,6 +4,7 @@ const enMessage = require("../constants/en.json");
 const bankSvc = require("./bankAccountService");
 const userSvc = require("./userLoginService");
 const kycSvc = require("./kycDocumentService");
+const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
 
 const createEmployee = async (req, res) => {
   const transaction = await sequelize.transaction();
@@ -473,6 +474,26 @@ const deleteEmployee = async (req, res) => {
   }
 };
 
+const generateEmployeeCode = async (req, res) => {
+  try {
+    const { prefix, fy } = req.query || {};
+
+    if (!prefix || !fy) {
+      return commonService.badRequest(res, enMessage.failure.requiredFields);
+    }
+
+    const code = await generateFiscalSeriesCode(
+      models.Employee,
+      "employee_no",
+      String(prefix).toUpperCase(),
+      { pad: 2, fyRange: fy }
+    );
+    return commonService.okResponse(res, { employee_code: code });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
 module.exports = {
   createEmployee,
   listEmployees,
@@ -480,4 +501,5 @@ module.exports = {
   listEmployeeDropdown,
   updateEmployee,
   deleteEmployee,
+  generateEmployeeCode
 };

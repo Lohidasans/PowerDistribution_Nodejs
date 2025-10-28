@@ -1,7 +1,7 @@
 const { sequelize, models } = require("../models/index");
 const commonService = require("./commonService");
 const message = require("../constants/en.json");
-const generateAutoCode = require("../helpers/codeGeneration");
+const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
 const kycSvc = require("./kycDocumentService");
 const bankSvc = require("./bankAccountService");
 const userSvc = require("./userLoginService");
@@ -243,7 +243,18 @@ const deleteVendor = async (req, res) => {
 
 const generateVendorCode = async (req, res) => {
   try {
-    const code = await generateAutoCode(models.Vendor, "vendor_code", "VEN");
+    const { prefix, fy } = req.query || {};
+
+    if (!prefix || !fy) {
+      return commonService.badRequest(res, message.failure.requiredFields);
+    }
+
+    const code = await generateFiscalSeriesCode(
+      models.Vendor,
+      "vendor_code",
+      String(prefix).toUpperCase(),
+      { pad: 2, fyRange: fy }
+    );
     return commonService.okResponse(res, { vendor_code: code });
   } catch (err) {
     return commonService.handleError(res, err);
