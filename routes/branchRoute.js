@@ -23,6 +23,18 @@ module.exports = branchRouter;
  *   post:
  *     summary: Generate next branch code
  *     tags: [Branch]
+ *     parameters:
+ *       - in: query
+ *         name: company_code
+ *         schema: { type: string }
+ *         required: true
+ *         description: Company code prefix (e.g., CJ)
+ *       - in: query
+ *         name: location_code
+ *         schema: { type: string }
+ *         required: true
+ *         description: Location code prefix (e.g., SLM)
+ *     description: Returns a unique code like CJ_SLM_001 for the provided prefixes.
  *     responses:
  *       200:
  *         description: OK
@@ -36,7 +48,7 @@ module.exports = branchRouter;
  *                 data:
  *                   type: object
  *                   properties:
- *                     branch_code: { type: string, example: "BR 01/24-25" }
+ *                     branch_code: { type: string, example: "CJ_SLM_001" }
  */
 /**
  * @openapi

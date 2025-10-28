@@ -1,7 +1,7 @@
 const { models } = require("../models");
 const commonService = require("./commonService");
 const enMessage = require("../constants/en.json");
-const generateAutoCode = require("../helpers/codeGeneration");
+const { generateAutoCode } = require("../helpers/codeGeneration");
 
 // Create customer
 const createCustomer = async (req, res) => {

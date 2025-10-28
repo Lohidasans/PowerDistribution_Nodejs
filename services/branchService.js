@@ -3,7 +3,7 @@ const message = require("../constants/en.json");
 const { Op } = require("sequelize");
 const commonService = require("../services/commonService");
 const { buildSearchCondition } = require("../helpers/queryHelper");
-const generateAutoCode = require("../helpers/codeGeneration");
+const { generateAutoCode, generateUniqueCode } = require("../helpers/codeGeneration");
 const kycSvc = require("./kycDocumentService");
 const bankSvc = require("./bankAccountService");
 const userSvc = require("./userLoginService");
@@ -360,8 +360,21 @@ const branchDropdownList = async (req, res) => {
 
 const generateBranchCode = async (req, res) => {
   try {
-    const code = await generateAutoCode(models.Branch, "branch_no", "BR");
-    return commonService.okResponse(res, { branch_code: code });
+    const { company_code, location_code } = req.query || {};
+
+    // Validate query params
+    if (!company_code || !location_code) {
+      return commonService.badRequest(res, message.branch.requiredCodes );
+    }
+
+    const branchCode = await generateUniqueCode(
+      models.Branch,
+      "branch_no",
+      [company_code, location_code],
+      { pad: 3, separator: "_" }
+    );
+
+    return commonService.okResponse(res, { branch_code: branchCode });
   } catch (err) {
     return commonService.handleError(res, err);
   }

@@ -7,7 +7,8 @@
     "badRequest": "Invalid request.",
     "requiredFields": "Required fields are missing.",
     "requiredVariantType": "Variant type is required.",
-    "variantNotFound": "Variant not found."
+    "variantNotFound": "Variant not found.",
+    "requiredCodes": "Please provide companyCode, locationCode and branchCode"
   },
   "requiredEntityIdAndType": "Entity ID and Type Required",
   "rolesPermissions": {
@@ -19,7 +20,8 @@
   },
   "branch": {
     "required": "Branch No and Branch Name are required.",
-    "duplicateNo": "Branch No already exists."
+    "duplicateNo": "Branch No already exists.",
+    "requiredCodes":"company_code and location_code are required."
   },
   "role": {
     "duplicateName": "Role name already exists."

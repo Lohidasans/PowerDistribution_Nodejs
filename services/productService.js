@@ -2,7 +2,7 @@ const { models, sequelize } = require("../models");
 const commonService = require("../services/commonService");
 const message = require("../constants/en.json");
 const { buildSearchCondition } = require("../helpers/queryHelper");
-const generateAutoCode = require("../helpers/codeGeneration");
+const { generateAutoCode, generateUniqueSkuId } = require("../helpers/codeGeneration");
 
 // Main Create Product API
 const createProduct = async (req, res) => {
@@ -189,7 +189,17 @@ const getAllProducts = async (req, res) => {
 
 const generateSkuId = async (req, res) => {
   try {
-    const skuId = await generateAutoCode(models.Product, "sku_id", "SKU-GN");
+    const { company_code, location_code, branch_code } = req.query || {};
+
+    const parts = [company_code, location_code, branch_code].filter(
+      (p) => p !== undefined && p !== null && String(p).trim() !== ""
+    );
+    // If any required param is missing
+    if (parts.length < 3) {
+      return commonService.badRequest(res, message.failure.requiredCodes);
+    }
+
+    const skuId = await generateUniqueSkuId(models.Product, "sku_id", parts);
 
     return commonService.okResponse(res, { sku_id: skuId });
   } catch (err) {

@@ -27,6 +27,20 @@ module.exports = router;
  *   post:
  *     summary: Generate a new SKU ID
  *     tags: [Product]
+ *     parameters:
+ *       - in: query
+ *         name: company_code
+ *         schema: { type: string }
+ *         description: Optional prefix part 1 (e.g., CJ)
+ *       - in: query
+ *         name: location_code
+ *         schema: { type: string }
+ *         description: Optional prefix part 2 (e.g., CBE)
+ *       - in: query
+ *         name: branch_code
+ *         schema: { type: string }
+ *         description: Optional prefix part 3 (e.g., 01)
+ *     description: If prefix parts are provided, returns a unique SKU like CJ_CBE_01_0001; otherwise falls back to auto code.
  *     responses:
  *       200:
  *         description: Generated SKU

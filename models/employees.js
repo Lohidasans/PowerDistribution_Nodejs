@@ -64,29 +64,5 @@ module.exports = (sequelize, DataTypes) => {
             indexes: [{ fields: ["employee_no"] }],
         }
     );
-
-    Employee.associate = (models) => {
-        Employee.belongsTo(models.Branch, {
-            foreignKey: "branch_id",
-            as: "branch",
-        });
-        Employee.belongsTo(models.EmployeeDepartment, {
-          foreignKey: "department_id",
-          as: "department",
-        });
-        Employee.belongsTo(models.EmployeeDesignation, {
-          foreignKey: "designation_id",
-          as: "designation",
-        });
-        Employee.hasOne(models.EmployeeContact, {
-            foreignKey: "employee_id",
-            as: "contact",
-        });
-        Employee.hasMany(models.EmployeeExperience, {
-            foreignKey: "employee_id",
-            as: "experiences",
-        });
-    }
-
     return Employee;
 };
