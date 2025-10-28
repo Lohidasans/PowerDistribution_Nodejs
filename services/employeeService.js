@@ -265,6 +265,32 @@ const listEmployees = async (req, res) => {
   }
 };
 
+// Dropdown: Employee Designations -> [{ id, name }]
+const listDesignationDropdown = async (req, res) => {
+  try {
+    const rows = await models.EmployeeDesignation.findAll({
+      attributes: ["id", ["designation_name", "name"]],
+      order: [["designation_name", "ASC"]],
+    });
+    return commonService.okResponse(res, { designations: rows });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
+// Dropdown: Employee Departments -> [{ id, name }]
+const listDepartmentDropdown = async (req, res) => {
+  try {
+    const rows = await models.EmployeeDepartment.findAll({
+      attributes: ["id", ["department_name", "name"]],
+      order: [["department_name", "ASC"]],
+    });
+    return commonService.okResponse(res, { departments: rows });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
 const getEmployeeById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -499,7 +525,9 @@ module.exports = {
   listEmployees,
   getEmployeeById,
   listEmployeeDropdown,
+  listDesignationDropdown,
+  listDepartmentDropdown,
   updateEmployee,
   deleteEmployee,
-  generateEmployeeCode
+  generateEmployeeCode,
 };

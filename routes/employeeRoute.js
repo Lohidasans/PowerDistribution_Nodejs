@@ -17,9 +17,12 @@ router.post("/employees", employeeSvc.createEmployee);
 router.post("/employees/code", employeeSvc.generateEmployeeCode);
 router.get("/employees", employeeSvc.listEmployees);
 router.get("/employees/dropdown", employeeSvc.listEmployeeDropdown);
+router.get("/employees/designations/dropdown", employeeSvc.listDesignationDropdown);
+router.get("/employees/departments/dropdown", employeeSvc.listDepartmentDropdown);
 router.get("/employees/:id", employeeSvc.getEmployeeById);
 router.put("/employees/:id", employeeSvc.updateEmployee);
 router.delete("/employees/:id", employeeSvc.deleteEmployee);
+
 
 // Employee Contacts
 router.post("/employees/contacts", empContactSvc.createEmployeeContact);
@@ -28,13 +31,57 @@ module.exports = router;
 
 /**
  * @openapi
- * tags:
- *   - name: Employee
- *     description: Employee basic details
- *   - name: EmployeeContact
- *     description: Employee contact details
- *   - name: EmployeeExperience
- *     description: Employee experiences
+ * /api/v1/employees/designations/dropdown:
+ *   get:
+ *     summary: List employee designations for dropdown
+ *     tags: [Employee]
+ *     responses:
+ *       200:
+ *         description: OK
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 statusCode: { type: integer }
+ *                 message: { type: string }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     designations:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id: { type: integer }
+ *                           name: { type: string }
+ */
+/**
+ * @openapi
+ * /api/v1/employees/departments/dropdown:
+ *   get:
+ *     summary: List employee departments for dropdown
+ *     tags: [Employee]
+ *     responses:
+ *       200:
+ *         description: OK
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 statusCode: { type: integer }
+ *                 message: { type: string }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     departments:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id: { type: integer }
+ *                           name: { type: string }
  */
 
 /**
