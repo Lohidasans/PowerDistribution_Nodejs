@@ -108,12 +108,31 @@ const listSchemes = async (req, res) => {
       WHERE s.deleted_at IS NULL`;
 
     const replacements = {};
-    if (material_type_id) { query += ` AND s.material_type_id = :material_type_id`; replacements.material_type_id = +material_type_id; }
-    if (scheme_type_id)   { query += ` AND s.scheme_type_id = :scheme_type_id`;     replacements.scheme_type_id = +scheme_type_id; }
-    if (duration_id)      { query += ` AND s.duration_id = :duration_id`;           replacements.duration_id = +duration_id; }
-    if (payment_frequency_id) { query += ` AND s.payment_frequency_id = :payment_frequency_id`; replacements.payment_frequency_id = +payment_frequency_id; }
-    if (redemption_id)    { query += ` AND s.redemption_id = :redemption_id`;       replacements.redemption_id = +redemption_id; }
-    if (status)           { query += ` AND s.status = :status`;                     replacements.status = status; }
+    if (material_type_id)
+    {
+      query += ` AND s.material_type_id = :material_type_id`;
+      replacements.material_type_id = +material_type_id;
+    }
+    if (scheme_type_id) {
+      query += ` AND s.scheme_type_id = :scheme_type_id`;
+      replacements.scheme_type_id = +scheme_type_id;
+    }
+    if (duration_id) {
+      query += ` AND s.duration_id = :duration_id`;
+      replacements.duration_id = +duration_id;
+    }
+    if (payment_frequency_id) {
+      query += ` AND s.payment_frequency_id = :payment_frequency_id`;
+      replacements.payment_frequency_id = +payment_frequency_id;
+    }
+    if (redemption_id) {
+      query += ` AND s.redemption_id = :redemption_id`;
+      replacements.redemption_id = +redemption_id;
+    }
+    if (status) {
+      query += ` AND s.status = :status`;
+      replacements.status = status;
+    }
 
     query += ` ORDER BY s.created_at DESC`;
 

@@ -1,20 +1,5 @@
 const { Op } = require("sequelize");
 
-const generateAutoCode = async (model, field, prefix) => {
-  const lastEntry = await model.findOne({
-    order: [["id", "DESC"]],
-    attributes: [field],
-  });
-
-  let nextNumber = 1;
-  if (lastEntry?.[field]) {
-    const match = lastEntry[field].match(/(\d+)$/);
-    if (match) nextNumber = parseInt(match[1]) + 1;
-  }
-
-  return `${prefix}-${String(nextNumber).padStart(4, "0")}`;
-};
-
 // Generate a unique SKU like CJ_CBE_01_0001
 // parts: array of strings that form the prefix (e.g., [companyCode, locationCode, branchCode])
 const generateUniqueSkuId = async (model, field, parts = []) => {
@@ -167,7 +152,6 @@ const generateFiscalSeriesCode = async (
 };
 
 module.exports =  { 
-  generateAutoCode, 
   generateUniqueSkuId, 
   generateUniqueCode, 
   generateFiscalSeriesCode 

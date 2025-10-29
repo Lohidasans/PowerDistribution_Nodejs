@@ -88,6 +88,7 @@ const getAllSubCategories = async (req, res) => {
         sc.category_id,
         c.category_name,
         c.category_image_url,
+        c.material_type_id,
         mt.material_type AS material_type,
         mt.material_image_url
       FROM "subcategories" sc

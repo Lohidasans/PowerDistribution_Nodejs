@@ -1,7 +1,7 @@
 const { models } = require("../models");
 const commonService = require("./commonService");
 const enMessage = require("../constants/en.json");
-const { generateAutoCode } = require("../helpers/codeGeneration");
+const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
 
 // Create customer
 const createCustomer = async (req, res) => {
@@ -102,12 +102,23 @@ const deleteCustomer = async (req, res) => {
 
 // Generate auto code: CUS-0001
 const generateCustomerCode = async (req, res) => {
-  try {
-    const code = await generateAutoCode(models.Customer, "customer_code", "CUS");
-    return commonService.okResponse(res, { customer_code: code });
-  } catch (err) {
-    return commonService.handleError(res, err);
-  }
+   try {
+      const { prefix, fy } = req.query || {};
+  
+      if (!prefix || !fy) {
+        return commonService.badRequest(res, enMessage.failure.requiredFields);
+      }
+  
+      const code = await generateFiscalSeriesCode(
+        models.Customer,
+        "customer_code",
+        String(prefix).toUpperCase(),
+        { pad: 2, fyRange: fy }
+      );
+      return commonService.okResponse(res, { customer_code: code });
+    } catch (err) {
+      return commonService.handleError(res, err);
+    }
 };
 
 module.exports = {

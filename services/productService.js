@@ -2,7 +2,7 @@ const { models, sequelize } = require("../models");
 const commonService = require("../services/commonService");
 const message = require("../constants/en.json");
 const { buildSearchCondition } = require("../helpers/queryHelper");
-const { generateAutoCode, generateUniqueSkuId } = require("../helpers/codeGeneration");
+const { generateUniqueSkuId } = require("../helpers/codeGeneration");
 
 // Main Create Product API
 const createProduct = async (req, res) => {

@@ -1,6 +1,6 @@
 module.exports = (sequelize, DataTypes) => {
   const Enrollment = sequelize.define(
-    "enrollments",
+    "customer_enrollments",
     {
       id: {
         allowNull: false,
@@ -17,7 +17,7 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
       },
       customer_no: {
-        type: DataTypes.STRING,
+        type: DataTypes.STRING, 
         allowNull: false,
         unique: true,
       },
@@ -54,8 +54,8 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.INTEGER,
         allowNull: false,
       },
-      scheme_amount: {
-        type: DataTypes.DECIMAL(15, 2),
+      installment_amount_id: {
+        type: DataTypes.INTEGER,
         allowNull: false,
       },
       identity_proof_id: {
