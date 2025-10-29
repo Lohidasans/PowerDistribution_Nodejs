@@ -80,6 +80,7 @@ const ProductAdditionalDetail = require("./productAdditionalDetails")(
   Sequelize.DataTypes
 );
 const ProductAddOn = require("./productAddOns")(sequelize, Sequelize.DataTypes);
+const ProductVariant = require("./productVariants")(sequelize, Sequelize.DataTypes);
 
 // GRN related models
 const Grn = require("./grns")(sequelize, Sequelize.DataTypes);
@@ -126,6 +127,7 @@ const models = {
   ProductItemDetail,
   ProductAdditionalDetail,
   ProductAddOn,
+  ProductVariant,
   Country,
   State,
   District,

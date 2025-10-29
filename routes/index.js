@@ -25,6 +25,7 @@ const UomRouter = require("./uomRoute");
 const LedgerGroupRouter = require("./ledgerGroupRoute");
 const LedgerRouter = require("./ledgerRoute");
 const SuperAdminProfileRoute = require("./superAdminProfileRoute");
+const ProductVariantRoute = require("./productVariantRoute");
 
 module.exports = (app) => {
   app.use("/api/v1", RoleRouter);
@@ -54,4 +55,5 @@ module.exports = (app) => {
   app.use("/api/v1", LedgerGroupRouter);
   app.use("/api/v1", LedgerRouter);
   app.use("/api/v1", SuperAdminProfileRoute);
+  app.use("/api/v1", ProductVariantRoute);
 };

@@ -6,7 +6,7 @@ const db = require("../config/dbConfig");
 const createVariant = async (req, res) => {
   const transaction = await sequelize.transaction();
   try {
-    const { variant_type, product_id, values } = req.body;
+    const { variant_type, values } = req.body;
 
     if (!variant_type) {
       await transaction.rollback();
@@ -18,7 +18,7 @@ const createVariant = async (req, res) => {
 
     // Create variant
     const variant = await models.Variant.create(
-      { variant_type, product_id },
+      { variant_type },
       { transaction }
     );
 
@@ -84,41 +84,6 @@ const listVariantsDetailed = async (req, res) => {
     const [rows] = await sequelize.query(sql, { replacements });
     return commonService.okResponse(res, { variants: rows });
   } catch (err) {
-    return commonService.handleError(res, err);
-  }
-};
-
-// Bulk create variants with their values
-const createVariantsBulk = async (req, res) => {
-  const transaction = await sequelize.transaction();
-  try {
-    const { variants } = req.body || {};
-
-    if (!Array.isArray(variants) || variants.length === 0) {
-      await transaction.rollback();
-      return commonService.badRequest(res, enMessage.failure.requiredFields);
-    }
-
-    const created = [];
-    for (const item of variants) {
-      const { variant_type, product_id, values } = item || {};
-      if (!variant_type || !Array.isArray(values) || values.length === 0) {
-        await transaction.rollback();
-        return commonService.badRequest(res, enMessage.failure.requiredVariantType);
-      }
-
-      const variant = await models.Variant.create(
-        { variant_type, product_id },
-        { transaction }
-      );
-      const vals = await createVariantValues(variant.id, values, transaction);
-      created.push({ variant, variant_values: vals });
-    }
-
-    await transaction.commit();
-    return commonService.createdResponse(res, { items: created });
-  } catch (err) {
-    await transaction.rollback();
     return commonService.handleError(res, err);
   }
 };
@@ -220,7 +185,7 @@ const updateVariant = async (req, res) => {
   const transaction = await sequelize.transaction();
   try {
     const { id } = req.params;
-    const { variant_type, product_id, values, status } = req.body;
+    const { variant_type, values, status } = req.body;
 
     // Check if variant exists
     const variant = await models.Variant.findByPk(id);
@@ -232,7 +197,6 @@ const updateVariant = async (req, res) => {
     // Prepare update data
     const updateData = {};
     if (variant_type !== undefined) updateData.variant_type = variant_type;
-    if (product_id !== undefined) updateData.product_id = product_id;
     if (status !== undefined) updateData.status = status;
 
     // Update variant if there are fields to update
@@ -284,5 +248,4 @@ module.exports = {
   deleteVariant,
   listVariantWithValues,
   listVariantsDetailed,
-  createVariantsBulk,
 };

@@ -3,7 +3,6 @@ var variantRouter = express.Router();
 const variantService = require("../services/variantService");
 
 variantRouter.post("/variant", variantService.createVariant);
-variantRouter.post("/variants/bulk", variantService.createVariantsBulk);
 variantRouter.get("/variants", variantService.listVariantWithValues);
 variantRouter.get("/variants/detailed", variantService.listVariantsDetailed);
 variantRouter.get("/variant/:id", variantService.getByIdVariant);
@@ -53,39 +52,6 @@ module.exports = variantRouter;
  *                               properties:
  *                                 id: { type: integer }
  *                                 value: { type: string }
- */
-
-/**
- * @openapi
- * /api/v1/variants/bulk:
- *   post:
- *     summary: Bulk create variants with their values
- *     tags: [Variant]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               variants:
- *                 type: array
- *                 items:
- *                   $ref: '#/components/schemas/VariantCreateInput'
- *           example:
- *             variants:
- *               - product_id: 3
- *                 variant_type: "Size"
- *                 values: ["S", "M", "L"]
- *               - variant_type: "Color"
- *                 values: ["Red", "Gold"]
- *     responses:
- *       201:
- *         description: Variants created successfully
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ApiResponse'
  */
 
 
