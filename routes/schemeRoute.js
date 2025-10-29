@@ -102,14 +102,23 @@ module.exports = router;
  *         name: material_type_id
  *         schema: { type: integer }
  *       - in: query
- *         name: scheme_type
- *         schema: { type: string, enum: ["Weight Based", "Value Based"] }
+ *         name: scheme_type_id
+ *         schema: { type: integer }
+ *       - in: query
+ *         name: duration_id
+ *         schema: { type: integer }
+ *       - in: query
+ *         name: payment_frequency_id
+ *         schema: { type: integer }
+ *       - in: query
+ *         name: redemption_id
+ *         schema: { type: integer }
  *       - in: query
  *         name: status
  *         schema: { type: string, enum: ["Active", "Inactive"] }
  *     responses:
  *       200:
- *         description: OK
+ *         description: OK. Returns IDs and names (material_type, scheme_type_name, duration_name, frequency_name, redemption_type_name)
  *   post:
  *     summary: Create scheme
  *     tags: [Scheme]
@@ -119,16 +128,16 @@ module.exports = router;
  *         application/json:
  *           schema:
  *             type: object
- *             required: [material_type_id, scheme_name, scheme_type, duration, payment_frequency, redemption]
+ *             required: [material_type_id, scheme_name, scheme_type_id, duration_id, payment_frequency_id, redemption_id]
  *             properties:
  *               material_type_id: { type: integer }
  *               scheme_name: { type: string }
- *               scheme_type: { type: string, enum: ["Weight Based", "Value Based"] }
- *               duration: { type: string, enum: ["6 Months", "12 Months"] }
+ *               scheme_type_id: { type: integer }
+ *               duration_id: { type: integer }
  *               monthly_installments: { type: array, items: { type: number, format: float } }
- *               payment_frequency: { type: string, enum: ["Monthly", "Quarterly", "Half Yearly", "Yearly"] }
+ *               payment_frequency_id: { type: integer }
  *               min_amount: { type: number, format: float }
- *               redemption: { type: string, enum: ["Jewellery", "Coins", "Bars"] }
+ *               redemption_id: { type: integer }
  *               visible_to: { type: array, items: { type: integer } }
  *               status: { type: string, enum: ["Active", "Inactive"] }
  *               terms_and_conditions_url: { type: string }
@@ -168,12 +177,12 @@ module.exports = router;
  *             properties:
  *               material_type_id: { type: integer }
  *               scheme_name: { type: string }
- *               scheme_type: { type: string, enum: ["Weight Based", "Value Based"] }
- *               duration: { type: string, enum: ["6 Months", "12 Months"] }
+ *               scheme_type_id: { type: integer }
+ *               duration_id: { type: integer }
  *               monthly_installments: { type: array, items: { type: number, format: float } }
- *               payment_frequency: { type: string, enum: ["Monthly", "Quarterly", "Half Yearly", "Yearly"] }
+ *               payment_frequency_id: { type: integer }
  *               min_amount: { type: number, format: float }
- *               redemption: { type: string, enum: ["Jewellery", "Coins", "Bars"] }
+ *               redemption_id: { type: integer }
  *               visible_to: { type: array, items: { type: integer } }
  *               status: { type: string, enum: ["Active", "Inactive"] }
  *               terms_and_conditions_url: { type: string }

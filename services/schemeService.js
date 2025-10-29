@@ -1,4 +1,4 @@
-const { models } = require("../models");
+const { models, sequelize } = require("../models");
 const commonService = require("./commonService");
 const enMessage = require("../constants/en.json");
 
@@ -22,20 +22,35 @@ const buildSchemePayload = (req, existing = null) => ({
       : existing?.material_type_id,
 
   scheme_name: req.body.scheme_name ?? existing?.scheme_name,
-  scheme_type: req.body.scheme_type ?? existing?.scheme_type,
-  duration: req.body.duration ?? existing?.duration, // ENUM string
+
+  scheme_type_id:
+    req.body.scheme_type_id !== undefined
+      ? +req.body.scheme_type_id
+      : existing?.scheme_type_id,
+
+  duration_id:
+    req.body.duration_id !== undefined
+      ? +req.body.duration_id
+      : existing?.duration_id,
 
   monthly_installments: Array.isArray(req.body.monthly_installments)
     ? req.body.monthly_installments.map((n) => +n)
     : existing?.monthly_installments ?? null,
 
-  payment_frequency: req.body.payment_frequency ?? existing?.payment_frequency,
+  payment_frequency_id:
+    req.body.payment_frequency_id !== undefined
+      ? +req.body.payment_frequency_id
+      : existing?.payment_frequency_id,
+
   min_amount:
     req.body.min_amount !== undefined
       ? +req.body.min_amount
       : existing?.min_amount ?? null,
 
-  redemption: req.body.redemption ?? existing?.redemption,
+  redemption_id:
+    req.body.redemption_id !== undefined
+      ? +req.body.redemption_id
+      : existing?.redemption_id,
 
   visible_to: Array.isArray(req.body.visible_to)
     ? req.body.visible_to.map((id) => +id)
@@ -54,10 +69,10 @@ const createScheme = async (req, res) => {
     const required = [
       "material_type_id",
       "scheme_name",
-      "scheme_type",
-      "duration",
-      "payment_frequency",
-      "redemption",
+      "scheme_type_id",
+      "duration_id",
+      "payment_frequency_id",
+      "redemption_id",
       "terms_and_conditions_url",
     ];
     if (!validateRequiredFields(req, res, required)) return;
@@ -71,20 +86,38 @@ const createScheme = async (req, res) => {
   }
 };
 
-/** List Schemes with filters */
+/** List Schemes with filters (joined with master names) */
 const listSchemes = async (req, res) => {
   try {
-    const { material_type_id, scheme_type, status } = req.query;
+    const { material_type_id, scheme_type_id, status, duration_id, payment_frequency_id, redemption_id } = req.query;
 
-    const where = {};
-    if (material_type_id) where.material_type_id = +material_type_id;
-    if (scheme_type) where.scheme_type = scheme_type;
-    if (status) where.status = status;
+    let query = `
+      SELECT
+        s.*,
+        mt.material_type,
+        st.type_name AS scheme_type_name,
+        sd.duration_name,
+        pf.frequency_name,
+        rt.type_name AS redemption_type_name
+      FROM schemes s
+      LEFT JOIN "materialTypes" mt ON mt.id = s.material_type_id AND mt.deleted_at IS NULL
+      LEFT JOIN scheme_types st ON st.id = s.scheme_type_id AND st.deleted_at IS NULL
+      LEFT JOIN scheme_durations sd ON sd.id = s.duration_id AND sd.deleted_at IS NULL
+      LEFT JOIN payment_frequencies pf ON pf.id = s.payment_frequency_id AND pf.deleted_at IS NULL
+      LEFT JOIN redemption_types rt ON rt.id = s.redemption_id AND rt.deleted_at IS NULL
+      WHERE s.deleted_at IS NULL`;
 
-    const schemes = await models.Scheme.findAll({
-      where,
-      order: [["created_at", "DESC"]],
-    });
+    const replacements = {};
+    if (material_type_id) { query += ` AND s.material_type_id = :material_type_id`; replacements.material_type_id = +material_type_id; }
+    if (scheme_type_id)   { query += ` AND s.scheme_type_id = :scheme_type_id`;     replacements.scheme_type_id = +scheme_type_id; }
+    if (duration_id)      { query += ` AND s.duration_id = :duration_id`;           replacements.duration_id = +duration_id; }
+    if (payment_frequency_id) { query += ` AND s.payment_frequency_id = :payment_frequency_id`; replacements.payment_frequency_id = +payment_frequency_id; }
+    if (redemption_id)    { query += ` AND s.redemption_id = :redemption_id`;       replacements.redemption_id = +redemption_id; }
+    if (status)           { query += ` AND s.status = :status`;                     replacements.status = status; }
+
+    query += ` ORDER BY s.created_at DESC`;
+
+    const [schemes] = await sequelize.query(query, { replacements });
 
     return commonService.okResponse(res, { schemes });
   } catch (err) {
