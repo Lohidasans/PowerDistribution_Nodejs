@@ -344,11 +344,35 @@ const getProductById = async (req, res) => {
       addon_products = addonRows;
     }
 
+    // Variant details mapped to this product (from product_variants)
+    const [variantDetails] = await sequelize.query(
+      `
+        SELECT
+          pv.variant_id,
+          v.variant_type,
+          COALESCE(
+            json_agg(
+              json_build_object('id', vv.id, 'value', vv.value)
+              ORDER BY vv.id
+            ) FILTER (WHERE vv.id IS NOT NULL),
+            '[]'::json
+          ) AS values
+        FROM "product_variants" pv
+        JOIN variants v ON v.id = pv.variant_id AND v.deleted_at IS NULL
+        LEFT JOIN "variantValues" vv ON vv.id = ANY(pv.variant_type_ids) AND vv.deleted_at IS NULL
+        WHERE pv.product_id = :pid AND pv.deleted_at IS NULL
+        GROUP BY pv.variant_id, v.variant_type
+        ORDER BY pv.variant_id ASC
+      `,
+      { replacements: { pid: +row.id } }
+    );
+
     // Final structured response
     return commonService.okResponse(res, {
       product: row,
       item_details: itemsWithAdds,
       addon_products,
+      variant_details: variantDetails,
     });
   } catch (err) {
     return commonService.handleError(res, err);
