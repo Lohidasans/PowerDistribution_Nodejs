@@ -1,5 +1,21 @@
 /**
  * @openapi
+ * /api/v1/dropdown/installments:
+ *   get:
+ *     summary: Dropdown - Installment amounts for a scheme
+ *     tags: [Scheme]
+ *     parameters:
+ *       - in: query
+ *         name: scheme_id
+ *         schema: { type: integer }
+ *         required: true
+ *     responses:
+ *       200:
+ *         description: OK
+ */
+
+/**
+ * @openapi
  * /api/v1/dropdown/scheme-types:
  *   get:
  *     summary: Dropdown - Scheme Types
@@ -81,6 +97,7 @@ router.get("/dropdown/payment-frequencies", schemeService.listPaymentFrequencies
 router.get("/dropdown/redemption-types", schemeService.listRedemptionTypes);
 router.get("/dropdown/identity-proofs", schemeService.listIdentityProofs);
 router.get("/dropdown/nominee-relations", schemeService.listNomineeRelations);
+router.get("/dropdown/installments", schemeService.listInstallmentAmounts);
 
 module.exports = router;
 

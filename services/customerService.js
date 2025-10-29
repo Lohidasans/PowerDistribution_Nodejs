@@ -1,4 +1,4 @@
-const { models } = require("../models");
+const { models, sequelize } = require("../models");
 const commonService = require("./commonService");
 const enMessage = require("../constants/en.json");
 const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
@@ -42,22 +42,58 @@ const createCustomer = async (req, res) => {
 // List customers (simple filters)
 const listCustomers = async (req, res) => {
   try {
-    const { search } = req.query;
-    const where = {};
-    if (search) {
-      // basic ILIKE search using sequelize operators
-      const { Op } = require("sequelize");
-      where[Op.or] = [
-        { customer_name: { [Op.iLike]: `%${search}%` } },
-        { mobile_number: { [Op.iLike]: `%${search}%` } },
-      ];
+    const { search, mobile_number } = req.query;
+
+    // Build WHERE conditions dynamically
+    let whereClause = "WHERE c.deleted_at IS NULL";
+    const replacements = {};
+
+    if (mobile_number) {
+      whereClause += " AND c.mobile_number = :mobile_number";
+      replacements.mobile_number = mobile_number;
     }
-    const customers = await models.Customer.findAll({ where, order: [["created_at", "DESC"]] });
+
+    if (search) {
+      whereClause +=
+        " AND (c.customer_name ILIKE :search OR c.mobile_number ILIKE :search)";
+      replacements.search = `%${search}%`;
+    }
+
+    const query = `
+      SELECT 
+        c.id,
+        c.customer_code,
+        c.customer_name,
+        c.mobile_number,
+        c.address,
+        c.country_id,
+        c.state_id,
+        c.district_id,
+        c.pin_code,
+        c.created_at,
+        c.updated_at,
+        co.country_name,
+        s.state_name,
+        d.district_name
+      FROM customers c
+      LEFT JOIN countries co ON c.country_id = co.id
+      LEFT JOIN states s ON c.state_id = s.id
+      LEFT JOIN districts d ON c.district_id = d.id
+      ${whereClause}
+      ORDER BY c.created_at DESC
+    `;
+
+    const customers = await sequelize.query(query, {
+      type: sequelize.QueryTypes.SELECT,
+      replacements,
+    });
+
     return commonService.okResponse(res, { customers });
   } catch (err) {
     return commonService.handleError(res, err);
   }
 };
+
 
 // Get by id
 const getCustomerById = async (req, res) => {
@@ -121,6 +157,28 @@ const generateCustomerCode = async (req, res) => {
     }
 };
 
+// Dropdown: distinct customer mobile numbers
+const listCustomerMobilesDropdown = async (req, res) => {
+  try {
+    const rows = await models.Customer.findAll({
+      attributes: [[sequelize.fn("DISTINCT", sequelize.col("mobile_number")), "mobile_number"]],
+      order: [["mobile_number", "ASC"]],
+      where: { deleted_at: null },
+    });
+
+    const mobiles = rows
+      .map((r, index) => ({
+        id: index + 1,
+        mobile: r.mobile_number ?? r.get("mobile_number"),
+      }))
+      .filter(item => item.mobile); 
+
+    return commonService.okResponse(res, { mobiles });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
 module.exports = {
   createCustomer,
   listCustomers,
@@ -128,4 +186,5 @@ module.exports = {
   updateCustomer,
   deleteCustomer,
   generateCustomerCode,
+  listCustomerMobilesDropdown,
 };

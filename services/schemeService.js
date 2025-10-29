@@ -252,6 +252,25 @@ const listNomineeRelations = async (_req, res) => {
   }
 };
 
+// Installment amounts dropdown by scheme_id
+const listInstallmentAmounts = async (req, res) => {
+  try {
+    const { scheme_id } = req.query || {};
+    if (!scheme_id) return commonService.badRequest(res, enMessage.failure.requiredFields);
+
+    const scheme = await models.Scheme.findByPk(+scheme_id);
+    if (!scheme) return commonService.notFound(res, enMessage.failure.notFound);
+
+    const amounts = Array.isArray(scheme.monthly_installments)
+      ? scheme.monthly_installments.map((a) => +a)
+      : [];
+
+    return commonService.okResponse(res, { installments: amounts });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
 module.exports = {
   createScheme,
   listSchemes,
@@ -264,4 +283,5 @@ module.exports = {
   listRedemptionTypes,
   listIdentityProofs,
   listNomineeRelations,
+  listInstallmentAmounts,
 };

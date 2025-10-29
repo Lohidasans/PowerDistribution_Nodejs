@@ -19,7 +19,7 @@ const PaymentFrequency = require("./paymentFrequencies")(sequelize, Sequelize.Da
 const RedemptionType = require("./redemptionTypes")(sequelize, Sequelize.DataTypes);
 const IdentityProof = require("./identityProofs")(sequelize, Sequelize.DataTypes);
 const NomineeRelation = require("./nomineeRelations")(sequelize, Sequelize.DataTypes);
-const Enrollment = require("./enrollments")(sequelize, Sequelize.DataTypes);
+const Enrollment = require("./customer_enrollments")(sequelize, Sequelize.DataTypes);
 
 // Branch related models
 const Branch = require("./branches")(sequelize, Sequelize.DataTypes);

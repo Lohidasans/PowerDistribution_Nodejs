@@ -5,6 +5,7 @@ const customerService = require("../services/customerService");
 // CRUD
 router.post("/customers", customerService.createCustomer);
 router.get("/customers", customerService.listCustomers);
+router.get("/customers/mobile/dropdown", customerService.listCustomerMobilesDropdown);
 router.get("/customers/:id", customerService.getCustomerById);
 router.put("/customers/:id", customerService.updateCustomer);
 router.delete("/customers/:id", customerService.deleteCustomer);
@@ -16,9 +17,13 @@ module.exports = router;
 
 /**
  * @openapi
- * tags:
- *   - name: Customer
- *     description: Customer management
+ * /api/v1/customers/mobile/dropdown:
+ *   get:
+ *     summary: Dropdown - distinct customer mobile numbers
+ *     tags: [Customer]
+ *     responses:
+ *       200:
+ *         description: OK
  */
 
 /**
