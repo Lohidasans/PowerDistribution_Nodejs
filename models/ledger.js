@@ -8,15 +8,14 @@ module.exports = (sequelize, DataTypes) => {
         primaryKey: true,
         type: DataTypes.INTEGER,
       },
+      ledger_no: {
+        type: DataTypes.STRING,
+        allowNull: false,
+        unique: true,
+      },
       ledger_group_id: {
         type: DataTypes.INTEGER,
         allowNull: false,
-        references: {
-          model: "ledger_group",
-          key: "id",
-        },
-        onUpdate: "CASCADE",
-        onDelete: "RESTRICT",
       },
       ledger_name: {
         type: DataTypes.STRING,

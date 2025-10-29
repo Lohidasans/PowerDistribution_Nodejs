@@ -6,7 +6,7 @@ const message = require("../constants/en.json");
 // Create Ledger
 const create = async (req, res) => {
   try {
-    const { ledger_group_id, ledger_name } = req.body;
+    const { ledger_group_id, ledger_name, ledger_no } = req.body;
 
     // Check if ledger group exists
     const ledgerGroup = await models.LedgerGroup.findByPk(ledger_group_id);
@@ -16,6 +16,7 @@ const create = async (req, res) => {
 
     // Create new ledger
     const ledger = await models.Ledger.create({
+      ledger_no,
       ledger_group_id,
       ledger_name,
     });
@@ -185,7 +186,7 @@ const getByLedgerGroupId = async (req, res) => {
 const update = async (req, res) => {
   try {
     const { id } = req.params;
-    const { ledger_group_id, ledger_name } = req.body;
+    const { ledger_group_id, ledger_name, ledger_no } = req.body;
 
     const ledger = await models.Ledger.findByPk(id);
 
@@ -205,6 +206,7 @@ const update = async (req, res) => {
     await ledger.update({
       ledger_group_id: ledger_group_id || ledger.ledger_group_id,
       ledger_name: ledger_name || ledger.ledger_name,
+      ledger_no: ledger_no || ledger.ledger_no,
     });
 
     // Get the updated ledger with ledger group details

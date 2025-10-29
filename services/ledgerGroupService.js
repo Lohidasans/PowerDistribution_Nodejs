@@ -6,12 +6,12 @@ const message = require("../constants/en.json");
 // Create Ledger Group
 const create = async (req, res) => {
   try {
-    const { ledger_group_id, ledger_group_name, status_id = 1 } = req.body;
+    const { ledger_group_name, ledger_group_no, status_id = 1 } = req.body;
 
     // Check if ledger group ID already exists
     const ledgerGroupExists = await models.LedgerGroup.findOne({
       where: {
-        ledger_group_id,
+        ledger_group_no,
       },
     });
 
@@ -24,7 +24,7 @@ const create = async (req, res) => {
 
     // Create new ledger group
     const ledgerGroup = await models.LedgerGroup.create({
-      ledger_group_id,
+      ledger_group_no,
       ledger_group_name,
       status_id,
     });
@@ -130,7 +130,7 @@ const getById = async (req, res) => {
 const update = async (req, res) => {
   try {
     const { id } = req.params;
-    const { ledger_group_id, ledger_group_name, status_id } = req.body;
+    const { ledger_group_no, ledger_group_name, status_id } = req.body;
 
     const ledgerGroup = await models.LedgerGroup.findByPk(id);
 
@@ -138,11 +138,11 @@ const update = async (req, res) => {
       return commonService.notFound(res, "Ledger group not found");
     }
 
-    // Check if updating to an existing ledger_group_id
-    if (ledger_group_id && ledger_group_id !== ledgerGroup.ledger_group_id) {
+    // Check if updating to an existing ledger_group_no
+    if (ledger_group_no && ledger_group_no !== ledgerGroup.ledger_group_no) {
       const existingLedgerGroup = await models.LedgerGroup.findOne({
         where: {
-          ledger_group_id,
+          ledger_group_no,
           id: { [Op.ne]: id }, // Exclude current record
         },
       });
@@ -157,7 +157,7 @@ const update = async (req, res) => {
 
     // Update the ledger group
     await ledgerGroup.update({
-      ledger_group_id: ledger_group_id || ledgerGroup.ledger_group_id,
+      ledger_group_no: ledger_group_no || ledgerGroup.ledger_group_no,
       ledger_group_name: ledger_group_name || ledgerGroup.ledger_group_name,
       status_id: status_id !== undefined ? status_id : ledgerGroup.status_id,
     });
