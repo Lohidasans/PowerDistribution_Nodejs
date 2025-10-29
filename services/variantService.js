@@ -50,6 +50,44 @@ const createVariant = async (req, res) => {
   }
 };
 
+// List variants with values as array items and optional variant_type filter
+const listVariantsDetailed = async (req, res) => {
+  try {
+    const { variant_type } = req.query;
+
+    const whereClause = `
+      WHERE v.deleted_at IS NULL
+      ${variant_type ? 'AND v.variant_type = :vt' : ''}
+    `;
+
+    const sql = `
+      SELECT
+        v.id AS id,
+        v.variant_type AS "Variant Type",
+        COALESCE(
+          json_agg(
+            json_build_object('id', vv.id, 'value', vv.value)
+            ORDER BY vv.id
+          ) FILTER (WHERE vv.id IS NOT NULL),
+          '[]'::json
+        ) AS "Values"
+      FROM variants v
+      LEFT JOIN "variantValues" vv
+        ON vv.variant_id = v.id AND vv.deleted_at IS NULL
+      ${whereClause}
+      GROUP BY v.id, v.variant_type
+      ORDER BY v.id ASC`;
+
+    const replacements = {};
+    //if (variant_type) replacements.vt = `%${variant_type}%`;
+    if (variant_type) replacements.vt = variant_type.trim();
+    const [rows] = await sequelize.query(sql, { replacements });
+    return commonService.okResponse(res, { variants: rows });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
 // Bulk create variants with their values
 const createVariantsBulk = async (req, res) => {
   const transaction = await sequelize.transaction();
@@ -245,5 +283,6 @@ module.exports = {
   updateVariant,
   deleteVariant,
   listVariantWithValues,
+  listVariantsDetailed,
   createVariantsBulk,
 };

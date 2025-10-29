@@ -5,11 +5,55 @@ const variantService = require("../services/variantService");
 variantRouter.post("/variant", variantService.createVariant);
 variantRouter.post("/variants/bulk", variantService.createVariantsBulk);
 variantRouter.get("/variants", variantService.listVariantWithValues);
+variantRouter.get("/variants/detailed", variantService.listVariantsDetailed);
 variantRouter.get("/variant/:id", variantService.getByIdVariant);
 variantRouter.put("/variant/:id", variantService.updateVariant);
 variantRouter.delete("/variant/:id", variantService.deleteVariant);
 
 module.exports = variantRouter;
+
+/**
+ * @openapi
+ * /api/v1/variants/detailed:
+ *   get:
+ *     summary: List variants with their values as an array of objects
+ *     tags: [Variant]
+ *     parameters:
+ *       - in: query
+ *         name: variant_type
+ *         schema: { type: string }
+ *         required: false
+ *         description: Filter by variant type (ILIKE)
+ *     responses:
+ *       200:
+ *         description: OK
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 statusCode:
+ *                   type: integer
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     variants:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id: { type: integer }
+ *                           Variant Type: { type: string }
+ *                           Values:
+ *                             type: array
+ *                             items:
+ *                               type: object
+ *                               properties:
+ *                                 id: { type: integer }
+ *                                 value: { type: string }
+ */
 
 /**
  * @openapi

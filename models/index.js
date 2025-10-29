@@ -13,6 +13,13 @@ const RolePermission = require("./rolePermissions")(
   Sequelize.DataTypes
 );
 const Scheme = require("./schemes")(sequelize, Sequelize.DataTypes);
+const SchemeType = require("./schemeTypes")(sequelize, Sequelize.DataTypes);
+const SchemeDuration = require("./schemeDurations")(sequelize, Sequelize.DataTypes);
+const PaymentFrequency = require("./paymentFrequencies")(sequelize, Sequelize.DataTypes);
+const RedemptionType = require("./redemptionTypes")(sequelize, Sequelize.DataTypes);
+const IdentityProof = require("./identityProofs")(sequelize, Sequelize.DataTypes);
+const NomineeRelation = require("./nomineeRelations")(sequelize, Sequelize.DataTypes);
+const Enrollment = require("./enrollments")(sequelize, Sequelize.DataTypes);
 
 // Branch related models
 const Branch = require("./branches")(sequelize, Sequelize.DataTypes);
@@ -126,6 +133,13 @@ const models = {
   LedgerGroup,
   Ledger,
   Scheme,
+  SchemeType,
+  SchemeDuration,
+  PaymentFrequency,
+  RedemptionType,
+  IdentityProof,
+  NomineeRelation,
+  Enrollment,
   SuperAdminProfile,
   InvoiceSettingEnum,
 };
