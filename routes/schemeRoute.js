@@ -1,3 +1,68 @@
+/**
+ * @openapi
+ * /api/v1/dropdown/scheme-types:
+ *   get:
+ *     summary: Dropdown - Scheme Types
+ *     tags: [Scheme]
+ *     responses:
+ *       200:
+ *         description: OK
+ */
+
+/**
+ * @openapi
+ * /api/v1/dropdown/scheme-durations:
+ *   get:
+ *     summary: Dropdown - Scheme Durations
+ *     tags: [Scheme]
+ *     responses:
+ *       200:
+ *         description: OK
+ */
+
+/**
+ * @openapi
+ * /api/v1/dropdown/payment-frequencies:
+ *   get:
+ *     summary: Dropdown - Payment Frequencies
+ *     tags: [Scheme]
+ *     responses:
+ *       200:
+ *         description: OK
+ */
+
+/**
+ * @openapi
+ * /api/v1/dropdown/redemption-types:
+ *   get:
+ *     summary: Dropdown - Redemption Types
+ *     tags: [Scheme]
+ *     responses:
+ *       200:
+ *         description: OK
+ */
+
+/**
+ * @openapi
+ * /api/v1/dropdown/identity-proofs:
+ *   get:
+ *     summary: Dropdown - Identity Proofs
+ *     tags: [Scheme]
+ *     responses:
+ *       200:
+ *         description: OK
+ */
+
+/**
+ * @openapi
+ * /api/v1/dropdown/nominee-relations:
+ *   get:
+ *     summary: Dropdown - Nominee Relations
+ *     tags: [Scheme]
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 var express = require("express");
 var router = express.Router();
 const schemeService = require("../services/schemeService");
@@ -8,6 +73,14 @@ router.get("/schemes", schemeService.listSchemes);
 router.get("/schemes/:id", schemeService.getSchemeById);
 router.put("/schemes/:id", schemeService.updateScheme);
 router.delete("/schemes/:id", schemeService.deleteScheme);
+
+// Dropdowns
+router.get("/dropdown/scheme-types", schemeService.listSchemeTypes);
+router.get("/dropdown/scheme-durations", schemeService.listSchemeDurations);
+router.get("/dropdown/payment-frequencies", schemeService.listPaymentFrequencies);
+router.get("/dropdown/redemption-types", schemeService.listRedemptionTypes);
+router.get("/dropdown/identity-proofs", schemeService.listIdentityProofs);
+router.get("/dropdown/nominee-relations", schemeService.listNomineeRelations);
 
 module.exports = router;
 

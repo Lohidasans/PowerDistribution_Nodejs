@@ -127,10 +127,89 @@ const deleteScheme = async (req, res) => {
   }
 };
 
+// Dropdowns
+const listSchemeTypes = async (_req, res) => {
+  try {
+    const rows = await models.SchemeType.findAll({
+      order: [["type_name", "ASC"]],
+    });
+    const items = rows.map((r) => ({ id: r.id, name: r.type_name }));
+    return commonService.okResponse(res, { items });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
+const listSchemeDurations = async (_req, res) => {
+  try {
+    const rows = await models.SchemeDuration.findAll({
+      order: [["duration_name", "ASC"]],
+    });
+    const items = rows.map((r) => ({ id: r.id, name: r.duration_name }));
+    return commonService.okResponse(res, { items });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
+const listPaymentFrequencies = async (_req, res) => {
+  try {
+    const rows = await models.PaymentFrequency.findAll({
+      order: [["frequency_name", "ASC"]],
+    });
+    const items = rows.map((r) => ({ id: r.id, name: r.frequency_name }));
+    return commonService.okResponse(res, { items });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
+const listRedemptionTypes = async (_req, res) => {
+  try {
+    const rows = await models.RedemptionType.findAll({
+      order: [["type_name", "ASC"]],
+    });
+    const items = rows.map((r) => ({ id: r.id, name: r.type_name }));
+    return commonService.okResponse(res, { items });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
+const listIdentityProofs = async (_req, res) => {
+  try {
+    const rows = await models.IdentityProof.findAll({
+      order: [["proof_name", "ASC"]],
+    });
+    const items = rows.map((r) => ({ id: r.id, name: r.proof_name }));
+    return commonService.okResponse(res, { items });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
+const listNomineeRelations = async (_req, res) => {
+  try {
+    const rows = await models.NomineeRelation.findAll({
+      order: [["relation_name", "ASC"]],
+    });
+    const items = rows.map((r) => ({ id: r.id, name: r.relation_name }));
+    return commonService.okResponse(res, { items });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
 module.exports = {
   createScheme,
   listSchemes,
   getSchemeById,
   updateScheme,
   deleteScheme,
+  listSchemeTypes,
+  listSchemeDurations,
+  listPaymentFrequencies,
+  listRedemptionTypes,
+  listIdentityProofs,
+  listNomineeRelations,
 };
