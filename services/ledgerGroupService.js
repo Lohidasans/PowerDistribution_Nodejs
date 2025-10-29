@@ -75,7 +75,7 @@ const list = async (req, res) => {
     if (search) {
       where = {
         [Op.or]: [
-          { ledger_group_id: { [Op.like]: `%${search}%` } },
+          { ledger_group_no: { [Op.like]: `%${search}%` } },
           { ledger_group_name: { [Op.like]: `%${search}%` } },
         ],
       };

@@ -6,10 +6,10 @@ const message = require("../constants/en.json");
 // Create Ledger
 const create = async (req, res) => {
   try {
-    const { ledger_group_id, ledger_name, ledger_no } = req.body;
+    const { ledger_group_no, ledger_name, ledger_no } = req.body;
 
     // Check if ledger group exists
-    const ledgerGroup = await models.LedgerGroup.findByPk(ledger_group_id);
+    const ledgerGroup = await models.LedgerGroup.findByPk(ledger_group_no);
     if (!ledgerGroup) {
       return commonService.badRequest(res, "Ledger group not found");
     }
@@ -17,7 +17,7 @@ const create = async (req, res) => {
     // Create new ledger
     const ledger = await models.Ledger.create({
       ledger_no,
-      ledger_group_id,
+      ledger_group_no,
       ledger_name,
     });
 
@@ -27,7 +27,7 @@ const create = async (req, res) => {
         {
           model: models.LedgerGroup,
           as: "ledgerGroup",
-          attributes: ["id", "ledger_group_id", "ledger_group_name"],
+          attributes: ["id", "ledger_group_no", "ledger_group_name"],
         },
       ],
     });
@@ -50,7 +50,7 @@ const bulkCreate = async (req, res) => {
 
     // Validate that all ledger groups exist
     const ledgerGroupIds = [
-      ...new Set(ledgers.map((ledger) => ledger.ledger_group_id)),
+      ...new Set(ledgers.map((ledger) => ledger.ledger_group_no)),
     ];
     const existingGroups = await models.LedgerGroup.findAll({
       where: { id: ledgerGroupIds },
@@ -77,7 +77,7 @@ const bulkCreate = async (req, res) => {
 // List all Ledgers with optional search and filters
 const list = async (req, res) => {
   try {
-    const { page = 1, limit = 10, search, ledger_group_id } = req.query;
+    const { page = 1, limit = 10, search, ledger_group_no } = req.query;
     const offset = (page - 1) * limit;
 
     let where = {};
@@ -88,8 +88,8 @@ const list = async (req, res) => {
       };
     }
 
-    if (ledger_group_id) {
-      where.ledger_group_id = ledger_group_id;
+    if (ledger_group_no) {
+      where.ledger_group_no = ledger_group_no;
     }
 
     const { count, rows: ledgers } = await models.Ledger.findAndCountAll({
@@ -98,7 +98,7 @@ const list = async (req, res) => {
         {
           model: models.LedgerGroup,
           as: "ledgerGroup",
-          attributes: ["id", "ledger_group_id", "ledger_group_name"],
+          attributes: ["id", "ledger_group_no", "ledger_group_name"],
         },
       ],
       limit: parseInt(limit),
@@ -131,7 +131,7 @@ const getById = async (req, res) => {
         {
           model: models.LedgerGroup,
           as: "ledgerGroup",
-          attributes: ["id", "ledger_group_id", "ledger_group_name"],
+          attributes: ["id", "ledger_group_no", "ledger_group_name"],
         },
       ],
     });
@@ -161,7 +161,7 @@ const getByLedgerGroupId = async (req, res) => {
     }
 
     const { count, rows: ledgers } = await models.Ledger.findAndCountAll({
-      where: { ledger_group_id: ledgerGroupId },
+      where: { ledger_group_no: ledgerGroupId },
       limit: parseInt(limit),
       offset: parseInt(offset),
       order: [["created_at", "DESC"]],
@@ -186,7 +186,7 @@ const getByLedgerGroupId = async (req, res) => {
 const update = async (req, res) => {
   try {
     const { id } = req.params;
-    const { ledger_group_id, ledger_name, ledger_no } = req.body;
+    const { ledger_group_no, ledger_name, ledger_no } = req.body;
 
     const ledger = await models.Ledger.findByPk(id);
 
@@ -194,9 +194,9 @@ const update = async (req, res) => {
       return commonService.notFound(res, "Ledger not found");
     }
 
-    // If ledger_group_id is provided, check if it exists
-    if (ledger_group_id) {
-      const ledgerGroup = await models.LedgerGroup.findByPk(ledger_group_id);
+    // If ledger_group_no is provided, check if it exists
+    if (ledger_group_no) {
+      const ledgerGroup = await models.LedgerGroup.findByPk(ledger_group_no);
       if (!ledgerGroup) {
         return commonService.badRequest(res, "Ledger group not found");
       }
@@ -204,7 +204,7 @@ const update = async (req, res) => {
 
     // Update the ledger
     await ledger.update({
-      ledger_group_id: ledger_group_id || ledger.ledger_group_id,
+      ledger_group_no: ledger_group_no || ledger.ledger_group_no,
       ledger_name: ledger_name || ledger.ledger_name,
       ledger_no: ledger_no || ledger.ledger_no,
     });
@@ -215,7 +215,7 @@ const update = async (req, res) => {
         {
           model: models.LedgerGroup,
           as: "ledgerGroup",
-          attributes: ["id", "ledger_group_id", "ledger_group_name"],
+          attributes: ["id", "ledger_group_no", "ledger_group_name"],
         },
       ],
     });
