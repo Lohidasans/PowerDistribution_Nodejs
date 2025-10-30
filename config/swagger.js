@@ -607,9 +607,8 @@ const options = {
             description: { type: "string" },
             sort_order: { type: "integer" },
             status: { type: "string", enum: ["Active", "Inactive"] },
-            material_type: { type: "string" },
           },
-          required: ["material_type", "category_name", "material_type"],
+          required: ["material_type_id", "category_name"],
         },
         Subcategory: {
           type: "object",
