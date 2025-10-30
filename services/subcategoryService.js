@@ -102,13 +102,13 @@ const getAllSubCategories = async (req, res) => {
     //  Filter by Material Type
     if (materialType) {
       query += ` AND mt.material_type ILIKE :materialType`;
-      replacements.materialType = `%${materialType}%`;
+      replacements.materialType = materialType;
     }
 
     // Filter by Category
     if (category) {
       query += ` AND c.category_name ILIKE :category`;
-      replacements.category = `%${category}%`;
+      replacements.category = category;
     }
 
     // Search across fields
