@@ -19,7 +19,7 @@
     "alreadyExists": "This Role already exists."
   },
   "branch": {
-    "required": "Branch No and Branch Name are required.",
+    "required": "Branch Name is required.",
     "duplicateNo": "Branch No already exists.",
     "requiredCodes":"company_code and location_code are required."
   },

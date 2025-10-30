@@ -52,23 +52,36 @@ const createBranch = async (req, res) => {
     const { bank_account, kyc_documents, login, ...branchInput } =
       req.body || {};
 
-    const { branch_no, branch_name } = branchInput;
+    const {  branch_name } = branchInput;
 
     // Validate required fields
-    if (!branch_no || !branch_name) {
+    if (!branch_name) {
       await t.rollback();
       return commonService.badRequest(res, message.branch.required);
     }
 
-    // Enforce unique branch_no
-    const existing = await models.Branch.findOne({ where: { branch_no } });
-    if (existing) {
+    // Generate branch_no BEFORE create (to satisfy NOT NULL): COMPANY_PREFIX + DISTRICT_SHORT + sequence (e.g., CJ_CHEN_01)
+    const superAdmin = await models.SuperAdminProfile.findOne({ order: [["id", "ASC"]], transaction: t });
+    if (!superAdmin?.branch_sequence_value) {
       await t.rollback();
-      return commonService.badRequest(res, message.branch.duplicateNo);
+      return commonService.badRequest(res, "Company code not configured in Super Admin Profile");
     }
 
-    // Create branch
-    const branch = await models.Branch.create(branchInput, { transaction: t });
+    const district = await models.District.findByPk(branchInput.district_id, { transaction: t });
+    if (!district?.short_name) {
+      await t.rollback();
+      return commonService.badRequest(res, "District short code not found");
+    }
+
+    const companyCode = String(superAdmin.branch_sequence_value).toUpperCase().replace(/[^A-Z0-9]/g, "");
+    const districtCode = String(district.short_name).toUpperCase().replace(/[^A-Z0-9]/g, "");
+    const generatedBranchNo = await generateUniqueCode(
+      models.Branch,
+      "branch_no",
+      [companyCode, districtCode],
+      { pad: 2, separator: "_" }
+    );
+    const branch = await models.Branch.create({ ...branchInput, branch_no: generatedBranchNo }, { transaction: t });
 
     // Optionally create a single bank account via reusable create helper
     let createdBankAccount = null;
@@ -109,7 +122,19 @@ const createBranch = async (req, res) => {
         );
       } catch (e) {
         await t.rollback();
-        return commonService.badRequest(res, message.failure.requiredFields);
+        // Surface meaningful Sequelize errors (e.g., unique email)
+        let errMsg = message.failure.requiredFields;
+        if (e && typeof e === "object") {
+          if (e.name === "SequelizeUniqueConstraintError" || e.name === "SequelizeValidationError") {
+            const parts = Array.isArray(e.errors)
+              ? e.errors.map((er) => er.message || er.type || "Validation error")
+              : [];
+            if (parts.length) errMsg = parts.join(", ");
+          } else if (e.message) {
+            errMsg = e.message;
+          }
+        }
+        return commonService.badRequest(res, errMsg);
       }
     }
 
