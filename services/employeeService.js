@@ -293,53 +293,38 @@ const listDepartmentDropdown = async (req, res) => {
 
 const getEmployeeById = async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = req.params.id;
 
-    const employee = await models.Employee.findOne({
-      where: { id },
-      include: [
-        { model: models.EmployeeContact, as: "contact" },
-        {
-          model: models.Branch,
-          as: "branch",
-          attributes: ["id", "branch_name"],
-        },
-        {
-          model: models.EmployeeDepartment,
-          as: "department",
-          attributes: ["id", "department_name"],
-        },
-        {
-          model: models.EmployeeDesignation,
-          as: "designation",
-          attributes: ["id", "designation_name"],
-        },
-      ],
-    });
-
-    if (!employee)
-      return commonService.notFound(res, enMessage.failure.notFound);
+    const employee = await commonService.findById(models.Employee, id, res);
+    if (!employee) return;
 
     const [bank_account, kyc_documents, login, experiences] = await Promise.all([
-      models.BankAccount.findOne({ where: { entity_type: "employee", entity_id: id } }),
-      models.KycDocument.findAll({ where: { entity_type: "employee", entity_id: id } }),
-      models.User.findOne({ where: { entity_type: "employee", entity_id: id } }),
-      models.EmployeeExperience.findAll({ where: { employee_id: id } }),
+      models.BankAccount.findOne({
+        where: { entity_type: "employee", entity_id: id },
+      }),
+      models.KycDocument.findAll({
+        where: { entity_type: "employee", entity_id: id },
+      }),
+      models.User.findOne({
+        where: { entity_type: "employee", entity_id: id },
+      }),
+      models.EmployeeExperience.findAll({
+        where: { employee_id: id },
+      }),
     ]);
 
-    const response = {
-      employee: employee.get({ plain: true }),
+    return commonService.okResponse(res, {
+      employee,
       bank_account,
       kyc_documents,
       login,
-      experiences
-    };
-
-    return commonService.okResponse(res, response);
+      experiences,
+    });
   } catch (err) {
     return commonService.handleError(res, err);
   }
 };
+
 
 const listEmployeeDropdown = async (req, res) => {
   try {
