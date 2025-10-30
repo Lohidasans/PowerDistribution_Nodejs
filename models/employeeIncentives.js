@@ -11,15 +11,13 @@ module.exports = (sequelize, DataTypes) => {
       role_id: {
         type: DataTypes.INTEGER,
         allowNull: false,
-        references: {
-          model: "roles",
-          key: "id",
-        },
-        onUpdate: "CASCADE",
-        onDelete: "CASCADE",
       },
-      incentive_target: {
-        type: DataTypes.DECIMAL(15, 2), // e.g. 200000.00
+      department_id: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+      },
+      sales_target: {
+        type: DataTypes.ARRAY(DataTypes.INTEGER),
         allowNull: false,
       },
       incentive_type: {
@@ -37,7 +35,6 @@ module.exports = (sequelize, DataTypes) => {
       updatedAt: "updated_at",
       paranoid: true,
       deletedAt: "deleted_at",
-      indexes: [{ fields: ["role_id"] }],
     }
   );
 

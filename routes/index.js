@@ -27,6 +27,7 @@ const LedgerRouter = require("./ledgerRoute");
 const SuperAdminProfileRoute = require("./superAdminProfileRoute");
 const ProductVariantRoute = require("./productVariantRoute");
 const EnrollmentRoute = require("./enrollmentRoute");
+const EmployeeIncentiveRoute = require("./employeeIncentiveRoute");
 
 module.exports = (app) => {
   app.use("/api/v1", RoleRouter);
@@ -58,4 +59,5 @@ module.exports = (app) => {
   app.use("/api/v1", SuperAdminProfileRoute);
   app.use("/api/v1", ProductVariantRoute);
   app.use("/api/v1", EnrollmentRoute);
+  app.use("/api/v1", EmployeeIncentiveRoute);
 };
