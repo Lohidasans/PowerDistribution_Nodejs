@@ -373,7 +373,7 @@ const deleteBranch = async (req, res) => {
 const branchDropdownList = async (req, res) => {
   try {
     const rows = await models.Branch.findAll({
-      attributes: ["id", "branch_name"], // Only the fields needed for dropdown
+      attributes: ["id", "branch_name", "branch_no"], // Only the fields needed for dropdown
       order: [["branch_name", "ASC"]],
     });
 

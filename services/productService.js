@@ -189,17 +189,24 @@ const getAllProducts = async (req, res) => {
 
 const generateSkuId = async (req, res) => {
   try {
-    const { company_code, location_code, branch_code } = req.query || {};
+    const { branch_no } = req.query || {};
 
-    const parts = [company_code, location_code, branch_code].filter(
-      (p) => p !== undefined && p !== null && String(p).trim() !== ""
-    );
-    // If any required param is missing
-    if (parts.length < 3) {
-      return commonService.badRequest(res, message.failure.requiredCodes);
+    if (!branch_no || String(branch_no).trim() === "") {
+      return commonService.badRequest(res, "branch_no is required");
     }
 
-    const skuId = await generateUniqueSkuId(models.Product, "sku_id", parts);
+    // Preserve underscores in branch_no by splitting into parts
+    const parts = String(branch_no)
+      .split("_")
+      .map((p) => p.trim())
+      .filter((p) => p !== "");
+
+    // Generate <branch_no>_NNN sequence
+    const { generateUniqueCode } = require("../helpers/codeGeneration");
+    const skuId = await generateUniqueCode(models.Product, "sku_id", parts, {
+      pad: 3,
+      separator: "_",
+    });
 
     return commonService.okResponse(res, { sku_id: skuId });
   } catch (err) {

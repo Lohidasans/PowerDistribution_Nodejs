@@ -29,18 +29,11 @@ module.exports = router;
  *     tags: [Product]
  *     parameters:
  *       - in: query
- *         name: company_code
+ *         name: branch_no
+ *         required: true
  *         schema: { type: string }
- *         description: Optional prefix part 1 (e.g., CJ)
- *       - in: query
- *         name: location_code
- *         schema: { type: string }
- *         description: Optional prefix part 2 (e.g., CBE)
- *       - in: query
- *         name: branch_code
- *         schema: { type: string }
- *         description: Optional prefix part 3 (e.g., 01)
- *     description: If prefix parts are provided, returns a unique SKU like CJ_CBE_01_0001; otherwise falls back to auto code.
+ *         description: Branch code prefix (e.g., CJ_MDU_01)
+ *     description: Returns a unique SKU like CJ_MDU_01_001 using the provided branch_no.
  *     responses:
  *       200:
  *         description: Generated SKU
