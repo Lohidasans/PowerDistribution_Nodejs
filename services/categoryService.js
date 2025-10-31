@@ -32,11 +32,16 @@ const createCategory = async (req, res) => {
 
 const getAllCategories = async (req, res) => {
   try {
-    const { materialType, search } = req.query;
+    const { material_type_id, search } = req.query;
 
     let query = `
-      SELECT c.id, c.category_name, c.category_image_url, c.material_type_id,
-             mt.material_type, mt.material_image_url
+      SELECT
+        c.id,
+        c.category_name,
+        c.category_image_url,
+        c.material_type_id,
+        mt.material_type,
+        mt.material_image_url
       FROM categories c
       LEFT JOIN "materialTypes" mt ON mt.id = c.material_type_id
       WHERE 1=1
@@ -44,13 +49,13 @@ const getAllCategories = async (req, res) => {
 
     const replacements = {};
 
-    // Filter by Material Type
-    if (materialType) {
-      query += ` AND mt.material_type ILIKE :materialType`;
-      replacements.materialType = `%${materialType}%`;
+    // 🔹 Filter by Material Type ID (numeric)
+    if (material_type_id) {
+      query += ` AND c.material_type_id = :material_type_id`;
+      replacements.material_type_id = material_type_id;
     }
 
-    // Search across fields
+    // 🔹 Search across category name and material type
     if (search) {
       const searchableFields = ["c.category_name", "mt.material_type"];
       query += ` AND (${searchableFields
@@ -59,11 +64,13 @@ const getAllCategories = async (req, res) => {
       replacements.search = `%${search}%`;
     }
 
-    // Sorting
+    // 🔹 Sort by category ID
     query += ` ORDER BY c.id ASC`;
 
+    // 🔹 Execute query
     const [categories] = await sequelize.query(query, { replacements });
 
+    // 🔹 Send response
     return commonService.okResponse(res, { categories });
   } catch (err) {
     return commonService.handleError(res, err);
@@ -75,7 +82,7 @@ const listCategories = async (req, res) => {
     const { material_type_id, search = "" } = req.query;
 
     let sql = `
-      SELECT 
+      SELECT
         c.id,
         c.category_name,
         c.category_image_url,
