@@ -32,7 +32,7 @@ const createCategory = async (req, res) => {
 
 const getAllCategories = async (req, res) => {
   try {
-    const { material_type_id, search } = req.query;
+    const { materialType, material_type_id, search } = req.query;
 
     let query = `
       SELECT
@@ -55,7 +55,13 @@ const getAllCategories = async (req, res) => {
       replacements.material_type_id = material_type_id;
     }
 
-    // 🔹 Search across category name and material type
+    // 🔹 Filter by Material Type Name (text)
+    if (materialType) {
+      query += ` AND mt.material_type ILIKE :materialType`;
+      replacements.materialType = `%${materialType}%`;
+    }
+
+    // 🔹 Search across multiple fields
     if (search) {
       const searchableFields = ["c.category_name", "mt.material_type"];
       query += ` AND (${searchableFields
@@ -64,7 +70,7 @@ const getAllCategories = async (req, res) => {
       replacements.search = `%${search}%`;
     }
 
-    // 🔹 Sort by category ID
+    // 🔹 Sorting
     query += ` ORDER BY c.id ASC`;
 
     // 🔹 Execute query
