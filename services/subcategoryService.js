@@ -6,21 +6,21 @@ const { buildSearchCondition } = require("../helpers/queryHelper");
 const createSubcategory = async (req, res) => {
   try {
     const {
-      materialType_id,
+      materialtype_id,
       category_id,
       subcategory_name,
       subcategory_image_url,
       reorder_level,
     } = req.body;
 
-    if (!materialType_id || !category_id || !subcategory_name)
+    if (!materialtype_id || !category_id || !subcategory_name)
       return commonService.badRequest(
         res,
         enMessage.failure.requiredMaterialCategoryAndSub
       );
 
     const row = await models.Subcategory.create({
-      materialType_id,
+      materialtype_id,
       category_id,
       subcategory_name,
       subcategory_image_url,
@@ -75,9 +75,12 @@ const listSubcategoriesDropdown = async (req, res) => {
   }
 };
 
+const { QueryTypes } = require("sequelize");
+
 const getAllSubCategories = async (req, res) => {
   try {
-    const { materialType, category, search } = req.query;
+    const { materialType, materialtype_id, category, category_id, search } =
+      req.query;
 
     let query = `
       SELECT
@@ -88,30 +91,48 @@ const getAllSubCategories = async (req, res) => {
         sc.category_id,
         c.category_name,
         c.category_image_url,
-        c.material_type_id,
+        sc.materialtype_id,
         mt.material_type AS material_type,
         mt.material_image_url
       FROM "subcategories" sc
       LEFT JOIN categories c ON c.id = sc.category_id
-      LEFT JOIN "materialTypes" mt ON mt.id = c.material_type_id
+      LEFT JOIN "materialTypes" mt ON mt.id = sc.materialtype_id
       WHERE 1=1
     `;
 
     const replacements = {};
 
-    //  Filter by Material Type
+    // 🔹 Filter by Material Type Name
     if (materialType) {
       query += ` AND mt.material_type ILIKE :materialType`;
-      replacements.materialType = materialType;
+      replacements.materialType = `%${materialType}%`;
     }
 
-    // Filter by Category
+    // 🔹 Filter by Material Type ID (matches DB field name)
+    if (materialtype_id) {
+      const mtId = Number(materialtype_id);
+      if (!Number.isNaN(mtId)) {
+        query += ` AND sc.materialtype_id = :materialtype_id`;
+        replacements.materialtype_id = mtId; // ✅ corrected key
+      }
+    }
+
+    // 🔹 Filter by Category Name
     if (category) {
       query += ` AND c.category_name ILIKE :category`;
-      replacements.category = category;
+      replacements.category = `%${category}%`;
     }
 
-    // Search across fields
+    // 🔹 Filter by Category ID
+    if (category_id) {
+      const catId = Number(category_id);
+      if (!Number.isNaN(catId)) {
+        query += ` AND sc.category_id = :category_id`;
+        replacements.category_id = catId;
+      }
+    }
+
+    // 🔹 Search across fields
     if (search) {
       const searchableFields = [
         "sc.subcategory_name",
@@ -127,7 +148,10 @@ const getAllSubCategories = async (req, res) => {
     // 🔹 Sorting
     query += ` ORDER BY sc.id ASC`;
 
-    const [subCategories] = await sequelize.query(query, { replacements });
+    const subCategories = await sequelize.query(query, {
+      replacements,
+      type: QueryTypes.SELECT,
+    });
 
     return commonService.okResponse(res, { subCategories });
   } catch (err) {
