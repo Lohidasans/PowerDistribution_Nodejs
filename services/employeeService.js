@@ -1,4 +1,5 @@
 const { models, sequelize } = require("../models");
+const { Op } = require("sequelize");
 const commonService = require("./commonService");
 const enMessage = require("../constants/en.json");
 const bankSvc = require("./bankAccountService");
@@ -265,6 +266,43 @@ const listEmployees = async (req, res) => {
   }
 };
 
+// Lightweight search dropdown: by employee_name or employee_no
+const searchEmployeeDropdown = async (req, res) => {
+  try {
+    const { search = "", limit = 20 } = req.query || {};
+
+    const where = { deleted_at: null };
+    if (search && String(search).trim() !== "") {
+      where[Op.or] = [
+        { employee_name: { [Op.iLike]: `%${search}%` } },
+        { employee_no: { [Op.iLike]: `%${search}%` } },
+      ];
+    }
+
+    const rows = await models.Employee.findAll({
+      attributes: [
+        "id",
+        [sequelize.col("employee_no"), "employee_no"],
+        [sequelize.col("employee_name"), "employee_name"],
+      ],
+      where,
+      order: [["employee_name", "ASC"]],
+      limit: Math.min(parseInt(limit) || 20, 50),
+    });
+
+    // Shape minimal payload for dropdowns
+    const employees = rows.map((r) => ({
+      id: r.id,
+      employee_no: r.get("employee_no"),
+      employee_name: r.get("employee_name"),
+    }));
+
+    return commonService.okResponse(res, { employees });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
 // Dropdown: Employee Designations -> [{ id, name }]
 const listDesignationDropdown = async (req, res) => {
   try {
@@ -510,6 +548,7 @@ module.exports = {
   listEmployees,
   getEmployeeById,
   listEmployeeDropdown,
+  searchEmployeeDropdown,
   listDesignationDropdown,
   listDepartmentDropdown,
   updateEmployee,

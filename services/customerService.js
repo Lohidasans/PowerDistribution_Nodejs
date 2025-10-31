@@ -2,6 +2,7 @@ const { models, sequelize } = require("../models");
 const commonService = require("./commonService");
 const enMessage = require("../constants/en.json");
 const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
+const { Op } = require("sequelize");
 
 // Create customer
 const createCustomer = async (req, res) => {
@@ -94,7 +95,6 @@ const listCustomers = async (req, res) => {
   }
 };
 
-
 // Get by id
 const getCustomerById = async (req, res) => {
   const entity = await commonService.findById(models.Customer, req.params.id, res);
@@ -179,6 +179,38 @@ const listCustomerMobilesDropdown = async (req, res) => {
   }
 };
 
+// Dropdown: customer name + mobile with light search - billing section
+const listCustomerNameMobileDropdown = async (req, res) => {
+  try {
+    const { search = "", limit = 20 } = req.query || {};
+
+    const where = { deleted_at: null };
+    if (search && String(search).trim() !== "") {
+      where[Op.or] = [
+        { customer_name: { [Op.iLike]: `%${search}%` } },
+        { mobile_number: { [Op.iLike]: `%${search}%` } },
+      ];
+    }
+
+    const rows = await models.Customer.findAll({
+      attributes: ["id", "customer_name", "mobile_number"],
+      where,
+      order: [["customer_name", "ASC"]],
+      limit: Math.min(parseInt(limit) || 20, 50),
+    });
+
+    const customers = rows.map((r) => ({
+      id: r.id,
+      customer_name: r.customer_name ?? r.get("customer_name"),
+      mobile_number: r.mobile_number ?? r.get("mobile_number"),
+    }));
+
+    return commonService.okResponse(res, { customers });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
 module.exports = {
   createCustomer,
   listCustomers,
@@ -187,4 +219,5 @@ module.exports = {
   deleteCustomer,
   generateCustomerCode,
   listCustomerMobilesDropdown,
+  listCustomerNameMobileDropdown,
 };

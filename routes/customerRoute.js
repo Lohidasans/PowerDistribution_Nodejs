@@ -6,6 +6,7 @@ const customerService = require("../services/customerService");
 router.post("/customers", customerService.createCustomer);
 router.get("/customers", customerService.listCustomers);
 router.get("/customers/mobile/dropdown", customerService.listCustomerMobilesDropdown);
+router.get("/customers/dropdown", customerService.listCustomerNameMobileDropdown);
 router.get("/customers/:id", customerService.getCustomerById);
 router.put("/customers/:id", customerService.updateCustomer);
 router.delete("/customers/:id", customerService.deleteCustomer);
@@ -15,6 +16,24 @@ router.post("/customers/code", customerService.generateCustomerCode);
 
 module.exports = router;
 
+/**
+ * @openapi
+ * /api/v1/customers/dropdown:
+ *   get:
+ *     summary: Dropdown - customers (name + mobile) with light search
+ *     tags: [Customer]
+ *     parameters:
+ *       - in: query
+ *         name: search
+ *         schema: { type: string }
+ *         description: Case-insensitive search on name or mobile
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 20 }
+ *     responses:
+ *       200:
+ *         description: OK
+ */
 /**
  * @openapi
  * /api/v1/customers/mobile/dropdown:

@@ -17,6 +17,7 @@ router.post("/employees", employeeSvc.createEmployee);
 router.post("/employees/code", employeeSvc.generateEmployeeCode);
 router.get("/employees", employeeSvc.listEmployees);
 router.get("/employees/dropdown", employeeSvc.listEmployeeDropdown);
+router.get("/employees/billing-dropdown", employeeSvc.searchEmployeeDropdown);
 router.get("/employees/designations/dropdown", employeeSvc.listDesignationDropdown);
 router.get("/employees/departments/dropdown", employeeSvc.listDepartmentDropdown);
 router.get("/employees/:id", employeeSvc.getEmployeeById);
@@ -29,6 +30,43 @@ router.post("/employees/contacts", empContactSvc.createEmployeeContact);
 
 module.exports = router;
 
+/**
+ * @openapi
+ * /api/v1/employees/dropdown/search:
+ *   get:
+ *     summary: Search employees for dropdown by name or employee_no
+ *     tags: [Employee]
+ *     parameters:
+ *       - in: query
+ *         name: search
+ *         schema: { type: string }
+ *         description: Case-insensitive search on employee_name or employee_no
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 20 }
+ *     responses:
+ *       200:
+ *         description: OK
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 statusCode: { type: integer }
+ *                 message: { type: string }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     employees:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id: { type: integer }
+ *                           employee_no: { type: string }
+ *                           employee_name: { type: string }
+ *                           label: { type: string }
+ */
 /**
  * @openapi
  * /api/v1/employees/designations/dropdown:
