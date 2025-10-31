@@ -24,18 +24,7 @@ module.exports = (sequelize, DataTypes) => {
       updatedAt: "updated_at",
       paranoid: true,
       deletedAt: "deleted_at",
-      indexes: [{ unique: true, fields: ["variant_type"] }],
     }
   );
-
-  Variant.associate = (models) => {
-    Variant.hasMany(models.VariantValue, {
-      foreignKey: "variant_id",
-      as: "variant_values",
-      onDelete: "CASCADE", // auto delete variant values
-      hooks: true,
-    });
-  };
-
   return Variant;
 };

@@ -36,7 +36,6 @@ module.exports = (sequelize, DataTypes) => {
       updatedAt: "updated_at",
       paranoid: true,
       deletedAt: "deleted_at",
-      indexes: [{ unique: true, fields: ["country_name"] }],
     }
   );
 

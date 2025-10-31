@@ -40,12 +40,5 @@ module.exports = (sequelize, DataTypes) => {
     }
   );
 
-  VariantValue.associate = (models) => {
-    VariantValue.belongsTo(models.Variant, {
-      foreignKey: "variant_id",
-      as: "variant",
-    });
-  };
-
   return VariantValue;
 };
