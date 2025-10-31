@@ -104,9 +104,6 @@ module.exports = variantRouter;
  *                         variant_type:
  *                           type: string
  *                           example: "Size"
- *                         product_id:
- *                           type: integer
- *                           example: 3
  *                         status:
  *                           type: string
  *                           example: "Active"
@@ -153,7 +150,6 @@ module.exports = variantRouter;
  *           schema:
  *             $ref: '#/components/schemas/VariantCreateInput'
  *           example:
- *             product_id: 3
  *             variant_type: "Size"
  *             values: ["Small", "Medium", "Large"]
  *     responses:
@@ -191,9 +187,6 @@ module.exports = variantRouter;
  *               variant_type:
  *                 type: string
  *                 description: The type of variant (e.g., "Size", "Color")
- *               product_id:
- *                 type: integer
- *                 description: The product ID associated with the variant
  *               status:
  *                 type: string
  *                 enum: ["Active", "Inactive"]
@@ -205,7 +198,6 @@ module.exports = variantRouter;
  *                 description: Array of variant values (will replace existing values)
  *           example:
  *             variant_type: "Size"
- *             product_id: 3
  *             status: "Active"
  *             values: ["Small", "Medium", "Large", "XL"]
  *     responses:

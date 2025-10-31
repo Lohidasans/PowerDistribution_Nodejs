@@ -106,23 +106,19 @@ const getByIdVariant = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const variant = await models.Variant.findByPk(id, {
-      include: [
-        {
-          model: models.VariantValue,
-          as: "variant_values",
-          attributes: ["id", "value", "sort_order", "status"],
-          where: { status: "Active" },
-          required: false,
-        },
-      ],
-    });
-
+    const variant = await models.Variant.findByPk(id);
     if (!variant) {
       return commonService.notFound(res, enMessage.failure.variantNotFound);
     }
 
-    return commonService.okResponse(res, { variant });
+    // Fetch values separately (no association)
+    const variant_values = await models.VariantValue.findAll({
+      where: { variant_id: id, status: "Active" },
+      attributes: ["id", "value", "sort_order", "status"],
+      order: [["id", "ASC"]],
+    });
+
+    return commonService.okResponse(res, { variant, variant_values });
   } catch (err) {
     return commonService.handleError(res, err);
   }
@@ -221,19 +217,17 @@ const updateVariant = async (req, res) => {
 
     await transaction.commit();
 
-    // Fetch updated variant with values
-    const updatedVariant = await models.Variant.findByPk(id, {
-      include: [
-        {
-          model: models.VariantValue,
-          as: "variant_values",
-          attributes: ["id", "value", "sort_order", "status"],
-        },
-      ],
+    // Fetch updated variant and values separately (no association)
+    const updatedVariant = await models.Variant.findByPk(id);
+    const variant_values = await models.VariantValue.findAll({
+      where: { variant_id: id },
+      attributes: ["id", "value", "sort_order", "status"],
+      order: [["id", "ASC"]],
     });
 
     return commonService.okResponse(res, {
       variant: updatedVariant,
+      variant_values,
     });
   } catch (err) {
     await transaction.rollback();

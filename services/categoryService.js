@@ -73,22 +73,39 @@ const getAllCategories = async (req, res) => {
 const listCategories = async (req, res) => {
   try {
     const { material_type_id, search = "" } = req.query;
-    const where = {};
-    if (material_type_id) where.material_type_id = material_type_id;
 
-    const items = await models.Category.findAll({
-      where,
-      include: [
-        {
-          model: models.MaterialType,
-          attributes: ["material_type", "material_image_url"],
-          as: "materialType",
-        },
-      ],
-      order: [["created_at", "DESC"]],
-    });
+    let sql = `
+      SELECT 
+        c.id,
+        c.category_name,
+        c.category_image_url,
+        c.material_type_id,
+        c.description,
+        c.sort_order,
+        c.status,
+        c.created_at,
+        c.updated_at,
+        mt.material_type,
+        mt.material_image_url
+      FROM categories c
+      LEFT JOIN "materialTypes" mt ON mt.id = c.material_type_id
+      WHERE c.deleted_at IS NULL
+    `;
 
-    return commonService.okResponse(res, { categories: items });
+    const replacements = {};
+    if (material_type_id) {
+      sql += ` AND c.material_type_id = :material_type_id`;
+      replacements.material_type_id = +material_type_id;
+    }
+    if (search && String(search).trim() !== "") {
+      sql += ` AND (c.category_name ILIKE :search OR mt.material_type ILIKE :search)`;
+      replacements.search = `%${search}%`;
+    }
+
+    sql += ` ORDER BY c.created_at DESC`;
+
+    const [rows] = await sequelize.query(sql, { replacements });
+    return commonService.okResponse(res, { categories: rows });
   } catch (err) {
     return commonService.handleError(res, err);
   }
