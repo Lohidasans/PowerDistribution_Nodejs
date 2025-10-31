@@ -63,16 +63,5 @@ module.exports = (sequelize, DataTypes) => {
     }
   );
 
-  SuperAdminProfile.associate = (models) => {
-    SuperAdminProfile.belongsTo(models.State, {
-      foreignKey: "state_id",
-      as: "state",
-    });
-    SuperAdminProfile.belongsTo(models.District, {
-      foreignKey: "district_id",
-      as: "district",
-    });
-  };
-
   return SuperAdminProfile;
 };
