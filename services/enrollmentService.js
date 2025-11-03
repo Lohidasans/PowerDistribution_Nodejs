@@ -1,4 +1,4 @@
-const { models } = require("../models");
+const { models, sequelize } = require("../models");
 const commonService = require("./commonService");
 const enMessage = require("../constants/en.json");
 
@@ -61,18 +61,25 @@ const createEnrollment = async (req, res) => {
   }
 };
 
-// Get all enrollments (basic filters)
+// Get all enrollments (basic filters) with scheme_name via raw SQL join
 const listEnrollments = async (req, res) => {
   try {
     const { mobile_number, status } = req.query || {};
-    const where = {};
-    if (mobile_number) where.mobile_number = String(mobile_number);
-    if (status) where.status = status;
 
-    const rows = await models.Enrollment.findAll({
-      where,
-      order: [["created_at", "DESC"]],
-    });
+    let sql = `
+      SELECT 
+        e.*,
+        s.scheme_name AS scheme_name
+      FROM customer_enrollments e
+      LEFT JOIN schemes s ON s.id = e.scheme_plan_id AND s.deleted_at IS NULL
+      WHERE e.deleted_at IS NULL
+    `;
+    const replacements = {};
+    if (mobile_number) { sql += ` AND e.mobile_number = :mobile_number`; replacements.mobile_number = String(mobile_number); }
+    if (status) { sql += ` AND e.status = :status`; replacements.status = status; }
+    sql += ` ORDER BY e.created_at DESC`;
+
+    const [rows] = await sequelize.query(sql, { replacements });
     return commonService.okResponse(res, { enrollments: rows });
   } catch (err) {
     return commonService.handleError(res, err);
