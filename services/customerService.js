@@ -193,7 +193,7 @@ const listCustomerNameMobileDropdown = async (req, res) => {
     }
 
     const rows = await models.Customer.findAll({
-      attributes: ["id", "customer_name", "mobile_number"],
+      attributes: ["id", "customer_name", "mobile_number", "customer_code"],
       where,
       order: [["customer_name", "ASC"]],
       limit: Math.min(parseInt(limit) || 20, 50),
@@ -203,6 +203,7 @@ const listCustomerNameMobileDropdown = async (req, res) => {
       id: r.id,
       customer_name: r.customer_name ?? r.get("customer_name"),
       mobile_number: r.mobile_number ?? r.get("mobile_number"),
+      customer_code: r.customer_code ?? r.get("customer_code")
     }));
 
     return commonService.okResponse(res, { customers });

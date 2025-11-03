@@ -266,35 +266,36 @@ const listEmployees = async (req, res) => {
   }
 };
 
-// Lightweight search dropdown: by employee_name or employee_no
+// Lightweight search dropdown: by employee_name/employee_no/mobile_number (joins employee_contacts)
 const searchEmployeeDropdown = async (req, res) => {
   try {
     const { search = "", limit = 20 } = req.query || {};
 
-    const where = { deleted_at: null };
+    let sql = `
+      SELECT 
+        e.id,
+        e.employee_no,
+        e.employee_name,
+        ec.mobile_number
+      FROM employees e
+      LEFT JOIN employee_contacts ec ON ec.employee_id = e.id AND ec.deleted_at IS NULL
+      WHERE e.deleted_at IS NULL
+    `;
+    const replacements = {};
     if (search && String(search).trim() !== "") {
-      where[Op.or] = [
-        { employee_name: { [Op.iLike]: `%${search}%` } },
-        { employee_no: { [Op.iLike]: `%${search}%` } },
-      ];
+      sql += ` AND (e.employee_name ILIKE :s OR e.employee_no ILIKE :s OR ec.mobile_number ILIKE :s)`;
+      replacements.s = `%${search}%`;
     }
+    sql += ` ORDER BY e.employee_name ASC LIMIT :lim`;
+    replacements.lim = Math.min(parseInt(limit) || 20, 50);
 
-    const rows = await models.Employee.findAll({
-      attributes: [
-        "id",
-        [sequelize.col("employee_no"), "employee_no"],
-        [sequelize.col("employee_name"), "employee_name"],
-      ],
-      where,
-      order: [["employee_name", "ASC"]],
-      limit: Math.min(parseInt(limit) || 20, 50),
-    });
+    const [rows] = await sequelize.query(sql, { replacements });
 
-    // Shape minimal payload for dropdowns
     const employees = rows.map((r) => ({
       id: r.id,
-      employee_no: r.get("employee_no"),
-      employee_name: r.get("employee_name"),
+      employee_no: r.employee_no,
+      employee_name: r.employee_name,
+      mobile_number: r.mobile_number || null,
     }));
 
     return commonService.okResponse(res, { employees });
