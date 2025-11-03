@@ -28,6 +28,8 @@ const SuperAdminProfileRoute = require("./superAdminProfileRoute");
 const ProductVariantRoute = require("./productVariantRoute");
 const EnrollmentRoute = require("./enrollmentRoute");
 const EmployeeIncentiveRoute = require("./employeeIncentiveRoute");
+const EstimateBillRoute = require("./estimateBillRoute");
+const SalesInvoiceRoute = require("./salesInvoiceBillRoute");
 
 module.exports = (app) => {
   app.use("/api/v1", RoleRouter);
@@ -60,4 +62,6 @@ module.exports = (app) => {
   app.use("/api/v1", ProductVariantRoute);
   app.use("/api/v1", EnrollmentRoute);
   app.use("/api/v1", EmployeeIncentiveRoute);
+  app.use("/api/v1", EstimateBillRoute);
+  app.use("/api/v1", SalesInvoiceRoute);
 };

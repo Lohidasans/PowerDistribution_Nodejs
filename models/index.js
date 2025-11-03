@@ -90,14 +90,15 @@ const GrnItem = require("./grnItems")(sequelize, Sequelize.DataTypes);
 const LedgerGroup = require("./ledgerGroup")(sequelize, Sequelize.DataTypes);
 const Ledger = require("./ledger")(sequelize, Sequelize.DataTypes);
 
-const SuperAdminProfile = require("./superAdminProfiles")(
-  sequelize,
-  Sequelize.DataTypes
-);
-const InvoiceSettingEnum = require("./invoiceSettingEnum")(
-  sequelize,
-  Sequelize.DataTypes
-);
+// Billing related models
+const EstimateBill = require("./estimateBills")(sequelize, Sequelize.DataTypes);
+const EstimateBillItem = require("./estimateBillItems")(sequelize, Sequelize.DataTypes);
+const SalesInvoiceBill = require("./salesInvoiceBills")(sequelize, Sequelize.DataTypes);
+const SalesInvoiceBillItem = require("./SalesInvoiceBillItems")(sequelize, Sequelize.DataTypes);
+
+const SuperAdminProfile = require("./superAdminProfiles")(sequelize, Sequelize.DataTypes);
+const InvoiceSettingEnum = require("./invoiceSettingEnum")(sequelize, Sequelize.DataTypes);
+
 const models = {
   Permission,
   Role,
@@ -144,6 +145,10 @@ const models = {
   Enrollment,
   SuperAdminProfile,
   InvoiceSettingEnum,
+  SalesInvoiceBill,
+  SalesInvoiceBillItem,
+  EstimateBill,
+  EstimateBillItem,
 };
 
 Object.values(models).forEach((model) => {
