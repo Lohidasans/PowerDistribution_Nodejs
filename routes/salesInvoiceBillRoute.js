@@ -34,9 +34,19 @@ module.exports = router;
  *   post:
  *     summary: Create an invoice bill (header + items)
  *     tags: [SalesInvoiceBill]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/SalesInvoiceBillCreateRequest'
  *     responses:
  *       201:
  *         description: Created
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/SalesInvoiceBillResponse'
  *   get:
  *     summary: List invoice bills
  *     tags: [SalesInvoiceBill]

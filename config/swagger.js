@@ -920,6 +920,66 @@ const options = {
             customer_code: { type: "string", example: "Cus-0001" },
           },
         },
+        // Sales Invoice Bill Schemas
+        SalesInvoiceBillHeader: {
+          type: "object",
+          properties: {
+            invoice_no: { type: "string", description: "Auto or manual invoice number" },
+            invoice_date: { type: "string", format: "date" },
+            invoice_time: { type: "string" },
+            employee_id: { type: "integer" },
+            customer_id: { type: "integer", nullable: true },
+            branch_id: { type: "integer", nullable: true },
+            cgst_percent: { type: "number", format: "float", nullable: true },
+            sgst_percent: { type: "number", format: "float", nullable: true },
+            cgst_amount: { type: "number", format: "float" },
+            sgst_amount: { type: "number", format: "float" },
+            discount_amount: { type: "number", format: "float", nullable: true },
+            round_off: { type: "number", format: "float", nullable: true },
+            status: { type: "string", enum: ["Draft", "Printed", "Paid", "Cancelled"] },
+            notes: { type: "string", nullable: true }
+          }
+        },
+        SalesInvoiceBillItem: {
+          type: "object",
+          properties: {
+            product_id: { type: "integer" },
+            product_item_detail_id: { type: "integer", nullable: true },
+            hsn_code: { type: "string", nullable: true },
+            product_name_snapshot: { type: "string", nullable: true },
+            purity_snapshot: { type: "number", format: "float", nullable: true },
+            quantity: { type: "integer" },
+            rate: { type: "number", format: "float" },
+            discount_amount: { type: "number", format: "float", nullable: true },
+            amount: { type: "number", format: "float" },
+            cgst_percent: { type: "number", format: "float", nullable: true },
+            sgst_percent: { type: "number", format: "float", nullable: true },
+            cgst_amount: { type: "number", format: "float" },
+            sgst_amount: { type: "number", format: "float" },
+            notes: { type: "string", nullable: true }
+          }
+        },
+        SalesInvoiceBillCreateRequest: {
+          type: "object",
+          properties: {
+            header: { $ref: "#/components/schemas/SalesInvoiceBillHeader" },
+            items: {
+              type: "array",
+              items: { $ref: "#/components/schemas/SalesInvoiceBillItem" }
+            }
+          },
+          required: ["header", "items"]
+        },
+        SalesInvoiceBillResponse: {
+          type: "object",
+          properties: {
+            invoice: { type: "object" },
+            items: {
+              type: "array",
+              items: { $ref: "#/components/schemas/SalesInvoiceBillItem" }
+            }
+          }
+        },
         EmployeeCreateInput: {
           type: "object",
           properties: {

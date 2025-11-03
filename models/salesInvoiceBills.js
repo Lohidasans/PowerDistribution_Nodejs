@@ -1,6 +1,6 @@
 module.exports = (sequelize, DataTypes) => {
   const SalesInvoiceBill = sequelize.define(
-    "sales_invoice_Bills",
+    "sales_invoice_bills",
     {
       id: {
         allowNull: false,
@@ -61,11 +61,6 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: true,
         defaultValue: 0,
       },
-      round_off: {
-        type: DataTypes.DECIMAL(10, 2),
-        allowNull: true,
-        defaultValue: 0,
-      },
       total_amount: {
         type: DataTypes.DECIMAL(15, 2),
         allowNull: false,
@@ -76,14 +71,15 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
         defaultValue: 0,
       },
+      hasBillAdjustment: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+      },
       status: {
         type: DataTypes.ENUM("Draft", "Printed", "Paid", "Cancelled"),
         allowNull: false,
         defaultValue: "Draft",
-      },
-      notes: {
-        type: DataTypes.TEXT,
-        allowNull: true,
       },
     },
     {

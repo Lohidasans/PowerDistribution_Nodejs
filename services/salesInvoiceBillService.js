@@ -30,20 +30,6 @@ const createSalesInvoice = async (req, res) => {
       return commonService.badRequest(res, "At least one item is required");
     }
 
-    let invoice_no = header.invoice_no;
-    if (!invoice_no) {
-      if (!header.fy) {
-        await t.rollback();
-        return commonService.badRequest(res, "fy is required to generate invoice_no");
-      }
-      invoice_no = await generateFiscalSeriesCode(
-        models.SalesInvoiceBill,
-        "invoice_no",
-        String(header.prefix || "INV").toUpperCase(),
-        { pad: 2, fyRange: header.fy }
-      );
-    }
-
     // Totals
     let subtotal = 0;
     let totalQty = 0;
@@ -67,19 +53,17 @@ const createSalesInvoice = async (req, res) => {
         sgst_percent: it.sgst_percent ?? null,
         cgst_amount: it.cgst_amount ?? 0,
         sgst_amount: it.sgst_amount ?? 0,
-        notes: it.notes ?? null,
       };
     });
 
     const cgstAmt = Number(header.cgst_amount ?? 0);
     const sgstAmt = Number(header.sgst_amount ?? 0);
     const discountAmt = Number(header.discount_amount ?? 0);
-    const roundOff = Number(header.round_off ?? 0);
-    const total = subtotal - discountAmt + cgstAmt + sgstAmt + roundOff;
+    const total = subtotal - discountAmt + cgstAmt + sgstAmt;
 
     const bill = await models.SalesInvoiceBill.create(
       {
-        invoice_no,
+        invoice_no: header.invoice_no,
         invoice_date: header.invoice_date || new Date(),
         invoice_time: header.invoice_time || null,
         employee_id: header.employee_id,
@@ -91,17 +75,15 @@ const createSalesInvoice = async (req, res) => {
         cgst_amount: cgstAmt,
         sgst_amount: sgstAmt,
         discount_amount: discountAmt,
-        round_off: roundOff,
         total_amount: total,
         total_quantity: totalQty,
         status: header.status || "Draft",
-        notes: header.notes || null,
       },
       { transaction: t }
     );
 
     const withFK = itemRows.map((row) => ({ ...row, invoice_bill_id: bill.id }));
-    const createdItems = await models.InvoiceBillItem.bulkCreate(withFK, { transaction: t, returning: true });
+    const createdItems = await models.SalesInvoiceBillItem.bulkCreate(withFK, { transaction: t, returning: true });
 
     await t.commit();
     return commonService.createdResponse(res, { invoice: bill, items: createdItems });
@@ -117,7 +99,7 @@ const getSalesInvoiceById = async (req, res) => {
     const id = req.params.id;
     const bill = await models.SalesInvoiceBill.findByPk(id);
     if (!bill) return commonService.notFound(res, enMessage.failure.notFound);
-    const items = await models.InvoiceBillItem.findAll({ where: { invoice_bill_id: id } });
+    const items = await models.SalesInvoiceBillItem.findAll({ where: { invoice_bill_id: id } });
     return commonService.okResponse(res, { invoice: bill, items });
   } catch (err) {
     return commonService.handleError(res, err);
@@ -131,7 +113,7 @@ const listSalesInvoices = async (req, res) => {
 
     let sql = `
       SELECT i.*
-      FROM "invoiceBills" i
+      FROM "sales_invoice_bills" i
       WHERE i.deleted_at IS NULL
     `;
     const replacements = {};
@@ -156,7 +138,7 @@ const deleteSalesInvoice = async (req, res) => {
     const id = req.params.id;
     const bill = await models.SalesInvoiceBill.findByPk(id);
     if (!bill) { await t.rollback(); return commonService.notFound(res, enMessage.failure.notFound); }
-    await models.InvoiceBillItem.destroy({ where: { invoice_bill_id: id }, transaction: t });
+    await models.SalesInvoiceBillItem.destroy({ where: { invoice_bill_id: id }, transaction: t });
     await bill.destroy({ transaction: t });
     await t.commit();
     return commonService.noContentResponse(res);
