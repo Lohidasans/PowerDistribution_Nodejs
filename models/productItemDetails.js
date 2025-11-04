@@ -29,6 +29,10 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.DECIMAL(15, 3),
         allowNull: false
       },
+      actual_stone_weight: {
+        type: DataTypes.DECIMAL(10, 2),
+        allowNull: true,
+      },
       stone_weight: {
         type: DataTypes.DECIMAL(15, 3),
         allowNull: true
@@ -36,6 +40,11 @@ module.exports = (sequelize, DataTypes) => {
       stone_value: {
         type: DataTypes.DECIMAL(15, 3),
         allowNull: true
+      },
+      is_visible: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: true,
+        allowNull: false,
       },
       quantity: {
         type: DataTypes.INTEGER,

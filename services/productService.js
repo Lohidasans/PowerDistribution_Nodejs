@@ -488,6 +488,10 @@ const getAllProductDetailByProductId = async (req, res) => {
         pid.measurement_type,
         pid.gross_weight,
         pid.net_weight,
+        pid.actual_stone_weight,
+        pid.stone_weight,
+        pid.stone_value,
+        pid.is_visible,
         pid.quantity,
         pid.rate_per_gram,
         pid.base_price,
@@ -497,9 +501,10 @@ const getAllProductDetailByProductId = async (req, res) => {
         pid.wastage,
 
         pad.label_name,
-        pad.unit,
-        pad.price AS addon_price,
-        pad.visibility
+        pad.actual_weight,
+        pad.weight,
+        pad.value AS addon_price,
+        pad.is_visible as addon_is_visible
 
       FROM products p
       LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id

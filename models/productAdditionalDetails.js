@@ -20,17 +20,22 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.STRING,
         allowNull: false,
       },
-      unit: {
-        type: DataTypes.STRING,
-        allowNull: true
-      },
-      price: {  
+      actual_weight: {
         type: DataTypes.DECIMAL(15, 2),
         allowNull: true
       },
-      visibility: {
-        type: DataTypes.ENUM("Show", "Hide"),
+      weight: {  
+        type: DataTypes.DECIMAL(15, 2),
         allowNull: true
+      },
+      value: {
+        type: DataTypes.DECIMAL(10, 2),
+        allowNull: true,
+      },
+      is_visible: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: true,
+        allowNull: false,
       },
     },
     {
