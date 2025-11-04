@@ -214,7 +214,7 @@ const generateSkuId = async (req, res) => {
   }
 };
 
-// Lightweight list for Add-On/product picker with joins and search
+// Light search for Add-On/product search box
 const getProductAddonList = async (req, res) => {
   try {
     const {
@@ -291,7 +291,7 @@ const getProductAddonList = async (req, res) => {
   }
 };
 
-// Get one by ID
+// Get Detailed product by product_id - mobile & view summary
 const getProductById = async (req, res) => {
   try {
     const row = await commonService.findById(
@@ -374,9 +374,26 @@ const getProductById = async (req, res) => {
       { replacements: { pid: +row.id } }
     );
 
+    // Get material type name
+    let materialTypeName = null;
+    if (row.material_type_id) {
+      const material = await sequelize.query(
+        `SELECT material_type FROM "materialTypes" WHERE id = :materialTypeId`,
+        {
+          replacements: { materialTypeId: row.material_type_id },
+          type: sequelize.QueryTypes.SELECT,
+          plain: true
+        }
+      );
+      materialTypeName = material ? material.material_type : null;
+    }
+
     // Final structured response
     return commonService.okResponse(res, {
-      product: row,
+      product: {
+        ...row.get({ plain: true }),
+        material_type_name: materialTypeName
+      },
       item_details: itemsWithAdds,
       addon_products,
       variant_details: variantDetails,
@@ -449,102 +466,6 @@ const deleteProduct = async (req, res) => {
     if (!row) return;
     await row.destroy();
     return commonService.noContentResponse(res);
-  } catch (err) {
-    return commonService.handleError(res, err);
-  }
-};
-
-// Get Detailed product by product_id - mobile
-const getAllProductDetailByProductId = async (req, res) => {
-  try {
-    const { product_id } = req.query;
-
-    if (!product_id) {
-      return commonService.badRequest(res, message.failure.requiredFields);
-    }
-
-    const query = `
-      SELECT
-        p.id AS product_id,
-        p.product_name,
-        p.sku_id,
-        p.description,
-        p.image_urls,
-        p.purity,
-        p.product_type,
-        p.variation_type,
-        p."is_addOn",
-        p.total_grn_value,
-        p.total_products,
-        p.remaining_weight,
-
-        mt.material_type,
-
-        pid.id AS product_item_id,
-        pid.sku_id AS item_sku_id,
-        pid.width,
-        pid.length,
-        pid.height,
-        pid.measurement_type,
-        pid.gross_weight,
-        pid.net_weight,
-        pid.actual_stone_weight,
-        pid.stone_weight,
-        pid.stone_value,
-        pid.is_visible,
-        pid.quantity,
-        pid.rate_per_gram,
-        pid.base_price,
-        pid.making_charge_type,
-        pid.making_charge,
-        pid.wastage_type,
-        pid.wastage,
-
-        pad.label_name,
-        pad.actual_weight,
-        pad.weight,
-        pad.value AS addon_price,
-        pad.is_visible as addon_is_visible
-
-      FROM products p
-      LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
-      LEFT JOIN "productItemDetails" pid ON pid.product_id = p.id
-      LEFT JOIN "productAdditionalDetails" pad ON pad.product_id = p.id AND pad.item_detail_id = pid.id
-      WHERE p.id = :productId
-      ORDER BY pid.id ASC, pad.id ASC
-    `;
-
-    const replacements = { productId: +product_id };
-
-    const [rows] = await sequelize.query(query, { replacements });
-
-    let addon_product_ids = [];
-    let addon_products = [];
-    const isAddOn =
-      rows?.[0]?.is_addOn === true ||
-      rows?.[0]?.is_addOn === 1 ||
-      rows?.[0]?.is_addOn === "true";
-    if (isAddOn) {
-      // Use a single raw query to join mapping with product to get fields
-      const [addonRows] = await sequelize.query(
-        `
-        SELECT
-          pa.id,
-          pa.addon_product_id,
-          p.product_name,
-          p.sku_id,
-          p.image_urls
-        FROM "productAddOns" pa
-        JOIN products p ON p.id = pa.addon_product_id
-        WHERE pa.product_id = :pid
-        ORDER BY pa.id ASC
-      `,
-        { replacements: { pid: +product_id } }
-      );
-      addon_products = addonRows;
-    }
-
-    return commonService.okResponse(res, { rows, addon_products });
   } catch (err) {
     return commonService.handleError(res, err);
   }
@@ -686,7 +607,6 @@ module.exports = {
   updateProduct,
   deleteProduct,
   generateSkuId,
-  getAllProductDetailByProductId,
   getAllProductDetails,
   getProductAddonList,
 };

@@ -6,7 +6,6 @@ const svc = require("../services/productService");
 router.post("/products", svc.createProduct);
 router.get("/products", svc.getAllProducts);
 router.post("/products/generateSku", svc.generateSkuId);
-router.get("/products/details", svc.getAllProductDetailByProductId);
 router.get("/products/list-details", svc.getAllProductDetails);
 router.get("/products/addon-list", svc.getProductAddonList);
 router.get("/products/:id", svc.getProductById);
