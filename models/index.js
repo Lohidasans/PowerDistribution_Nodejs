@@ -95,6 +95,7 @@ const EstimateBill = require("./estimateBills")(sequelize, Sequelize.DataTypes);
 const EstimateBillItem = require("./estimateBillItems")(sequelize, Sequelize.DataTypes);
 const SalesInvoiceBill = require("./salesInvoiceBills")(sequelize, Sequelize.DataTypes);
 const SalesInvoiceBillItem = require("./SalesInvoiceBillItems")(sequelize, Sequelize.DataTypes);
+const Payment = require("./payments")(sequelize, Sequelize.DataTypes);
 
 const SuperAdminProfile = require("./superAdminProfiles")(sequelize, Sequelize.DataTypes);
 const InvoiceSettingEnum = require("./invoiceSettingEnum")(sequelize, Sequelize.DataTypes);
@@ -149,6 +150,7 @@ const models = {
   SalesInvoiceBillItem,
   EstimateBill,
   EstimateBillItem,
+  Payment,
 };
 
 Object.values(models).forEach((model) => {

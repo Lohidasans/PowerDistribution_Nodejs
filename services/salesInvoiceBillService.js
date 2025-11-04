@@ -20,17 +20,19 @@ const generateSalesInvoiceNo = async (req, res) => {
   }
 };
 
-// Create Sales invoice (header + items)
+// Create Sales invoice (header + items + payment)
 const createSalesInvoice = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const { header = {}, items = [] } = req.body || {};
+    const { header = {}, items = [], payment = {} } = req.body || {};
+    
+    // Validate items
     if (!Array.isArray(items) || items.length === 0) {
       await t.rollback();
       return commonService.badRequest(res, "At least one item is required");
     }
 
-    // Totals
+    // Calculate totals
     let subtotal = 0;
     let totalQty = 0;
     const itemRows = items.map((it) => {
@@ -44,7 +46,6 @@ const createSalesInvoice = async (req, res) => {
         product_item_detail_id: it.product_item_detail_id ?? null,
         hsn_code: it.hsn_code ?? null,
         product_name_snapshot: it.product_name_snapshot ?? null,
-        purity_snapshot: it.purity_snapshot ?? null,
         quantity: qty,
         rate,
         discount_amount: it.discount_amount ?? 0,
@@ -61,6 +62,20 @@ const createSalesInvoice = async (req, res) => {
     const discountAmt = Number(header.discount_amount ?? 0);
     const total = subtotal - discountAmt + cgstAmt + sgstAmt;
 
+    // Validate payment for high-value transactions
+    if (total > 200000) {
+      // if (!payment.payment_mode) {
+      //   await t.rollback();
+      //   return commonService.badRequest(res, "Payment mode is required for orders above ₹2,00,000");
+      // }
+      
+      if (payment.payment_mode === 'Cash') {
+        await t.rollback();
+        return commonService.badRequest(res, enMessage.billing.panCardRequired);
+      }
+    }
+
+    // Create invoice
     const bill = await models.SalesInvoiceBill.create(
       {
         invoice_no: header.invoice_no,
@@ -78,33 +93,94 @@ const createSalesInvoice = async (req, res) => {
         total_amount: total,
         total_quantity: totalQty,
         status: header.status || "Draft",
+        created_by: req.user?.id || null,
       },
       { transaction: t }
     );
 
+    // Create invoice items
     const withFK = itemRows.map((row) => ({ ...row, invoice_bill_id: bill.id }));
-    const createdItems = await models.SalesInvoiceBillItem.bulkCreate(withFK, { transaction: t, returning: true });
+    await models.SalesInvoiceBillItem.bulkCreate(withFK, { transaction: t });
+
+    // Create payment record if payment details exist
+    if (payment.payment_mode) {
+      await models.Payment.create({
+        invoice_bill_id: bill.id,
+        payment_mode: payment.payment_mode,
+        amount: total,
+        payment_date: payment.payment_date || new Date(),
+        transaction_id: payment.transaction_id || null,
+        remarks: payment.remarks || null,
+        status: 'Completed',
+        created_by: req.user?.id || null,
+      }, { transaction: t });
+    }
 
     await t.commit();
-    return commonService.createdResponse(res, { invoice: bill, items: createdItems });
+    return commonService.createdResponse(res, { 
+      message: enMessage.billing.invoiceCreationSuccess,
+      invoice: bill,
+      items: withFK
+    });
   } catch (err) {
     await t.rollback();
     return commonService.handleError(res, err);
   }
 };
 
-// Get invoice by id
+// Get a single sales invoice by ID with related data
 const getSalesInvoiceById = async (req, res) => {
   try {
     const id = req.params.id;
-    const bill = await models.SalesInvoiceBill.findByPk(id);
-    if (!bill) return commonService.notFound(res, enMessage.failure.notFound);
-    const items = await models.SalesInvoiceBillItem.findAll({ where: { invoice_bill_id: id } });
-    return commonService.okResponse(res, { invoice: bill, items });
+
+    // Get the main invoice
+    const invoice = await commonService.findById(models.SalesInvoiceBill, id, res);
+    if (!invoice) return;
+
+    // Get related data in parallel
+    const [items, payment, customer, branch] = await Promise.all([
+      // Get invoice items
+      models.SalesInvoiceBillItem.findAll({
+        where: { invoice_bill_id: id },
+        raw: true
+      }),
+
+      // Get payment details
+      models.Payment.findOne({
+        where: { invoice_bill_id: id },
+        raw: true
+      }),
+
+      // Get customer details
+      models.Customer.findByPk(invoice.customer_id, {
+        attributes: ['customer_name', 'address', 'mobile_number', 'pin_code'],
+        raw: true
+      }),
+
+      // Get branch details
+      models.Branch.findByPk(invoice.branch_id, {
+        attributes: ['branch_name', 'address', 'mobile', 'pin_code', 'gst_no'],
+        raw: true
+      })
+    ]);
+
+    // Format the response
+    const response = {
+      invoice: {
+        ...invoice.get({ plain: true })
+      },
+      customer: customer || null,
+      branch: branch || null,
+      payment: payment || null,
+      items: items || []
+    };
+
+    return commonService.okResponse(res, response);
   } catch (err) {
     return commonService.handleError(res, err);
   }
 };
+
 // List invoices
 const listSalesInvoices = async (req, res) => {
   try {
@@ -120,6 +196,9 @@ const listSalesInvoices = async (req, res) => {
         ct.country_name as customer_country_name,
         d.district_name as customer_district_name,
         s.state_name as customer_state_name,
+        p.transaction_id,
+        p.amount as paid_amount,
+        p.payment_mode,
         -- Branch details
         b.address AS branch_address,
         b.mobile as branch_mobile_number,
@@ -136,6 +215,7 @@ const listSalesInvoices = async (req, res) => {
       LEFT JOIN "branches" b ON b.id = i.branch_id
       LEFT JOIN "districts" bd ON bd.id = b.district_id
       LEFT JOIN "states" bs ON bs.id = b.state_id
+      LEFT JOIN "payments" p ON p.invoice_bill_id = i.id
       WHERE i.deleted_at IS NULL
     `;
 
