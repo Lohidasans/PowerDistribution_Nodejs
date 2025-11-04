@@ -105,23 +105,53 @@ const getSalesInvoiceById = async (req, res) => {
     return commonService.handleError(res, err);
   }
 };
-
-// List invoices (simple filters)
+// List invoices
 const listSalesInvoices = async (req, res) => {
   try {
     const { from, to, employee_id, customer_id, search } = req.query || {};
 
     let sql = `
-      SELECT i.*
+      SELECT
+        i.*,
+        -- Customer details
+        c.address AS customer_address,
+        c.mobile_number as customer_mobile_number,
+        c.pin_code as customer_pincode,
+        ct.country_name as customer_country_name,
+        d.district_name as customer_district_name,
+        s.state_name as customer_state_name,
+        -- Branch details
+        b.address AS branch_address,
+        b.mobile as branch_mobile_number,
+        b.pin_code as branch_pincode,
+        bd.district_name as branch_district_name,
+        bs.state_name as branch_state_name
       FROM "sales_invoice_bills" i
+      -- Customer joins
+      LEFT JOIN "customers" c ON c.id = i.customer_id
+      LEFT JOIN "districts" d ON d.id = c.district_id
+      LEFT JOIN "states" s ON s.id = c.state_id
+      LEFT JOIN "countries" ct ON ct.id = c.country_id
+      -- Branch joins
+      LEFT JOIN "branches" b ON b.id = i.branch_id
+      LEFT JOIN "districts" bd ON bd.id = b.district_id
+      LEFT JOIN "states" bs ON bs.id = b.state_id
       WHERE i.deleted_at IS NULL
     `;
+
     const replacements = {};
     if (from) { sql += ` AND i.invoice_date >= :from`; replacements.from = from; }
     if (to) { sql += ` AND i.invoice_date <= :to`; replacements.to = to; }
     if (employee_id) { sql += ` AND i.employee_id = :employee_id`; replacements.employee_id = employee_id; }
     if (customer_id) { sql += ` AND i.customer_id = :customer_id`; replacements.customer_id = customer_id; }
-    if (search) { sql += ` AND i.invoice_no ILIKE :search`; replacements.search = `%${search}%`; }
+    if (search) {
+      sql += ` AND (
+        i.invoice_no ILIKE :search OR
+        c.customer_name ILIKE :search OR
+        c.mobile_number ILIKE :search
+      )`;
+      replacements.search = `%${search}%`;
+    }
     sql += ` ORDER BY i.created_at DESC`;
 
     const [rows] = await sequelize.query(sql, { replacements });
