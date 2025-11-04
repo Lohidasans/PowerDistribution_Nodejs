@@ -142,14 +142,9 @@ const listEstimates = async (req, res) => {
         i.product_item_detail_id,
         i.hsn_code,
         i.product_name_snapshot,
-        i.purity_snapshot,
         i.quantity,
         i.rate,
         i.amount,
-        i.cgst_percent,
-        i.sgst_percent,
-        i.cgst_amount,
-        i.sgst_amount,
         i.created_at,
         i.updated_at
       FROM "estimate_bill_items" i

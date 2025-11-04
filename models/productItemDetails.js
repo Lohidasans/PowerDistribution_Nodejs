@@ -93,7 +93,11 @@ module.exports = (sequelize, DataTypes) => {
       tag_url: {
         type: DataTypes.STRING,
         allowNull: true,
-      }
+      },
+      item_price: {
+        type: DataTypes.DECIMAL(15, 3),
+        allowNull: true,
+      },
     },
     {
       timestamps: true,

@@ -29,10 +29,6 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.STRING,
         allowNull: true,
       },
-      purity_snapshot: {
-        type: DataTypes.DECIMAL(10, 3),
-        allowNull: true,
-      },
       quantity: {
         type: DataTypes.INTEGER,
         allowNull: false,
@@ -44,24 +40,6 @@ module.exports = (sequelize, DataTypes) => {
         defaultValue: 0,
       },
       amount: {
-        type: DataTypes.DECIMAL(15, 2),
-        allowNull: false,
-        defaultValue: 0,
-      },
-      cgst_percent: {
-        type: DataTypes.DECIMAL(6, 3),
-        allowNull: true,
-      },
-      sgst_percent: {
-        type: DataTypes.DECIMAL(6, 3),
-        allowNull: true,
-      },
-      cgst_amount: {
-        type: DataTypes.DECIMAL(15, 2),
-        allowNull: false,
-        defaultValue: 0,
-      },
-      sgst_amount: {
         type: DataTypes.DECIMAL(15, 2),
         allowNull: false,
         defaultValue: 0,
