@@ -155,6 +155,28 @@ const updateRolePermissionsBulk = async (req, res) => {
 // List Role Access (department, role, members, access_control) for UI
 const listAccess = async (req, res) => {
   try {
+    const { department_id, search } = req.query;
+
+    let replacements = {};
+    let filterClause = "";
+
+    // Filter by department
+    if (department_id) {
+      filterClause += ` AND rp.department_id = :department_id`;
+      replacements.department_id = department_id;
+    }
+
+    // Search across department, role, access_control text
+    if (search) {
+      filterClause += `
+        AND (
+          d.department_name ILIKE :search OR
+          rp.role_name ILIKE :search OR
+          mg.module_group_name ILIKE :search
+        )
+      `;
+      replacements.search = `%${search}%`;
+    }
     const query = `
       SELECT 
         d.id AS department_id,
@@ -169,15 +191,18 @@ const listAccess = async (req, res) => {
       LEFT JOIN users u ON u.role_id IS NOT NULL AND u.entity_type = 'employee'
       LEFT JOIN employees e ON e.id = u.entity_id AND e.department_id = rp.department_id
       WHERE rp.deleted_at IS NULL
+       ${filterClause}
       GROUP BY d.id, d.department_name, rp.role_name
       ORDER BY d.department_name, rp.role_name;
     `;
-    const [rows] = await sequelize.query(query);
+    const [rows] = await sequelize.query(query, {replacements});
     return commonService.okResponse(res, { items: rows });
   } catch (err) {
     return commonService.handleError(res, err);
   }
 };
+
+
 module.exports = {
   deleteRolePermissions, 
   createRolePermissionsBulk, 
