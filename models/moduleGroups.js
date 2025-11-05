@@ -1,5 +1,5 @@
 module.exports = (sequelize, DataTypes) => {
-  const RolePermission = sequelize.define("role_permissions",
+  const ModuleGroup = sequelize.define("module_groups",
     {
       id: {
         allowNull: false,
@@ -7,20 +7,8 @@ module.exports = (sequelize, DataTypes) => {
         primaryKey: true,
         type: DataTypes.INTEGER,
       },
-      module_id: {
-        type: DataTypes.INTEGER,
-        allowNull: false,
-      },
-      access_level_id: {
-        type: DataTypes.INTEGER,
-        allowNull: false,
-      }, 
-      role_name: {
+      module_group_name: { //General, master, purchase mgt, Hr Mgt
         type: DataTypes.STRING,
-        allowNull: false,
-      },
-      department_id: {
-        type: DataTypes.INTEGER,
         allowNull: false,
       },
     },
@@ -28,9 +16,11 @@ module.exports = (sequelize, DataTypes) => {
       timestamps: true, // Automatically adds `createdAt` and `updatedAt` fields
       createdAt: "created_at", // Rename `createdAt` field to `created_at`
       updatedAt: "updated_at", // Rename `updatedAt` field to `updated_at`
+      paranoid: true, // Enables soft delete
       deletedAt: "deleted_at", // Column name for the soft delete timestamp
     }
   );
 
-  return RolePermission;
+  return ModuleGroup;
 };
+

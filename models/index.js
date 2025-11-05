@@ -8,6 +8,9 @@ const District = require("./districts")(sequelize, Sequelize.DataTypes);
 const Customer = require("./customer")(sequelize, Sequelize.DataTypes);
 const Permission = require("./permissions")(sequelize, Sequelize.DataTypes);
 const Role = require("./roles")(sequelize, Sequelize.DataTypes);
+const ModuleGroup = require("./moduleGroups")(sequelize, Sequelize.DataTypes);
+const Module = require("./modules")(sequelize, Sequelize.DataTypes);
+const AccessLevel = require("./access_levels")(sequelize, Sequelize.DataTypes);
 const RolePermission = require("./rolePermissions")(
   sequelize,
   Sequelize.DataTypes
@@ -104,6 +107,9 @@ const models = {
   Permission,
   Role,
   RolePermission,
+  ModuleGroup,
+  Module,
+  AccessLevel,
   Branch,
   BankAccount,
   KycDocument,
