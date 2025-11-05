@@ -155,7 +155,7 @@ const updateRolePermissionsBulk = async (req, res) => {
 // List Role Access (department, role, members, access_control) for UI
 const listAccess = async (req, res) => {
   try {
-    const { department_id, search } = req.query;
+    const { department_id, search, role } = req.query;
 
     let replacements = {};
     let filterClause = "";
@@ -164,6 +164,11 @@ const listAccess = async (req, res) => {
     if (department_id) {
       filterClause += ` AND rp.department_id = :department_id`;
       replacements.department_id = department_id;
+    }
+
+    if (role) {
+      filterClause += ` AND rp.role_name = :role`;
+      replacements.role = role;
     }
 
     // Search across department, role, access_control text
