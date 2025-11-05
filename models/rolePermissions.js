@@ -28,6 +28,7 @@ module.exports = (sequelize, DataTypes) => {
       timestamps: true, // Automatically adds `createdAt` and `updatedAt` fields
       createdAt: "created_at", // Rename `createdAt` field to `created_at`
       updatedAt: "updated_at", // Rename `updatedAt` field to `updated_at`
+      paranoid: true,
       deletedAt: "deleted_at", // Column name for the soft delete timestamp
     }
   );
