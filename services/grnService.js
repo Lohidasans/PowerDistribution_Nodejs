@@ -190,57 +190,90 @@ const deleteGrn = async (req, res) => {
   }
 };
 
-// List all GRNs with pagination and filters
+// List all GRNs with pagination and filters (raw SQL, joins only)
 const getAllGrns = async (req, res) => {
   try {
     const { 
       page = 1, 
       limit = 10, 
       vendor_id, 
+      branch_id,
       start_date, 
       end_date,
       search
     } = req.query;
 
-    const offset = (page - 1) * limit;
-    const where = {};
-    
-    // Apply filters
-    if (vendor_id) where.vendor_id = vendor_id;
-    if (start_date || end_date) {
-      where.grn_date = {};
-      if (start_date) where.grn_date[sequelize.Op.gte] = start_date;
-      if (end_date) where.grn_date[sequelize.Op.lte] = end_date;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+
+    // Build dynamic WHERE with replacements
+    let whereSql = "WHERE g.deleted_at IS NULL";
+    const joinVendors = "LEFT JOIN vendors v ON v.id = g.vendor_id";
+    const replacements = { limit: parseInt(limit), offset };
+
+    if (vendor_id) {
+      whereSql += " AND g.vendor_id = :vendor_id";
+      replacements.vendor_id = vendor_id;
     }
-    
-    // Search in GRN number or reference
+    if (branch_id) {
+      // branch_id may exist in grns table even if not in model
+      whereSql += " AND g.branch_id = :branch_id";
+      replacements.branch_id = branch_id;
+    }
+    if (start_date) {
+      whereSql += " AND g.grn_date >= :start_date";
+      replacements.start_date = start_date;
+    }
+    if (end_date) {
+      whereSql += " AND g.grn_date <= :end_date";
+      replacements.end_date = end_date;
+    }
     if (search) {
-      where[sequelize.Op.or] = [
-        { grn_no: { [sequelize.Op.iLike]: `%${search}%` } },
-        { reference_id: { [sequelize.Op.iLike]: `%${search}%` } }
-      ];
+      whereSql += " AND (g.grn_no ILIKE :search OR v.vendor_name ILIKE :search)";
+      replacements.search = `%${search}%`;
     }
 
-    const { count, rows } = await models.Grn.findAndCountAll({
-      where,
-      include: [
-        { 
-          model: models.Vendor, 
-          attributes: ['id', 'vendor_name'],
-          required: false
-        }
-      ],
-      order: [["grn_date", "DESC"]],
-      limit: parseInt(limit),
-      offset: parseInt(offset),
-      distinct: true
-    });
+    // Count total rows (distinct GRNs)
+    const countQuery = `
+      SELECT COUNT(*) AS total
+      FROM (
+        SELECT g.id
+        FROM grns g
+        ${joinVendors}
+        ${whereSql}
+        GROUP BY g.id
+      ) t;
+    `;
+    const [countRows] = await sequelize.query(countQuery, { replacements });
+    const total = parseInt(countRows?.[0]?.total || 0, 10);
+
+    // Data query with joins and aggregation
+    const dataQuery = `
+      SELECT 
+        g.id,
+        g.grn_no,
+        g.grn_date AS date,
+        g.status_id,
+        v.id as vendor_id,
+        v.vendor_name,
+        v.vendor_image_url,
+        COALESCE(SUM(gi.ordered_weight), 0) AS ordered_weight,
+        COALESCE(SUM(gi.received_weight), 0) AS received_weight
+      FROM grns g
+      ${joinVendors}
+      LEFT JOIN "grnItems" gi ON gi.grn_id = g.id AND gi.deleted_at IS NULL
+      ${whereSql}
+      GROUP BY g.id, v.vendor_name, v.id, v.vendor_image_url 
+      ORDER BY g.grn_date DESC, g.id DESC
+      LIMIT :limit OFFSET :offset;
+    `;
+
+    const [rows] = await sequelize.query(dataQuery, { replacements });
 
     return commonService.okResponse(res, {
-      total: count,
+      total,
       page: parseInt(page),
-      totalPages: Math.ceil(count / limit),
-      data: rows
+      totalPages: Math.ceil(total / parseInt(limit)),
+      data: rows,
     });
   } catch (error) {
     return commonService.handleError(res, error);

@@ -66,6 +66,11 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.TEXT,
         allowNull: true,
       },
+      status_id: {
+        type: DataTypes.INTEGER, // 1- pending, 2 - completed
+        allowNull: false,
+        defaultValue: 1,
+      },
     },
     {
       timestamps: true,
