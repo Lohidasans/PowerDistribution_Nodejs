@@ -8,6 +8,7 @@ const svc = require("../services/grnService");
 router.post("/grns",  svc.createGrn);
 router.get("/grns", svc.getAllGrns);
 router.get("/grns/:id", svc.getGrnById);
+router.get("/grns/:id/view", svc.getGrnView);
 router.put("/grns/:id", svc.updateGrn);
 router.delete("/grns/:id", svc.deleteGrn);
 router.get("/grns/dropdown", svc.listGrnNumbers);

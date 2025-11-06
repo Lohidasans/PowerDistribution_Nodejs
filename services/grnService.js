@@ -118,10 +118,10 @@ const getGrnWithItems = async (grnId) => {
   }
 };
 
-// Update GRN and its items
+// Update GRN and its items (upsert by item.id; do not destroy existing rows)
 const updateGrn = async (req, res) => {
   const transaction = await sequelize.transaction();
-  
+
   try {
     const { id } = req.params;
     const { items = [], ...updateData } = req.body;
@@ -133,22 +133,21 @@ const updateGrn = async (req, res) => {
       return commonService.notFound(res, "GRN not found");
     }
 
-    // Update GRN
+    // Update GRN header fields
     await grn.update(updateData, { transaction });
 
-    // Delete existing items
-    await models.GrnItem.destroy({ 
-      where: { grn_id: id },
-      transaction 
-    });
-
-    // Create new items
-    if (items.length > 0) {
-      const grnItems = items.map(item => ({
-        ...item,
-        grn_id: id
-      }));
-      await models.GrnItem.bulkCreate(grnItems, { transaction });
+    // Update each existing item only when id is provided. Items without id are ignored.
+    for (const item of items) {
+      if (item && item.id) {
+        const existingItem = await models.GrnItem.findOne({
+          where: { id: item.id, grn_id: id },
+          transaction,
+        });
+        if (existingItem) {
+          const { id: _omit, grn_id: _omit2, created_at, updated_at, deleted_at, ...updatable } = item; // ignore non-updatable
+          await existingItem.update(updatable, { transaction });
+        }
+      }
     }
 
     await transaction.commit();
@@ -183,7 +182,7 @@ const deleteGrn = async (req, res) => {
     ]);
 
     await transaction.commit();
-    return commonService.okResponse(res, { message: "GRN deleted successfully" });
+    return commonService.noContentResponse(res);
   } catch (error) {
     await transaction.rollback();
     return commonService.handleError(res, error);
@@ -314,6 +313,89 @@ const generateGrnCode = async (req, res) => {
   }
 };
 
+// Detailed view for GRN page (joins: vendor + location + item master names)
+const getGrnView = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Header + vendor + location names
+    const [headerRows] = await sequelize.query(`
+        SELECT 
+          g.id,
+          g.grn_no,
+          g.grn_date,
+          g.reference_id,
+          g.subtotal_amount,
+          g.sgst_percent,
+          g.cgst_percent,
+          g.discount_percent,
+          g.remarks,
+          g.gst_no,
+          g.billing_address,
+          g.shipping_address,
+          v.id               AS vendor_id,
+          v.vendor_name,
+          v.address          AS vendor_address,
+          v.mobile           AS vendor_mobile,
+          v.gst_no           AS vendor_gst_no,
+          d.district_name    AS vendor_district,
+          s.state_name       AS vendor_state,
+          c.country_name     AS vendor_country
+        FROM grns g
+        LEFT JOIN vendors v   ON v.id = g.vendor_id
+        LEFT JOIN districts d ON d.id = v.district_id
+        LEFT JOIN states s    ON s.id = v.state_id
+        LEFT JOIN countries c ON c.id = v.country_id
+        WHERE g.id = :id
+        LIMIT 1;
+      `, { replacements: { id } });
+
+    if (!headerRows || headerRows.length === 0) {
+      return commonService.notFound(res, "GRN not found");
+    }
+
+    // Items with material/category/subcategory names
+    const [items] = await sequelize.query(`
+        SELECT 
+          gi.id,
+          gi.description,
+          gi.purity,
+          gi.ordered_weight,
+          gi.received_weight,
+          gi.quantity,
+          gi.rate,
+          gi.amount,
+          mt.material_type   AS material_type_name,
+          c.category_name    AS category_name,
+          sc.subcategory_name AS subcategory_name
+        FROM "grnItems" gi
+        LEFT JOIN "materialTypes" mt ON gi.material_type_id = mt.id
+        LEFT JOIN categories c       ON gi.category_id = c.id
+        LEFT JOIN subcategories sc   ON gi.subcategory_id = sc.id
+        WHERE gi.grn_id = :id AND gi.deleted_at IS NULL
+        ORDER BY gi.id ASC;
+      `, { replacements: { id } });
+
+    // Totals (weights and amount)
+    const [totalsRows] = await sequelize.query(`
+        SELECT 
+          COALESCE(SUM(gi.ordered_weight), 0)  AS total_ordered_weight,
+          COALESCE(SUM(gi.received_weight), 0) AS total_received_weight,
+          COALESCE(SUM(gi.amount), 0)          AS total_amount
+        FROM "grnItems" gi
+        WHERE gi.grn_id = :id AND gi.deleted_at IS NULL;
+      `, { replacements: { id } });
+
+    return commonService.okResponse(res, {
+      header: headerRows[0],
+      items,
+      totals: totalsRows[0]
+    });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
 module.exports = {
   createGrn,
   getGrnById,
@@ -321,5 +403,6 @@ module.exports = {
   deleteGrn,
   getAllGrns,
   listGrnNumbers,
-  generateGrnCode
+  generateGrnCode,
+  getGrnView,
 };
