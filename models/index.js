@@ -89,6 +89,10 @@ const ProductVariant = require("./productVariants")(sequelize, Sequelize.DataTyp
 const Grn = require("./grns")(sequelize, Sequelize.DataTypes);
 const GrnItem = require("./grnItems")(sequelize, Sequelize.DataTypes);
 
+// Purchase Order related models
+const PurchaseOrder = require("./purchaseOrders")(sequelize, Sequelize.DataTypes);
+const PurchaseOrderItem = require("./purchaseOrderItems")(sequelize, Sequelize.DataTypes);
+
 // Ledger related models
 const LedgerGroup = require("./ledgerGroup")(sequelize, Sequelize.DataTypes);
 const Ledger = require("./ledger")(sequelize, Sequelize.DataTypes);
@@ -132,6 +136,8 @@ const models = {
   Product,
   Grn,
   GrnItem,
+  PurchaseOrder,
+  PurchaseOrderItem,
   ProductItemDetail,
   ProductAdditionalDetail,
   ProductAddOn,
