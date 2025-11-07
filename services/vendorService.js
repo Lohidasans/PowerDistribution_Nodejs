@@ -128,7 +128,7 @@ const listVendors = async (req, res) => {
 const listVendorDropdown = async (req, res) => {
   try {
     const vendors = await models.Vendor.findAll({
-      attributes: ["id", "vendor_name"],
+      attributes: ["id", "vendor_name", "vendor_code"],
       where: { deleted_at: null },
       order: [["vendor_name", "ASC"]],
     });

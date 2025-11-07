@@ -27,6 +27,7 @@ const LedgerRouter = require("./ledgerRoute");
 const SuperAdminProfileRoute = require("./superAdminProfileRoute");
 const ProductVariantRoute = require("./productVariantRoute");
 const PurchaseOrderRoute = require("./purchaseOrderRoute");
+const PurchaseReturnRoute = require("./purchaseReturnRoute");
 const EnrollmentRoute = require("./enrollmentRoute");
 const EmployeeIncentiveRoute = require("./employeeIncentiveRoute");
 const EstimateBillRoute = require("./estimateBillRoute");
@@ -66,4 +67,5 @@ module.exports = (app) => {
   app.use("/api/v1", EstimateBillRoute);
   app.use("/api/v1", SalesInvoiceRoute);
   app.use("/api/v1", PurchaseOrderRoute);
+  app.use("/api/v1", PurchaseReturnRoute);
 };

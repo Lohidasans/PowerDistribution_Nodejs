@@ -255,13 +255,17 @@ const getAllGrns = async (req, res) => {
         v.id as vendor_id,
         v.vendor_name,
         v.vendor_image_url,
+        COALESCE(SUM(gi.quantity), 0) AS quantity,
         COALESCE(SUM(gi.ordered_weight), 0) AS ordered_weight,
-        COALESCE(SUM(gi.received_weight), 0) AS received_weight
+        COALESCE(SUM(gi.received_weight), 0) AS received_weight,
+        COALESCE(SUM(gi.amount), 0) AS total_amount,
+        u.email as created_by
       FROM grns g
       ${joinVendors}
       LEFT JOIN "grnItems" gi ON gi.grn_id = g.id AND gi.deleted_at IS NULL
+      LEFT JOIN users u ON u.id = g.order_by_user_id
       ${whereSql}
-      GROUP BY g.id, v.vendor_name, v.id, v.vendor_image_url 
+      GROUP BY g.id, v.vendor_name, v.id, v.vendor_image_url, u.email
       ORDER BY g.grn_date DESC, g.id DESC
       LIMIT :limit OFFSET :offset;
     `;
@@ -283,7 +287,7 @@ const getAllGrns = async (req, res) => {
 const listGrnNumbers = async (req, res) => {
   try {
     const rows = await models.Grn.findAll({
-      attributes: ["id", "grn_no"],
+      attributes: ["id", "grn_no", "grn_date"],
       order: [["created_at", "DESC"]],
     });
 
@@ -333,6 +337,8 @@ const getGrnView = async (req, res) => {
           g.gst_no,
           g.billing_address,
           g.shipping_address,
+          po.po_no,
+          po.po_date,
           v.id               AS vendor_id,
           v.vendor_name,
           v.address          AS vendor_address,
@@ -343,6 +349,7 @@ const getGrnView = async (req, res) => {
           c.country_name     AS vendor_country
         FROM grns g
         LEFT JOIN vendors v   ON v.id = g.vendor_id
+        LEFT JOIN purchase_orders po ON po.id = g.po_id
         LEFT JOIN districts d ON d.id = v.district_id
         LEFT JOIN states s    ON s.id = v.state_id
         LEFT JOIN countries c ON c.id = v.country_id

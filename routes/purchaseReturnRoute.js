@@ -1,33 +1,31 @@
 const express = require("express");
 const router = express.Router();
-const svc = require("../services/grnService");
-//const { body, param, query } = require('express-validator');
-//const { validateRequest } = require('../middleware/validation');
+const svc = require("../services/purchaseReturnService");
 
 // Routes
-router.post("/grns",  svc.createGrn);
-router.get("/grns", svc.getAllGrns);
-router.get("/grns/dropdown", svc.listGrnNumbers);
-router.get("/grns/:id", svc.getGrnById);
-router.get("/grns/:id/view", svc.getGrnView);
-router.put("/grns/:id", svc.updateGrn);
-router.delete("/grns/:id", svc.deleteGrn);
-router.post("/grns/code", svc.generateGrnCode);
+router.post("/purchase-returns", svc.createPurchaseReturn);
+router.get("/purchase-returns", svc.getAllPurchaseReturns);
+router.get("/purchase-returns/dropdown", svc.listPurchaseReturnNumbers);
+router.get("/purchase-returns/:id", svc.getPurchaseReturnById);
+router.get("/purchase-returns/:id/view", svc.getPurchaseReturnView);
+router.put("/purchase-returns/:id", svc.updatePurchaseReturn);
+router.delete("/purchase-returns/:id", svc.deletePurchaseReturn);
+router.post("/purchase-returns/code", svc.generatePurchaseReturnCode);
 
 module.exports = router;
 
 /**
  * @openapi
  * tags:
- *   - name: GRN
- *     description: Goods Receipt Note Management
+ *   - name: PurchaseReturn
+ *     description: Purchase Return Management
  */
 
 /**
  * @openapi
  * components:
  *   schemas:
- *     GRNItem:
+ *     PurchaseReturnItem:
  *       type: object
  *       required:
  *         - material_type_id
@@ -36,7 +34,7 @@ module.exports = router;
  *       properties:
  *         id:
  *           type: integer
- *           description: GRN Item ID (for updates)
+ *           description: Purchase Return Item ID (for updates)
  *         material_type_id:
  *           type: integer
  *         category_id:
@@ -48,10 +46,7 @@ module.exports = router;
  *         purity:
  *           type: number
  *           format: float
- *         ordered_weight:
- *           type: number
- *           format: float
- *         received_weight:
+ *         weight:
  *           type: number
  *           format: float
  *         quantity:
@@ -63,20 +58,20 @@ module.exports = router;
  *           type: number
  *           format: float
  * 
- *     GRN:
+ *     PurchaseReturn:
  *       type: object
  *       required:
- *         - grn_no
- *         - grn_date
+ *         - pr_no
+ *         - pr_date
  *         - vendor_id
  *         - items
  *       properties:
- *         grn_no:
+ *         pr_no:
  *           type: string
- *         grn_date:
+ *         pr_date:
  *           type: string
  *           format: date
- *         po_id:
+ *         grn_id:
  *           type: integer
  *         vendor_id:
  *           type: integer
@@ -107,24 +102,24 @@ module.exports = router;
  *         items:
  *           type: array
  *           items:
- *             $ref: '#/components/schemas/GRNItem'
+ *             $ref: '#/components/schemas/PurchaseReturnItem'
  */
 
 /**
  * @openapi
- * /api/v1/grns:
+ * /api/v1/purchase-returns:
  *   post:
- *     summary: Create a new GRN (Goods Receipt Note)
- *     tags: [GRN]
+ *     summary: Create a new Purchase Return
+ *     tags: [PurchaseReturn]
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/GRN'
+ *             $ref: '#/components/schemas/PurchaseReturn'
  *     responses:
  *       201:
- *         description: GRN created successfully
+ *         description: Purchase Return created successfully
  *         content:
  *           application/json:
  *             schema:
@@ -133,10 +128,10 @@ module.exports = router;
 
 /**
  * @openapi
- * /api/v1/grns/{id}:
+ * /api/v1/purchase-returns/{id}:
  *   get:
- *     summary: Get a GRN by ID
- *     tags: [GRN]
+ *     summary: Get a Purchase Return by ID
+ *     tags: [PurchaseReturn]
  *     parameters:
  *       - in: path
  *         name: id
@@ -145,7 +140,7 @@ module.exports = router;
  *           type: integer
  *     responses:
  *       200:
- *         description: GRN details
+ *         description: Purchase Return details
  *         content:
  *           application/json:
  *             schema:
@@ -154,10 +149,10 @@ module.exports = router;
 
 /**
  * @openapi
- * /api/v1/grns/{id}:
+ * /api/v1/purchase-returns/{id}:
  *   put:
- *     summary: Update a GRN
- *     tags: [GRN]
+ *     summary: Update a Purchase Return
+ *     tags: [PurchaseReturn]
  *     parameters:
  *       - in: path
  *         name: id
@@ -169,10 +164,10 @@ module.exports = router;
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/GRN'
+ *             $ref: '#/components/schemas/PurchaseReturn'
  *     responses:
  *       200:
- *         description: GRN updated successfully
+ *         description: Purchase Return updated successfully
  *         content:
  *           application/json:
  *             schema:
@@ -181,10 +176,10 @@ module.exports = router;
 
 /**
  * @openapi
- * /api/v1/grns/{id}:
+ * /api/v1/purchase-returns/{id}:
  *   delete:
- *     summary: Delete a GRN (soft delete)
- *     tags: [GRN]
+ *     summary: Delete a Purchase Return (soft delete)
+ *     tags: [PurchaseReturn]
  *     parameters:
  *       - in: path
  *         name: id
@@ -193,7 +188,7 @@ module.exports = router;
  *           type: integer
  *     responses:
  *       200:
- *         description: GRN deleted successfully
+ *         description: Purchase Return deleted successfully
  *         content:
  *           application/json:
  *             schema:
@@ -202,10 +197,10 @@ module.exports = router;
 
 /**
  * @openapi
- * /api/v1/grns:
+ * /api/v1/purchase-returns:
  *   get:
- *     summary: List all GRNs with pagination and filters
- *     tags: [GRN]
+ *     summary: List all Purchase Returns with pagination and filters
+ *     tags: [PurchaseReturn]
  *     parameters:
  *       - in: query
  *         name: page
@@ -219,6 +214,10 @@ module.exports = router;
  *           default: 10
  *       - in: query
  *         name: vendor_id
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: branch_id
  *         schema:
  *           type: integer
  *       - in: query
@@ -237,7 +236,7 @@ module.exports = router;
  *           type: string
  *     responses:
  *       200:
- *         description: List of GRNs
+ *         description: List of Purchase Returns
  *         content:
  *           application/json:
  *             schema:
@@ -246,10 +245,10 @@ module.exports = router;
 
 /**
  * @openapi
- * /api/v1/grns/dropdown:
+ * /api/v1/purchase-returns/dropdown:
  *   get:
- *     summary: Get GRN numbers for dropdown
- *     tags: [GRN]
+ *     summary: Get Purchase Return numbers for dropdown
+ *     tags: [PurchaseReturn]
  *     parameters:
  *       - in: query
  *         name: vendor_id
@@ -261,29 +260,29 @@ module.exports = router;
  *           type: string
  *     responses:
  *       200:
- *         description: List of GRN numbers
+ *         description: List of Purchase Return numbers
  *         content:
  *           application/json:
  *             schema:
  *               type: object
  *               properties:
- *                 grns:
+ *                 purchase_returns:
  *                   type: array
  *                   items:
  *                     type: object
  *                     properties:
  *                       id:
  *                         type: integer
- *                       grn_no:
+ *                       pr_no:
  *                         type: string
  */
 
 /**
  * @openapi
- * /api/v1/grns/code:
+ * /api/v1/purchase-returns/code:
  *   post:
- *     summary: Generate next GRN code
- *     tags: [GRN]
+ *     summary: Generate next Purchase Return code
+ *     tags: [PurchaseReturn]
  *     responses:
  *       200:
  *         description: OK
@@ -297,5 +296,6 @@ module.exports = router;
  *                 data:
  *                   type: object
  *                   properties:
- *                     grn_no: { type: string, example: "GRN 01/24-25" }
+ *                     pr_no: { type: string, example: "PR 01/24-25" }
  */
+
