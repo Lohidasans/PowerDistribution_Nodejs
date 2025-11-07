@@ -270,7 +270,7 @@ const getPurchaseOrderView = async (req, res) => {
 const listPurchaseOrderNumbers = async (req, res) => {
   try {
     const rows = await models.PurchaseOrder.findAll({
-      attributes: ["id", "po_no"],
+      attributes: ["id", "po_no", "po_date"],
       order: [["created_at", "DESC"]],
     });
     return commonService.okResponse(res, { purchase_orders: rows });
