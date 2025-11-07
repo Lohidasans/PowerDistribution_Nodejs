@@ -166,7 +166,7 @@ const createBranch = async (req, res) => {
   }
 };
 
-// List branches with optional search and status filter
+// List branches with optional search and status filter using raw SQL joins
 const listBranches = async (req, res) => {
   try {
     const searchKey = req.query.search || "";
@@ -174,25 +174,65 @@ const listBranches = async (req, res) => {
     const state_id = req.query.state_id || "";
     const district_id = req.query.district_id || "";
 
-    const where = {};
+    // Build where conditions
+    const whereConditions = ["b.deleted_at IS NULL"];
+    const replacements = {};
+    
     // Add search condition
-    const searchCondition = buildSearchCondition(searchKey, [
-      "branch_no",
-      "branch_name",
-      "contact_person",
-    ]);
-    if (searchCondition) {
-      Object.assign(where, searchCondition);
+    if (searchKey) {
+      whereConditions.push(`(
+        b.branch_no ILIKE :search OR 
+        b.branch_name ILIKE :search OR 
+        b.contact_person ILIKE :search OR
+        d.district_name ILIKE :search OR
+        s.state_name ILIKE :search 
+        --OR
+        --c.country_name ILIKE :search
+      )`);
+      replacements.search = `%${searchKey}%`;
     }
-    // Add filters
-    if (status) where.status = status;
-    if (state_id) where.state_id = state_id;
-    if (district_id) where.district_id = district_id;
 
-    const branches = await models.Branch.findAll({
-      where,
-      order: [["created_at", "DESC"]],
+    // Add filters
+    if (status) {
+      whereConditions.push("b.status = :status");
+      replacements.status = status;
+    }
+    if (state_id) {
+      whereConditions.push("b.state_id = :state_id");
+      replacements.state_id = state_id;
+    }
+    if (district_id) {
+      whereConditions.push("b.district_id = :district_id");
+      replacements.district_id = district_id;
+    }
+
+    const whereClause = whereConditions.length > 0 
+      ? `WHERE ${whereConditions.join(' AND ')}` 
+      : '';
+
+    // Main query with joins
+    const query = `
+      SELECT 
+        b.*,
+        d.district_name,
+        s.state_name
+        --c.country_name
+      FROM branches b
+      LEFT JOIN districts d ON d.id = b.district_id
+      LEFT JOIN states s ON s.id = b.state_id
+      --LEFT JOIN countries c ON c.id = b.country_id
+      ${whereClause}
+      ORDER BY b.created_at DESC
+    `;
+
+    // Execute raw query
+    const [branches] = await sequelize.query(query, {
+      replacements,
+      type: sequelize.QueryTypes.SELECT,
+      model: models.Branch,
+      mapToModel: true
     });
+
     return commonService.okResponse(res, { branches });
   } catch (err) {
     return commonService.handleError(res, err);
