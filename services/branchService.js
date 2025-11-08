@@ -226,7 +226,7 @@ const listBranches = async (req, res) => {
     `;
 
     // Execute raw query
-    const [branches] = await sequelize.query(query, {
+    const branches = await sequelize.query(query, {
       replacements,
       type: sequelize.QueryTypes.SELECT,
       model: models.Branch,
