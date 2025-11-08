@@ -11,6 +11,7 @@ module.exports = (sequelize, DataTypes) => {
       ref_no: {
         type: DataTypes.STRING,
         allowNull: true,
+        unique: true,
       },
       material_type_id: {
         type: DataTypes.INTEGER,

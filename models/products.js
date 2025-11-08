@@ -13,6 +13,10 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: true,
         unique: true,
       },
+      ref_no_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+      },
       product_name: {
         type: DataTypes.STRING,
         allowNull: false,
