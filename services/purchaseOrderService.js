@@ -165,12 +165,14 @@ const listPurchaseOrders = async (req, res) => {
         v.id AS vendor_id,
         v.vendor_name,
         v.vendor_image_url,
+        u.email as created_by,
         COALESCE(SUM(poi.ordered_weight), 0) AS ordered_weight
       FROM purchase_orders p
       ${joinVendors}
       LEFT JOIN purchase_order_items poi ON poi.po_id = p.id AND poi.deleted_at IS NULL
+      LEFT JOIN users u ON u.id = p.order_by_user_id
       ${whereSql}
-      GROUP BY p.id, v.vendor_name, v.id, v.vendor_image_url
+      GROUP BY p.id, v.vendor_name, v.id, v.vendor_image_url, u.email
       ORDER BY p.po_date DESC, p.id DESC
       LIMIT :limit OFFSET :offset;
     `;

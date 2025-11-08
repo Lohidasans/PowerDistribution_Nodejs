@@ -206,7 +206,6 @@ const getAllPurchaseReturns = async (req, res) => {
       page = 1, 
       limit = 10, 
       vendor_id, 
-      branch_id,
       start_date, 
       end_date,
       search
@@ -222,10 +221,6 @@ const getAllPurchaseReturns = async (req, res) => {
     if (vendor_id) {
       whereSql += " AND pr.vendor_id = :vendor_id";
       replacements.vendor_id = vendor_id;
-    }
-    if (branch_id) {
-      whereSql += " AND pr.branch_id = :branch_id";
-      replacements.branch_id = branch_id;
     }
     if (start_date) {
       whereSql += " AND pr.pr_date >= :start_date";
@@ -261,7 +256,6 @@ const getAllPurchaseReturns = async (req, res) => {
         pr.pr_no,
         pr.pr_date AS date,
         pr.status_id,
-        pr.branch_id,
         v.id as vendor_id,
         v.vendor_name,
         v.vendor_image_url,
