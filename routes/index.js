@@ -13,6 +13,7 @@ const VendorSpocDetailsRoute = require("./vendorSpocDetailsRoute");
 const VendorRoutes = require("./vendorRoute");
 const ProductRouter = require("./productRoute");
 const GrnRouter = require("./grnRoute");
+const ProductGrnInfoRoute = require("./productGrnInfoRoute");
 const ProductAddOnRoute = require("./productAddOnRoute");
 const CustomerRoute = require("./customerRoute");
 const CountryRoute = require("./countryRoute");
@@ -48,6 +49,7 @@ module.exports = (app) => {
   app.use("/api/v1", VendorRoutes);
   app.use("/api/v1", ProductRouter);
   app.use("/api/v1", GrnRouter);
+  app.use("/api/v1", ProductGrnInfoRoute);
   app.use("/api/v1", VariantRouter);
   app.use("/api/v1", ProductAddOnRoute);
   app.use("/api/v1", CustomerRoute);
