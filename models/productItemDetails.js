@@ -51,7 +51,7 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false
       },
       making_charge_type: {
-        type: DataTypes.ENUM("Amount", "Percentage"),
+        type: DataTypes.ENUM("Amount", "Percentage", "Per Gram"),
         allowNull: true
       },
       making_charge: {
@@ -59,7 +59,7 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: true
       },
       wastage_type: {
-        type: DataTypes.ENUM("Amount", "Percentage"),
+        type: DataTypes.ENUM("Amount", "Percentage", "Per Gram"),
         allowNull: true
       },
       wastage: {
