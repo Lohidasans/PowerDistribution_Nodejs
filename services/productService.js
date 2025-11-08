@@ -474,7 +474,7 @@ const deleteProduct = async (req, res) => {
 // Get details for Web list page (with filters and search)
 const getAllProductDetails = async (req, res) => {
   try {
-    const { material_type_id, category_id, subcategory_id, grn_id, search } = req.query;
+    const { material_type_id, category_id, subcategory_id, grn_id, ref_no_id, search } = req.query;
 
     let query = ` 
       SELECT
@@ -489,6 +489,7 @@ const getAllProductDetails = async (req, res) => {
         p.material_type_id,
         p.category_id,
         p.subcategory_id,
+        p.ref_no_id,
         p.grn_id,
         p.branch_id,
         p.sku_id,
@@ -530,6 +531,10 @@ const getAllProductDetails = async (req, res) => {
     if (grn_id) {
       query += ` AND p.grn_id = :grn_id`;
       replacements.grn_id = +grn_id;
+    }
+    if (ref_no_id) {
+      query += ` AND p.ref_no_id = :ref_no_id`;
+      replacements.ref_no_id = +ref_no_id;
     }
 
     if (search) {
