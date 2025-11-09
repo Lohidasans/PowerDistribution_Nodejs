@@ -6,7 +6,7 @@ const { buildSearchCondition } = require("../helpers/queryHelper");
 
 const createMaterialType = async (req, res) => {
   try {
-    const { material_type, material_image_url } = req.body;
+    const { material_type, material_image_url, material_price } = req.body;
 
     if (!material_type) {
       return commonService.badRequest(res, enMessage.materialType.required);
@@ -30,6 +30,7 @@ const createMaterialType = async (req, res) => {
 
     const row = await models.MaterialType.create({
       material_type,
+      material_price,
       material_image_url,
     });
 
@@ -37,10 +38,7 @@ const createMaterialType = async (req, res) => {
   } catch (err) {
     // Handle duplication or race condition (unique constraint)
     if (err.name === "SequelizeUniqueConstraintError") {
-      return commonService.badRequest(
-        res,
-        enMessage.materialType.duplication
-      );
+      return commonService.badRequest(res, enMessage.materialType.duplication);
     }
 
     return commonService.handleError(res, err);
@@ -55,7 +53,11 @@ const listMaterialTypes = async (req, res) => {
     if (searchCondition) Object.assign(where, searchCondition);
 
     // Additional explicit filter by material_type query (case-insensitive, partial)
-    if (material_type && typeof material_type === "string" && material_type.trim()) {
+    if (
+      material_type &&
+      typeof material_type === "string" &&
+      material_type.trim()
+    ) {
       where.material_type = { [Op.iLike]: `%${material_type.trim()}%` };
     }
 
@@ -72,7 +74,7 @@ const listMaterialTypes = async (req, res) => {
 const listMaterialTypesDropdown = async (req, res) => {
   try {
     const items = await models.MaterialType.findAll({
-      attributes: ["id", "material_type"],
+      attributes: ["id", "material_type", "material_price"],
       order: [["material_type", "ASC"]],
     });
     return commonService.okResponse(res, { materialTypes: items });
