@@ -55,7 +55,6 @@ const getQuotationWithItems = async (quotationId) => {
   }
 };
 
-
 // Create Quotation Request with items
 const createQuotationRequest = async (req, res) => {
   const transaction = await sequelize.transaction();
@@ -115,55 +114,63 @@ const updateQuotationRequest = async (req, res) => {
 
   try {
     const { id } = req.params;
-    const { items = [], ...updateData } = req.body;
+    const { items = [], vendor_ids, ...updateData } = req.body;
 
-    // Find existing Quotation Request
+    // 1. Find existing quotation
     const quotationRequest = await models.Quotation.findByPk(id, { transaction });
     if (!quotationRequest) {
       await transaction.rollback();
       return commonService.notFound(res, "Quotation Request not found");
     }
 
-    // Update Quotation Request header fields
-    //await quotationRequest.update(updateData, { transaction });
+    // 2. Update main quotation fields (excluding vendor_ids)
+    const { vendor_ids: _, ...fieldsToUpdate } = updateData;
+    if (Object.keys(fieldsToUpdate).length > 0) {
+      await quotationRequest.update(fieldsToUpdate, { transaction });
+    }
 
-    // --- Update header fields (handle arrays manually) ---
-    if (updateData.vendor_ids) quotationRequest.vendor_ids = updateData.vendor_ids;
-    if (updateData.request_date) quotationRequest.request_date = updateData.request_date;
-    if (updateData.expiry_date) quotationRequest.expiry_date = updateData.expiry_date;
-    if (updateData.remarks) quotationRequest.remarks = updateData.remarks;
-    if (updateData.status_id) quotationRequest.status_id = updateData.status_id;
-    if (updateData.updated_by) quotationRequest.updated_by = updateData.updated_by;
-    await quotationRequest.save({ transaction });
+    // 3. Update vendor_ids separately (ARRAY field)
+    if (Array.isArray(vendor_ids)) {
+      await quotationRequest.update({ vendor_ids }, { transaction });
+    }
 
-    // Update each existing item only when id is provided. Items without id are ignored.
+    // 4. Handle items: Update existing ones
+    const updatedItemIds = items.filter(item => item.id).map(item => item.id);
+
     for (const item of items) {
-      if (item && item.id) {
+      if (item.id) {
         const existingItem = await models.QuotationItem.findOne({
           where: { id: item.id, quotation_id: id },
           transaction,
         });
+
         if (existingItem) {
-          // const { id: _omit, quotation_id: _omit2, created_at, updated_at, deleted_at, ...updatable } = item; // ignore non-updatable
+          // DO NOT destructure `id` or `quotation_id`
           const updatable = {
             material_type_id: item.material_type_id,
             category_id: item.category_id,
             subcategory_id: item.subcategory_id,
             product_description: item.product_description,
-            purity: item.purity,
-            weight: item.weight,
-            quantity: item.quantity
+            purity: item.purity ? parseFloat(item.purity) : null,
+            weight: item.weight ? parseFloat(item.weight) : null,
+            quantity: item.quantity,
           };
+
+          console.log('Updating item ID:', item.id, updatable);
           await existingItem.update(updatable, { transaction });
         }
       }
     }
 
     await transaction.commit();
+
+    // 6. Return fresh data
     const result = await getQuotationWithItems(id);
     return commonService.okResponse(res, result);
+
   } catch (error) {
     await transaction.rollback();
+    console.error('Update error:', error);
     return commonService.handleError(res, error);
   }
 };
@@ -174,7 +181,7 @@ const deleteQuotationRequest = async (req, res) => {
   
   try {
     const { id } = req.params;
-    const quotationRequest = await models.QuotationRequest.findByPk(id, { transaction });
+    const quotationRequest = await models.Quotation.findByPk(id, { transaction });
     
     if (!quotationRequest) {
       await transaction.rollback();
