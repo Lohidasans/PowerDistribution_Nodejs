@@ -33,6 +33,7 @@ const EnrollmentRoute = require("./enrollmentRoute");
 const EmployeeIncentiveRoute = require("./employeeIncentiveRoute");
 const EstimateBillRoute = require("./estimateBillRoute");
 const SalesInvoiceRoute = require("./salesInvoiceBillRoute");
+const QuotaionRoute = require("./quotationRequestRoutes");
 
 module.exports = (app) => {
   app.use("/api/v1", RoleRouter);
@@ -70,4 +71,5 @@ module.exports = (app) => {
   app.use("/api/v1", SalesInvoiceRoute);
   app.use("/api/v1", PurchaseOrderRoute);
   app.use("/api/v1", PurchaseReturnRoute);
+  app.use("/api/v1", QuotaionRoute);
 };
