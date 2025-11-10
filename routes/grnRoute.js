@@ -1,8 +1,6 @@
 const express = require("express");
 const router = express.Router();
 const svc = require("../services/grnService");
-//const { body, param, query } = require('express-validator');
-//const { validateRequest } = require('../middleware/validation');
 
 // Routes
 router.post("/grns",  svc.createGrn);

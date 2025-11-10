@@ -1,5 +1,6 @@
 const Sequelize = require("sequelize");
 const { sequelize } = require("../config/dbConfig");
+const Holiday = require("./holidays")(sequelize, Sequelize.DataTypes);
 
 const Country = require("./country")(sequelize, Sequelize.DataTypes);
 const State = require("./state")(sequelize, Sequelize.DataTypes);
@@ -177,6 +178,7 @@ const models = {
   Payment,
   Quotation,
   QuotationItem,
+  Holiday,
 };
 
 Object.values(models).forEach((model) => {
@@ -194,4 +196,9 @@ Object.values(models).forEach((model) => {
   }
 })();
 
-module.exports = { sequelize, models };
+module.exports = {
+  sequelize,
+  Sequelize,
+  models,
+  Holiday, // Keep direct export for backward compatibility
+};
