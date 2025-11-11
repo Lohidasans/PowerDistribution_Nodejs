@@ -25,32 +25,64 @@ const createLeave = async (req, res) => {
   }
 };
 
-// Get all leave requests with optional filtering
 const getAllLeaves = async (req, res) => {
   try {
-    const { start_date, end_date, status, leave_type_id, employee_id } = req.query;
-    const whereClause = {};
+    const { start_date, end_date, search, leave_type_id } = req.query;
 
-    // Date range filter
+    // Base query
+    let query = `
+      SELECT 
+        l.id,
+        l.leave_date,
+        l.leave_type_id,
+        l.reason,
+        l.created_at,
+        l.updated_at,
+        lt.leave_type_name
+      FROM leaves AS l
+      LEFT JOIN leave_types AS lt ON lt.id = l.leave_type_id
+      WHERE 1 = 1
+    `;
+
+    const replacements = {};
+
+    // 📅 Date range filter
     if (start_date && end_date) {
-      whereClause.leave_date = {
-        [Op.between]: [start_date, end_date],
-      };
+      query += ` AND l.leave_date BETWEEN :start_date AND :end_date`;
+      replacements.start_date = start_date;
+      replacements.end_date = end_date;
     } else if (start_date) {
-      whereClause.leave_date = { [Op.gte]: start_date };
+      query += ` AND l.leave_date >= :start_date`;
+      replacements.start_date = start_date;
     } else if (end_date) {
-      whereClause.leave_date = { [Op.lte]: end_date };
+      query += ` AND l.leave_date <= :end_date`;
+      replacements.end_date = end_date;
     }
 
-    // Leave type filter
+    // 🧾 Leave type filter
     if (leave_type_id) {
-      whereClause.leave_type_id = leave_type_id;
+      query += ` AND l.leave_type_id = :leave_type_id`;
+      replacements.leave_type_id = leave_type_id;
     }
 
-    const leaves = await models.Leave.findAll({
-      where: whereClause,
-      order: [['leave_date', 'DESC']],
-      paranoid: false // Include soft-deleted records if needed
+    // 🔍 Universal search (in both reason and leave_type_name)
+    if (search && search.trim() !== "") {
+      query += `
+        AND (
+          LOWER(l.reason) LIKE :search OR
+          LOWER(lt.leave_type_name) LIKE :search
+        )
+      `;
+      replacements.search = `%${search.trim().toLowerCase()}%`;
+    }
+
+    // 🕒 Order
+    query += ` ORDER BY l.leave_date DESC`;
+
+    // Execute raw query
+    const leaves = await sequelize.query(query, {
+      replacements,
+      type: sequelize.QueryTypes.SELECT
     });
 
     return commonService.okResponse(res, leaves);
@@ -58,6 +90,8 @@ const getAllLeaves = async (req, res) => {
     return commonService.handleError(res, error);
   }
 };
+
+module.exports = { getAllLeaves };
 
 // Get leave by ID
 const getLeaveById = async (req, res) => {
@@ -122,12 +156,6 @@ const deleteLeave = async (req, res) => {
     if (!leave) {
       await transaction.rollback();
       return commonService.notFound(res, 'Leave request not found');
-    }
-
-    // Only allow deletion if status is pending
-    if (leave.status !== 'pending') {
-      await transaction.rollback();
-      return commonService.badRequest(res, 'Only pending leave requests can be deleted');
     }
 
     await leave.destroy({ transaction });
