@@ -196,9 +196,4 @@ Object.values(models).forEach((model) => {
   }
 })();
 
-module.exports = {
-  sequelize,
-  Sequelize,
-  models,
-  Holiday, // Keep direct export for backward compatibility
-};
+module.exports = { sequelize, models };
