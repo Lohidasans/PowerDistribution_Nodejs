@@ -35,6 +35,8 @@ const EstimateBillRoute = require("./estimateBillRoute");
 const SalesInvoiceRoute = require("./salesInvoiceBillRoute");
 const QuotationRoute = require("./quotationRequestRoutes");
 const HolidayRoute = require("./holidayRoutes");
+const LeaveRoute = require("./leaveRoutes");
+const LeaveTypeRoute = require("./leaveTypeRoutes");
 
 module.exports = (app) => {
   app.use("/api/v1", RoleRouter);
@@ -74,4 +76,6 @@ module.exports = (app) => {
   app.use("/api/v1", PurchaseReturnRoute);
   app.use("/api/v1", QuotationRoute);
   app.use("/api/v1", HolidayRoute);
+  app.use("/api/v1", LeaveRoute);
+  app.use("/api/v1", LeaveTypeRoute);
 };

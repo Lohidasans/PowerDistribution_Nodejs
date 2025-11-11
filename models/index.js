@@ -114,6 +114,10 @@ const Payment = require("./payments")(sequelize, Sequelize.DataTypes);
 const Quotation = require("./quotations")(sequelize, Sequelize.DataTypes);
 const QuotationItem = require("./quotationItems")(sequelize, Sequelize.DataTypes);
 
+// Leave related models
+const LeaveType = require("./leaveTypes")(sequelize, Sequelize.DataTypes);
+const Leave = require("./leave")(sequelize, Sequelize.DataTypes);
+
 const SuperAdminProfile = require("./superAdminProfiles")(sequelize, Sequelize.DataTypes);
 const InvoiceSettingEnum = require("./invoiceSettingEnum")(sequelize, Sequelize.DataTypes);
 
@@ -178,6 +182,8 @@ const models = {
   Payment,
   Quotation,
   QuotationItem,
+  LeaveType,
+  Leave,
   Holiday,
 };
 
