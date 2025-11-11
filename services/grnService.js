@@ -283,19 +283,61 @@ const getAllGrns = async (req, res) => {
   }
 };
 
-// GET: minimal list of GRN numbers for dropdowns
+
+// GET: list of GRN numbers with full ProductGrnInfo + joined details
 const listGrnNumbers = async (req, res) => {
   try {
-    const rows = await models.Grn.findAll({
-      attributes: ["id", "grn_no", "grn_date"],
+    // 1.Fetch all GRNs (base info)
+    const grns = await models.Grn.findAll({
+      attributes: ["id", "grn_no", "grn_date", "grn_info_ids"],
       order: [["created_at", "DESC"]],
+      raw: true,
     });
 
-    return commonService.okResponse(res, { grns: rows });
+    // 2.Collect all grn_info_ids across GRNs
+    const allInfoIds = grns.flatMap(g => g.grn_info_ids || []);
+    if (allInfoIds.length === 0) {
+      return commonService.okResponse(res, { grns });
+    }
+
+    // 3.Fetch all ProductGrnInfo rows with extra joins
+    const grnInfos = await sequelize.query(`
+      SELECT 
+        pgi.*,
+        mt.material_type AS material_type_name,
+        c.category_name,
+        sc.subcategory_name
+      FROM product_grn_infos pgi
+      LEFT JOIN "materialTypes" mt ON pgi.material_type_id = mt.id
+      LEFT JOIN categories c ON pgi.category_id = c.id
+      LEFT JOIN subcategories sc ON pgi.subcategory_id = sc.id
+      WHERE pgi.id IN (:infoIds)
+    `, {
+      replacements: { infoIds: allInfoIds },
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    // 4️.Create lookup map for quick access
+    const grnInfoMap = {};
+    grnInfos.forEach(info => {
+      grnInfoMap[info.id] = info;
+    });
+
+    // 5️.Replace grn_info_ids (array of IDs) with detailed objects
+    const enrichedGrns = grns.map(grn => ({
+      ...grn,
+      grn_info_ids: (grn.grn_info_ids || [])
+        .map(id => grnInfoMap[id])
+        .filter(Boolean),
+    }));
+
+    return commonService.okResponse(res, { grns: enrichedGrns });
   } catch (err) {
     return commonService.handleError(res, err);
   }
 };
+
+
 
 const generateGrnCode = async (req, res) => {
   try {
