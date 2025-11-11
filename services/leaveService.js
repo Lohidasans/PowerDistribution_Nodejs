@@ -7,15 +7,12 @@ const createLeave = async (req, res) => {
   const transaction = await sequelize.transaction();
   try {
     const { leave_date, leave_type_id, reason } = req.body;
-    const created_by = req.user?.id; // Assuming user ID is available in req.user
     
     const leave = await models.Leave.create(
       { 
         leave_date, 
         leave_type_id, 
         reason,
-        created_by,
-        status: 'pending' // Default status
       },
       { transaction }
     );
@@ -45,19 +42,9 @@ const getAllLeaves = async (req, res) => {
       whereClause.leave_date = { [Op.lte]: end_date };
     }
 
-    // Status filter
-    if (status) {
-      whereClause.status = status;
-    }
-
     // Leave type filter
     if (leave_type_id) {
       whereClause.leave_type_id = leave_type_id;
-    }
-
-    // Employee filter
-    if (employee_id) {
-      whereClause.created_by = employee_id;
     }
 
     const leaves = await models.Leave.findAll({
@@ -95,46 +82,35 @@ const updateLeave = async (req, res) => {
   const transaction = await sequelize.transaction();
   try {
     const { id } = req.params;
-    const { leave_date, leave_type_id, reason, status } = req.body;
-    
+    const { leave_date, leave_type_id, reason } = req.body;
+
     const leave = await models.Leave.findByPk(id, { transaction });
     if (!leave) {
       await transaction.rollback();
       return commonService.notFound(res, 'Leave request not found');
     }
-    
-    // If status is being updated to approved/rejected, set approved_by and approved_at
+
+    // Prepare updated data
     const updateData = {
       leave_date: leave_date || leave.leave_date,
       leave_type_id: leave_type_id || leave.leave_type_id,
       reason: reason !== undefined ? reason : leave.reason
     };
 
-    if (status && ['approved', 'rejected'].includes(status) && leave.status === 'pending') {
-      updateData.status = status;
-      updateData.approved_by = req.user?.id; // Assuming user ID is available in req.user
-      updateData.approved_at = new Date();
-    } else if (status) {
-      updateData.status = status;
-    }
-    
+    // Update record
     await leave.update(updateData, { transaction });
     await transaction.commit();
-    
-    const updatedLeave = await models.Leave.findByPk(id, {
-      include: [
-        { model: models.LeaveType, as: 'leave_type' },
-        { model: models.Employee, as: 'requester' },
-        { model: models.Employee, as: 'approver', required: false }
-      ]
-    });
-    
+
+    // Fetch updated record (without associations)
+    const updatedLeave = await models.Leave.findByPk(id);
+
     return commonService.okResponse(res, updatedLeave);
   } catch (error) {
     await transaction.rollback();
     return commonService.handleError(res, error);
   }
 };
+
 
 // Delete leave request (soft delete)
 const deleteLeave = async (req, res) => {

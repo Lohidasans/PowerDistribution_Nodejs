@@ -1,14 +1,14 @@
-const { models } = require("../models");
+const { models, sequelize } = require("../models/index");
 const commonService = require("./commonService");
 
 // Create a new leave type
 const createLeaveType = async (req, res) => {
-  const transaction = await models.sequelize.transaction();
+  const transaction = await sequelize.transaction();
   try {
     const { leave_type_name } = req.body;
     
     // Check if leave type with same name already exists
-    const existingType = await models.leave_type.findOne({
+    const existingType = await models.LeaveType.findOne({
       where: { leave_type_name },
       paranoid: false
     });
@@ -18,7 +18,7 @@ const createLeaveType = async (req, res) => {
       return commonService.conflict(res, 'Leave type with this name already exists');
     }
 
-    const leaveType = await models.leave_type.create(
+    const leaveType = await models.LeaveType.create(
       { leave_type_name },
       { transaction }
     );
@@ -42,7 +42,7 @@ const getAllLeaveTypes = async (req, res) => {
       whereClause.is_active = is_active === 'true';
     }
 
-    const leaveTypes = await models.leave_type.findAll({
+    const leaveTypes = await models.LeaveType.findAll({
       where: whereClause,
       order: [['created_at', 'DESC']],
       paranoid: false
@@ -58,7 +58,7 @@ const getAllLeaveTypes = async (req, res) => {
 const getLeaveTypeById = async (req, res) => {
   try {
     const { id } = req.params;
-    const leaveType = await models.leave_type.findByPk(id, {
+    const leaveType = await models.LeaveType.findByPk(id, {
       paranoid: false
     });
 
@@ -74,12 +74,12 @@ const getLeaveTypeById = async (req, res) => {
 
 // Update leave type
 const updateLeaveType = async (req, res) => {
-  const transaction = await models.sequelize.transaction();
+  const transaction = await sequelize.transaction();
   try {
     const { id } = req.params;
     const { leave_type_name } = req.body;
     
-    const leaveType = await models.leave_type.findByPk(id, { transaction });
+    const leaveType = await models.LeaveType.findByPk(id, { transaction });
     
     if (!leaveType) {
       await transaction.rollback();
@@ -88,7 +88,7 @@ const updateLeaveType = async (req, res) => {
 
     // Check if another leave type with the same name exists
     if (leave_type_name && leave_type_name !== leaveType.leave_type_name) {
-      const existingType = await models.leave_type.findOne({
+      const existingType = await models.LeaveType.findOne({
         where: { leave_type_name },
         paranoid: false
       });
@@ -102,7 +102,7 @@ const updateLeaveType = async (req, res) => {
     await leaveType.update({ leave_type_name }, { transaction });
     await transaction.commit();
     
-    const updatedLeaveType = await models.leave_type.findByPk(id);
+    const updatedLeaveType = await models.LeaveType.findByPk(id);
     return commonService.okResponse(res, updatedLeaveType);
   } catch (error) {
     await transaction.rollback();
@@ -112,11 +112,11 @@ const updateLeaveType = async (req, res) => {
 
 // Delete leave type (soft delete)
 const deleteLeaveType = async (req, res) => {
-  const transaction = await models.sequelize.transaction();
+  const transaction = await sequelize.transaction();
   try {
     const { id } = req.params;
     
-    const leaveType = await models.leave_type.findByPk(id, { transaction });
+    const leaveType = await models.LeaveType.findByPk(id, { transaction });
     
     if (!leaveType) {
       await transaction.rollback();
