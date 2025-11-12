@@ -111,6 +111,9 @@ const SalesInvoiceBillItem = require("./SalesInvoiceBillItems")(sequelize, Seque
 const SalesInvoiceAdjustment = require("./salesInvoiceAdjustments")(sequelize, Sequelize.DataTypes);
 const Payment = require("./payments")(sequelize, Sequelize.DataTypes);
 const BillAdjustmentType = require("./billAdjustmentTypes")(sequelize, Sequelize.DataTypes);
+const OldJewel = require("./oldJewels")(sequelize, Sequelize.DataTypes);
+const OldJewelItem = require("./oldJewelItems")(sequelize, Sequelize.DataTypes);
+
 // Quotation related models
 const Quotation = require("./quotations")(sequelize, Sequelize.DataTypes);
 const QuotationItem = require("./quotationItems")(sequelize, Sequelize.DataTypes);
@@ -188,6 +191,8 @@ const models = {
   Holiday,
   SalesInvoiceAdjustment,
   BillAdjustmentType,
+  OldJewel,
+  OldJewelItem
 };
 
 Object.values(models).forEach((model) => {
