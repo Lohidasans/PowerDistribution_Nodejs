@@ -2,6 +2,7 @@ const { models, sequelize } = require("../models");
 const commonService = require("./commonService");
 const enMessage = require("../constants/en.json");
 const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
+const { Op } = require("sequelize");
 
 // Generate invoice number (series)
 const generateSalesInvoiceNo = async (req, res) => {
@@ -258,10 +259,71 @@ const deleteSalesInvoice = async (req, res) => {
   }
 };
 
+const searchInvoices = async (req, res) => {
+  try {
+    const { invoice_no } = req.query;
+    
+    if (!invoice_no) {
+      return commonService.badRequest(res, 'Invoice number is required');
+    }
+
+    // Find invoice by invoice_no (exact match)
+    const invoice = await models.SalesInvoiceBill.findOne({
+      where: { 
+        invoice_no: { 
+          [Op.like]: `%${invoice_no}%` 
+        } 
+      },
+      raw: true
+    });
+
+    if (!invoice) {
+      return commonService.notFound(res, 'Invoice not found');
+    }
+
+    // Fetch related data in parallel
+    const [customer, branch, payment, items] = await Promise.all([
+      models.Customer.findOne({
+        where: { id: invoice.customer_id },
+        attributes: ['customer_name', 'address', 'mobile_number', 'pin_code'],
+        raw: true
+      }),
+      models.Branch.findOne({
+        where: { id: invoice.branch_id },
+        attributes: ['branch_name', 'address', 'mobile', 'pin_code', 'gst_no'],
+        raw: true
+      }),
+      models.Payment.findOne({
+        where: { invoice_bill_id: invoice.id },
+        raw: true
+      }),
+      models.SalesInvoiceBillItem.findAll({
+        where: { invoice_bill_id: invoice.id },
+        raw: true
+      })
+    ]);
+
+    // Construct the response
+    const response = {
+      invoice,
+      customer: customer || null,
+      branch: branch || null,
+      payment: payment || null,
+      items: items || []
+    };
+
+    return commonService.okResponse(res, response);
+  } catch (error) {
+    console.error('Error searching invoice:', error);
+    return commonService.handleError(res, error);
+  }
+};
+
 module.exports = {
   generateSalesInvoiceNo,
   createSalesInvoice,
   getSalesInvoiceById,
   listSalesInvoices,
   deleteSalesInvoice,
+  searchInvoices
 };
