@@ -1,6 +1,7 @@
 const { models, sequelize } = require("../models");
 const commonService = require("./commonService");
 const enMessage = require("../constants/en.json");
+const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
 
 /** Utility: Validates required fields */
 const validateRequiredFields = (req, res, fields) => {
@@ -271,6 +272,27 @@ const listInstallmentAmounts = async (req, res) => {
   }
 };
 
+const generateSchemeCode = async (req, res) => {
+  try {
+    const { prefix, fy } = req.query || {};
+
+    if (!prefix || !fy) {
+      return commonService.badRequest(res, message.failure.requiredFields);
+    }
+
+    const code = await generateFiscalSeriesCode(
+      models.Scheme,
+      "scheme_code",
+      String(prefix).toUpperCase(),
+      { pad: 2, fyRange: fy }
+    );
+    return commonService.okResponse(res, { scheme_code: code });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+  
+
 module.exports = {
   createScheme,
   listSchemes,
@@ -284,4 +306,6 @@ module.exports = {
   listIdentityProofs,
   listNomineeRelations,
   listInstallmentAmounts,
+  generateSchemeCode,
+
 };

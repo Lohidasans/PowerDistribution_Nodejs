@@ -108,8 +108,9 @@ const EstimateBill = require("./estimateBills")(sequelize, Sequelize.DataTypes);
 const EstimateBillItem = require("./estimateBillItems")(sequelize, Sequelize.DataTypes);
 const SalesInvoiceBill = require("./salesInvoiceBills")(sequelize, Sequelize.DataTypes);
 const SalesInvoiceBillItem = require("./SalesInvoiceBillItems")(sequelize, Sequelize.DataTypes);
+const SalesInvoiceAdjustment = require("./salesInvoiceAdjustments")(sequelize, Sequelize.DataTypes);
 const Payment = require("./payments")(sequelize, Sequelize.DataTypes);
-
+const BillAdjustmentType = require("./billAdjustmentTypes")(sequelize, Sequelize.DataTypes);
 // Quotation related models
 const Quotation = require("./quotations")(sequelize, Sequelize.DataTypes);
 const QuotationItem = require("./quotationItems")(sequelize, Sequelize.DataTypes);
@@ -185,6 +186,8 @@ const models = {
   LeaveType,
   Leave,
   Holiday,
+  SalesInvoiceAdjustment,
+  BillAdjustmentType,
 };
 
 Object.values(models).forEach((model) => {

@@ -1,3 +1,27 @@
+var express = require("express");
+var router = express.Router();
+const schemeService = require("../services/schemeService");
+
+// CRUD
+router.post("/schemes", schemeService.createScheme);
+router.post("/schemes/code", schemeService.generateSchemeCode);
+router.get("/schemes", schemeService.listSchemes);
+router.get("/schemes/:id", schemeService.getSchemeById);
+router.put("/schemes/:id", schemeService.updateScheme);
+router.delete("/schemes/:id", schemeService.deleteScheme);
+
+// Dropdowns
+router.get("/dropdown/scheme-types", schemeService.listSchemeTypes);
+router.get("/dropdown/scheme-durations", schemeService.listSchemeDurations);
+router.get("/dropdown/payment-frequencies", schemeService.listPaymentFrequencies);
+router.get("/dropdown/redemption-types", schemeService.listRedemptionTypes);
+router.get("/dropdown/identity-proofs", schemeService.listIdentityProofs);
+router.get("/dropdown/nominee-relations", schemeService.listNomineeRelations);
+router.get("/dropdown/installments", schemeService.listInstallmentAmounts);
+
+module.exports = router;
+
+
 /**
  * @openapi
  * /api/v1/dropdown/installments:
@@ -79,27 +103,7 @@
  *       200:
  *         description: OK
  */
-var express = require("express");
-var router = express.Router();
-const schemeService = require("../services/schemeService");
 
-// CRUD
-router.post("/schemes", schemeService.createScheme);
-router.get("/schemes", schemeService.listSchemes);
-router.get("/schemes/:id", schemeService.getSchemeById);
-router.put("/schemes/:id", schemeService.updateScheme);
-router.delete("/schemes/:id", schemeService.deleteScheme);
-
-// Dropdowns
-router.get("/dropdown/scheme-types", schemeService.listSchemeTypes);
-router.get("/dropdown/scheme-durations", schemeService.listSchemeDurations);
-router.get("/dropdown/payment-frequencies", schemeService.listPaymentFrequencies);
-router.get("/dropdown/redemption-types", schemeService.listRedemptionTypes);
-router.get("/dropdown/identity-proofs", schemeService.listIdentityProofs);
-router.get("/dropdown/nominee-relations", schemeService.listNomineeRelations);
-router.get("/dropdown/installments", schemeService.listInstallmentAmounts);
-
-module.exports = router;
 
 /**
  * @openapi
