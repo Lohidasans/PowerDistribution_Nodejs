@@ -2,9 +2,7 @@ const { models, sequelize } = require("../models/index");
 const commonService = require("../services/commonService");
 const message = require("../constants/en.json");
 const { buildSearchCondition } = require("../helpers/queryHelper");
-const { generateUniqueSkuId } = require("../helpers/codeGeneration");
-const { Op } = require("sequelize");
-
+const { generateUniqueCode } = require("../helpers/codeGeneration");
 
 // Main Create Product API
 const createProduct = async (req, res) => {
@@ -204,7 +202,6 @@ const generateSkuId = async (req, res) => {
       .filter((p) => p !== "");
 
     // Generate <branch_no>_NNN sequence
-    const { generateUniqueCode } = require("../helpers/codeGeneration");
     const skuId = await generateUniqueCode(models.Product, "sku_id", parts, {
       pad: 3,
       separator: "_",
@@ -616,13 +613,11 @@ const searchProductBySku = async (req, res) => {
       return commonService.badRequest(res, 'SKU is required for search');
     }
 
-    // Find product with matching product.sku_id
     const directProduct = await models.Product.findOne({
       where: { sku_id: sku },
       raw: true,
     });
 
-    // Find product item detail with matching item.sku_id
     const itemDetail = await models.ProductItemDetail.findOne({
       where: { sku_id: sku },
       raw: true,
@@ -661,7 +656,6 @@ const searchProductBySku = async (req, res) => {
       return commonService.notFound(res, 'No product found for given SKU');
     }
 
-    // 5️⃣ Build final response
     const result = {
       ...finalProduct,
       itemDetails: finalItemDetails,

@@ -74,20 +74,8 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.DECIMAL(15, 2),
         allowNull: true
       },
-      measurement_type: {
-        type: DataTypes.ENUM("cm", "mm"),
-        allowNull: true
-      },
-      width: {
-        type: DataTypes.DECIMAL(15, 3),
-        allowNull: true
-      },
-      length: {
-        type: DataTypes.DECIMAL(15, 3),
-        allowNull: true
-      },
-      height: {
-        type: DataTypes.DECIMAL(15, 3),
+      measurement_details: { //Array of objects: [{label_name, value, measurement_type}]'
+        type: DataTypes.JSONB, //[{"label_name": "Length", "value": "18", "measurement_type": "Inches" }]
         allowNull: true,
       },
       tag_url: {
