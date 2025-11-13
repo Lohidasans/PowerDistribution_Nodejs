@@ -1,8 +1,10 @@
-const { models, sequelize } = require("../models");
+const { models, sequelize } = require("../models/index");
 const commonService = require("../services/commonService");
 const message = require("../constants/en.json");
 const { buildSearchCondition } = require("../helpers/queryHelper");
 const { generateUniqueSkuId } = require("../helpers/codeGeneration");
+const { Op } = require("sequelize");
+
 
 // Main Create Product API
 const createProduct = async (req, res) => {
@@ -605,6 +607,73 @@ const getAllProductDetails = async (req, res) => {
   }
 };
 
+// Search products by SKU (main or item details)
+const searchProductBySku = async (req, res) => {
+  try {
+    const { sku } = req.query;
+
+    if (!sku) {
+      return commonService.badRequest(res, 'SKU is required for search');
+    }
+
+    // Find product with matching product.sku_id
+    const directProduct = await models.Product.findOne({
+      where: { sku_id: sku },
+      raw: true,
+    });
+
+    // Find product item detail with matching item.sku_id
+    const itemDetail = await models.ProductItemDetail.findOne({
+      where: { sku_id: sku },
+      raw: true,
+    });
+
+    // If found in ProductItemDetail, fetch its parent product
+    let parentProduct = null;
+    if (itemDetail) {
+      parentProduct = await models.Product.findOne({
+        where: { id: itemDetail.product_id },
+        raw: true,
+      });
+    }
+
+    // Determine final product and itemDetails to return
+    let finalProduct = null;
+    let finalItemDetails = [];
+
+    if (directProduct) {
+      // SKU matched product directly (not variation)
+      finalProduct = directProduct;
+
+      // Fetch all its items (optional: or none if you only want product)
+      const items = await models.ProductItemDetail.findAll({
+        where: { product_id: directProduct.id },
+        raw: true,
+      });
+      finalItemDetails = items;
+    } else if (parentProduct && itemDetail) {
+      // SKU matched one of the product itemDetails
+      finalProduct = parentProduct;
+      finalItemDetails = [itemDetail]; // only the matched one
+    }
+
+    if (!finalProduct) {
+      return commonService.notFound(res, 'No product found for given SKU');
+    }
+
+    // 5️⃣ Build final response
+    const result = {
+      ...finalProduct,
+      itemDetails: finalItemDetails,
+    };
+
+    return commonService.okResponse(res, [result]);
+  } catch (error) {
+    console.error('Error searching products by SKU:', error);
+    return commonService.handleError(res, error);
+  }
+};
+
 module.exports = {
   createProduct,
   getAllProducts,
@@ -614,4 +683,5 @@ module.exports = {
   generateSkuId,
   getAllProductDetails,
   getProductAddonList,
+  searchProductBySku,
 };
