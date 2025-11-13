@@ -7,13 +7,13 @@ const { Op } = require("sequelize");
 // Generate invoice number (series)
 const generateSalesInvoiceNo = async (req, res) => {
   try {
-    const { prefix = "INV", fy } = req.query || {};
-    if (!fy) return commonService.badRequest(res, enMessage.failure.requiredFields);
+    const { prefix = "INV" } = req.query || {};
+    
     const code = await generateFiscalSeriesCode(
       models.SalesInvoiceBill,
       "invoice_no",
       String(prefix).toUpperCase(),
-      { pad: 2, fyRange: fy }
+      { pad: 3 }
     );
     return commonService.okResponse(res, { invoice_no: code });
   } catch (err) {

@@ -302,17 +302,13 @@ const listPurchaseReturnNumbers = async (req, res) => {
 
 const generatePurchaseReturnCode = async (req, res) => {
   try {
-    const { prefix, fy } = req.query || {};
-
-    if (!prefix || !fy) {
-      return commonService.badRequest(res, message.failure.requiredFields);
-    }
+    const { prefix } = req.query || {};
 
     const code = await generateFiscalSeriesCode(
       models.PurchaseReturn,
       "pr_no",
       String(prefix).toUpperCase(),
-      { pad: 2, fyRange: fy }
+      { pad: 3}
     );
     return commonService.okResponse(res, { pr_no: code });
   } catch (err) {

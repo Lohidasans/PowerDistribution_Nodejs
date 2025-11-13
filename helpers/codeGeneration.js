@@ -88,67 +88,31 @@ const generateUniqueCode = async ( model, field, parts = [],
 };
 
 /**
- * Generate codes like 'VEN 01/24-25' with per-fiscal-year sequence.
-  * The numeric part resets each FY. Example: VEN 01/24-25, VEN 02/24-25, ...
+ * Generate simple running codes like EST001, EST002, EST003, ...
  */
-const generateFiscalSeriesCode = async (
-    model,
-    field,
-    prefix,
-    { pad = 2, fyRange: fyOverride } = {}
-) => {
-    // Normalize prefix and FY range
-    const cleanPrefix = String(prefix || "").trim().toUpperCase();
+const generateFiscalSeriesCode = async (model, field, prefix, { pad = 3 } = {}) => {
+  const cleanPrefix = String(prefix || "").trim().toUpperCase();
 
-    let fyRange = "";
-    if (fyOverride && typeof fyOverride === "string") {
-        const cleaned = fyOverride.replace(/\s+/g, "").replace(/-/g, "/");
-        const parts = cleaned.split("/");
-        if (parts.length === 2) {
-            const a = parts[0].padStart(2, "0");
-            const b = parts[1].padStart(2, "0");
-            fyRange = `${a}/${b}`; // internal slash form
-        }
-    }
+  // Find last record for this prefix
+  const lastEntry = await model.findOne({
+    where: {
+      [field]: { [Op.iLike]: `${cleanPrefix}%` },
+    },
+    order: [["id", "DESC"]],
+    attributes: [field],
+  });
 
-    if (!fyRange) {
-        return null; // Safety check — FY must be provided
-    }
+  let nextNumber = 1;
 
-    // Build patterns for both slash and hyphen FY notations
-    const fySlash = fyRange;               // e.g., 24/25
-    const fyHyphen = fyRange.replace('/', '-'); // e.g., 24-25
+  if (lastEntry?.[field]) {
+    // Match numeric suffix (e.g., EST023 → 23)
+    const regex = new RegExp(`^${cleanPrefix}(\\d+)$`, "i");
+    const match = String(lastEntry[field]).match(regex);
+    if (match) nextNumber = parseInt(match[1], 10) + 1;
+  }
 
-    // Search last code matching either notation
-    const searchOr = {
-        [Op.or]: [
-            { [field]: { [Op.iLike]: `${cleanPrefix} %/${fySlash}` } },
-            { [field]: { [Op.iLike]: `${cleanPrefix} %/${fyHyphen}` } },
-        ],
-    };
-
-    // Find the last created vendor code in the same FY
-    const lastEntry = await model.findOne({
-        where: searchOr,
-        order: [["id", "DESC"]],
-        attributes: [field],
-    });
-
-    // Determine next number
-    let nextNumber = 1;
-    if (lastEntry?.[field]) {
-        const escPrefix = cleanPrefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        const escSlash = fySlash.replace('/', '\\/');
-        const escHyphen = fyHyphen.replace('-', '\\-');
-        const regex = new RegExp(`^${escPrefix}\\s(\\d+)/(?:${escSlash}|${escHyphen})$`, "i");
-        const match = String(lastEntry[field]).match(regex);
-        if (match) nextNumber = parseInt(match[1], 10) + 1;
-    }
-
-    // Generate new code (only the numeric part increases)
-    // Always output with hyphen between years
-    const newCode = `${cleanPrefix} ${String(nextNumber).padStart(pad, "0")}/${fyHyphen}`;
-    return newCode;
+  // Return code like EST001
+  return `${cleanPrefix}${String(nextNumber).padStart(pad, "0")}`;
 };
 
 module.exports =  { 

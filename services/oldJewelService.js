@@ -275,17 +275,13 @@ const deleteOldJewel = async (req, res) => {
 
 const generateOldJewelCode = async (req, res) => {
   try {
-    const { prefix, fy } = req.query || {};
-
-    if (!prefix || !fy) {
-      return commonService.badRequest(res, message.failure.requiredFields);
-    }
+    const { prefix } = req.query || {};
 
     const code = await generateFiscalSeriesCode(
       models.OldJewel,
       "old_jewel_code",
       String(prefix).toUpperCase(),
-      { pad: 2, fyRange: fy }
+      { pad: 3 }
     );
     return commonService.okResponse(res, { old_jewel_code: code });
   } catch (err) {

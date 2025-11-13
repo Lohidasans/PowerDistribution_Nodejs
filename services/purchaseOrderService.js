@@ -284,15 +284,13 @@ const listPurchaseOrderNumbers = async (req, res) => {
 // Generate PO code
 const generatePoCode = async (req, res) => {
   try {
-    const { prefix, fy } = req.query || {};
-    if (!prefix || !fy) {
-      return commonService.badRequest(res, "prefix and fy are required");
-    }
+    const { prefix } = req.query || {};
+
     const code = await generateFiscalSeriesCode(
       models.PurchaseOrder,
       "po_no",
       String(prefix).toUpperCase(),
-      { pad: 2, fyRange: fy }
+      { pad: 3}
     );
     return commonService.okResponse(res, { po_no: code });
   } catch (err) {

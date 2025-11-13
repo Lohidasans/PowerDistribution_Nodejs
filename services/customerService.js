@@ -139,17 +139,13 @@ const deleteCustomer = async (req, res) => {
 // Generate auto code: CUS-0001
 const generateCustomerCode = async (req, res) => {
    try {
-      const { prefix, fy } = req.query || {};
-  
-      if (!prefix || !fy) {
-        return commonService.badRequest(res, enMessage.failure.requiredFields);
-      }
+      const { prefix } = req.query || {};
   
       const code = await generateFiscalSeriesCode(
         models.Customer,
         "customer_code",
         String(prefix).toUpperCase(),
-        { pad: 2, fyRange: fy }
+        { pad: 3 }
       );
       return commonService.okResponse(res, { customer_code: code });
     } catch (err) {

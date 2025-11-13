@@ -6,13 +6,13 @@ const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
 // Generate estimate number (series)
 const generateEstimateNo = async (req, res) => {
   try {
-    const { prefix = "EST", fy } = req.query || {};
-    if (!fy) return commonService.badRequest(res, enMessage.failure.requiredFields);
+    const { prefix = "EST"} = req.query || {};
+
     const code = await generateFiscalSeriesCode(
       models.EstimateBill,
       "estimate_no",
       String(prefix).toUpperCase(),
-      { pad: 2, fyRange: fy }
+      { pad: 3 }
     );
     return commonService.okResponse(res, { estimate_no: code });
   } catch (err) {

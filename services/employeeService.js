@@ -526,17 +526,13 @@ const deleteEmployee = async (req, res) => {
 
 const generateEmployeeCode = async (req, res) => {
   try {
-    const { prefix, fy } = req.query || {};
-
-    if (!prefix || !fy) {
-      return commonService.badRequest(res, enMessage.failure.requiredFields);
-    }
+    const { prefix} = req.query || {};
 
     const code = await generateFiscalSeriesCode(
       models.Employee,
       "employee_no",
       String(prefix).toUpperCase(),
-      { pad: 2, fyRange: fy }
+      { pad: 3}
     );
     return commonService.okResponse(res, { employee_code: code });
   } catch (err) {
