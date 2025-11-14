@@ -271,7 +271,7 @@ const searchInvoices = async (req, res) => {
     const invoice = await models.SalesInvoiceBill.findOne({
       where: { 
         invoice_no: { 
-          [Op.like]: `%${invoice_no}%` 
+          [Op.iLike]: `%${invoice_no.trim()}%`
         } 
       },
       raw: true

@@ -1,6 +1,6 @@
 module.exports = (sequelize, DataTypes) => {
-  const EstimateBillItem = sequelize.define(
-    "estimate_bill_items",
+  const ProductSearchItem = sequelize.define(
+    "sales_return_items",
     {
       id: {
         allowNull: false,
@@ -8,7 +8,7 @@ module.exports = (sequelize, DataTypes) => {
         primaryKey: true,
         type: DataTypes.INTEGER,
       },
-      estimate_bill_id: {
+      sales_return_id: {
         type: DataTypes.INTEGER,
         allowNull: false,
       },
@@ -16,7 +16,6 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.INTEGER,
         allowNull: false,
       },
-      // If you track per-piece/variation SKU
       product_item_detail_id: {
         type: DataTypes.INTEGER,
         allowNull: true,
@@ -29,7 +28,19 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.STRING,
         allowNull: true,
       },
-      product_name_snapshot: {
+      product_description: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+      net_weight: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+      gross_weight: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+      gross_weight: {
         type: DataTypes.STRING,
         allowNull: true,
       },
@@ -58,5 +69,5 @@ module.exports = (sequelize, DataTypes) => {
     }
   );
 
-  return EstimateBillItem;
+  return ProductSearchItem;
 };
