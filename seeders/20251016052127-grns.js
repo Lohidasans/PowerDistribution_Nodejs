@@ -9,6 +9,7 @@ module.exports = {
         {
           grn_no: "GRN 01/24-25",
           grn_date: "2025-05-19",
+          grn_info_ids: [1, 2, 3, 4, 5, 6, 7, 8], // NEW FIELD
           po_id: 1,
           vendor_id: 1,
           order_by_user_id: 2,
@@ -21,12 +22,15 @@ module.exports = {
           cgst_percent: 2.0,
           discount_percent: 2.0,
           remarks: "Initial test GRN entry.",
+          status_id: 1,
           created_at: new Date(),
           updated_at: new Date(),
+          deleted_at: null,
         },
         {
           grn_no: "GRN 02/24-25",
           grn_date: "2025-05-20",
+          grn_info_ids: [9, 10, 11, 12, 13, 14, 15, 16, 17], // NEW FIELD
           po_id: 2,
           vendor_id: 2,
           order_by_user_id: 3,
@@ -39,12 +43,15 @@ module.exports = {
           cgst_percent: 2.5,
           discount_percent: 1.0,
           remarks: "Silver item GRN.",
+          status_id: 1,
           created_at: new Date(),
           updated_at: new Date(),
+          deleted_at: null,
         },
         {
           grn_no: "GRN 03/24-25",
           grn_date: "2025-05-21",
+          grn_info_ids: [18, 19, 20, 21, 22, 23, 24, 25, 26, 17], // NEW FIELD
           po_id: 3,
           vendor_id: 1,
           order_by_user_id: 4,
@@ -57,12 +64,15 @@ module.exports = {
           cgst_percent: 2.0,
           discount_percent: 0.0,
           remarks: "Bulk gold jewelry GRN.",
+          status_id: 1,
           created_at: new Date(),
           updated_at: new Date(),
+          deleted_at: null,
         },
         {
           grn_no: "GRN 04/24-25",
           grn_date: "2025-05-22",
+          grn_info_ids: null, // no data (allowed)
           po_id: 4,
           vendor_id: 3,
           order_by_user_id: 5,
@@ -75,14 +85,16 @@ module.exports = {
           cgst_percent: 1.0,
           discount_percent: 0.5,
           remarks: "Miscellaneous GRN for testing.",
+          status_id: 1,
           created_at: new Date(),
           updated_at: new Date(),
+          deleted_at: null,
         },
       ],
       { returning: true }
     );
 
-    // Insert GRN Items (for each GRN)
+    // Insert GRN Items (unchanged)
     await queryInterface.bulkInsert("grnItems", [
       {
         grn_id: 1,
