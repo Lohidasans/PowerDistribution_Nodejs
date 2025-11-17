@@ -12,6 +12,14 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.INTEGER,
         allowNull: false,
       },
+      invoice_no: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+      },
+      invoice_date: {
+        type: DataTypes.DATEONLY,
+        allowNull: true,
+      },
       product_id: {
         type: DataTypes.INTEGER,
         allowNull: false,
@@ -58,6 +66,11 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.DECIMAL(15, 2),
         allowNull: false,
         defaultValue: 0,
+      },
+      order_type: {
+        type: DataTypes.ENUM("Online", "Offline"),
+        allowNull: false,
+        defaultValue: "Offline",
       },
     },
     {
