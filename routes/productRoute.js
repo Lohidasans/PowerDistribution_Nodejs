@@ -12,6 +12,7 @@ router.get("/products/addon-list", svc.getProductAddonList);
 router.get("/products/:id", svc.getProductById);
 router.put("/products/:id", svc.updateProduct);
 router.delete("/products/:id", svc.deleteProduct);
+router.patch("/products/:id/status", svc.updateProductStatus);
 
 module.exports = router;
 

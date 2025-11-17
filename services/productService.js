@@ -402,7 +402,6 @@ const getProductById = async (req, res) => {
   }
 };
 
-// Update Product
 // Update Product API
 const updateProduct = async (req, res) => {
   const t = await sequelize.transaction();
@@ -419,72 +418,47 @@ const updateProduct = async (req, res) => {
 
     await product.update(productData, { transaction: t });
 
-    // 2. Process item details (update/create only, no deletion)
+    // 2. Delete all existing item details and their additional details
+    await models.ProductAdditionalDetail.destroy({
+      where: { product_id: id },
+      transaction: t,
+      force: true   // HARD DELETE
+    });
+
+    await models.ProductItemDetail.destroy({
+      where: { product_id: id },
+      transaction: t,
+      force: true   // HARD DELETE
+    });
+
+    // 3. Create new item details and additional details
     if (Array.isArray(item_details)) {
       for (const itemData of item_details) {
-        const { id: itemId, additional_details = [], ...itemFields } = itemData;
+        const { additional_details = [], ...itemFields } = itemData;
 
-        let item;
-        if (itemId) {
-          // Update existing item if ID is provided
-          item = await models.ProductItemDetail.findOne({
-            where: {
-              id: itemId,
-              product_id: id
-            },
-            transaction: t
+        // Create new item
+        const item = await models.ProductItemDetail.create(
+          { ...itemFields, product_id: id },
+          { transaction: t }
+        );
+
+        // Create additional details for this item
+        if (Array.isArray(additional_details) && additional_details.length > 0) {
+          const addDetails = additional_details.map(addDetail => ({
+            ...addDetail,
+            item_detail_id: item.id,
+            product_id: id
+          }));
+
+          await models.ProductAdditionalDetail.bulkCreate(addDetails, {
+            transaction: t,
+            validate: true
           });
-
-          if (item) {
-            await item.update(itemFields, { transaction: t });
-          } else {
-            // Skip if item ID is provided but doesn't exist
-            continue;
-          }
-        } else {
-          // Create new item if no ID is provided
-          item = await models.ProductItemDetail.create(
-            { ...itemFields, product_id: id },
-            { transaction: t }
-          );
-        }
-
-        // Process additional details for this item
-        if (Array.isArray(additional_details)) {
-          for (const addData of additional_details) {
-            const { id: addId, ...addFields } = addData;
-
-            if (addId) {
-              // Update existing additional detail if ID is provided
-              const add = await models.ProductAdditionalDetail.findOne({
-                where: {
-                  id: addId,
-                  item_detail_id: item.id,
-                  product_id: id
-                },
-                transaction: t
-              });
-
-              if (add) {
-                await add.update(addFields, { transaction: t });
-              }
-            } else {
-              // Create new additional detail if no ID is provided
-              await models.ProductAdditionalDetail.create(
-                {
-                  ...addFields,
-                  item_detail_id: item.id,
-                  product_id: id
-                },
-                { transaction: t }
-              );
-            }
-          }
         }
       }
     }
 
-    // 3. Recalculate and update summary
+    // 4. Recalculate and update summary
     const items = await models.ProductItemDetail.findAll({
       where: { product_id: id },
       transaction: t
@@ -495,7 +469,7 @@ const updateProduct = async (req, res) => {
 
     await t.commit();
 
-    // 4. Return the updated product with all details
+    // 5. Return the updated product with all details
     const fullProduct = await getProductWithDetails(id);
     return commonService.okResponse(res, fullProduct);
 
@@ -720,6 +694,38 @@ const searchProductBySku = async (req, res) => {
   }
 };
 
+// Update Product Status API
+const updateProductStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    // Validate status
+    if (status === undefined) {
+      return commonService.badRequest(res, 'Status is required');
+    }
+
+    const productData = await models.Product.findByPk(id);
+
+    if (!productData) {
+      return commonService.notFound(res, 'Product not found');
+    }
+
+    // Update product status
+    await models.Product.update(
+      { status },
+      { where: { id } }
+    );
+
+    return commonService.okResponse(res, {
+      message: 'Product status updated successfully' });
+
+  } catch (err) {
+    console.error('Error updating product status:', err);
+    return commonService.handleError(res, err);
+  }
+};
+
 module.exports = {
   createProduct,
   getAllProducts,
@@ -730,4 +736,5 @@ module.exports = {
   getAllProductDetails,
   getProductAddonList,
   searchProductBySku,
+  updateProductStatus
 };
