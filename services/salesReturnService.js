@@ -125,52 +125,74 @@ const getSalesReturnById = async (req, res) => {
 // List sales returns with filters
 const listSalesReturns = async (req, res) => {
   try {
-    const { 
-      page = 1, 
-      limit = 10, 
-      status, 
-      customer_id, 
-      start_date, 
+    const {
+      page = 1,
+      limit = 10,
+      status,
+      customer_id,
+      start_date,
       end_date,
       branch_id
     } = req.query;
 
     const offset = (parseInt(page) - 1) * parseInt(limit);
-    const where = {};
 
-    if (status) where.status = status;
-    if (customer_id) where.customer_id = customer_id;
-    if (branch_id) where.branch_id = branch_id;
-    
-    if (start_date || end_date) {
-      where.return_date = {};
-      if (start_date) where.return_date[Op.gte] = start_date;
-      if (end_date) where.return_date[Op.lte] = end_date;
-    }
+    // Build WHERE conditions manually
+    let where = "WHERE 1 = 1";
 
-    const { count, rows } = await models.SalesReturn.findAndCountAll({
-      where,
-      include: [
-        { model: models.Customer, as: 'customer', attributes: ['id', 'name'] },
-        { model: models.Employee, as: 'employee', attributes: ['id', 'name'] },
-        { model: models.Branch, as: 'branch', attributes: ['id', 'branch_name'] }
-      ],
-      order: [['return_date', 'DESC'], ['id', 'DESC']],
-      limit: parseInt(limit),
-      offset: offset,
-      distinct: true
+    if (status) where += ` AND sr.status = '${status}'`;
+    if (customer_id) where += ` AND sr.customer_id = ${customer_id}`;
+    if (branch_id) where += ` AND sr.branch_id = ${branch_id}`;
+
+    if (start_date) where += ` AND sr.return_date >= '${start_date}'`;
+    if (end_date) where += ` AND sr.return_date <= '${end_date}'`;
+
+    // 1️⃣ Total count
+    const countQuery = `
+      SELECT COUNT(*) AS total
+      FROM sales_returns sr
+      ${where};
+    `;
+
+    const countResult = await sequelize.query(countQuery, {
+      type: sequelize.QueryTypes.SELECT
+    });
+
+    const total = countResult[0].total;
+
+    // 2️⃣ Fetch paginated data with joins (no associations)
+    const dataQuery = `
+      SELECT 
+        sr.*, 
+        c.customer_name AS customer_name,
+        e.employee_name AS employee_name,
+        b.branch_name
+      FROM sales_returns sr
+      LEFT JOIN customers c ON sr.customer_id = c.id
+      LEFT JOIN employees e ON sr.employee_id = e.id
+      LEFT JOIN branches b ON sr.branch_id = b.id
+      ${where}
+      ORDER BY sr.return_date DESC, sr.id DESC
+      LIMIT ${limit} OFFSET ${offset};
+    `;
+
+    const data = await sequelize.query(dataQuery, {
+      type: sequelize.QueryTypes.SELECT
     });
 
     return commonService.okResponse(res, {
-      total: count,
+      total,
       page: parseInt(page),
-      total_pages: Math.ceil(count / limit),
-      data: rows
+      total_pages: Math.ceil(total / limit),
+      data
     });
+
   } catch (err) {
+    console.error(err);
     return commonService.handleError(res, err);
   }
 };
+
 
 // Delete sales return (soft delete)
 const deleteSalesReturn = async (req, res) => {
