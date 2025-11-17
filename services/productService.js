@@ -537,7 +537,7 @@ const getAllProductDetails = async (req, res) => {
       FROM products p
       LEFT JOIN "productItemDetails" pid ON pid.product_id = p.id
       LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
-      WHERE 1=1`;
+      WHERE 1=1 AND p.status = 'Active' `;
 
     const replacements = {};
 
