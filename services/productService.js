@@ -403,53 +403,105 @@ const getProductById = async (req, res) => {
 };
 
 // Update Product
+// Update Product API
 const updateProduct = async (req, res) => {
+  const t = await sequelize.transaction();
   try {
-    const productId = req.params.id;
-    const product = await commonService.findById(
-      models.Product,
-      productId,
-      res
-    );
-    if (!product) return;
+    const { id } = req.params;
+    const { item_details = [], ...productData } = req.body;
 
-    const { item_details, ...productData } = req.body;
+    // 1. Update the main product
+    const product = await models.Product.findByPk(id, { transaction: t });
+    if (!product) {
+      await t.rollback();
+      return commonService.notFound(res, 'Product not found');
+    }
 
-    const result = await sequelize.transaction(async (t) => {
-      // Update main product
-      await product.update(productData, { transaction: t });
+    await product.update(productData, { transaction: t });
 
-      // If item_details provided, update them
-      if (item_details && Array.isArray(item_details)) {
-        // Delete existing item details and additional details
-        await models.ProductAdditionalDetail.destroy({
-          where: { product_id: productId },
-          transaction: t,
-        });
-        await models.ProductItemDetail.destroy({
-          where: { product_id: productId },
-          transaction: t,
-        });
+    // 2. Process item details (update/create only, no deletion)
+    if (Array.isArray(item_details)) {
+      for (const itemData of item_details) {
+        const { id: itemId, additional_details = [], ...itemFields } = itemData;
 
-        // Create new item details
-        await createItemDetails(productId, item_details, t);
+        let item;
+        if (itemId) {
+          // Update existing item if ID is provided
+          item = await models.ProductItemDetail.findOne({
+            where: {
+              id: itemId,
+              product_id: id
+            },
+            transaction: t
+          });
 
-        // Recalculate summaries
-        const items = await models.ProductItemDetail.findAll({
-          where: { product_id: productId },
-          transaction: t,
-        });
+          if (item) {
+            await item.update(itemFields, { transaction: t });
+          } else {
+            // Skip if item ID is provided but doesn't exist
+            continue;
+          }
+        } else {
+          // Create new item if no ID is provided
+          item = await models.ProductItemDetail.create(
+            { ...itemFields, product_id: id },
+            { transaction: t }
+          );
+        }
 
-        const summary = computeSummaries(items, product.product_type);
-        await product.update(summary, { transaction: t });
+        // Process additional details for this item
+        if (Array.isArray(additional_details)) {
+          for (const addData of additional_details) {
+            const { id: addId, ...addFields } = addData;
+
+            if (addId) {
+              // Update existing additional detail if ID is provided
+              const add = await models.ProductAdditionalDetail.findOne({
+                where: {
+                  id: addId,
+                  item_detail_id: item.id,
+                  product_id: id
+                },
+                transaction: t
+              });
+
+              if (add) {
+                await add.update(addFields, { transaction: t });
+              }
+            } else {
+              // Create new additional detail if no ID is provided
+              await models.ProductAdditionalDetail.create(
+                {
+                  ...addFields,
+                  item_detail_id: item.id,
+                  product_id: id
+                },
+                { transaction: t }
+              );
+            }
+          }
+        }
       }
+    }
 
-      return product;
+    // 3. Recalculate and update summary
+    const items = await models.ProductItemDetail.findAll({
+      where: { product_id: id },
+      transaction: t
     });
 
-    const fullProduct = await getProductWithDetails(result.id);
+    const summary = computeSummaries(items, product.product_type);
+    await product.update(summary, { transaction: t });
+
+    await t.commit();
+
+    // 4. Return the updated product with all details
+    const fullProduct = await getProductWithDetails(id);
     return commonService.okResponse(res, fullProduct);
+
   } catch (err) {
+    await t.rollback();
+    console.error('Error updating product:', err);
     return commonService.handleError(res, err);
   }
 };
