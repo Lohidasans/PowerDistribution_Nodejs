@@ -343,8 +343,6 @@ const listGrnNumbers = async (req, res) => {
   }
 };
 
-
-
 const generateGrnCode = async (req, res) => {
   try {
     const { prefix } = req.query || {};
@@ -377,6 +375,8 @@ const getGrnView = async (req, res) => {
           g.sgst_percent,
           g.cgst_percent,
           g.discount_percent,
+          g.total_amount,
+          g.total_gross_wt_in_g,
           g.remarks,
           g.gst_no,
           g.billing_address,
@@ -420,20 +420,9 @@ const getGrnView = async (req, res) => {
         ORDER BY gi.id ASC;
       `, { replacements: { id } });
 
-    // Totals (weights and amount)
-    const [totalsRows] = await sequelize.query(`
-        SELECT 
-          COALESCE(SUM(gi.net_wt_in_g), 0)  AS total_ordered_weight,
-          COALESCE(SUM(gi.purchase_rate), 0) AS total_received_weight,
-          COALESCE(SUM(gi.quantity), 0)          AS total_amount
-        FROM "grnItems" gi
-        WHERE gi.grn_id = :id AND gi.deleted_at IS NULL;
-      `, { replacements: { id } });
-
     return commonService.okResponse(res, {
       header: headerRows[0],
       items,
-      totals: totalsRows[0]
     });
   } catch (err) {
     return commonService.handleError(res, err);
