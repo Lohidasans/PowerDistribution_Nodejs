@@ -22,31 +22,12 @@ const createGrn = async (req, res) => {
     // Create GRN
     const grn = await models.Grn.create(grnData, { transaction });
 
-    // Prepare items with backend calculations
-    const processedItems = items.map((item) => {
-      const gross = Number(item.gross_wt_in_g || 0);
-      const stone = Number(item.stone_wt_in_g || 0);
-      const others_wt = Number(item.others_wt_in_g || 0);
-      const making_charge = Number(item.making_charge || 0);
-      const material_price = Number(item.material_price_per_g || 0);
-      const stone_rate = Number(item.stone_rate || 0);
-      const purchase_rate = Number(item.purchase_rate || 0);
+    // Insert items directly (NO backend calculations)
+    const processedItems = items.map((item) => ({
+      ...item,
+      grn_id: grn.id
+    }));
 
-      // Backend Calculations
-      const net_wt = gross - stone - others_wt;
-      const rate_per_g = making_charge + material_price;
-      const total_amount = purchase_rate + stone_rate;
-
-      return {
-        ...item,
-        grn_id: grn.id,
-        net_wt_in_g: net_wt,
-        rate_per_g: rate_per_g,
-        total_amount: total_amount
-      };
-    });
-
-    // Insert items
     if (processedItems.length > 0) {
       await models.GrnItem.bulkCreate(processedItems, { transaction });
     }
@@ -61,7 +42,6 @@ const createGrn = async (req, res) => {
     return commonService.handleError(res, error);
   }
 };
-
 
 // Get GRN by ID with items
 const getGrnById = async (req, res) => {
