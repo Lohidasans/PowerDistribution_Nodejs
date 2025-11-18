@@ -70,6 +70,10 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.DECIMAL(15, 2),
         allowNull: true,
       },
+      total_gross_wt_in_g:{
+        type: DataTypes.DECIMAL(15, 2),
+        allowNull: true,
+      },
       remarks: {
         type: DataTypes.TEXT,
         allowNull: true,
