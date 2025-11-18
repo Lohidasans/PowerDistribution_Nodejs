@@ -6,11 +6,11 @@ const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
 // Create GRN with items
 const createGrn = async (req, res) => {
   const transaction = await sequelize.transaction();
-  
+
   try {
     const { items = [], ...grnData } = req.body;
 
-    // Validate required fields
+    // Required validation
     const requiredFields = ["grn_no", "grn_date", "vendor_id"];
     for (const field of requiredFields) {
       if (!grnData[field]) {
@@ -22,23 +22,46 @@ const createGrn = async (req, res) => {
     // Create GRN
     const grn = await models.Grn.create(grnData, { transaction });
 
-    // Create GRN items
-    if (items && items.length > 0) {
-      const grnItems = items.map(item => ({
+    // Prepare items with backend calculations
+    const processedItems = items.map((item) => {
+      const gross = Number(item.gross_wt_in_g || 0);
+      const stone = Number(item.stone_wt_in_g || 0);
+      const others_wt = Number(item.others_wt_in_g || 0);
+      const making_charge = Number(item.making_charge || 0);
+      const material_price = Number(item.material_price_per_g || 0);
+      const stone_rate = Number(item.stone_rate || 0);
+      const purchase_rate = Number(item.purchase_rate || 0);
+
+      // Backend Calculations
+      const net_wt = gross - stone - others_wt;
+      const rate_per_g = making_charge + material_price;
+      const total_amount = purchase_rate + stone_rate;
+
+      return {
         ...item,
-        grn_id: grn.id
-      }));
-      await models.GrnItem.bulkCreate(grnItems, { transaction });
+        grn_id: grn.id,
+        net_wt_in_g: net_wt,
+        rate_per_g: rate_per_g,
+        total_amount: total_amount
+      };
+    });
+
+    // Insert items
+    if (processedItems.length > 0) {
+      await models.GrnItem.bulkCreate(processedItems, { transaction });
     }
 
     await transaction.commit();
+
     const result = await getGrnWithItems(grn.id);
     return commonService.createdResponse(res, result);
   } catch (error) {
     await transaction.rollback();
+    console.error("GRN Create Error =>", error);
     return commonService.handleError(res, error);
   }
 };
+
 
 // Get GRN by ID with items
 const getGrnById = async (req, res) => {
@@ -402,14 +425,7 @@ const getGrnView = async (req, res) => {
     // Items with material/category/subcategory names
     const [items] = await sequelize.query(`
         SELECT 
-          gi.id,
-          gi.description,
-          gi.purity,
-          gi.ordered_weight,
-          gi.received_weight,
-          gi.quantity,
-          gi.rate,
-          gi.amount,
+          gi.*,
           mt.material_type   AS material_type_name,
           c.category_name    AS category_name,
           sc.subcategory_name AS subcategory_name
@@ -424,9 +440,9 @@ const getGrnView = async (req, res) => {
     // Totals (weights and amount)
     const [totalsRows] = await sequelize.query(`
         SELECT 
-          COALESCE(SUM(gi.ordered_weight), 0)  AS total_ordered_weight,
-          COALESCE(SUM(gi.received_weight), 0) AS total_received_weight,
-          COALESCE(SUM(gi.amount), 0)          AS total_amount
+          COALESCE(SUM(gi.net_wt_in_g), 0)  AS total_ordered_weight,
+          COALESCE(SUM(gi.purchase_rate), 0) AS total_received_weight,
+          COALESCE(SUM(gi.quantity), 0)          AS total_amount
         FROM "grnItems" gi
         WHERE gi.grn_id = :id AND gi.deleted_at IS NULL;
       `, { replacements: { id } });
