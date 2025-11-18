@@ -139,18 +139,21 @@ const updateGrn = async (req, res) => {
     // Update GRN header fields
     await grn.update(updateData, { transaction });
 
-    // Update each existing item only when id is provided. Items without id are ignored.
-    for (const item of items) {
-      if (item && item.id) {
-        const existingItem = await models.GrnItem.findOne({
-          where: { id: item.id, grn_id: id },
-          transaction,
-        });
-        if (existingItem) {
-          const { id: _omit, grn_id: _omit2, created_at, updated_at, deleted_at, ...updatable } = item; // ignore non-updatable
-          await existingItem.update(updatable, { transaction });
-        }
-      }
+    // HARD DELETE old items
+    await models.GrnItem.destroy({
+      where: { grn_id: id },
+      force: true,
+      transaction,
+    });
+
+    // Insert new items
+    const newItems = items.map((item) => ({
+      ...item,
+      grn_id: id,
+    }));
+
+    if (newItems.length > 0) {
+      await models.GrnItem.bulkCreate(newItems, { transaction });
     }
 
     await transaction.commit();
