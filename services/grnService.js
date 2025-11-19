@@ -261,7 +261,42 @@ const getAllGrns = async (req, res) => {
       { replacements, type: sequelize.QueryTypes.SELECT }
     );
 
-    //vTOTAL COUNT
+    // Apply business logic to each row
+    const transformedRows = listRows.map(row => {
+      const order = parseFloat(row.order) || 0;
+      const updatedVal = row.total_grn_value !== null ? parseFloat(row.total_grn_value) : null;
+
+      let updated = 0;
+      let yetToUpdate = 0;
+      let status_id = row.status_id;
+
+      // CASE 1 & CASE 2: total_grn_value exists
+      if (updatedVal !== null) {
+        updated = updatedVal;
+        yetToUpdate = order - updatedVal;
+
+        // CASE 2 — Completed
+        if (yetToUpdate === 0) {
+          status_id = 2;
+        } else {
+          status_id = 1;
+        }
+      } else {
+        // CASE 3 — No GRN value
+        updated = 0;
+        yetToUpdate = order;
+        status_id = 1;
+      }
+
+      return {
+        ...row,
+        updated,
+        yetToUpdate,
+        status_id,
+      };
+    });
+
+    // TOTAL COUNT
     const [countRow] = await sequelize.query(
       `SELECT COUNT(DISTINCT g.id) AS total
        FROM grns g
@@ -284,7 +319,7 @@ const getAllGrns = async (req, res) => {
         totalPages: Math.ceil(total / limit),
         totalItems: total,
       },
-      data: listRows,
+      data: transformedRows,
     });
 
   } catch (error) {
