@@ -5,12 +5,14 @@ const svc = require("../services/grnService");
 // Routes
 router.post("/grns",  svc.createGrn);
 router.get("/grns", svc.getAllGrns);
+router.get("/grns/refno", svc.getAllGrnInfos);
 router.get("/grns/dropdown", svc.listGrnNumbers);
 router.get("/grns/:id", svc.getGrnById);
 router.get("/grns/:id/view", svc.getGrnView);
 router.put("/grns/:id", svc.updateGrn);
 router.delete("/grns/:id", svc.deleteGrn);
 router.post("/grns/code", svc.generateGrnCode);
+
 
 module.exports = router;
 

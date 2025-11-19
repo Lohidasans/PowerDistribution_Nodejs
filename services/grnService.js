@@ -347,15 +347,15 @@ const listGrnNumbers = async (req, res) => {
     // 3.Fetch all ProductGrnInfo rows with extra joins
     const grnInfos = await sequelize.query(`
       SELECT 
-        pgi.*,
+        gi.*,
         mt.material_type AS material_type_name,
         c.category_name,
         sc.subcategory_name
-      FROM product_grn_infos pgi
-      LEFT JOIN "materialTypes" mt ON pgi.material_type_id = mt.id
-      LEFT JOIN categories c ON pgi.category_id = c.id
-      LEFT JOIN subcategories sc ON pgi.subcategory_id = sc.id
-      WHERE pgi.id IN (:infoIds)
+      FROM "grnItems" gi
+      LEFT JOIN "materialTypes" mt ON gi.material_type_id = mt.id
+      LEFT JOIN categories c ON gi.category_id = c.id
+      LEFT JOIN subcategories sc ON gi.subcategory_id = sc.id
+      WHERE gi.id IN (:infoIds)
     `, {
       replacements: { infoIds: allInfoIds },
       type: sequelize.QueryTypes.SELECT,
@@ -467,6 +467,71 @@ const getGrnView = async (req, res) => {
   }
 };
 
+const getAllGrnInfos = async (req, res) => {
+  try {
+    const { ref_no, material_type_id, category_id, subcategory_id, page = 1, limit = 10 } = req.query;
+
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+
+    // Build dynamic WHERE clause
+    let whereSql = "WHERE gi.deleted_at IS NULL";
+    const replacements = { limit: parseInt(limit), offset };
+
+    if (material_type_id) {
+      whereSql += " AND gi.material_type_id = :material_type_id";
+      replacements.material_type_id = material_type_id;
+    }
+    if (category_id) {
+      whereSql += " AND gi.category_id = :category_id";
+      replacements.category_id = category_id;
+    }
+    if (subcategory_id) {
+      whereSql += " AND gi.subcategory_id = :subcategory_id";
+      replacements.subcategory_id = subcategory_id;
+    }
+    if (ref_no) {
+      whereSql += " AND gi.ref_no = :ref_no";
+      replacements.ref_no = ref_no;
+    }
+
+    // Count total
+    const countQuery = `
+      SELECT COUNT(*) AS total
+      FROM "grnItems" gi
+      ${whereSql};
+    `;
+    const [countRows] = await sequelize.query(countQuery, { replacements });
+    const total = parseInt(countRows?.[0]?.total || 0, 10);
+
+    // Get data with joins
+    const dataQuery = `
+      SELECT 
+        gi.*,
+        mt.material_type AS material_type_name,
+        c.category_name,
+        sc.subcategory_name
+      FROM "grnItems" gi
+      LEFT JOIN "materialTypes" mt ON gi.material_type_id = mt.id
+      LEFT JOIN categories c ON gi.category_id = c.id
+      LEFT JOIN subcategories sc ON gi.subcategory_id = sc.id
+      ${whereSql}
+      ORDER BY gi.id DESC
+      LIMIT :limit OFFSET :offset;
+    `;
+
+    const [rows] = await sequelize.query(dataQuery, { replacements });
+
+    return commonService.okResponse(res, {
+      total,
+      page: parseInt(page),
+      totalPages: Math.ceil(total / parseInt(limit)),
+      data: rows,
+    });
+  } catch (error) {
+    return commonService.handleError(res, error);
+  }
+};
+
 module.exports = {
   createGrn,
   getGrnById,
@@ -476,4 +541,5 @@ module.exports = {
   listGrnNumbers,
   generateGrnCode,
   getGrnView,
+  getAllGrnInfos
 };
