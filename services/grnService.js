@@ -233,28 +233,31 @@ const getAllGrns = async (req, res) => {
       { replacements, type: sequelize.QueryTypes.SELECT }
     );
 
-    // LIST DATA
     const listRows = await sequelize.query(
       `SELECT 
-         g.id,
-         g.grn_no,
-         g.grn_date AS date,
-         g.status_id,
-         v.id AS vendor_id,
-         v.vendor_name,
-         v.vendor_image_url,
-         g.total_gross_wt_in_g AS order,
-         --COALESCE(SUM(gi.received_weight), 0)::DECIMAL(10,3) AS updated,
-         --COALESCE(SUM(gi.amount), 0)::DECIMAL(15,2) AS yet_to_update,
-         u.email AS created_by
-       FROM grns g
-       LEFT JOIN vendors v ON v.id = g.vendor_id
-       LEFT JOIN "grnItems" gi ON gi.grn_id = g.id AND gi.deleted_at IS NULL
-       LEFT JOIN users u ON u.id = g.order_by_user_id
-       ${whereSql}
-       GROUP BY g.id, v.id, v.vendor_name, v.vendor_image_url, u.email
-       ORDER BY g.grn_date DESC, g.grn_no DESC
-       LIMIT :limit OFFSET :offset`,
+     g.id,
+     g.grn_no,
+     g.grn_date AS date,
+     g.status_id,
+     v.id AS vendor_id,
+     v.vendor_name,
+     v.vendor_image_url,
+     g.total_gross_wt_in_g AS "order",
+     u.email AS created_by,
+     p.total_grn_value
+   FROM grns g
+   LEFT JOIN vendors v ON v.id = g.vendor_id
+   LEFT JOIN "grnItems" gi ON gi.grn_id = g.id AND gi.deleted_at IS NULL
+   LEFT JOIN users u ON u.id = g.order_by_user_id
+   LEFT JOIN LATERAL (
+     SELECT total_grn_value 
+     FROM products 
+     WHERE grn_id = g.id
+   ) p ON true
+   ${whereSql}
+   GROUP BY g.id, v.id, v.vendor_name, v.vendor_image_url, u.email, p.total_grn_value
+   ORDER BY g.grn_date DESC, g.grn_no DESC
+   LIMIT :limit OFFSET :offset`,
       { replacements, type: sequelize.QueryTypes.SELECT }
     );
 
