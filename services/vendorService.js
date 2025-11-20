@@ -12,8 +12,8 @@ const createVendor = async (req, res) => {
   try {
     const { bank_account, kyc_documents, login, spoc_details, ...payload } = req.body || {};
 
-    const { vendor_code, vendor_name, email } = payload;
-    if (!vendor_code || !vendor_name || !email) {
+    const { vendor_code, vendor_name } = payload;
+    if (!vendor_code || !vendor_name) {
       await t.rollback();
       return commonService.badRequest(res, message.vendor.required);
     }
@@ -21,25 +21,26 @@ const createVendor = async (req, res) => {
     const vendor = await models.Vendor.create(payload, { transaction: t });
 
     // Bank account (optional) via helper
-    let createdBankAccount = null;
-    if (bank_account && typeof bank_account === "object") {
+    let createdBankAccount = [];
+    if (bank_account && typeof bank_account === 'object' && Object.keys(bank_account).length > 0) {
       try {
         createdBankAccount = await bankSvc.createBankAccountByEntity(t, "vendor", vendor.id, bank_account);
-      } catch (e) {
+      }      
+      catch (e) {
         await t.rollback();
-        return commonService.badRequest(res, message.requiredEntityIdAndType);
+        return commonService.badRequest(res, "Bank Account already exists");
       }
     }
 
     // KYC docs (optional) via reusable create helper
     let createdKycDocs = [];
-    if (Array.isArray(kyc_documents) && kyc_documents.length) {
+    if (Array.isArray(kyc_documents) && kyc_documents.length > 0) {
       createdKycDocs = await kycSvc.createKycByEntity(t, "vendor", vendor.id, kyc_documents);
     }
 
     // Login (optional) via reusable create helper
     let createdUser = null;
-    if (login && typeof login === "object") {
+    if (login && typeof login === 'object' && Object.keys(login).length > 0) {
       try {
         createdUser = await userSvc.createUserByEntity(t, "vendor", vendor.id, login);
       } catch (e) {

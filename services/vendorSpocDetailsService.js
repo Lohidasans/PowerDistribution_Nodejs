@@ -102,13 +102,21 @@ const deleteVendorContact = async (req, res) => {
 
 // Reusable helpers
 const createVendorSpocsByVendor = async (transaction, vendor_id, contacts) => {
-  if (!Array.isArray(contacts) || contacts.length === 0) return [];
-  const payloads = contacts.map((c) => ({
-    vendor_id,
-    contact_name: c.contact_name ?? null,
-    designation: c.designation ?? null,
-    mobile: c.mobile ?? null,
-  }));
+  if (!Array.isArray(contacts) || contacts.length === 0)
+    return [];
+  
+  const payloads = contacts
+    .filter(c => c && typeof c === 'object')
+    .map((c) => ({
+      vendor_id,
+      contact_name: c.contact_name ?? null,
+      designation: c.designation ?? null,
+      mobile: c.mobile ?? null,
+    }));
+
+  if (payloads.length === 0) {
+    return []; 
+  }
   return models.VendorSpocDetails.bulkCreate(payloads, { transaction, returning: true });
 };
 

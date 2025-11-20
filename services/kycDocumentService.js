@@ -154,8 +154,22 @@ module.exports = {
   },
   createKycByEntity: async (sequelizeOrT, entity_type, entity_id, documents) => {
     const transaction = sequelizeOrT?.commit ? sequelizeOrT : undefined;
-    if (!Array.isArray(documents) || documents.length === 0) return [];
-    const rows = documents.map((d) => ({ ...d, entity_type, entity_id }));
+    if (!Array.isArray(documents) || documents.length === 0)
+      return [];
+    const validDocs = documents
+      .filter(doc => doc && typeof doc === 'object')
+      .map(d => ({
+        entity_type,
+        entity_id,
+        doc_type: d.doc_type ?? null,
+        doc_number: d.doc_number ?? null,
+        file_url: d.file_url ?? null,
+        ...d // Spread any additional fields
+      }));
+
+    if (validDocs.length === 0) {
+      return [];
+    }
     return models.KycDocument.bulkCreate(rows, { transaction, returning: true });
   },
 };

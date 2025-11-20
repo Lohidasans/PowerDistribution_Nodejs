@@ -10,27 +10,27 @@ module.exports = (sequelize, DataTypes) => {
       },
       entity_type: {
         type: DataTypes.ENUM("branch", "vendor", "employee","superadmin"),
-        allowNull: false,
+        allowNull: true,
       },
       entity_id: {
         type: DataTypes.INTEGER,
-        allowNull: false,
+        allowNull: true,
       },
       account_holder_name: {
         type: DataTypes.STRING,
-        allowNull: false,
+        allowNull: true,
       },
       bank_name: {
         type: DataTypes.STRING,
-        allowNull: false,
+        allowNull: true,
       },
       ifsc_code: {
         type: DataTypes.STRING,
-        allowNull: false,
+        allowNull: true,
       },
       account_number: {
         type: DataTypes.STRING,
-        allowNull: false,
+        allowNull: true,
       },
       bank_branch_name: {
         type: DataTypes.STRING,

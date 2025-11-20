@@ -83,13 +83,12 @@ module.exports = {
   updateBankAccount,
   deleteBankAccount,
   createBankAccountByEntity: async (transaction, entity_type, entity_id, data) => {
-    if (!data || typeof data !== "object") return null;
+    if (!data || typeof data !== "object" || Object.keys(data).length === 0) 
+      return null;
+    
     const exists = await models.BankAccount.findOne({ where: { entity_type, entity_id }, transaction });
     if (exists) throw new Error("BANK_ACCOUNT_ALREADY_EXISTS");
-    const { account_holder_name, bank_name, ifsc_code, account_number } = data;
-    if (!account_holder_name || !bank_name || !ifsc_code || !account_number) {
-      throw new Error("BANK_ACCOUNT_FIELDS_REQUIRED");
-    }
+  
     return models.BankAccount.create({ ...data, entity_type, entity_id }, { transaction });
   },
   updateBankAccountByEntity: async (transaction, entity_type, entity_id, data) => {

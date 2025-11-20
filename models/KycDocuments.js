@@ -10,15 +10,15 @@ module.exports = (sequelize, DataTypes) => {
       },
       entity_type: {
         type: DataTypes.ENUM("branch", "vendor", "employee","superadmin"),
-        allowNull: false,
+        allowNull: true,
       },
       entity_id: {
         type: DataTypes.INTEGER,
-        allowNull: false,
+        allowNull: true,
       },
       doc_type: {
         type: DataTypes.STRING, // PAN, GST, AADHAAR, MSME, OTHER
-        allowNull: false,
+        allowNull: true,
       },
       doc_number: {
         type: DataTypes.STRING,
