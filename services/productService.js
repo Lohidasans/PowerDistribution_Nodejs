@@ -31,11 +31,26 @@ const createProduct = async (req, res) => {
     const { item_details, ...productData } = req.body;
 
     const result = await sequelize.transaction(async (t) => {
+      // Create the product
       const product = await models.Product.create(
         { ...productData },
         { transaction: t }
       );
 
+      // Wipe old add-ons and variants for this product (if any)
+      await models.ProductAddOn.destroy({
+        where: { product_id: product.id },
+        force: true,       // Hard delete
+        transaction: t
+      });
+      
+      await models.ProductVariant.destroy({
+        where: { product_id: product.id },
+        force: true,       // Hard delete
+        transaction: t
+      });
+
+      // Create item details
       await createItemDetails(product.id, item_details, t);
 
       const items = await models.ProductItemDetail.findAll({
@@ -55,6 +70,7 @@ const createProduct = async (req, res) => {
     return commonService.handleError(res, err);
   }
 };
+
 // Helper: Create Item Details & Nested Additional Details
 const createItemDetails = async (productId, itemDetails, t) => {
   for (const d of itemDetails || []) {
@@ -418,17 +434,29 @@ const updateProduct = async (req, res) => {
 
     await product.update(productData, { transaction: t });
 
-    // 2. Delete all existing item details and their additional details
+    // 2. Delete all existing item details, additional details, pdt add ons and variant
     await models.ProductAdditionalDetail.destroy({
       where: { product_id: id },
       transaction: t,
-      force: true   // HARD DELETE
+      force: true
     });
 
     await models.ProductItemDetail.destroy({
       where: { product_id: id },
       transaction: t,
-      force: true   // HARD DELETE
+      force: true
+    });
+
+    await models.ProductAddOn.destroy({
+      where: { product_id: id },
+      force: true,
+      transaction: t
+    });
+
+    await models.ProductVariant.destroy({
+      where: { product_id: id },
+      force: true,
+      transaction: t
     });
 
     // 3. Create new item details and additional details
