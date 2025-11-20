@@ -97,7 +97,7 @@ const getAllSubCategories = async (req, res) => {
       FROM "subcategories" sc
       LEFT JOIN categories c ON c.id = sc.category_id
       LEFT JOIN "materialTypes" mt ON mt.id = sc.materialtype_id
-      WHERE 1=1
+      WHERE sc.deleted_at IS NULL
     `;
 
     const replacements = {};

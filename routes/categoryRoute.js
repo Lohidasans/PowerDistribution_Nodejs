@@ -1,6 +1,6 @@
 var express = require("express");
 var categoryRouter = express.Router();
-const categoryService = require("../services/CategoryService");
+const categoryService = require("../services/categoryService");
 
 categoryRouter.post("/category", categoryService.createCategory);
 categoryRouter.get("/category", categoryService.getAllCategories);

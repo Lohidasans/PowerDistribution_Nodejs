@@ -44,7 +44,7 @@ const getAllCategories = async (req, res) => {
         mt.material_image_url
       FROM categories c
       LEFT JOIN "materialTypes" mt ON mt.id = c.material_type_id
-      WHERE 1=1
+       WHERE c.deleted_at IS NULL
     `;
 
     const replacements = {};
