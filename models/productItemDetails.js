@@ -66,6 +66,14 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.DECIMAL(15, 2),
         allowNull: true
       },
+      website_price_type: {
+        type: DataTypes.ENUM("Amount", "Percentage", "Per Gram"),
+        allowNull: true
+      },
+      website_price: {
+        type: DataTypes.DECIMAL(15, 2),
+        allowNull: true
+      },
       rate_per_gram: { // Piece realted Fields 
         type: DataTypes.DECIMAL(15, 2),
         allowNull: true
