@@ -510,19 +510,70 @@ const updateProduct = async (req, res) => {
 
 // Delete (soft)
 const deleteProduct = async (req, res) => {
+  const t = await sequelize.transaction();
   try {
-    const row = await commonService.findById(
-      models.Product,
-      req.params.id,
-      res
-    );
-    if (!row) return;
-    await row.destroy();
+    const productId = req.params.id;
+
+    // Get product
+    const product = await commonService.findById(models.Product, productId, res);
+    if (!product) {
+      await t.rollback();
+      return;
+    }
+
+    // Get all item details of the product
+    const itemDetails = await models.ProductItemDetail.findAll({
+      where: { product_id: productId },
+      transaction: t
+    });
+
+    // Block delete if ANY quantity > 0
+    const hasStock = itemDetails.some((i) => Number(i.quantity) > 0);
+
+  if (hasStock) {
+      await t.rollback();
+      return commonService.badRequest(
+        res,
+        "Cannot delete product. Quantity is not zero for all item details."
+      );
+    }
+
+    // Delete Additional Details (soft)
+    await models.ProductAdditionalDetail.destroy({
+      where: { product_id: productId },
+      transaction: t
+    });
+
+    //  Delete Item Details (soft)
+    await models.ProductItemDetail.destroy({
+      where: { product_id: productId },
+      transaction: t
+    });
+
+    //  Delete Add Ons (soft)
+    await models.ProductAddOn.destroy({
+      where: { product_id: productId },
+      transaction: t
+    });
+
+    // Delete Product Variants (soft)
+    await models.ProductVariant.destroy({
+      where: { product_id: productId },
+      transaction: t
+    });
+
+    //  Finally delete the product (soft)
+    await product.destroy({ transaction: t });
+
+    await t.commit();
     return commonService.noContentResponse(res);
+
   } catch (err) {
+    await t.rollback();
     return commonService.handleError(res, err);
   }
 };
+
 
 // Get details for Web list page (with filters and search)
 const getAllProductDetails = async (req, res) => {
