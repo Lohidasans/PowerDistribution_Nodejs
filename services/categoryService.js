@@ -38,6 +38,7 @@ const getAllCategories = async (req, res) => {
       SELECT
         c.id,
         c.category_name,
+        c.short_name,
         c.category_image_url,
         c.material_type_id,
         mt.material_type,

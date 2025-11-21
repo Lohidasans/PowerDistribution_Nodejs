@@ -328,6 +328,32 @@ const getAllGrns = async (req, res) => {
   }
 };
 
+// Reusable status updater
+const updateGrnStatus = async (grn_id) => {
+  const grn = await models.GRN.findByPk(grn_id);
+  if (!grn) return;
+
+  const [row] = await sequelize.query(
+    `SELECT total_grn_value 
+       FROM products
+     WHERE grn_id = :grn_id`,
+    {
+      replacements: { grn_id },
+      type: sequelize.QueryTypes.SELECT
+    }
+  );
+
+  const updated = row?.total_grn_value ? Number(row.total_grn_value) : 0;
+  const order = Number(grn.total_gross_wt_in_g) || 0;
+
+  const newStatus = (updated === order) ? 2 : 1;
+
+  if (newStatus !== grn.status_id) {
+    grn.status_id = newStatus;
+    await grn.save();
+  }
+};
+
 // GET: list of GRN numbers with full ProductGrnInfo + joined details
 const listGrnNumbers = async (req, res) => {
   try {
@@ -539,6 +565,7 @@ module.exports = {
   updateGrn,
   deleteGrn,
   getAllGrns,
+  updateGrnStatus,
   listGrnNumbers,
   generateGrnCode,
   getGrnView,
