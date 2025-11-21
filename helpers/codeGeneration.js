@@ -88,9 +88,7 @@ const generateUniqueCode = async ( model, field, parts = [],
   return candidate;
 };
 
-/**
- * Generate simple running codes like EST001, EST002, EST003, ...
- */
+//Generate simple running codes
 const generateFiscalSeriesCode = async (model, field, prefix, { pad = 3 } = {}) => {
   const cleanPrefix = String(prefix || "").trim().toUpperCase();
 
