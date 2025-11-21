@@ -1,4 +1,5 @@
 const { Op } = require("sequelize");
+const { models } = require("../models");
 
 // Generate a unique SKU like CJ_CBE_01_0001
 // parts: array of strings that form the prefix (e.g., [companyCode, locationCode, branchCode])
@@ -115,8 +116,58 @@ const generateFiscalSeriesCode = async (model, field, prefix, { pad = 3 } = {}) 
   return `${cleanPrefix}${String(nextNumber).padStart(pad, "0")}`;
 };
 
-module.exports =  { 
+
+const generateProductSKUCode = async (prefixFromQuery = "", options = {}) => {
+  const {
+    pad = 3,          // 001, 002, 003
+    separator = "_",  // CJ_CER_001
+  } = options;
+
+  // 1. Load Super Admin
+  const superAdmin = await models.SuperAdminProfile.findOne({
+    order: [["id", "ASC"]],
+  });
+
+  if (!superAdmin) {
+    throw new Error("Super Admin Profile not found");
+  }
+
+  // 2. Validate company base prefix
+  const companyPrefix = String(superAdmin.branch_sequence_value || "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
+
+  if (!companyPrefix) {
+    throw new Error("Company prefix missing in Super Admin Profile");
+  }
+
+  // 3. Clean prefixFromQuery
+  const cleanPrefix = String(prefixFromQuery || "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
+
+  if (!cleanPrefix) {
+    throw new Error("Invalid product prefix");
+  }
+
+  // 4. Use correct sequence field
+  const currentSeq = Number(superAdmin.product_sequence_value || 0);
+  const nextSeq = String(currentSeq + 1).padStart(pad, "0");
+
+  // 5. Final code: CJ_CER_001
+  const finalCode = [companyPrefix, cleanPrefix, nextSeq].join(separator);
+
+  // 6. Update DB sequence
+  superAdmin.product_sequence_value = currentSeq + 1;
+  await superAdmin.save();
+
+  return finalCode;
+};
+
+module.exports = { 
   generateUniqueSkuId, 
   generateUniqueCode, 
-  generateFiscalSeriesCode 
+  generateFiscalSeriesCode,
+  generateProductSKUCode
+
 };

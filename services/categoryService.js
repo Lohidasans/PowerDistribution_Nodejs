@@ -131,7 +131,7 @@ const listCategoriesDropdown = async (req, res) => {
     if (material_type_id) where.material_type_id = material_type_id;
 
     const items = await models.Category.findAll({
-      attributes: ["id", "category_name"],
+      attributes: ["id", "category_name", "short_name"],
       where,
       order: [["category_name", "ASC"]],
     });

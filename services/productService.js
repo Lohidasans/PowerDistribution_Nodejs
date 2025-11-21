@@ -2,7 +2,31 @@ const { models, sequelize } = require("../models/index");
 const commonService = require("../services/commonService");
 const message = require("../constants/en.json");
 const { buildSearchCondition } = require("../helpers/queryHelper");
-const { generateUniqueCode } = require("../helpers/codeGeneration");
+const { generateUniqueCode, generateProductSKUCode } = require("../helpers/codeGeneration");
+
+const createProductSKUCode = async (req, res) => {
+  const t = await sequelize.transaction();
+
+  try {
+    // prefix comes from query params:// e.g. "CER"
+    const prefix = req.query.prefix; 
+
+    if (!prefix) {
+      await t.rollback();
+      return commonService.badRequest(res, "Prefix query param is required");
+    }
+
+    // Generate Product Code
+    const productCode = await generateProductSKUCode(prefix);
+
+    await t.commit();
+    return commonService.createdResponse(res, productCode);
+
+  } catch (err) {
+    await t.rollback();
+    return commonService.handleError(res, err);
+  }
+};
 
 // Main Create Product API
 const createProduct = async (req, res) => {
@@ -574,7 +598,6 @@ const deleteProduct = async (req, res) => {
   }
 };
 
-
 // Get details for Web list page (with filters and search)
 const getAllProductDetails = async (req, res) => {
   try {
@@ -806,6 +829,7 @@ const updateProductStatus = async (req, res) => {
 };
 
 module.exports = {
+  createProductSKUCode,
   createProduct,
   getAllProducts,
   getProductById,
