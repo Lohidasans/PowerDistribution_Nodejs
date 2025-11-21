@@ -4,7 +4,7 @@ const enMessage = require("../constants/en.json");
 
 const createCategory = async (req, res) => {
   try {
-    const { material_type_id, category_name, category_image_url } = req.body;
+    const { material_type_id, category_name, category_image_url, short_name } = req.body;
 
     if (!material_type_id || !category_name) {
       return commonService.badRequest(
@@ -22,6 +22,7 @@ const createCategory = async (req, res) => {
       material_type_id,
       category_name,
       category_image_url,
+      short_name,
     });
 
     return commonService.createdResponse(res, { category: row });
