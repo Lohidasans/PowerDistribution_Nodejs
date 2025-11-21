@@ -99,7 +99,7 @@ const listVendors = async (req, res) => {
       FROM vendors v
       LEFT JOIN branches b ON b.id = ANY(v.visibilities)
       LEFT JOIN "materialTypes" m ON m.id = ANY(v.material_type_ids)
-      WHERE 1=1`;
+        WHERE v.deleted_at IS NULL`;
 
     const replacements = {};
 
