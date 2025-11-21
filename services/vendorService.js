@@ -10,7 +10,8 @@ const spocSvc = require("./vendorSpocDetailsService");
 const createVendor = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const { bank_account, kyc_documents, login, spoc_details, ...payload } = req.body || {};
+    const { bank_account, kyc_documents, login, spoc_details, ...payload } =
+      req.body || {};
 
     const { vendor_code, vendor_name } = payload;
     if (!vendor_code || !vendor_name) {
@@ -18,7 +19,9 @@ const createVendor = async (req, res) => {
       return commonService.badRequest(res, message.vendor.required);
     }
     // CHECK for duplicate vendor_code before creating vendor
-    const existingVendor = await models.Vendor.findOne({ where: { vendor_code } });
+    const existingVendor = await models.Vendor.findOne({
+      where: { vendor_code },
+    });
     if (existingVendor) {
       console.log("Duplicate vendor_code found:", vendor_code);
       await t.rollback();
@@ -29,11 +32,19 @@ const createVendor = async (req, res) => {
 
     // Bank account (optional) via helper
     let createdBankAccount = [];
-    if (bank_account && typeof bank_account === 'object' && Object.keys(bank_account).length > 0) {
+    if (
+      bank_account &&
+      typeof bank_account === "object" &&
+      Object.keys(bank_account).length > 0
+    ) {
       try {
-        createdBankAccount = await bankSvc.createBankAccountByEntity(t, "vendor", vendor.id, bank_account);
-      }      
-      catch (e) {
+        createdBankAccount = await bankSvc.createBankAccountByEntity(
+          t,
+          "vendor",
+          vendor.id,
+          bank_account
+        );
+      } catch (e) {
         await t.rollback();
         return commonService.badRequest(res, "Bank Account already exists");
       }
@@ -42,16 +53,22 @@ const createVendor = async (req, res) => {
     // KYC docs (optional) via reusable create helper
     let createdKycDocs = [];
     if (Array.isArray(kyc_documents) && kyc_documents.length > 0) {
-      createdKycDocs = await kycSvc.createKycByEntity(t, "vendor", vendor.id, kyc_documents);
+      createdKycDocs = await kycSvc.createKycByEntity(
+        t,
+        "vendor",
+        vendor.id,
+        kyc_documents
+      );
     }
 
     // Login (optional) via reusable create helper
     let createdUser = null;
     if (login && typeof login === "object" && Object.keys(login).length > 0) {
-
       // Check duplicate email BEFORE creating user
       if (login.email) {
-        const existingUser = await models.User.findOne({ where: { email: login.email } });
+        const existingUser = await models.User.findOne({
+          where: { email: login.email },
+        });
         if (existingUser) {
           console.log("Duplicate email found:", login.email);
           await t.rollback();
@@ -60,9 +77,14 @@ const createVendor = async (req, res) => {
       }
 
       try {
-        createdUser = await userSvc.createUserByEntity(t, "vendor", vendor.id, login);
+        createdUser = await userSvc.createUserByEntity(
+          t,
+          "vendor",
+          vendor.id,
+          login
+        );
       } catch (e) {
-        console.error("Error creating user:", e); 
+        console.error("Error creating user:", e);
         await t.rollback();
 
         // Validation error
@@ -70,23 +92,35 @@ const createVendor = async (req, res) => {
           return commonService.badRequest(res, "Invalid user data provided.");
         }
 
-        return commonService.badRequest(res, "Failed to create user login details.");
+        return commonService.badRequest(
+          res,
+          "Failed to create user login details."
+        );
       }
     }
 
     let createdSpocs = [];
     if (Array.isArray(spoc_details) && spoc_details.length) {
-      createdSpocs = await spocSvc.createVendorSpocsByVendor(t, vendor.id, spoc_details);
+      createdSpocs = await spocSvc.createVendorSpocsByVendor(
+        t,
+        vendor.id,
+        spoc_details
+      );
     }
 
     await t.commit();
-    return commonService.createdResponse(res, { vendor, bank_account: createdBankAccount, kyc_documents: createdKycDocs, login: createdUser, spoc_details: createdSpocs });
+    return commonService.createdResponse(res, {
+      vendor,
+      bank_account: createdBankAccount,
+      kyc_documents: createdKycDocs,
+      login: createdUser,
+      spoc_details: createdSpocs,
+    });
   } catch (err) {
     await t.rollback();
     return commonService.handleError(res, err);
   }
 };
-
 const listVendors = async (req, res) => {
   try {
     const { materialType, search } = req.query;
@@ -124,7 +158,7 @@ const listVendors = async (req, res) => {
       FROM vendors v
       LEFT JOIN branches b ON b.id = ANY(v.visibilities)
       LEFT JOIN "materialTypes" m ON m.id = ANY(v.material_type_ids)
-        WHERE v.deleted_at IS NULL`;
+      WHERE 1=1`;
 
     const replacements = {};
 
@@ -136,8 +170,15 @@ const listVendors = async (req, res) => {
 
     if (search) {
       const fields = [
-        "v.vendor_name", "v.proprietor_name", "v.mobile", "v.email", "m.material_type"];
-      query += ` AND (${fields.map(field => `${field} ILIKE :search`).join(" OR ")})`;
+        "v.vendor_name",
+        "v.proprietor_name",
+        "v.mobile",
+        "v.email",
+        "m.material_type",
+      ];
+      query += ` AND (${fields
+        .map((field) => `${field} ILIKE :search`)
+        .join(" OR ")})`;
       replacements.search = `%${search}%`;
     }
 
@@ -172,14 +213,27 @@ const getVendorById = async (req, res) => {
       return commonService.notFound(res, message.vendor.notFound);
     }
 
-    const [bank_account, kyc_documents, login, spoc_details] = await Promise.all([
-      models.BankAccount.findOne({ where: { entity_type: "vendor", entity_id: id } }),
-      models.KycDocument.findAll({ where: { entity_type: "vendor", entity_id: id } }),
-      models.User.findOne({ where: { entity_type: "vendor", entity_id: id } }),
-      models.VendorSpocDetails.findOne({ where: { vendor_id: id } }),
-    ]);
+    const [bank_account, kyc_documents, login, spoc_details] =
+      await Promise.all([
+        models.BankAccount.findOne({
+          where: { entity_type: "vendor", entity_id: id },
+        }),
+        models.KycDocument.findAll({
+          where: { entity_type: "vendor", entity_id: id },
+        }),
+        models.User.findOne({
+          where: { entity_type: "vendor", entity_id: id },
+        }),
+        models.VendorSpocDetails.findOne({ where: { vendor_id: id } }),
+      ]);
 
-    return commonService.okResponse(res, { vendor, bank_account, kyc_documents, login, spoc_details });
+    return commonService.okResponse(res, {
+      vendor,
+      bank_account,
+      kyc_documents,
+      login,
+      spoc_details,
+    });
   } catch (err) {
     return commonService.handleError(res, err);
   }
@@ -189,54 +243,154 @@ const updateVendor = async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const { id } = req.params;
+
     const vendor = await models.Vendor.findByPk(id);
     if (!vendor) {
       await t.rollback();
       return commonService.notFound(res, message.vendor.notFound);
     }
 
-    const { bank_account, kyc_documents, kyc_delete_ids, login, spoc_details, ...payload } = req.body || {};
+    const { bank_account, kyc_documents, login, spoc_details, ...payload } =
+      req.body || {};
 
-    if (payload.vendor_name === undefined || payload.email === undefined) {
-      // keep previous behavior optional; no hard-fail unless nulls explicitly passed
-    }
+    // Update vendor basic fields
     await vendor.update(payload, { transaction: t });
 
-    // Update-only bank account via helper 
+    /* -------------------------------------------------------
+     * 1️⃣ BANK ACCOUNT: UPSERT (update if exists, create if not)
+     * ------------------------------------------------------- */
     let upsertedBank = null;
     if (bank_account && typeof bank_account === "object") {
+      const existingBank = await models.BankAccount.findOne({
+        where: { entity_type: "vendor", entity_id: vendor.id },
+      });
+
       try {
-        upsertedBank = await bankSvc.updateBankAccountByEntity(t, "vendor", vendor.id, bank_account);
+        if (existingBank) {
+          upsertedBank = await bankSvc.updateBankAccountByEntity(
+            t,
+            "vendor",
+            vendor.id,
+            bank_account
+          );
+        } else {
+          upsertedBank = await bankSvc.createBankAccountByEntity(
+            t,
+            "vendor",
+            vendor.id,
+            bank_account
+          );
+        }
       } catch (e) {
         await t.rollback();
-        return commonService.badRequest(res, message.requiredEntityIdAndType);
+        return commonService.badRequest(res, "Bank Account already exists.");
       }
     }
 
-    // KYC via service helpers
+    /* -------------------------------------------------------
+     * 2️⃣ KYC DOCUMENTS: UPSERT
+     * ------------------------------------------------------- */
     let updatedOrCreatedKyc = [];
     if (Array.isArray(kyc_documents)) {
-      updatedOrCreatedKyc = await kycSvc.updateKycByEntity(t, "vendor", vendor.id, kyc_documents);
-    }
+      const existingKyc = await models.KycDocument.findAll({
+        where: { entity_type: "vendor", entity_id: vendor.id },
+      });
 
-    // Update-only login via helper (no create on update)
-    let upsertedUser = null;
-    if (login && typeof login === "object") {
-      try {
-        upsertedUser = await userSvc.updateUserByEntity(t, "vendor", vendor.id, login);
-      } catch (e) {
-        await t.rollback();
-        return commonService.badRequest(res, message.failure.requiredFields);
+      if (existingKyc.length === 0) {
+        updatedOrCreatedKyc = await kycSvc.createKycByEntity(
+          t,
+          "vendor",
+          vendor.id,
+          kyc_documents
+        );
+      } else {
+        updatedOrCreatedKyc = await kycSvc.updateKycByEntity(
+          t,
+          "vendor",
+          vendor.id,
+          kyc_documents
+        );
       }
     }
 
-    let updatedSpocs = [];
-    if (Array.isArray(spoc_details)) {
-      updatedSpocs = await spocSvc.updateVendorSpocsByVendor(t, vendor.id, spoc_details);
+    /* -------------------------------------------------------
+     * 3️⃣ LOGIN USER: UPSERT
+     * ------------------------------------------------------- */
+    let upsertedUser = null;
+    if (login && typeof login === "object") {
+      let existingUser = await models.User.findOne({
+        where: { entity_type: "vendor", entity_id: vendor.id },
+      });
+
+      // Check duplicate email only when creating new account
+      if (!existingUser && login.email) {
+        const duplicateEmail = await models.User.findOne({
+          where: { email: login.email },
+        });
+        if (duplicateEmail) {
+          await t.rollback();
+          return commonService.badRequest(res, "User Email already exists.");
+        }
+      }
+
+      try {
+        if (existingUser) {
+          upsertedUser = await userSvc.updateUserByEntity(
+            t,
+            "vendor",
+            vendor.id,
+            login
+          );
+        } else {
+          upsertedUser = await userSvc.createUserByEntity(
+            t,
+            "vendor",
+            vendor.id,
+            login
+          );
+        }
+      } catch (e) {
+        await t.rollback();
+        return commonService.badRequest(res, "Failed to process user login.");
+      }
     }
 
+    /* -------------------------------------------------------
+     * 4️⃣ SPOC DETAILS: UPSERT
+     * ------------------------------------------------------- */
+    let updatedSpocs = [];
+    if (Array.isArray(spoc_details)) {
+      const existingSpocs = await models.VendorSpocDetails.findAll({
+        where: { vendor_id: vendor.id },
+      });
+
+      if (existingSpocs.length === 0) {
+        updatedSpocs = await spocSvc.createVendorSpocsByVendor(
+          t,
+          vendor.id,
+          spoc_details
+        );
+      } else {
+        updatedSpocs = await spocSvc.updateVendorSpocsByVendor(
+          t,
+          vendor.id,
+          spoc_details
+        );
+      }
+    }
+
+    /* -------------------------------------------------------
+     * COMMIT TRANSACTION
+     * ------------------------------------------------------- */
     await t.commit();
-    return commonService.okResponse(res, { vendor, bank_account: upsertedBank, kyc_documents: updatedOrCreatedKyc, login: upsertedUser, spoc_details: updatedSpocs });
+
+    return commonService.okResponse(res, {
+      vendor,
+      bank_account: upsertedBank,
+      kyc_documents: updatedOrCreatedKyc,
+      login: upsertedUser,
+      spoc_details: updatedSpocs,
+    });
   } catch (err) {
     await t.rollback();
     return commonService.handleError(res, err);
@@ -253,10 +407,22 @@ const deleteVendor = async (req, res) => {
       return commonService.notFound(res, message.vendor.notFound);
     }
 
-    await models.BankAccount.destroy({ where: { entity_type: "vendor", entity_id: id }, transaction: t });
-    await models.KycDocument.destroy({ where: { entity_type: "vendor", entity_id: id }, transaction: t });
-    await models.User.destroy({ where: { entity_type: "vendor", entity_id: id }, transaction: t });
-    await models.VendorSpocDetails.destroy({ where: { vendor_id: id }, transaction: t });
+    await models.BankAccount.destroy({
+      where: { entity_type: "vendor", entity_id: id },
+      transaction: t,
+    });
+    await models.KycDocument.destroy({
+      where: { entity_type: "vendor", entity_id: id },
+      transaction: t,
+    });
+    await models.User.destroy({
+      where: { entity_type: "vendor", entity_id: id },
+      transaction: t,
+    });
+    await models.VendorSpocDetails.destroy({
+      where: { vendor_id: id },
+      transaction: t,
+    });
 
     await vendor.destroy({ transaction: t });
     await t.commit();
@@ -275,7 +441,7 @@ const generateVendorCode = async (req, res) => {
       models.Vendor,
       "vendor_code",
       String(prefix).toUpperCase(),
-      { pad: 3}
+      { pad: 3 }
     );
     return commonService.okResponse(res, { vendor_code: code });
   } catch (err) {
@@ -290,5 +456,5 @@ module.exports = {
   getVendorById,
   updateVendor,
   deleteVendor,
-  generateVendorCode
+  generateVendorCode,
 };
