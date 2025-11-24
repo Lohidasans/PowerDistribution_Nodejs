@@ -25,7 +25,7 @@ const createGrn = async (req, res) => {
     // Insert items directly (NO backend calculations)
     const processedItems = items.map((item) => ({
       ...item,
-      grn_id: grn.id
+      grn_id: grn.id,
     }));
 
     if (processedItems.length > 0) {
@@ -48,11 +48,11 @@ const getGrnById = async (req, res) => {
   try {
     const { id } = req.params;
     const grn = await getGrnWithItems(id);
-    
+
     if (!grn) {
       return commonService.notFound(res, "GRN not found");
     }
-    
+
     return commonService.okResponse(res, grn);
   } catch (error) {
     return commonService.handleError(res, error);
@@ -64,14 +64,15 @@ const getGrnWithItems = async (grnId) => {
     // Get GRN details
     const grn = await models.Grn.findByPk(grnId, {
       raw: true,
-      nest: true
+      nest: true,
     });
 
     if (!grn) return null;
 
     // Get GRN items with related data using raw queries
-    const items = await sequelize.query(`
-      SELECT 
+    const items = await sequelize.query(
+      `
+      SELECT
         gi.*,
         mt.material_type as material_type_name,
         c.category_name as category_name,
@@ -81,30 +82,32 @@ const getGrnWithItems = async (grnId) => {
       LEFT JOIN categories c ON gi.category_id = c.id
       LEFT JOIN subcategories sc ON gi.subcategory_id = sc.id
       WHERE gi.grn_id = :grnId
-      ORDER BY gi.id ASC 
-    `, {
-      replacements: { grnId },
-      type: sequelize.QueryTypes.SELECT
-    });
+      ORDER BY gi.id ASC
+    `,
+      {
+        replacements: { grnId },
+        type: sequelize.QueryTypes.SELECT,
+      }
+    );
 
     // Get vendor details
-    const vendor = await models.Vendor.findByPk(grn.vendor_id, {
-      attributes: ['id', 'vendor_name'],
-      raw: true
-    }) || { id: grn.vendor_id, vendor_name: 'Vendor Not Found' };
+    const vendor = (await models.Vendor.findByPk(grn.vendor_id, {
+      attributes: ["id", "vendor_name"],
+      raw: true,
+    })) || { id: grn.vendor_id, vendor_name: "Vendor Not Found" };
 
     // Get user details if order_by_user_id exists
     let user = null;
     if (grn.order_by_user_id) {
       user = await models.User.findByPk(grn.order_by_user_id, {
-        attributes: ['id', 'email'],
-        raw: true
+        attributes: ["id", "email"],
+        raw: true,
       });
 
       if (!user) {
         user = {
           id: grn.order_by_user_id,
-          name: 'User Not Found'
+          name: "User Not Found",
         };
       }
     }
@@ -113,10 +116,10 @@ const getGrnWithItems = async (grnId) => {
       ...grn,
       vendor,
       order_by_user: user,
-      items
+      items,
     };
   } catch (error) {
-    console.error('Error in getGrnWithItems:', error);
+    console.error("Error in getGrnWithItems:", error);
     throw error;
   }
 };
@@ -168,11 +171,11 @@ const updateGrn = async (req, res) => {
 // Delete GRN (soft delete)
 const deleteGrn = async (req, res) => {
   const transaction = await sequelize.transaction();
-  
+
   try {
     const { id } = req.params;
     const grn = await models.Grn.findByPk(id, { transaction });
-    
+
     if (!grn) {
       await transaction.rollback();
       return commonService.notFound(res, "GRN not found");
@@ -181,10 +184,10 @@ const deleteGrn = async (req, res) => {
     // Soft delete GRN and its items
     await Promise.all([
       grn.destroy({ transaction }),
-      models.GrnItem.destroy({ 
+      models.GrnItem.destroy({
         where: { grn_id: id },
-        transaction 
-      })
+        transaction,
+      }),
     ]);
 
     await transaction.commit();
@@ -213,17 +216,37 @@ const getAllGrns = async (req, res) => {
 
     // Build WHERE
     const whereConditions = [`g.deleted_at IS NULL`];
-    if (vendor_id) { whereConditions.push(`g.vendor_id = :vendor_id`); replacements.vendor_id = vendor_id; }
-    if (branch_id) { whereConditions.push(`g.branch_id = :branch_id`); replacements.branch_id = branch_id; }
-    if (start_date) { whereConditions.push(`g.grn_date >= :start_date`); replacements.start_date = start_date; }
-    if (end_date) { whereConditions.push(`g.grn_date <= :end_date`); replacements.end_date = end_date; }
-    if (search) { whereConditions.push(`(g.grn_no ILIKE :search OR v.vendor_name ILIKE :search)`); replacements.search = `%${search}%`; }
+    if (vendor_id) {
+      whereConditions.push(`g.vendor_id = :vendor_id`);
+      replacements.vendor_id = vendor_id;
+    }
+    if (branch_id) {
+      whereConditions.push(`g.branch_id = :branch_id`);
+      replacements.branch_id = branch_id;
+    }
+    if (start_date) {
+      whereConditions.push(`g.grn_date >= :start_date`);
+      replacements.start_date = start_date;
+    }
+    if (end_date) {
+      whereConditions.push(`g.grn_date <= :end_date`);
+      replacements.end_date = end_date;
+    }
+    if (search) {
+      whereConditions.push(
+        `(g.grn_no ILIKE :search OR v.vendor_name ILIKE :search)`
+      );
+      replacements.search = `%${search}%`;
+    }
 
-    const whereSql = whereConditions.length > 1 ? `WHERE ${whereConditions.join(' AND ')}` : 'WHERE g.deleted_at IS NULL';
+    const whereSql =
+      whereConditions.length > 1
+        ? `WHERE ${whereConditions.join(" AND ")}`
+        : "WHERE g.deleted_at IS NULL";
 
     // SUMMARY
     const [summaryRows] = await sequelize.query(
-      `SELECT 
+      `SELECT
          COUNT(*) AS total_grns,
          COUNT(*) FILTER (WHERE g.status_id = 1) AS updated_count,
          COUNT(*) FILTER (WHERE g.status_id = 2) AS yet_to_update_count
@@ -234,7 +257,7 @@ const getAllGrns = async (req, res) => {
     );
 
     const listRows = await sequelize.query(
-      `SELECT 
+      `SELECT
      g.id,
      g.grn_no,
      g.grn_date AS date,
@@ -250,8 +273,8 @@ const getAllGrns = async (req, res) => {
    LEFT JOIN "grnItems" gi ON gi.grn_id = g.id AND gi.deleted_at IS NULL
    LEFT JOIN users u ON u.id = g.order_by_user_id
    LEFT JOIN LATERAL (
-     SELECT total_grn_value 
-     FROM products 
+     SELECT total_grn_value
+     FROM products
      WHERE grn_id = g.id
    ) p ON true
    ${whereSql}
@@ -262,9 +285,10 @@ const getAllGrns = async (req, res) => {
     );
 
     // Apply business logic to each row
-    const transformedRows = listRows.map(row => {
+    const transformedRows = listRows.map((row) => {
       const order = parseFloat(row.order) || 0;
-      const updatedVal = row.total_grn_value !== null ? parseFloat(row.total_grn_value) : null;
+      const updatedVal =
+        row.total_grn_value !== null ? parseFloat(row.total_grn_value) : null;
 
       let updated = 0;
       let yetToUpdate = 0;
@@ -321,7 +345,6 @@ const getAllGrns = async (req, res) => {
       },
       data: transformedRows,
     });
-
   } catch (error) {
     console.error("getAllGrns Error:", error);
     return commonService.handleError(res, error);
@@ -334,19 +357,19 @@ const updateGrnStatus = async (grn_id) => {
   if (!grn) return;
 
   const [row] = await sequelize.query(
-    `SELECT total_grn_value 
+    `SELECT total_grn_value
        FROM products
      WHERE grn_id = :grn_id`,
     {
       replacements: { grn_id },
-      type: sequelize.QueryTypes.SELECT
+      type: sequelize.QueryTypes.SELECT,
     }
   );
 
   const updated = row?.total_grn_value ? Number(row.total_grn_value) : 0;
   const order = Number(grn.total_gross_wt_in_g) || 0;
 
-  const newStatus = (updated === order) ? 2 : 1;
+  const newStatus = updated === order ? 2 : 1;
 
   if (newStatus !== grn.status_id) {
     grn.status_id = newStatus;
@@ -368,45 +391,46 @@ const listGrnNumbers = async (req, res) => {
       return commonService.okResponse(res, { grns: [] });
     }
 
-    const grnIds = grns.map(g => g.id);
+    const grnIds = grns.map((g) => g.id);
 
     // 2.Fetch ALL grnItems for these GRNs (join extra names)
-    const grnItems = await sequelize.query(`
-      SELECT 
-        gi.*,
-        mt.material_type AS material_type_name,
-        c.category_name,
-        sc.subcategory_name
-      FROM "grnItems" gi
-      LEFT JOIN "materialTypes" mt ON gi.material_type_id = mt.id
-      LEFT JOIN categories c ON gi.category_id = c.id
-      LEFT JOIN subcategories sc ON gi.subcategory_id = sc.id
-      WHERE gi.grn_id IN (:grnIds)
-    `, {
-      replacements: { grnIds },
-      type: sequelize.QueryTypes.SELECT,
-    });
+    const grnItems = await sequelize.query(
+      `SELECT
+  gi.*,
+  mt.material_type AS material_type_name,
+  c.category_name,
+  sc.subcategory_name
+FROM "grnItems" gi
+LEFT JOIN "materialTypes" mt ON gi.material_type_id = mt.id
+LEFT JOIN categories c ON gi.category_id = c.id
+LEFT JOIN subcategories sc ON gi.subcategory_id = sc.id
+WHERE gi.grn_id IN (:grnIds)
+ORDER BY gi.id;
+    `,
+      {
+        replacements: { grnIds },
+        type: sequelize.QueryTypes.SELECT,
+      }
+    );
 
     // 3.Group items by grn_id
     const groupedItems = {};
-    grnItems.forEach(item => {
+    grnItems.forEach((item) => {
       if (!groupedItems[item.grn_id]) groupedItems[item.grn_id] = [];
       groupedItems[item.grn_id].push(item);
     });
 
     // 4.Attach items under same field "grn_info_ids"
-    const enrichedGrns = grns.map(grn => ({
+    const enrichedGrns = grns.map((grn) => ({
       ...grn,
-      grn_info_ids: groupedItems[grn.id] || []
+      grn_info_ids: groupedItems[grn.id] || [],
     }));
 
     return commonService.okResponse(res, { grns: enrichedGrns });
-
   } catch (err) {
     return commonService.handleError(res, err);
   }
 };
-
 
 const generateGrnCode = async (req, res) => {
   try {
@@ -430,8 +454,9 @@ const getGrnView = async (req, res) => {
     const { id } = req.params;
 
     // Header + vendor + location names
-    const [headerRows] = await sequelize.query(`
-        SELECT 
+    const [headerRows] = await sequelize.query(
+      `
+        SELECT
           g.id,
           g.grn_no,
           g.grn_date,
@@ -464,15 +489,18 @@ const getGrnView = async (req, res) => {
         LEFT JOIN countries c ON c.id = v.country_id
         WHERE g.id = :id
         LIMIT 1;
-      `, { replacements: { id } });
+      `,
+      { replacements: { id } }
+    );
 
     if (!headerRows || headerRows.length === 0) {
       return commonService.notFound(res, "GRN not found");
     }
 
     // Items with material/category/subcategory names
-    const [items] = await sequelize.query(`
-        SELECT 
+    const [items] = await sequelize.query(
+      `
+        SELECT
           gi.*,
           mt.material_type   AS material_type_name,
           c.category_name    AS category_name,
@@ -483,7 +511,9 @@ const getGrnView = async (req, res) => {
         LEFT JOIN subcategories sc   ON gi.subcategory_id = sc.id
         WHERE gi.grn_id = :id AND gi.deleted_at IS NULL
         ORDER BY gi.id ASC;
-      `, { replacements: { id } });
+      `,
+      { replacements: { id } }
+    );
 
     return commonService.okResponse(res, {
       header: headerRows[0],
@@ -496,7 +526,14 @@ const getGrnView = async (req, res) => {
 
 const getAllGrnInfos = async (req, res) => {
   try {
-    const { ref_no, material_type_id, category_id, subcategory_id, page = 1, limit = 10 } = req.query;
+    const {
+      ref_no,
+      material_type_id,
+      category_id,
+      subcategory_id,
+      page = 1,
+      limit = 10,
+    } = req.query;
 
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
@@ -532,7 +569,7 @@ const getAllGrnInfos = async (req, res) => {
 
     // Get data with joins
     const dataQuery = `
-      SELECT 
+      SELECT
         gi.*,
         mt.material_type AS material_type_name,
         c.category_name,
@@ -569,5 +606,5 @@ module.exports = {
   listGrnNumbers,
   generateGrnCode,
   getGrnView,
-  getAllGrnInfos
+  getAllGrnInfos,
 };
