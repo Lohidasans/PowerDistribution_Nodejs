@@ -5,7 +5,7 @@ const svc = require("../services/productService");
 // CRUD
 router.post("/products", svc.createProduct);
 router.get("/products", svc.getAllProducts);
-router.get("/products/search/sku", svc.searchProductBySku);
+router.get("/products/search/sku", svc.searchProductBySkuNew);
 router.post("/products/generateSku", svc.createProductSKUCode);
 router.get("/products/list-details", svc.getAllProductDetails);
 router.get("/products/addon-list", svc.getProductAddonList);

@@ -2,14 +2,17 @@ const { models, sequelize } = require("../models/index");
 const commonService = require("../services/commonService");
 const message = require("../constants/en.json");
 const { buildSearchCondition } = require("../helpers/queryHelper");
-const { generateUniqueCode, generateProductSKUCode } = require("../helpers/codeGeneration");
+const {
+  generateUniqueCode,
+  generateProductSKUCode,
+} = require("../helpers/codeGeneration");
 
 const createProductSKUCode = async (req, res) => {
   const t = await sequelize.transaction();
 
   try {
     // prefix comes from query params:// e.g. "CER"
-    const prefix = req.query.prefix; 
+    const prefix = req.query.prefix;
 
     if (!prefix) {
       await t.rollback();
@@ -21,7 +24,6 @@ const createProductSKUCode = async (req, res) => {
 
     await t.commit();
     return commonService.createdResponse(res, productCode);
-
   } catch (err) {
     await t.rollback();
     return commonService.handleError(res, err);
@@ -64,14 +66,14 @@ const createProduct = async (req, res) => {
       // Wipe old add-ons and variants for this product (if any)
       await models.ProductAddOn.destroy({
         where: { product_id: product.id },
-        force: true,       // Hard delete
-        transaction: t
+        force: true, // Hard delete
+        transaction: t,
       });
-      
+
       await models.ProductVariant.destroy({
         where: { product_id: product.id },
-        force: true,       // Hard delete
-        transaction: t
+        force: true, // Hard delete
+        transaction: t,
       });
 
       // Create item details
@@ -256,11 +258,7 @@ const generateSkuId = async (req, res) => {
 // Light search for Add-On/product search box
 const getProductAddonList = async (req, res) => {
   try {
-    const {
-      search,
-      sku_id,
-      product_ids 
-    } = req.query;
+    const { search, sku_id, product_ids } = req.query;
 
     let base = `
       FROM products p
@@ -275,13 +273,13 @@ const getProductAddonList = async (req, res) => {
       base += ` AND p.sku_id ILIKE :sku_id`;
       replacements.sku_id = sku_id;
     }
-    
+
     if (search) {
       const like = `%${search}%`;
       base += ` AND (
         p.sku_id ILIKE :like OR
         p.product_name ILIKE :like OR
-        p.description ILIKE :like 
+        p.description ILIKE :like
       )`;
       replacements.like = like;
     }
@@ -294,7 +292,10 @@ const getProductAddonList = async (req, res) => {
         try {
           ids = JSON.parse(ids);
         } catch {
-          ids = ids.split(",").map(id => Number(id.trim())).filter(Boolean);
+          ids = ids
+            .split(",")
+            .map((id) => Number(id.trim()))
+            .filter(Boolean);
         }
       }
 
@@ -368,9 +369,7 @@ const getProductById = async (req, res) => {
     // If product has add-ons, fetch mapped add-on product info
     let addon_products = [];
     const isAddOn =
-      row.is_addOn === true ||
-      row.is_addOn === 1 ||
-      row.is_addOn === "true";
+      row.is_addOn === true || row.is_addOn === 1 || row.is_addOn === "true";
     if (isAddOn) {
       const [addonRows] = await sequelize.query(
         `
@@ -421,7 +420,7 @@ const getProductById = async (req, res) => {
         {
           replacements: { materialTypeId: row.material_type_id },
           type: sequelize.QueryTypes.SELECT,
-          plain: true
+          plain: true,
         }
       );
       materialTypeName = material ? material.material_type : null;
@@ -431,7 +430,7 @@ const getProductById = async (req, res) => {
     return commonService.okResponse(res, {
       product: {
         ...row.get({ plain: true }),
-        material_type_name: materialTypeName
+        material_type_name: materialTypeName,
       },
       item_details: itemsWithAdds,
       addon_products,
@@ -453,7 +452,7 @@ const updateProduct = async (req, res) => {
     const product = await models.Product.findByPk(id, { transaction: t });
     if (!product) {
       await t.rollback();
-      return commonService.notFound(res, 'Product not found');
+      return commonService.notFound(res, "Product not found");
     }
 
     await product.update(productData, { transaction: t });
@@ -462,25 +461,25 @@ const updateProduct = async (req, res) => {
     await models.ProductAdditionalDetail.destroy({
       where: { product_id: id },
       transaction: t,
-      force: true
+      force: true,
     });
 
     await models.ProductItemDetail.destroy({
       where: { product_id: id },
       transaction: t,
-      force: true
+      force: true,
     });
 
     await models.ProductAddOn.destroy({
       where: { product_id: id },
       force: true,
-      transaction: t
+      transaction: t,
     });
 
     await models.ProductVariant.destroy({
       where: { product_id: id },
       force: true,
-      transaction: t
+      transaction: t,
     });
 
     // 3. Create new item details and additional details
@@ -495,16 +494,19 @@ const updateProduct = async (req, res) => {
         );
 
         // Create additional details for this item
-        if (Array.isArray(additional_details) && additional_details.length > 0) {
-          const addDetails = additional_details.map(addDetail => ({
+        if (
+          Array.isArray(additional_details) &&
+          additional_details.length > 0
+        ) {
+          const addDetails = additional_details.map((addDetail) => ({
             ...addDetail,
             item_detail_id: item.id,
-            product_id: id
+            product_id: id,
           }));
 
           await models.ProductAdditionalDetail.bulkCreate(addDetails, {
             transaction: t,
-            validate: true
+            validate: true,
           });
         }
       }
@@ -513,7 +515,7 @@ const updateProduct = async (req, res) => {
     // 4. Recalculate and update summary
     const items = await models.ProductItemDetail.findAll({
       where: { product_id: id },
-      transaction: t
+      transaction: t,
     });
 
     const summary = computeSummaries(items, product.product_type);
@@ -524,10 +526,9 @@ const updateProduct = async (req, res) => {
     // 5. Return the updated product with all details
     const fullProduct = await getProductWithDetails(id);
     return commonService.okResponse(res, fullProduct);
-
   } catch (err) {
     await t.rollback();
-    console.error('Error updating product:', err);
+    console.error("Error updating product:", err);
     return commonService.handleError(res, err);
   }
 };
@@ -539,7 +540,11 @@ const deleteProduct = async (req, res) => {
     const productId = req.params.id;
 
     // Get product
-    const product = await commonService.findById(models.Product, productId, res);
+    const product = await commonService.findById(
+      models.Product,
+      productId,
+      res
+    );
     if (!product) {
       await t.rollback();
       return;
@@ -548,13 +553,13 @@ const deleteProduct = async (req, res) => {
     // Get all item details of the product
     const itemDetails = await models.ProductItemDetail.findAll({
       where: { product_id: productId },
-      transaction: t
+      transaction: t,
     });
 
     // Block delete if ANY quantity > 0
     const hasStock = itemDetails.some((i) => Number(i.quantity) > 0);
 
-  if (hasStock) {
+    if (hasStock) {
       await t.rollback();
       return commonService.badRequest(
         res,
@@ -565,25 +570,25 @@ const deleteProduct = async (req, res) => {
     // Delete Additional Details (soft)
     await models.ProductAdditionalDetail.destroy({
       where: { product_id: productId },
-      transaction: t
+      transaction: t,
     });
 
     //  Delete Item Details (soft)
     await models.ProductItemDetail.destroy({
       where: { product_id: productId },
-      transaction: t
+      transaction: t,
     });
 
     //  Delete Add Ons (soft)
     await models.ProductAddOn.destroy({
       where: { product_id: productId },
-      transaction: t
+      transaction: t,
     });
 
     // Delete Product Variants (soft)
     await models.ProductVariant.destroy({
       where: { product_id: productId },
-      transaction: t
+      transaction: t,
     });
 
     //  Finally delete the product (soft)
@@ -591,7 +596,6 @@ const deleteProduct = async (req, res) => {
 
     await t.commit();
     return commonService.noContentResponse(res);
-
   } catch (err) {
     await t.rollback();
     return commonService.handleError(res, err);
@@ -601,9 +605,16 @@ const deleteProduct = async (req, res) => {
 // Get details for Web list page (with filters and search)
 const getAllProductDetails = async (req, res) => {
   try {
-    const { material_type_id, category_id, subcategory_id, grn_id, ref_no_id, search } = req.query;
+    const {
+      material_type_id,
+      category_id,
+      subcategory_id,
+      grn_id,
+      ref_no_id,
+      search,
+    } = req.query;
 
-    let query = ` 
+    let query = `
       SELECT
         p.id,
         p.product_code,
@@ -696,7 +707,9 @@ const getAllProductDetails = async (req, res) => {
 
       const itemIds = itemDetails.map((it) => it.id);
       const additionalDetails = itemIds.length
-        ? await models.ProductAdditionalDetail.findAll({ where: { item_detail_id: itemIds } })
+        ? await models.ProductAdditionalDetail.findAll({
+            where: { item_detail_id: itemIds },
+          })
         : [];
 
       // Group additional by item_detail_id
@@ -738,7 +751,7 @@ const searchProductBySku = async (req, res) => {
     const { sku } = req.query;
 
     if (!sku) {
-      return commonService.badRequest(res, 'SKU is required for search');
+      return commonService.badRequest(res, "SKU is required for search");
     }
 
     const directProduct = await models.Product.findOne({
@@ -781,7 +794,7 @@ const searchProductBySku = async (req, res) => {
     }
 
     if (!finalProduct) {
-      return commonService.notFound(res, 'No product found for given SKU');
+      return commonService.notFound(res, "No product found for given SKU");
     }
 
     const result = {
@@ -791,7 +804,124 @@ const searchProductBySku = async (req, res) => {
 
     return commonService.okResponse(res, [result]);
   } catch (error) {
-    console.error('Error searching products by SKU:', error);
+    console.error("Error searching products by SKU:", error);
+    return commonService.handleError(res, error);
+  }
+};
+const searchProductBySkuNew = async (req, res) => {
+  try {
+    const { sku } = req.query;
+    let products = [];
+    let itemDetails = [];
+
+    // ---------------------------
+    // CASE 1 → SKU not provided → return ALL products + all items
+    // ---------------------------
+    if (!sku || sku.trim() === "") {
+      const allProducts = await models.Product.findAll({ raw: true });
+      const allItems = await models.ProductItemDetail.findAll({ raw: true });
+
+      let output = [];
+
+      for (const product of allProducts) {
+        const productItems = allItems.filter(
+          (i) => i.product_id === product.id
+        );
+
+        productItems.forEach((item) => {
+          let name = product.product_name;
+
+          // add variation in name (only when With Variations)
+          if (product.variation_type === "With Variations") {
+            try {
+              const varObj = JSON.parse(item.variation);
+              const val = Object.values(varObj)[0];
+              if (val) name = `${name} - ${val}`;
+            } catch {}
+          }
+
+          output.push({
+            sku_id: product.sku_id,
+            product_name: name,
+            purity: product.purity,
+            branch_id: product.branch_id,
+            product_id: product.id,
+            product_item_details_id: item.id,
+            hsn_code: product.hsn_code,
+            rate: item.base_price,
+          });
+        });
+      }
+
+      return commonService.okResponse(res, output);
+    }
+
+    // ---------------------------
+    // CASE 2 → SKU provided → existing logic
+    // ---------------------------
+
+    const directProduct = await models.Product.findOne({
+      where: { sku_id: sku },
+      raw: true,
+    });
+
+    const itemDetail = await models.ProductItemDetail.findOne({
+      where: { sku_id: sku },
+      raw: true,
+    });
+
+    let parentProduct = null;
+    if (itemDetail) {
+      parentProduct = await models.Product.findOne({
+        where: { id: itemDetail.product_id },
+        raw: true,
+      });
+    }
+
+    let finalProduct = null;
+    let finalItemDetails = [];
+
+    if (directProduct) {
+      finalProduct = directProduct;
+      finalItemDetails = await models.ProductItemDetail.findAll({
+        where: { product_id: directProduct.id },
+        raw: true,
+      });
+    } else if (parentProduct && itemDetail) {
+      finalProduct = parentProduct;
+      finalItemDetails = [itemDetail];
+    }
+
+    if (!finalProduct) {
+      return commonService.notFound(res, "No product found for given SKU");
+    }
+
+    const flatResponse = finalItemDetails.map((item) => {
+      let name = finalProduct.product_name;
+
+      if (finalProduct.variation_type === "With Variations") {
+        try {
+          const varObj = JSON.parse(item.variation);
+          const val = Object.values(varObj)[0];
+          if (val) name = `${name} - ${val}`;
+        } catch {}
+      }
+
+      return {
+        sku_id: finalProduct.sku_id,
+        product_name: name,
+        purity: finalProduct.purity,
+        branch_id: finalProduct.branch_id,
+        product_id: finalProduct.id,
+        product_item_details_id: item.id,
+        hsn_code: finalProduct.hsn_code,
+        rate: item.base_price,
+      };
+    });
+
+    return commonService.okResponse(res, flatResponse);
+  } catch (error) {
+    console.error("Error searching products by SKU:", error);
     return commonService.handleError(res, error);
   }
 };
@@ -804,26 +934,23 @@ const updateProductStatus = async (req, res) => {
 
     // Validate status
     if (status === undefined) {
-      return commonService.badRequest(res, 'Status is required');
+      return commonService.badRequest(res, "Status is required");
     }
 
     const productData = await models.Product.findByPk(id);
 
     if (!productData) {
-      return commonService.notFound(res, 'Product not found');
+      return commonService.notFound(res, "Product not found");
     }
 
     // Update product status
-    await models.Product.update(
-      { status },
-      { where: { id } }
-    );
+    await models.Product.update({ status }, { where: { id } });
 
     return commonService.okResponse(res, {
-      message: 'Product status updated successfully' });
-
+      message: "Product status updated successfully",
+    });
   } catch (err) {
-    console.error('Error updating product status:', err);
+    console.error("Error updating product status:", err);
     return commonService.handleError(res, err);
   }
 };
@@ -839,5 +966,6 @@ module.exports = {
   getAllProductDetails,
   getProductAddonList,
   searchProductBySku,
-  updateProductStatus
+  updateProductStatus,
+  searchProductBySkuNew,
 };
