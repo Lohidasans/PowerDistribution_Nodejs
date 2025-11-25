@@ -272,6 +272,18 @@ const listInstallmentAmounts = async (req, res) => {
   }
 };
 
+const listSchemeNumbers = async (_req, res) => {
+  try {
+    const rows = await models.Scheme.findAll({
+      attributes: ["id", "scheme_name", "scheme_code"],
+      order: [["scheme_name", "ASC"]],
+    });
+    return commonService.okResponse(res, { scheme_data: rows });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
 const generateSchemeCode = async (req, res) => {
   try {
     const { prefix } = req.query || {};
@@ -303,5 +315,6 @@ module.exports = {
   listNomineeRelations,
   listInstallmentAmounts,
   generateSchemeCode,
+  listSchemeNumbers
 
 };

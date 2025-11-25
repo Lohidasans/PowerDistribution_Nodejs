@@ -289,11 +289,24 @@ const generateOldJewelCode = async (req, res) => {
   }
 };
 
+const listOldJewelDropdown = async (req, res) => {
+  try {
+  const rows = await models.OldJewel.findAll({
+    attributes: ["id", "old_jewel_code"],
+    order: [["old_jewel_code", "ASC"]],
+  });
+    return commonService.okResponse(res, { old_jewel_code: rows });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
 module.exports = {
   createOldJewel,
   getAllOldJewels,
   getOldJewelById,
   updateOldJewel,
   deleteOldJewel,
-  generateOldJewelCode
+  generateOldJewelCode,
+  listOldJewelDropdown
 };

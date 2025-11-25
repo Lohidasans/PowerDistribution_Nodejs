@@ -225,10 +225,24 @@ const deleteSalesReturn = async (req, res) => {
   }
 };
 
+// Dropdown: listSalesReturnDropdown -> [{ id, sales_return_no }]
+const listSalesReturnDropdown = async (req, res) => {
+  try {
+    const rows = await models.SalesReturn.findAll({
+      attributes: ["id", "sales_return_no"],
+      order: [["sales_return_no", "ASC"]],
+    });
+    return commonService.okResponse(res, { sales_return_no: rows });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
 module.exports = {
   generateSalesReturnNo,
   createSalesReturn,
   getSalesReturnById,
   listSalesReturns,
-  deleteSalesReturn
+  deleteSalesReturn,
+  listSalesReturnDropdown
 };

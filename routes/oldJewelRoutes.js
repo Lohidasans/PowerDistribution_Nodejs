@@ -5,6 +5,7 @@ const svc = require('../services/oldJewelService');
 router.post('/old-jewels', svc.createOldJewel);
 router.post('/old-jewels/code', svc.generateOldJewelCode);
 router.get('/old-jewels', svc.getAllOldJewels);
+router.get('/old-jewels/dropdown', svc.listOldJewelDropdown);
 router.get('/old-jewels/:id', svc.getOldJewelById);
 router.put('/old-jewels/:id', svc.updateOldJewel);
 router.delete('/old-jewels/:id', svc.deleteOldJewel);

@@ -11,6 +11,7 @@ router.put("/schemes/:id", schemeService.updateScheme);
 router.delete("/schemes/:id", schemeService.deleteScheme);
 
 // Dropdowns
+router.get("/dropdown/schemes", schemeService.listSchemeNumbers);
 router.get("/dropdown/scheme-types", schemeService.listSchemeTypes);
 router.get("/dropdown/scheme-durations", schemeService.listSchemeDurations);
 router.get("/dropdown/payment-frequencies", schemeService.listPaymentFrequencies);

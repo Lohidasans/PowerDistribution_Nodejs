@@ -259,6 +259,7 @@ const deleteSalesInvoice = async (req, res) => {
   }
 };
 
+// light search for  - Sales Return Search box
 const searchInvoices = async (req, res) => {
   try {
     const { invoice_no } = req.query;
@@ -319,11 +320,12 @@ const searchInvoices = async (req, res) => {
   }
 };
 
+
 module.exports = {
   generateSalesInvoiceNo,
   createSalesInvoice,
   getSalesInvoiceById,
   listSalesInvoices,
   deleteSalesInvoice,
-  searchInvoices
+  searchInvoices,
 };
