@@ -289,14 +289,21 @@ const getProductAddonList = async (req, res) => {
 
       // Parse JSON array string like "[1,2,3]"
       if (typeof ids === "string") {
-        try {
+        // Try JSON parse ONLY if it's an array like "[1,2,3]"
+        if (ids.trim().startsWith("[") && ids.trim().endsWith("]")) {
           ids = JSON.parse(ids);
-        } catch {
+        } else {
+          // treat as simple comma separated values
           ids = ids
             .split(",")
-            .map((id) => Number(id.trim()))
+            .map(n => Number(n.trim()))
             .filter(Boolean);
         }
+      }
+
+      // convert single number to array
+      if (typeof ids === "number") {
+        ids = [ids];
       }
 
       if (Array.isArray(ids) && ids.length > 0) {
