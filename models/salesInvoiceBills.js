@@ -76,6 +76,10 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
         defaultValue: false,
       },
+      amount_in_words: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
       status: {
         type: DataTypes.ENUM("Draft", "Printed", "Paid", "Cancelled"),
         allowNull: false,
