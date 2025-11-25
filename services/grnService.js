@@ -198,7 +198,7 @@ const deleteGrn = async (req, res) => {
   }
 };
 
-// List all GRNs with pagination and filters (raw SQL, joins only)
+// List all GRNs (NO pagination)
 const getAllGrns = async (req, res) => {
   try {
     const {
@@ -211,29 +211,24 @@ const getAllGrns = async (req, res) => {
 
     const replacements = {};
 
-    // WHERE conditions
     const whereConditions = [`g.deleted_at IS NULL`];
 
     if (vendor_id) {
       whereConditions.push(`g.vendor_id = :vendor_id`);
       replacements.vendor_id = vendor_id;
     }
-
     if (branch_id) {
       whereConditions.push(`g.branch_id = :branch_id`);
       replacements.branch_id = branch_id;
     }
-
     if (start_date) {
       whereConditions.push(`g.grn_date >= :start_date`);
       replacements.start_date = start_date;
     }
-
     if (end_date) {
       whereConditions.push(`g.grn_date <= :end_date`);
       replacements.end_date = end_date;
     }
-
     if (search) {
       whereConditions.push(
         `(g.grn_no ILIKE :search OR v.vendor_name ILIKE :search)`
@@ -246,19 +241,7 @@ const getAllGrns = async (req, res) => {
         ? `WHERE ${whereConditions.join(" AND ")}`
         : "WHERE g.deleted_at IS NULL";
 
-    // SUMMARY
-    const [summaryRows] = await sequelize.query(
-      `SELECT
-         COUNT(*) AS total_grns,
-         COUNT(*) FILTER (WHERE g.status_id = 1) AS updated_count,
-         COUNT(*) FILTER (WHERE g.status_id = 2) AS yet_to_update_count
-       FROM grns g
-       LEFT JOIN vendors v ON v.id = g.vendor_id
-       ${whereSql}`,
-      { replacements, type: sequelize.QueryTypes.SELECT }
-    );
-
-    // LIST ALL GRNS (NO PAGINATION)
+    // Fetch ALL GRNs
     const listRows = await sequelize.query(
       `SELECT
          g.id,
@@ -286,26 +269,31 @@ const getAllGrns = async (req, res) => {
       { replacements, type: sequelize.QueryTypes.SELECT }
     );
 
-    // BUSINESS LOGIC
+    // Apply business logic
+    let updatedCount = 0;
+    let yetToUpdateCount = 0;
+
     const transformedRows = listRows.map((row) => {
       const order = parseFloat(row.order) || 0;
-      const updatedVal =
-        row.total_grn_value !== null ? parseFloat(row.total_grn_value) : null;
+      const updatedVal = row.total_grn_value !== null ? parseFloat(row.total_grn_value) : null;
 
       let updated = 0;
       let yetToUpdate = 0;
-      let status_id = row.status_id;
+      let status_id = 1;
 
       if (updatedVal !== null) {
         updated = updatedVal;
         yetToUpdate = order - updatedVal;
-
         status_id = yetToUpdate === 0 ? 2 : 1;
       } else {
         updated = 0;
         yetToUpdate = order;
         status_id = 1;
       }
+
+      // Count using computed status
+      if (status_id === 2) updatedCount++;
+      else yetToUpdateCount++;
 
       return {
         ...row,
@@ -315,24 +303,13 @@ const getAllGrns = async (req, res) => {
       };
     });
 
-    // TOTAL COUNT (NO PAGINATION)
-    const [countRow] = await sequelize.query(
-      `SELECT COUNT(DISTINCT g.id) AS total
-       FROM grns g
-       LEFT JOIN vendors v ON v.id = g.vendor_id
-       ${whereSql}`,
-      { replacements, type: sequelize.QueryTypes.SELECT }
-    );
-
-    const total = parseInt(countRow.total, 10);
-
     return commonService.okResponse(res, {
       summary: {
-        totalGrns: parseInt(summaryRows.total_grns),
-        updated: parseInt(summaryRows.updated_count),
-        yetToUpdate: parseInt(summaryRows.yet_to_update_count),
+        totalGrns: transformedRows.length,
+        updated: updatedCount,
+        yetToUpdate: yetToUpdateCount,
       },
-      totalItems: total,
+      totalItems: transformedRows.length,
       data: transformedRows,
     });
   } catch (error) {
