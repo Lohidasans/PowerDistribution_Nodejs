@@ -84,7 +84,7 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
       },
       product_variations: {
-        type: DataTypes.STRING,//variation: "[name: finish, values: [regualr, Gold]]"
+        type: DataTypes.TEXT,//variation: "[name: finish, values: [regualr, Gold]]"
         allowNull: true,
       },
       is_addOn: {

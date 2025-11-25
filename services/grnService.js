@@ -380,9 +380,17 @@ const updateGrnStatus = async (grn_id) => {
 // GET: list of GRN numbers with full ProductGrnInfo + joined details
 const listGrnNumbers = async (req, res) => {
   try {
-    // 1.Fetch all GRNs
+    const { vendor_id } = req.query;
+
+    const whereCondition = {};
+    if (vendor_id) {
+      whereCondition.vendor_id = vendor_id;
+    }
+
+    // 1.Fetch filtered GRNs
     const grns = await models.Grn.findAll({
-      attributes: ["id", "grn_no", "grn_date"],
+      where: whereCondition,
+      attributes: ["id", "grn_no", "grn_date", "vendor_id"],
       order: [["created_at", "DESC"]],
       raw: true,
     });
@@ -393,34 +401,33 @@ const listGrnNumbers = async (req, res) => {
 
     const grnIds = grns.map((g) => g.id);
 
-    // 2.Fetch ALL grnItems for these GRNs (join extra names)
+    // 2.Fetch all grnItems for these GRNs
     const grnItems = await sequelize.query(
       `SELECT
-  gi.*,
-  mt.material_type AS material_type_name,
-  c.category_name,
-  sc.subcategory_name
-FROM "grnItems" gi
-LEFT JOIN "materialTypes" mt ON gi.material_type_id = mt.id
-LEFT JOIN categories c ON gi.category_id = c.id
-LEFT JOIN subcategories sc ON gi.subcategory_id = sc.id
-WHERE gi.grn_id IN (:grnIds)
-ORDER BY gi.id;
-    `,
+        gi.*,
+        mt.material_type AS material_type_name,
+        c.category_name,
+        sc.subcategory_name
+      FROM "grnItems" gi
+      LEFT JOIN "materialTypes" mt ON gi.material_type_id = mt.id
+      LEFT JOIN categories c ON gi.category_id = c.id
+      LEFT JOIN subcategories sc ON gi.subcategory_id = sc.id
+      WHERE gi.grn_id IN (:grnIds)
+      ORDER BY gi.id`,
       {
         replacements: { grnIds },
         type: sequelize.QueryTypes.SELECT,
       }
     );
 
-    // 3.Group items by grn_id
+    // 3.Group items
     const groupedItems = {};
     grnItems.forEach((item) => {
       if (!groupedItems[item.grn_id]) groupedItems[item.grn_id] = [];
       groupedItems[item.grn_id].push(item);
     });
 
-    // 4.Attach items under same field "grn_info_ids"
+    // 4.Attach items
     const enrichedGrns = grns.map((grn) => ({
       ...grn,
       grn_info_ids: groupedItems[grn.id] || [],
@@ -431,6 +438,7 @@ ORDER BY gi.id;
     return commonService.handleError(res, err);
   }
 };
+
 
 const generateGrnCode = async (req, res) => {
   try {
