@@ -114,52 +114,68 @@ const generateFiscalSeriesCode = async (model, field, prefix, { pad = 3 } = {}) 
   return `${cleanPrefix}${String(nextNumber).padStart(pad, "0")}`;
 };
 
-
 const generateProductSKUCode = async (prefixFromQuery = "", options = {}) => {
-  const {
-    pad = 3,          // 001, 002, 003
-    separator = "_",  // CJ_CER_001
-  } = options;
+  const { pad = 3, separator = "_" } = options;
 
-  // 1. Load Super Admin
+  // 1. Get Company Prefix (CJ, ABC, etc.)
   const superAdmin = await models.SuperAdminProfile.findOne({
     order: [["id", "ASC"]],
+    attributes: ["branch_sequence_value"],
+    raw: true,
   });
 
-  if (!superAdmin) {
-    throw new Error("Super Admin Profile not found");
+  if (!superAdmin || !superAdmin.branch_sequence_value) {
+    throw new Error("Company prefix not configured in Super Admin");
   }
 
-  // 2. Validate company base prefix
-  const companyPrefix = String(superAdmin.branch_sequence_value || "")
+  const companyPrefix = String(superAdmin.branch_sequence_value)
     .toUpperCase()
     .replace(/[^A-Z0-9]/g, "");
 
-  if (!companyPrefix) {
-    throw new Error("Company prefix missing in Super Admin Profile");
-  }
-
-  // 3. Clean prefixFromQuery
+  // 2. Clean Product Prefix (CHN, CER, RING, etc.)
   const cleanPrefix = String(prefixFromQuery || "")
     .toUpperCase()
+    .trim()
     .replace(/[^A-Z0-9]/g, "");
 
   if (!cleanPrefix) {
-    throw new Error("Invalid product prefix");
+    throw new Error("Product prefix is required");
   }
 
-  // 4. Use correct sequence field
-  const currentSeq = Number(superAdmin.product_sequence_value || 0);
-  const nextSeq = String(currentSeq + 1).padStart(pad, "0");
+  const likePattern = `${companyPrefix}${separator}${cleanPrefix}${separator}%`;
 
-  // 5. Final code: CJ_CER_001
-  const finalCode = [companyPrefix, cleanPrefix, nextSeq].join(separator);
+  console.log("Searching for pattern:", likePattern);
 
-  // 6. Update DB sequence
-  superAdmin.product_sequence_value = currentSeq + 1;
-  await superAdmin.save();
+  // 3. Find latest SKU with this prefix
+  const lastProduct = await models.Product.findOne({
+    where: {
+      sku_id: {
+        [Op.iLike]: likePattern   // Changed from product_code to sku_id
+      }
+    },
+    order: [["sku_id", "DESC"]],   // Changed from product_code to sku_id
+    attributes: ["sku_id"],         // Changed from product_code to sku_id
+    raw: true,
+  });
 
-  return finalCode;
+  let nextSeq = 1;
+
+  if (lastProduct && lastProduct.sku_id) {  // Check sku_id instead of product_code
+    console.log("Last product found:", lastProduct.sku_id);
+    const parts = lastProduct.sku_id.split(separator);
+    const lastNumber = parts[parts.length - 1];
+    const num = parseInt(lastNumber, 10);
+    if (!isNaN(num)) nextSeq = num + 1;
+  } else {
+    console.log("No existing product with prefix:", cleanPrefix);
+  }
+
+  // 4. Generate next SKU
+  const padded = String(nextSeq).padStart(pad, "0");
+  const finalSKU = `${companyPrefix}${separator}${cleanPrefix}${separator}${padded}`;
+
+  console.log("Generated SKU:", finalSKU);
+  return finalSKU;
 };
 
 module.exports = { 
