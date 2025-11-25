@@ -202,8 +202,6 @@ const deleteGrn = async (req, res) => {
 const getAllGrns = async (req, res) => {
   try {
     const {
-      page = 1,
-      limit = 10,
       vendor_id,
       branch_id,
       start_date,
@@ -211,27 +209,31 @@ const getAllGrns = async (req, res) => {
       search,
     } = req.query;
 
-    const offset = (page - 1) * limit;
-    const replacements = { limit: parseInt(limit), offset };
+    const replacements = {};
 
-    // Build WHERE
+    // WHERE conditions
     const whereConditions = [`g.deleted_at IS NULL`];
+
     if (vendor_id) {
       whereConditions.push(`g.vendor_id = :vendor_id`);
       replacements.vendor_id = vendor_id;
     }
+
     if (branch_id) {
       whereConditions.push(`g.branch_id = :branch_id`);
       replacements.branch_id = branch_id;
     }
+
     if (start_date) {
       whereConditions.push(`g.grn_date >= :start_date`);
       replacements.start_date = start_date;
     }
+
     if (end_date) {
       whereConditions.push(`g.grn_date <= :end_date`);
       replacements.end_date = end_date;
     }
+
     if (search) {
       whereConditions.push(
         `(g.grn_no ILIKE :search OR v.vendor_name ILIKE :search)`
@@ -256,35 +258,35 @@ const getAllGrns = async (req, res) => {
       { replacements, type: sequelize.QueryTypes.SELECT }
     );
 
+    // LIST ALL GRNS (NO PAGINATION)
     const listRows = await sequelize.query(
       `SELECT
-     g.id,
-     g.grn_no,
-     g.grn_date AS date,
-     g.status_id,
-     v.id AS vendor_id,
-     v.vendor_name,
-     v.vendor_image_url,
-     g.total_gross_wt_in_g AS "order",
-     u.email AS created_by,
-     p.total_grn_value
-   FROM grns g
-   LEFT JOIN vendors v ON v.id = g.vendor_id
-   LEFT JOIN "grnItems" gi ON gi.grn_id = g.id AND gi.deleted_at IS NULL
-   LEFT JOIN users u ON u.id = g.order_by_user_id
-   LEFT JOIN LATERAL (
-     SELECT total_grn_value
-     FROM products
-     WHERE grn_id = g.id
-   ) p ON true
-   ${whereSql}
-   GROUP BY g.id, v.id, v.vendor_name, v.vendor_image_url, u.email, p.total_grn_value
-   ORDER BY g.grn_date DESC, g.grn_no DESC
-   LIMIT :limit OFFSET :offset`,
+         g.id,
+         g.grn_no,
+         g.grn_date AS date,
+         g.status_id,
+         v.id AS vendor_id,
+         v.vendor_name,
+         v.vendor_image_url,
+         g.total_gross_wt_in_g AS "order",
+         u.email AS created_by,
+         p.total_grn_value
+       FROM grns g
+       LEFT JOIN vendors v ON v.id = g.vendor_id
+       LEFT JOIN "grnItems" gi ON gi.grn_id = g.id AND gi.deleted_at IS NULL
+       LEFT JOIN users u ON u.id = g.order_by_user_id
+       LEFT JOIN LATERAL (
+         SELECT total_grn_value
+         FROM products
+         WHERE grn_id = g.id
+       ) p ON true
+       ${whereSql}
+       GROUP BY g.id, v.id, v.vendor_name, v.vendor_image_url, u.email, p.total_grn_value
+       ORDER BY g.created_at DESC, g.grn_date DESC, g.grn_no DESC`,
       { replacements, type: sequelize.QueryTypes.SELECT }
     );
 
-    // Apply business logic to each row
+    // BUSINESS LOGIC
     const transformedRows = listRows.map((row) => {
       const order = parseFloat(row.order) || 0;
       const updatedVal =
@@ -294,19 +296,12 @@ const getAllGrns = async (req, res) => {
       let yetToUpdate = 0;
       let status_id = row.status_id;
 
-      // CASE 1 & CASE 2: total_grn_value exists
       if (updatedVal !== null) {
         updated = updatedVal;
         yetToUpdate = order - updatedVal;
 
-        // CASE 2 — Completed
-        if (yetToUpdate === 0) {
-          status_id = 2;
-        } else {
-          status_id = 1;
-        }
+        status_id = yetToUpdate === 0 ? 2 : 1;
       } else {
-        // CASE 3 — No GRN value
         updated = 0;
         yetToUpdate = order;
         status_id = 1;
@@ -320,7 +315,7 @@ const getAllGrns = async (req, res) => {
       };
     });
 
-    // TOTAL COUNT
+    // TOTAL COUNT (NO PAGINATION)
     const [countRow] = await sequelize.query(
       `SELECT COUNT(DISTINCT g.id) AS total
        FROM grns g
@@ -337,12 +332,7 @@ const getAllGrns = async (req, res) => {
         updated: parseInt(summaryRows.updated_count),
         yetToUpdate: parseInt(summaryRows.yet_to_update_count),
       },
-      pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        totalPages: Math.ceil(total / limit),
-        totalItems: total,
-      },
+      totalItems: total,
       data: transformedRows,
     });
   } catch (error) {
@@ -350,6 +340,7 @@ const getAllGrns = async (req, res) => {
     return commonService.handleError(res, error);
   }
 };
+
 
 // Reusable status updater
 const updateGrnStatus = async (grn_id) => {
