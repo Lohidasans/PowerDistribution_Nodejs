@@ -210,7 +210,6 @@ const getAllGrns = async (req, res) => {
     } = req.query;
 
     const replacements = {};
-
     const whereConditions = [`g.deleted_at IS NULL`];
 
     if (vendor_id) {
@@ -241,7 +240,7 @@ const getAllGrns = async (req, res) => {
         ? `WHERE ${whereConditions.join(" AND ")}`
         : "WHERE g.deleted_at IS NULL";
 
-    // Fetch ALL GRNs
+    // Fetch ALL GRNs with calculated weights
     const listRows = await sequelize.query(
       `SELECT
          g.id,
@@ -251,20 +250,32 @@ const getAllGrns = async (req, res) => {
          v.id AS vendor_id,
          v.vendor_name,
          v.vendor_image_url,
-         g.total_gross_wt_in_g AS "order",
+         COALESCE(gi.total_net_weight, 0) AS "order",
          u.email AS created_by,
-         p.total_grn_value
+         COALESCE(pi.total_updated_weight, 0) AS updated_weight
        FROM grns g
        LEFT JOIN vendors v ON v.id = g.vendor_id
-       LEFT JOIN "grnItems" gi ON gi.grn_id = g.id AND gi.deleted_at IS NULL
        LEFT JOIN users u ON u.id = g.order_by_user_id
-       LEFT JOIN LATERAL (
-         SELECT sum(total_grn_value) as total_grn_value
-         FROM products
-         WHERE grn_id = g.id
-       ) p ON true
+       LEFT JOIN (
+         SELECT 
+           grn_id, 
+           COALESCE(SUM(net_wt_in_g), 0) as total_net_weight
+         FROM "grnItems"
+         WHERE deleted_at IS NULL
+         GROUP BY grn_id
+       ) gi ON gi.grn_id = g.id
+       LEFT JOIN (
+        SELECT 
+          g.id as grn_id,
+          COALESCE(SUM(pid.net_weight), 0) as total_updated_weight
+        FROM grns g
+        JOIN "grnItems" gi ON gi.grn_id = g.id AND gi.deleted_at IS NULL
+        JOIN products p ON p.grn_id = g.id AND p.deleted_at IS NULL
+        JOIN "productItemDetails" pid ON pid.product_id = p.id AND pid.deleted_at IS NULL
+        GROUP BY g.id
+      ) pi ON pi.grn_id = g.id
        ${whereSql}
-       GROUP BY g.id, v.id, v.vendor_name, v.vendor_image_url, u.email, p.total_grn_value
+       GROUP BY g.id, v.id, v.vendor_name, v.vendor_image_url, u.email, gi.total_net_weight, pi.total_updated_weight
        ORDER BY g.created_at DESC, g.grn_date DESC, g.grn_no DESC`,
       { replacements, type: sequelize.QueryTypes.SELECT }
     );
@@ -275,21 +286,9 @@ const getAllGrns = async (req, res) => {
 
     const transformedRows = listRows.map((row) => {
       const order = parseFloat(row.order) || 0;
-      const updatedVal = row.total_grn_value !== null ? parseFloat(row.total_grn_value) : null;
-
-      let updated = 0;
-      let yetToUpdate = 0;
-      let status_id = 1;
-
-      if (updatedVal !== null) {
-        updated = updatedVal;
-        yetToUpdate = order - updatedVal;
-        status_id = yetToUpdate === 0 ? 2 : 1;
-      } else {
-        updated = 0;
-        yetToUpdate = order;
-        status_id = 1;
-      }
+      const updated = parseFloat(row.updated_weight) || 0;
+      const yetToUpdate = Math.max(0, order - updated);
+      const status_id = yetToUpdate <= 0.001 ? 2 : 1; // Using small epsilon for float comparison
 
       // Count using computed status
       if (status_id === 2) updatedCount++;
@@ -297,8 +296,9 @@ const getAllGrns = async (req, res) => {
 
       return {
         ...row,
-        updated,
-        yetToUpdate,
+        order: parseFloat(order.toFixed(3)),
+        updated: parseFloat(updated.toFixed(3)),
+        yetToUpdate: parseFloat(yetToUpdate.toFixed(3)),
         status_id,
       };
     });
@@ -317,7 +317,6 @@ const getAllGrns = async (req, res) => {
     return commonService.handleError(res, error);
   }
 };
-
 
 // GET: list of GRN numbers with full ProductGrnInfo + joined details
 const listGrnNumbers = async (req, res) => {
