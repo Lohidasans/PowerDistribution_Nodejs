@@ -815,58 +815,50 @@ const searchProductBySku = async (req, res) => {
     return commonService.handleError(res, error);
   }
 };
+
 const searchProductBySkuNew = async (req, res) => {
   try {
     const { sku } = req.query;
-    let products = [];
-    let itemDetails = [];
 
-    // ---------------------------
-    // CASE 1 → SKU not provided → return ALL products + all items
-    // ---------------------------
+    // Helper: convert product + item → flat response object
+    const formatItem = (product, item) => {
+      let name = product.product_name;
+
+      if (product.variation_type === "With Variations") {
+        try {
+          const varObj = JSON.parse(item.variation);
+          const val = Object.values(varObj)[0];
+          if (val) name += ` - ${val}`;
+        } catch { }
+      }
+
+      return {
+        sku_id: product.sku_id,
+        product_name: name,
+        purity: product.purity,
+        branch_id: product.branch_id,
+        product_id: product.id,
+        product_item_details_id: item.id,
+        hsn_code: product.hsn_code,
+        rate: item.base_price,
+      };
+    };
+
+    // CASE 1 → No SKU supplied
     if (!sku || sku.trim() === "") {
       const allProducts = await models.Product.findAll({ raw: true });
       const allItems = await models.ProductItemDetail.findAll({ raw: true });
 
-      let output = [];
-
-      for (const product of allProducts) {
-        const productItems = allItems.filter(
-          (i) => i.product_id === product.id
-        );
-
-        productItems.forEach((item) => {
-          let name = product.product_name;
-
-          // add variation in name (only when With Variations)
-          if (product.variation_type === "With Variations") {
-            try {
-              const varObj = JSON.parse(item.variation);
-              const val = Object.values(varObj)[0];
-              if (val) name = `${name} - ${val}`;
-            } catch {}
-          }
-
-          output.push({
-            sku_id: product.sku_id,
-            product_name: name,
-            purity: product.purity,
-            branch_id: product.branch_id,
-            product_id: product.id,
-            product_item_details_id: item.id,
-            hsn_code: product.hsn_code,
-            rate: item.base_price,
-          });
-        });
-      }
+      // join all products with their items
+      const output = allItems.map((item) => {
+        const product = allProducts.find((p) => p.id === item.product_id);
+        return formatItem(product, item);
+      });
 
       return commonService.okResponse(res, output);
     }
 
-    // ---------------------------
-    // CASE 2 → SKU provided → existing logic
-    // ---------------------------
-
+    // CASE 2 → SKU provided
     const directProduct = await models.Product.findOne({
       where: { sku_id: sku },
       raw: true,
@@ -877,61 +869,39 @@ const searchProductBySkuNew = async (req, res) => {
       raw: true,
     });
 
-    let parentProduct = null;
-    if (itemDetail) {
-      parentProduct = await models.Product.findOne({
-        where: { id: itemDetail.product_id },
-        raw: true,
-      });
-    }
-
-    let finalProduct = null;
-    let finalItemDetails = [];
+    let product = directProduct;
+    let items = [];
 
     if (directProduct) {
-      finalProduct = directProduct;
-      finalItemDetails = await models.ProductItemDetail.findAll({
+      // If product SKU matched, return all its item variations
+      items = await models.ProductItemDetail.findAll({
         where: { product_id: directProduct.id },
         raw: true,
       });
-    } else if (parentProduct && itemDetail) {
-      finalProduct = parentProduct;
-      finalItemDetails = [itemDetail];
+    } else if (itemDetail) {
+      // If item SKU matched, fetch its parent product
+      product = await models.Product.findOne({
+        where: { id: itemDetail.product_id },
+        raw: true,
+      });
+      items = [itemDetail];
     }
 
-    if (!finalProduct) {
+    if (!product) {
       return commonService.notFound(res, "No product found for given SKU");
     }
 
-    const flatResponse = finalItemDetails.map((item) => {
-      let name = finalProduct.product_name;
-
-      if (finalProduct.variation_type === "With Variations") {
-        try {
-          const varObj = JSON.parse(item.variation);
-          const val = Object.values(varObj)[0];
-          if (val) name = `${name} - ${val}`;
-        } catch {}
-      }
-
-      return {
-        sku_id: finalProduct.sku_id,
-        product_name: name,
-        purity: finalProduct.purity,
-        branch_id: finalProduct.branch_id,
-        product_id: finalProduct.id,
-        product_item_details_id: item.id,
-        hsn_code: finalProduct.hsn_code,
-        rate: item.base_price,
-      };
-    });
+    // Convert to flat response
+    const flatResponse = items.map((i) => formatItem(product, i));
 
     return commonService.okResponse(res, flatResponse);
+
   } catch (error) {
     console.error("Error searching products by SKU:", error);
     return commonService.handleError(res, error);
   }
 };
+
 
 // Update Product Status API
 const updateProductStatus = async (req, res) => {
