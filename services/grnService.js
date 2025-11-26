@@ -259,7 +259,7 @@ const getAllGrns = async (req, res) => {
        LEFT JOIN "grnItems" gi ON gi.grn_id = g.id AND gi.deleted_at IS NULL
        LEFT JOIN users u ON u.id = g.order_by_user_id
        LEFT JOIN LATERAL (
-         SELECT total_grn_value
+         SELECT sum(total_grn_value) as total_grn_value
          FROM products
          WHERE grn_id = g.id
        ) p ON true
