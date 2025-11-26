@@ -179,6 +179,17 @@ const deleteCategory = async (req, res) => {
   if (!entity) return;
 
   try {
+    // Check if Subcategories exist for this Category
+    const subcatCount = await models.Subcategory.count({
+      where: { category_id: req.params.id }
+    });
+
+    if (subcatCount > 0) {
+      return commonService.badRequest(
+        res,
+        "Cannot delete category. Subcategories exist under this category."
+      );
+    }
     await entity.destroy();
     return commonService.noContentResponse(res);
   } catch (err) {
