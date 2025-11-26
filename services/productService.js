@@ -902,7 +902,6 @@ const searchProductBySkuNew = async (req, res) => {
   }
 };
 
-
 // Update Product Status API
 const updateProductStatus = async (req, res) => {
   try {
@@ -930,6 +929,82 @@ const updateProductStatus = async (req, res) => {
     console.error("Error updating product status:", err);
     return commonService.handleError(res, err);
   }
+};
+
+// services/priceCalculationService.js
+
+const calculateSellingPrice = async (product, item, models) => {
+  // 1. Get Material Rate Per Gram
+  let materialRate;
+  if (product.product_type === "Piece") {
+    materialRate = parseFloat(item.rate_per_gram) || 0;
+  } else { // Weight based
+    const material = await models.MaterialType.findByPk(product.material_type_id, { raw: true });
+    materialRate = parseFloat(material?.material_price) || 0;
+  }
+
+  // 2. Material Contribution
+  const netWeight = parseFloat(item.net_weight) || 0;
+  const materialContribution = materialRate * netWeight;
+
+  // 3. Stone Value
+  const stoneValue = parseFloat(item.stone_value) || 0;
+
+  // 4. Additional Details Sum
+  const additionalDetails = await models.ProductAdditionalDetail.findAll({
+    where: { item_detail_id: item.id },
+    raw: true
+  });
+  const additionalDetailsSum = additionalDetails.reduce((sum, detail) => {
+    return sum + (parseFloat(detail.value) || 0);
+  }, 0);
+
+  // 5. Making Charge Calculation
+  let makingCharge = 0;
+  const makingChargeValue = parseFloat(item.making_charge) || 0;
+  switch (item.making_charge_type) {
+    case 'Per Gram':
+      makingCharge = makingChargeValue * netWeight;
+      break;
+    case 'Percentage':
+      makingCharge = (makingChargeValue / 100) * materialContribution;
+      break;
+    case 'Amount':
+      makingCharge = makingChargeValue;
+      break;
+  }
+
+  // 6. Wastage Calculation
+  let wastage = 0;
+  const wastageValue = parseFloat(item.wastage) || 0;
+  switch (item.wastage_type) {
+    case 'Per Gram':
+      wastage = wastageValue * netWeight;
+      break;
+    case 'Percentage':
+      wastage = (wastageValue / 100) * materialContribution;
+      break;
+    case 'Amount':
+      wastage = wastageValue;
+      break;
+  }
+
+  // 7. Final Selling Price
+  const sellingPrice = materialContribution + makingCharge + wastage + stoneValue + additionalDetailsSum;
+
+  return {
+    material_rate_per_gram: materialRate,
+    material_contribution: materialContribution,
+    making_charge: makingCharge,
+    wastage: wastage,
+    stone_value: stoneValue,
+    additional_details_value: additionalDetailsSum,
+    selling_price: sellingPrice
+  };
+};
+
+module.exports = {
+  calculateSellingPrice
 };
 
 module.exports = {
