@@ -564,15 +564,15 @@ const deleteProduct = async (req, res) => {
     });
 
     // Block delete if ANY quantity > 0
-    const hasStock = itemDetails.some((i) => Number(i.quantity) > 0);
+    // const hasStock = itemDetails.some((i) => Number(i.quantity) > 0);
 
-    if (hasStock) {
-      await t.rollback();
-      return commonService.badRequest(
-        res,
-        "Cannot delete product. Quantity is not zero for all item details."
-      );
-    }
+    // if (hasStock) {
+    //   await t.rollback();
+    //   return commonService.badRequest(
+    //     res,
+    //     "Cannot delete product. Quantity is not zero for all item details."
+    //   );
+    // }
 
     // Delete Additional Details (soft)
     await models.ProductAdditionalDetail.destroy({
@@ -821,7 +821,7 @@ const searchProductBySkuNew = async (req, res) => {
     const { sku } = req.query;
 
     // Helper: convert product + item → flat response object
-    const formatItem = (product, item) => {
+    const formatItem = async (product, item) => {  // Made async
       let name = product.product_name;
 
       if (product.variation_type === "With Variations") {
@@ -832,42 +832,47 @@ const searchProductBySkuNew = async (req, res) => {
         } catch { }
       }
 
+      // Add await here
+      const priceDetails = await calculateSellingPrice(product, item, models);
+
       return {
-        sku_id: product.sku_id,
+        sku_id: item.sku_id || product.sku_id,  // Use item.sku_id if available
         product_name: name,
         purity: product.purity,
         branch_id: product.branch_id,
         product_id: product.id,
         product_item_details_id: item.id,
         hsn_code: product.hsn_code,
-        rate: item.base_price,
+        base_price: item.base_price,
+        net_weight: item.net_weight,
+        ...priceDetails
       };
     };
 
     // CASE 1 → No SKU supplied
     if (!sku || sku.trim() === "") {
-      const allProducts = await models.Product.findAll({ raw: true });
-      const allItems = await models.ProductItemDetail.findAll({ raw: true });
+      const [allProducts, allItems] = await Promise.all([
+        models.Product.findAll({ raw: true }),
+        models.ProductItemDetail.findAll({ raw: true })
+      ]);
 
-      // join all products with their items
-      const output = allItems.map((item) => {
-        const product = allProducts.find((p) => p.id === item.product_id);
-        return formatItem(product, item);
-      });
+      // Process items in parallel
+      const output = await Promise.all(
+        allItems.map(async (item) => {
+          const product = allProducts.find(p => p.id === item.product_id);
+          return product ? formatItem(product, item) : null;
+        })
+      );
 
-      return commonService.okResponse(res, output);
+      // Filter out any null items (in case product wasn't found)
+      return commonService.okResponse(res, output.filter(Boolean));
     }
 
     // CASE 2 → SKU provided
-    const directProduct = await models.Product.findOne({
-      where: { sku_id: sku },
-      raw: true,
-    });
-
-    const itemDetail = await models.ProductItemDetail.findOne({
-      where: { sku_id: sku },
-      raw: true,
-    });
+    const [directProduct, itemDetail] = await Promise.all([
+      models.Product.findOne({ where: { sku_id: sku }, raw: true }),
+      models.ProductItemDetail.findOne({ where: { sku_id: sku }, raw: true })
+    ]);
 
     let product = directProduct;
     let items = [];
@@ -891,14 +896,101 @@ const searchProductBySkuNew = async (req, res) => {
       return commonService.notFound(res, "No product found for given SKU");
     }
 
-    // Convert to flat response
-    const flatResponse = items.map((i) => formatItem(product, i));
+    // Convert to flat response with price calculations
+    const flatResponse = await Promise.all(
+      items.map(item => formatItem(product, item))
+    );
 
     return commonService.okResponse(res, flatResponse);
 
   } catch (error) {
     console.error("Error searching products by SKU:", error);
     return commonService.handleError(res, error);
+  }
+};
+
+const calculateSellingPrice = async (product, item, models) => {
+  try {
+    // 1. Get Material Rate Per Gram
+    let materialRate;
+    if (product.product_type === "Piece") {
+      materialRate = parseFloat(item.rate_per_gram) || 0;
+    } else { // Weight based
+      const material = await models.MaterialType.findByPk(product.material_type_id, { raw: true });
+      materialRate = parseFloat(material?.material_price) || 0;
+    }
+
+    // 2. Material Contribution
+    const netWeight = parseFloat(item.net_weight) || 0;
+    const materialContribution = materialRate * netWeight;
+
+    // 3. Stone Value
+    const stoneValue = parseFloat(item.stone_value) || 0;
+
+    // 4. Additional Details Sum
+    const additionalDetails = await models.ProductAdditionalDetail.findAll({
+      where: { item_detail_id: item.id },
+      raw: true
+    });
+
+    const additionalDetailsSum = additionalDetails.reduce((sum, detail) => {
+      return sum + (parseFloat(detail.value) || 0);
+    }, 0);
+
+    // 5. Making Charge Calculation
+    let makingCharge = 0;
+    const makingChargeValue = parseFloat(item.making_charge) || 0;
+    switch (item.making_charge_type) {
+      case 'Per Gram':
+        makingCharge = makingChargeValue * netWeight;
+        break;
+      case 'Percentage':
+        makingCharge = (makingChargeValue / 100) * materialContribution;
+        break;
+      case 'Amount':
+        makingCharge = makingChargeValue;
+        break;
+    }
+
+    // 6. Wastage Calculation
+    let wastage = 0;
+    const wastageValue = parseFloat(item.wastage) || 0;
+    switch (item.wastage_type) {
+      case 'Per Gram':
+        wastage = wastageValue * netWeight;
+        break;
+      case 'Percentage':
+        wastage = (wastageValue / 100) * materialContribution;
+        break;
+      case 'Amount':
+        wastage = wastageValue;
+        break;
+    }
+
+    // 7. Final Selling Price
+    const sellingPrice = materialContribution + makingCharge + wastage + stoneValue + additionalDetailsSum;
+
+    return {
+      material_rate_per_gram: materialRate,
+      material_contribution: materialContribution,
+      making_charge: makingCharge,
+      wastage: wastage,
+      stone_value: stoneValue,
+      additional_details_value: additionalDetailsSum,
+      selling_price: sellingPrice
+    };
+  } catch (error) {
+    console.error("Error in calculateSellingPrice:", error);
+    return {
+      material_rate_per_gram: 0,
+      material_contribution: 0,
+      making_charge: 0,
+      wastage: 0,
+      stone_value: 0,
+      additional_details_value: 0,
+      selling_price: 0,
+      error: "Error calculating price"
+    };
   }
 };
 
@@ -931,81 +1023,6 @@ const updateProductStatus = async (req, res) => {
   }
 };
 
-// services/priceCalculationService.js
-
-const calculateSellingPrice = async (product, item, models) => {
-  // 1. Get Material Rate Per Gram
-  let materialRate;
-  if (product.product_type === "Piece") {
-    materialRate = parseFloat(item.rate_per_gram) || 0;
-  } else { // Weight based
-    const material = await models.MaterialType.findByPk(product.material_type_id, { raw: true });
-    materialRate = parseFloat(material?.material_price) || 0;
-  }
-
-  // 2. Material Contribution
-  const netWeight = parseFloat(item.net_weight) || 0;
-  const materialContribution = materialRate * netWeight;
-
-  // 3. Stone Value
-  const stoneValue = parseFloat(item.stone_value) || 0;
-
-  // 4. Additional Details Sum
-  const additionalDetails = await models.ProductAdditionalDetail.findAll({
-    where: { item_detail_id: item.id },
-    raw: true
-  });
-  const additionalDetailsSum = additionalDetails.reduce((sum, detail) => {
-    return sum + (parseFloat(detail.value) || 0);
-  }, 0);
-
-  // 5. Making Charge Calculation
-  let makingCharge = 0;
-  const makingChargeValue = parseFloat(item.making_charge) || 0;
-  switch (item.making_charge_type) {
-    case 'Per Gram':
-      makingCharge = makingChargeValue * netWeight;
-      break;
-    case 'Percentage':
-      makingCharge = (makingChargeValue / 100) * materialContribution;
-      break;
-    case 'Amount':
-      makingCharge = makingChargeValue;
-      break;
-  }
-
-  // 6. Wastage Calculation
-  let wastage = 0;
-  const wastageValue = parseFloat(item.wastage) || 0;
-  switch (item.wastage_type) {
-    case 'Per Gram':
-      wastage = wastageValue * netWeight;
-      break;
-    case 'Percentage':
-      wastage = (wastageValue / 100) * materialContribution;
-      break;
-    case 'Amount':
-      wastage = wastageValue;
-      break;
-  }
-
-  // 7. Final Selling Price
-  const sellingPrice = materialContribution + makingCharge + wastage + stoneValue + additionalDetailsSum;
-
-  return {
-    material_rate_per_gram: materialRate,
-    material_contribution: materialContribution,
-    making_charge: makingCharge,
-    wastage: wastage,
-    stone_value: stoneValue,
-    additional_details_value: additionalDetailsSum,
-    selling_price: sellingPrice
-  };
-};
-
-module.exports = {
-  calculateSellingPrice
-};
 
 module.exports = {
   createProductSKUCode,
@@ -1020,4 +1037,5 @@ module.exports = {
   searchProductBySku,
   updateProductStatus,
   searchProductBySkuNew,
+  calculateSellingPrice,
 };
