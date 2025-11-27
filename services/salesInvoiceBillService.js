@@ -157,14 +157,14 @@ const getSalesInvoiceById = async (req, res) => {
       }),
 
       // Get payment details
-      models.Payment.findOne({
+      models.Payment.findAll({
         where: { invoice_bill_id: id },
         raw: true
       }),
 
       // Get customer details
       models.Customer.findByPk(invoice.customer_id, {
-        attributes: ['customer_name', 'address', 'mobile_number', 'pin_code'],
+        attributes: ['customer_name', 'address', 'mobile_number', 'pin_code', 'pan_no'],
         raw: true
       }),
 
@@ -204,11 +204,12 @@ const listSalesInvoices = async (req, res) => {
         c.address AS customer_address,
         c.mobile_number as customer_mobile_number,
         c.pin_code as customer_pincode,
+        c.pan_no as customer_pan_no,
         ct.country_name as customer_country_name,
         d.district_name as customer_district_name,
         s.state_name as customer_state_name,
         p.transaction_id,
-        p.amount as paid_amount,
+        COALESCE(SUM(p.amount_received), 0) AS total_paid_amount,
         p.payment_mode,
         -- Branch details
         b.address AS branch_address,
@@ -243,7 +244,8 @@ const listSalesInvoices = async (req, res) => {
       )`;
       replacements.search = `%${search}%`;
     }
-    sql += ` ORDER BY i.created_at DESC`;
+    sql += ` GROUP BY i.id, c.id, d.id, s.id, ct.id, b.id, bd.id, bs.id, p.transaction_id, p.payment_mode
+    ORDER BY i.created_at DESC`;
 
     const [rows] = await sequelize.query(sql, { replacements });
     return commonService.okResponse(res, { invoices: rows });
