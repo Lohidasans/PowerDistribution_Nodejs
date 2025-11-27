@@ -266,13 +266,12 @@ const getAllGrns = async (req, res) => {
        ) gi ON gi.grn_id = g.id
        LEFT JOIN (
         SELECT 
-          g.id as grn_id,
+          p.grn_id,
           COALESCE(SUM(pid.net_weight), 0) as total_updated_weight
-        FROM grns g
-        JOIN "grnItems" gi ON gi.grn_id = g.id AND gi.deleted_at IS NULL
-        JOIN products p ON p.grn_id = g.id AND p.deleted_at IS NULL
+        FROM products p
         JOIN "productItemDetails" pid ON pid.product_id = p.id AND pid.deleted_at IS NULL
-        GROUP BY g.id
+        WHERE p.deleted_at IS NULL
+        GROUP BY p.grn_id
       ) pi ON pi.grn_id = g.id
        ${whereSql}
        GROUP BY g.id, v.id, v.vendor_name, v.vendor_image_url, u.email, gi.total_net_weight, pi.total_updated_weight

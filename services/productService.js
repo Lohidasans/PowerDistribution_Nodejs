@@ -633,7 +633,9 @@ const getAllProductDetails = async (req, res) => {
         p.vendor_id,
         p.material_type_id,
         p.category_id,
+        ct.category_name,
         p.subcategory_id,
+        sc.subcategory_name,
         p.ref_no_id,
         p.grn_id,
         p.branch_id,
@@ -653,10 +655,13 @@ const getAllProductDetails = async (req, res) => {
         COALESCE(SUM(COALESCE(pid.quantity, 0)), 0) AS total_quantity,
         COALESCE(SUM(COALESCE(pid.quantity, 0) * COALESCE(pid.net_weight, 0)), 0) AS total_weight,
         COUNT(pid.id) AS variation_count,
-        mt.material_type
+        mt.material_type,
+        mt.material_price
       FROM products p
       LEFT JOIN "productItemDetails" pid ON pid.product_id = p.id
       LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
+      LEFT JOIN categories ct ON ct.id = p.category_id
+      LEFT JOIN subcategories sc ON sc.id = p.subcategory_id
       WHERE 1=1 AND p.status = 'Active' `;
 
     const replacements = {};
@@ -698,7 +703,7 @@ const getAllProductDetails = async (req, res) => {
     }
 
     query += `
-      GROUP BY p.id, mt.material_type
+      GROUP BY p.id, mt.material_type, mt.material_price, ct.category_name, sc.subcategory_name
       ORDER BY p.id DESC`;
 
     const [rows] = await sequelize.query(query, { replacements });
