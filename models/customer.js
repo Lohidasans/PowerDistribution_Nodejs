@@ -40,6 +40,10 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.STRING,
         allowNull: false
       },
+      pan_no: {
+        type: DataTypes.STRING,
+        allowNull: true
+      },
     },
     {
       tableName: "customers",

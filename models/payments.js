@@ -13,9 +13,9 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.ENUM('Cash', 'Card', 'UPI', 'Bank Transfer', 'Cheque', 'Other'),
       allowNull: false
     },
-    amount: {
+    amount_received: {
       type: DataTypes.DECIMAL(15, 2),
-      allowNull: false
+      allowNull: true
     },
     payment_date: {
       type: DataTypes.DATE,
@@ -24,10 +24,6 @@ module.exports = (sequelize, DataTypes) => {
     },
     transaction_id: {
       type: DataTypes.STRING,
-      allowNull: true
-    },
-    remarks: {
-      type: DataTypes.TEXT,
       allowNull: true
     },
     status: {

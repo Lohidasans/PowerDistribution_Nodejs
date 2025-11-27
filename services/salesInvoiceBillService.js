@@ -51,10 +51,6 @@ const createSalesInvoice = async (req, res) => {
         rate,
         discount_amount: it.discount_amount ?? 0,
         amount,
-        cgst_percent: it.cgst_percent ?? null,
-        sgst_percent: it.sgst_percent ?? null,
-        cgst_amount: it.cgst_amount ?? 0,
-        sgst_amount: it.sgst_amount ?? 0,
       };
     });
 
@@ -92,7 +88,9 @@ const createSalesInvoice = async (req, res) => {
         sgst_amount: sgstAmt,
         discount_amount: discountAmt,
         total_amount: total,
+        amount_due: header.amount_due,
         total_quantity: totalQty,
+        hasBillAdjustment: header.hasBillAdjustment || false,
         status: header.status || "Draft",
         created_by: req.user?.id || null,
       },
@@ -103,25 +101,37 @@ const createSalesInvoice = async (req, res) => {
     const withFK = itemRows.map((row) => ({ ...row, invoice_bill_id: bill.id }));
     await models.SalesInvoiceBillItem.bulkCreate(withFK, { transaction: t });
 
-    // Create payment record if payment details exist
-    if (payment.payment_mode) {
-      await models.Payment.create({
+    // Update customer PAN if provided
+    if (req.body.customer?.pan_no && header.customer_id) {
+      await models.Customer.update(
+        { pan_no: req.body.customer.pan_no },
+        { where: { id: header.customer_id }, transaction: t }
+      );
+    }
+
+    // Create payments if array is provided
+    const paymentRows = (payment || [])
+      .filter(p => p.payment_mode) // ignore any empty objects
+      .map(p => ({
         invoice_bill_id: bill.id,
-        payment_mode: payment.payment_mode,
-        amount: total,
-        payment_date: payment.payment_date || new Date(),
-        transaction_id: payment.transaction_id || null,
-        remarks: payment.remarks || null,
-        status: 'Completed',
+        payment_mode: p.payment_mode,
+        amount_received: p.amount_received,
+        payment_date: p.payment_date || new Date(),
+        transaction_id: p.transaction_id || null,
+        status: "Completed",
         created_by: req.user?.id || null,
-      }, { transaction: t });
+      }));
+
+    if (paymentRows.length > 0) {
+      await models.Payment.bulkCreate(paymentRows, { transaction: t });
     }
 
     await t.commit();
     return commonService.createdResponse(res, { 
       message: enMessage.billing.invoiceCreationSuccess,
       invoice: bill,
-      items: withFK
+      items: withFK,
+      payments: paymentRows
     });
   } catch (err) {
     await t.rollback();
