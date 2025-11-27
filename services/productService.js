@@ -918,7 +918,7 @@ const calculateSellingPrice = async (product, item, models) => {
   try {
     // 1. Get Material Rate Per Gram
     let materialRate;
-    if (product.product_type === "Piece") {
+    if (product.product_type === "Piece Rate") {
       materialRate = parseFloat(item.rate_per_gram) || 0;
     } else { // Weight based
       const material = await models.MaterialType.findByPk(product.material_type_id, { raw: true });
