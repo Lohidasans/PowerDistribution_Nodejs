@@ -178,32 +178,67 @@ const listCustomerMobilesDropdown = async (req, res) => {
 // Dropdown: customer name + mobile with light search - billing section
 const listCustomerNameMobileDropdown = async (req, res) => {
   try {
-    const { search = "", limit = 20 } = req.query || {};
+    const { search = "" } = req.query;
 
-    const where = { deleted_at: null };
-    if (search && String(search).trim() !== "") {
-      where[Op.or] = [
-        { customer_name: { [Op.iLike]: `%${search}%` } },
-        { mobile_number: { [Op.iLike]: `%${search}%` } },
-      ];
+    const searchTerm = String(search).trim();
+
+    let whereClause = "";
+    const replacements = {};
+
+    if (searchTerm) {
+      whereClause = `
+        AND (
+          c.customer_name ILIKE :search OR
+          c.mobile_number ILIKE :search OR
+          c.customer_code ILIKE :search
+        )
+      `;
+      replacements.search = `%${searchTerm}%`;
     }
 
-    const rows = await models.Customer.findAll({
-      attributes: ["id", "customer_name", "mobile_number", "customer_code"],
-      where,
-      order: [["customer_name", "ASC"]],
-      limit: Math.min(parseInt(limit) || 20, 50),
+    const query = `
+      SELECT 
+        c.id,
+        c.customer_name,
+        c.mobile_number,
+        c.address,
+        c.pin_code,
+        c.customer_code,
+        co.country_name,
+        s.state_name,
+        d.district_name
+      FROM customers c
+      INNER JOIN countries co  ON co.id = c.country_id  AND co.deleted_at IS NULL
+      INNER JOIN states s      ON s.id = c.state_id     AND s.deleted_at IS NULL
+      INNER JOIN districts d   ON d.id = c.district_id  AND d.deleted_at IS NULL
+      WHERE c.deleted_at IS NULL
+        ${whereClause}
+      ORDER BY c.customer_name ASC
+    `;
+
+    const customers = await sequelize.query(query, {
+      replacements,
+      type: sequelize.QueryTypes.SELECT,
+      raw: true
     });
 
-    const customers = rows.map((r) => ({
-      id: r.id,
-      customer_name: r.customer_name ?? r.get("customer_name"),
-      mobile_number: r.mobile_number ?? r.get("mobile_number"),
-      customer_code: r.customer_code ?? r.get("customer_code")
+    // Clean & safe output
+    const formatted = customers.map(c => ({
+      id: c.id,
+      customer_name: c.customer_name || "",
+      mobile_number: c.mobile_number || "",
+      customer_code: c.customer_code || null,
+      address: c.address || "",
+      pin_code: c.pin_code || "",
+      country_name: c.country_name || "",
+      state_name: c.state_name || "",
+      district_name: c.district_name || "",
     }));
 
-    return commonService.okResponse(res, { customers });
+    return commonService.okResponse(res, { customers: formatted });
+
   } catch (err) {
+    console.error("listCustomerNameMobileDropdown error:", err);
     return commonService.handleError(res, err);
   }
 };
