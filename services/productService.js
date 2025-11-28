@@ -731,24 +731,49 @@ const getAllProductDetails = async (req, res) => {
         return acc;
       }, {});
 
-      // Attach additional_details to items
-      const itemsWithAdds = itemDetails.map((it) => ({
-        ...it.get({ plain: true }),
-        additional_details: addsByItem[String(it.id)] || [],
-      }));
+      // Calculate selling price for each item and attach additional details
+      const itemsWithPrices = await Promise.all(
+        products.flatMap(async (product) => {
+          const productItems = itemDetails.filter(
+            (item) => item.product_id === product.id
+          );
 
-      // Group items by product_id
-      const itemsByProduct = itemsWithAdds.reduce((acc, it) => {
-        const key = String(it.product_id);
-        (acc[key] = acc[key] || []).push(it);
-        return acc;
-      }, {});
+          const itemsWithAdds = await Promise.all(
+            productItems.map(async (item) => {
+              const itemData = item.get({ plain: true });
+              const priceDetails = await calculateSellingPrice(
+                {
+                  ...product,
+                  material_type_id: product.material_type_id,
+                  product_type: product.product_type,
+                },
+                itemData,
+                models
+              );
 
-      // Merge into products
-      products = products.map((p) => ({
-        ...p,
-        itemDetails: itemsByProduct[String(p.id)] || [],
-      }));
+              return {
+                ...itemData,
+                additional_details: addsByItem[String(item.id)] || [],
+                price_details: priceDetails,
+              };
+            })
+          );
+
+          // Group items by product_id
+          const itemsByProduct = itemsWithAdds.reduce((acc, it) => {
+            const key = String(it.product_id);
+            (acc[key] = acc[key] || []).push(it);
+            return acc;
+          }, {});
+
+          return {
+            ...product,
+            itemDetails: itemsByProduct[String(product.id)] || [],
+          };
+        })
+      );
+
+      products = itemsWithPrices;
     }
 
     return commonService.okResponse(res, { products });
