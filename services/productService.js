@@ -619,6 +619,8 @@ const getAllProductDetails = async (req, res) => {
       grn_id,
       ref_no_id,
       search,
+      min_price,
+      max_price
     } = req.query;
 
     let query = `
@@ -774,6 +776,40 @@ const getAllProductDetails = async (req, res) => {
       );
 
       products = itemsWithPrices;
+    }
+
+    // Apply price range filtering only if both min_price and max_price are provided
+    if (min_price && max_price) {
+      const min = parseFloat(min_price);
+      const max = parseFloat(max_price);
+
+      // Validate that both min and max are valid numbers
+      if (isNaN(min) || isNaN(max)) {
+        return commonService.badRequest(res, 'Both min_price and max_price must be valid numbers');
+      }
+
+      if (min > max) {
+        return commonService.badRequest(res, 'min_price must be less than or equal to max_price');
+      }
+
+      // Filter itemDetails within each product instead of filtering products
+      products = products.map(product => {
+        // Create a new product object with filtered itemDetails
+        const filteredItemDetails = product.itemDetails.filter(item => {
+          const sellingPrice = item.price_details?.selling_price;
+          if (sellingPrice === undefined || sellingPrice === null) return false;
+          return sellingPrice >= min && sellingPrice <= max;
+        });
+        
+        // Only include the product if it has any itemDetails after filtering
+        if (filteredItemDetails.length > 0) {
+          return {
+            ...product,
+            itemDetails: filteredItemDetails
+          };
+        }
+        return null;
+      }).filter(Boolean); // Remove any null entries (products with no matching items)
     }
 
     return commonService.okResponse(res, { products });
