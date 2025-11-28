@@ -620,7 +620,8 @@ const getAllProductDetails = async (req, res) => {
       ref_no_id,
       search,
       min_price,
-      max_price
+      max_price,
+      sort_by
     } = req.query;
 
     let query = `
@@ -776,6 +777,35 @@ const getAllProductDetails = async (req, res) => {
       );
 
       products = itemsWithPrices;
+    }
+
+    // Apply sorting if sort_by parameter is provided
+    if (sort_by) {
+      switch (sort_by) {
+        case 'price_low_to_high':
+          products.sort((a, b) => {
+            const minPriceA = Math.min(...a.itemDetails.map(item => item.price_details?.selling_price || Infinity));
+            const minPriceB = Math.min(...b.itemDetails.map(item => item.price_details?.selling_price || Infinity));
+            return minPriceA - minPriceB;
+          });
+          break;
+          
+        case 'price_high_to_low':
+          products.sort((a, b) => {
+            const maxPriceA = Math.max(...a.itemDetails.map(item => item.price_details?.selling_price || 0));
+            const maxPriceB = Math.max(...b.itemDetails.map(item => item.price_details?.selling_price || 0));
+            return maxPriceB - maxPriceA;
+          });
+          break;
+          
+        case 'last_updated':
+          products.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+          break;
+          
+        default:
+          // No sorting or invalid sort_by value
+          break;
+      }
     }
 
     // Apply price range filtering only if both min_price and max_price are provided
