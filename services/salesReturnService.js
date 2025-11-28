@@ -66,7 +66,7 @@ const createSalesReturn = async (req, res) => {
         sales_return_no: header.sales_return_no,
         return_date: header.return_date || new Date(),
         return_time: header.return_time || null,
-        employee_id: header.employee_id,
+        employee_id: header.employee_id || null,
         customer_id: header.customer_id || null,
         branch_id: header.branch_id || null,
         subtotal_amount: subtotal,
