@@ -90,7 +90,7 @@ const createScheme = async (req, res) => {
 /** List Schemes with filters (joined with master names) */
 const listSchemes = async (req, res) => {
   try {
-    const { material_type_id, scheme_type_id, status, duration_id, payment_frequency_id, redemption_id } = req.query;
+    const { material_type_id, scheme_type_id, status, duration_id, payment_frequency_id, redemption_id, scheme_code } = req.query;
 
     let query = `
       SELECT
@@ -133,6 +133,10 @@ const listSchemes = async (req, res) => {
     if (status) {
       query += ` AND s.status = :status`;
       replacements.status = status;
+    }
+    if (scheme_code) {
+      query += ` AND s.scheme_code = :scheme_code`;
+      replacements.scheme_code = scheme_code;
     }
 
     query += ` ORDER BY s.created_at DESC`;
