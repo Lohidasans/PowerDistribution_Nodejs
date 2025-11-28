@@ -63,7 +63,7 @@ const createEstimate = async (req, res) => {
         estimate_no: header.estimate_no,
         estimate_date: header.estimate_date || new Date(),
         estimate_time: header.estimate_time || null,
-        employee_id: header.employee_id,
+        employee_id: header.employee_id || null,
         customer_id: header.customer_id || null,
         branch_id: header.branch_id || null,
         subtotal_amount: subtotal,
