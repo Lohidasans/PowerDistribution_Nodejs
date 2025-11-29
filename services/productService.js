@@ -1009,12 +1009,17 @@ const calculateSellingPrice = async (product, item, models) => {
   try {
     // 1. Get Material Rate Per Gram
     let materialRate;
+    const material = await models.MaterialType.findByPk(product.material_type_id, { raw: true });
+    const materialPrice = parseFloat(material?.material_price) || 0;
+    
     if (product.product_type === "Piece Rate") {
-      materialRate = parseFloat(item.rate_per_gram) || 0;
+      const ratePerGram = parseFloat(item.rate_per_gram) || 0;
+      // For Piece Rate, take the higher value between rate_per_gram and material_price
+      materialRate = Math.max(ratePerGram, materialPrice);
     } else { // Weight based
-      const material = await models.MaterialType.findByPk(product.material_type_id, { raw: true });
-      materialRate = parseFloat(material?.material_price) || 0;
+      materialRate = materialPrice;
     }
+
 
     // 2. Material Contribution
     const netWeight = parseFloat(item.net_weight) || 0;
