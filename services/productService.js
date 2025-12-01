@@ -621,8 +621,7 @@ const getAllProductDetails = async (req, res) => {
       search,
       min_price,
       max_price,
-      sort_by,
-      variant_value_ids
+      sort_by
     } = req.query;
 
     let query = `
@@ -664,7 +663,6 @@ const getAllProductDetails = async (req, res) => {
             FROM product_variants pv
             WHERE pv.product_id = p.id
             AND pv.variant_id IS NOT NULL
-            ${variant_value_ids ? `AND pv.variant_id = ANY(ARRAY[${variant_value_ids.split(',').map(id => id.trim()).join(',')}])` : ''}
           ),
           '[]'::json
         ) as variants,
@@ -696,7 +694,6 @@ const getAllProductDetails = async (req, res) => {
         p.created_at,
         p.updated_at,
         p.deleted_at,
-        --pva.variants,
         COALESCE(SUM(COALESCE(pid.quantity, 0)), 0) AS total_quantity,
         COALESCE(SUM(COALESCE(pid.quantity, 0) * COALESCE(pid.net_weight, 0)), 0) AS total_weight,
         COUNT(DISTINCT pid.id) AS variation_count,
@@ -706,7 +703,7 @@ const getAllProductDetails = async (req, res) => {
       LEFT JOIN "productItemDetails" pid ON pid.product_id = p.id
       -- GRN Joins
       LEFT JOIN grns g ON g.id = p.grn_id AND g.deleted_at IS NULL
-      LEFT JOIN "grnItems" gi ON gi.grn_id = g.id  AND gi.id = p.ref_no_id AND gi.deleted_at IS NULL
+      LEFT JOIN "grnItems" gi ON gi.grn_id = g.id AND gi.id = p.ref_no_id AND gi.deleted_at IS NULL
       LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
       LEFT JOIN categories ct ON ct.id = p.category_id
       LEFT JOIN subcategories sc ON sc.id = p.subcategory_id
@@ -735,15 +732,6 @@ const getAllProductDetails = async (req, res) => {
       replacements.ref_no_id = +ref_no_id;
     }
 
-    // Add variant value filtering
-    if (variant_value_ids) {
-      const variantValueIds = variant_value_ids.split(',').map(id => parseInt(id.trim()));
-      if (variantValueIds.length > 0) {
-        query += ' AND pvv.variant_type_ids IN (:variantValueIds)';
-        replacements.variantValueIds = variantValueIds;
-      }
-    }
-
     if (search) {
       const like = `%${search}%`;
       query += ` AND (
@@ -756,25 +744,16 @@ const getAllProductDetails = async (req, res) => {
         p.variation_type::text ILIKE :like OR
         mt.material_type ILIKE :like OR
         g.grn_no ILIKE :like OR
-        gi.ref_no ILIKE :like OR
-        v.vendor_name ILIKE :like
-    )`;
+        gi.ref_no ILIKE :like 
+      )`;
       replacements.like = like;
     }
 
     query += `
       GROUP BY p.id, mt.material_type, mt.material_price, ct.category_name, sc.subcategory_name,
       g.grn_no, g.grn_date, g.total_gross_wt_in_g, g.total_amount, gi.ref_no, gi.gross_wt_in_g, gi.net_wt_in_g,
-      gi.quantity, gi.type`;
-      //, pva.product_id`;
-      
-    // Only add HAVING clause if we're filtering by variant values
-    if (variant_value_ids) {
-      const variantValueCount = variant_value_ids.split(',').length;
-      query += ` HAVING COUNT(DISTINCT pvv.variant_type_ids) >= 1`;
-    }
-    
-    query += ` ORDER BY p.id DESC`;
+      gi.quantity, gi.type
+      ORDER BY p.id DESC`;
 
     const [rows] = await sequelize.query(query, { replacements });
 
@@ -794,8 +773,8 @@ const getAllProductDetails = async (req, res) => {
       const itemIds = itemDetails.map((it) => it.id);
       const additionalDetails = itemIds.length
         ? await models.ProductAdditionalDetail.findAll({
-            where: { item_detail_id: itemIds },
-          })
+          where: { item_detail_id: itemIds },
+        })
         : [];
 
       // Group additional by item_detail_id
