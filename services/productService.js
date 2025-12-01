@@ -642,6 +642,32 @@ const getAllProductDetails = async (req, res) => {
         sc.subcategory_name,
         p.ref_no_id,
         p.grn_id,
+        g.grn_no,
+        g.grn_date,
+        g.total_gross_wt_in_g,
+        g.total_amount,
+        gi.ref_no,
+        gi.gross_wt_in_g,
+        gi.net_wt_in_g,
+        gi.quantity,
+        gi.type,
+        mt.material_type,
+        mt.material_price,
+        COALESCE(
+          (
+            SELECT JSON_AGG(
+              JSON_BUILD_OBJECT(
+                'id', pv.variant_id,
+                'type_ids', pv.variant_type_ids
+              )
+            )
+            FROM product_variants pv
+            WHERE pv.product_id = p.id
+            AND pv.variant_id IS NOT NULL
+            ${variant_value_ids ? `AND pv.variant_id = ANY(ARRAY[${variant_value_ids.split(',').map(id => id.trim()).join(',')}])` : ''}
+          ),
+          '[]'::json
+        ) as variants,
         
         -- GRN Details
         g.grn_no,
@@ -670,22 +696,20 @@ const getAllProductDetails = async (req, res) => {
         p.created_at,
         p.updated_at,
         p.deleted_at,
-        pvv.variant_id,
-        pvv.variant_type_ids,
+        --pva.variants,
         COALESCE(SUM(COALESCE(pid.quantity, 0)), 0) AS total_quantity,
         COALESCE(SUM(COALESCE(pid.quantity, 0) * COALESCE(pid.net_weight, 0)), 0) AS total_weight,
-        COUNT(pid.id) AS variation_count,
+        COUNT(DISTINCT pid.id) AS variation_count,
         mt.material_type,
         mt.material_price
       FROM products p
       LEFT JOIN "productItemDetails" pid ON pid.product_id = p.id
       -- GRN Joins
       LEFT JOIN grns g ON g.id = p.grn_id AND g.deleted_at IS NULL
-      LEFT JOIN "grnItems" gi ON gi.grn_id = g.id --AND gi.material_type_id = p.material_type_id AND gi.category_id = p.ref_no_id
+      LEFT JOIN "grnItems" gi ON gi.grn_id = g.id  AND gi.id = p.ref_no_id AND gi.deleted_at IS NULL
       LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
       LEFT JOIN categories ct ON ct.id = p.category_id
       LEFT JOIN subcategories sc ON sc.id = p.subcategory_id
-      LEFT JOIN "product_variants" pvv ON pvv.product_id = p.id
       WHERE 1=1 AND p.status = 'Active' `;
 
     const replacements = {};
@@ -739,8 +763,10 @@ const getAllProductDetails = async (req, res) => {
     }
 
     query += `
-      GROUP BY p.id, mt.material_type, mt.material_price, ct.category_name, sc.subcategory_name, pvv.variant_id, pvv.variant_type_ids,
-      g.grn_no,g.grn_date, g.total_gross_wt_in_g, g.total_amount,  gi.ref_no, gi.gross_wt_in_g, gi.net_wt_in_g, gi.quantity,  gi.type`;
+      GROUP BY p.id, mt.material_type, mt.material_price, ct.category_name, sc.subcategory_name,
+      g.grn_no, g.grn_date, g.total_gross_wt_in_g, g.total_amount, gi.ref_no, gi.gross_wt_in_g, gi.net_wt_in_g,
+      gi.quantity, gi.type`;
+      //, pva.product_id`;
       
     // Only add HAVING clause if we're filtering by variant values
     if (variant_value_ids) {
@@ -752,8 +778,12 @@ const getAllProductDetails = async (req, res) => {
 
     const [rows] = await sequelize.query(query, { replacements });
 
-    // Attach nested itemDetails with additional_details per product
-    let products = rows;
+    // Process variants and format the response
+    let products = rows.map(row => ({
+      ...row,
+      variants: row.variants || []
+    }));
+
     if (products.length) {
       const productIds = products.map((p) => p.id);
       const itemDetails = await models.ProductItemDetail.findAll({
@@ -866,7 +896,7 @@ const getAllProductDetails = async (req, res) => {
       // Filter itemDetails within each product instead of filtering products
       products = products.map(product => {
         // Create a new product object with filtered itemDetails
-        const filteredItemDetails = product.itemDetails.filter(item => {
+        const filteredItemDetails = (product.itemDetails || []).filter(item => {
           const sellingPrice = item.price_details?.selling_price;
           if (sellingPrice === undefined || sellingPrice === null) return false;
           return sellingPrice >= min && sellingPrice <= max;
