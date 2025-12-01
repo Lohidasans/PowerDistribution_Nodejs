@@ -621,7 +621,8 @@ const getAllProductDetails = async (req, res) => {
       search,
       min_price,
       max_price,
-      sort_by
+      sort_by,
+      variant_value_ids
     } = req.query;
 
     let query = `
@@ -655,6 +656,8 @@ const getAllProductDetails = async (req, res) => {
         p.created_at,
         p.updated_at,
         p.deleted_at,
+        pvv.variant_id,
+        pvv.variant_type_ids,
         COALESCE(SUM(COALESCE(pid.quantity, 0)), 0) AS total_quantity,
         COALESCE(SUM(COALESCE(pid.quantity, 0) * COALESCE(pid.net_weight, 0)), 0) AS total_weight,
         COUNT(pid.id) AS variation_count,
@@ -665,6 +668,7 @@ const getAllProductDetails = async (req, res) => {
       LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
       LEFT JOIN categories ct ON ct.id = p.category_id
       LEFT JOIN subcategories sc ON sc.id = p.subcategory_id
+      LEFT JOIN "product_variants" pvv ON pvv.product_id = p.id
       WHERE 1=1 AND p.status = 'Active' `;
 
     const replacements = {};
@@ -690,6 +694,15 @@ const getAllProductDetails = async (req, res) => {
       replacements.ref_no_id = +ref_no_id;
     }
 
+    // Add variant value filtering
+    if (variant_value_ids) {
+      const variantValueIds = variant_value_ids.split(',').map(id => parseInt(id.trim()));
+      if (variantValueIds.length > 0) {
+        query += ' AND pvv.variant_type_ids IN (:variantValueIds)';
+        replacements.variantValueIds = variantValueIds;
+      }
+    }
+
     if (search) {
       const like = `%${search}%`;
       query += ` AND (
@@ -706,8 +719,15 @@ const getAllProductDetails = async (req, res) => {
     }
 
     query += `
-      GROUP BY p.id, mt.material_type, mt.material_price, ct.category_name, sc.subcategory_name
-      ORDER BY p.id DESC`;
+      GROUP BY p.id, mt.material_type, mt.material_price, ct.category_name, sc.subcategory_name, pvv.variant_id, pvv.variant_type_ids`;
+      
+    // Only add HAVING clause if we're filtering by variant values
+    if (variant_value_ids) {
+      const variantValueCount = variant_value_ids.split(',').length;
+      query += ` HAVING COUNT(DISTINCT pvv.variant_type_ids) >= 1`;
+    }
+    
+    query += ` ORDER BY p.id DESC`;
 
     const [rows] = await sequelize.query(query, { replacements });
 
