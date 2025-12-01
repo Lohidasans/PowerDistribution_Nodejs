@@ -642,6 +642,20 @@ const getAllProductDetails = async (req, res) => {
         sc.subcategory_name,
         p.ref_no_id,
         p.grn_id,
+        
+        -- GRN Details
+        g.grn_no,
+        g.grn_date,
+        g.total_gross_wt_in_g,
+        g.total_amount AS grn_total_amount,
+
+        -- GRN Item Details
+        gi.ref_no AS grn_ref_no,
+        gi.gross_wt_in_g AS grn_gross_weight,
+        gi.net_wt_in_g AS grn_net_weight,
+        gi.quantity AS grn_quantity,
+        gi.type AS grn_item_type,
+
         p.branch_id,
         p.sku_id,
         p.hsn_code,
@@ -665,6 +679,9 @@ const getAllProductDetails = async (req, res) => {
         mt.material_price
       FROM products p
       LEFT JOIN "productItemDetails" pid ON pid.product_id = p.id
+      -- GRN Joins
+      LEFT JOIN grns g ON g.id = p.grn_id AND g.deleted_at IS NULL
+      LEFT JOIN "grnItems" gi ON gi.grn_id = g.id --AND gi.material_type_id = p.material_type_id AND gi.category_id = p.ref_no_id
       LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
       LEFT JOIN categories ct ON ct.id = p.category_id
       LEFT JOIN subcategories sc ON sc.id = p.subcategory_id
@@ -713,13 +730,17 @@ const getAllProductDetails = async (req, res) => {
         p.hsn_code ILIKE :like OR
         p.product_type::text ILIKE :like OR
         p.variation_type::text ILIKE :like OR
-        mt.material_type ILIKE :like
+        mt.material_type ILIKE :like OR
+        g.grn_no ILIKE :like OR
+        gi.ref_no ILIKE :like OR
+        v.vendor_name ILIKE :like
     )`;
       replacements.like = like;
     }
 
     query += `
-      GROUP BY p.id, mt.material_type, mt.material_price, ct.category_name, sc.subcategory_name, pvv.variant_id, pvv.variant_type_ids`;
+      GROUP BY p.id, mt.material_type, mt.material_price, ct.category_name, sc.subcategory_name, pvv.variant_id, pvv.variant_type_ids,
+      g.grn_no,g.grn_date, g.total_gross_wt_in_g, g.total_amount,  gi.ref_no, gi.gross_wt_in_g, gi.net_wt_in_g, gi.quantity,  gi.type`;
       
     // Only add HAVING clause if we're filtering by variant values
     if (variant_value_ids) {
