@@ -274,60 +274,99 @@ const deleteSalesInvoice = async (req, res) => {
 // light search for  - Sales Return Search box
 const searchInvoices = async (req, res) => {
   try {
-    const { invoice_no } = req.query;
-    
-    if (!invoice_no) {
-      return commonService.badRequest(res, 'Invoice number is required');
+    const { invoice_no, mobile_number } = req.query;
+
+    if (!invoice_no && !mobile_number) {
+      return commonService.badRequest(res, 'Either invoice number or mobile number is required');
     }
 
-    // Find invoice by invoice_no (exact match)
-    const invoice = await models.SalesInvoiceBill.findOne({
-      where: { 
-        invoice_no: { 
-          [Op.iLike]: `%${invoice_no.trim()}%`
-        } 
-      },
+    // First, find customer IDs if mobile number is provided
+    let customerIds = [];
+    if (mobile_number) {
+      const customers = await models.Customer.findAll({
+        where: {
+          mobile_number: {
+            [Op.iLike]: `%${mobile_number.trim()}%`
+          }
+        },
+        attributes: ['id'],
+        raw: true
+      });
+      customerIds = customers.map(c => c.id);
+
+      // If no customers found with this mobile number
+      if (customerIds.length === 0) {
+        return commonService.okResponse(res, {
+          count: 0,
+          invoices: []
+        });
+      }
+    }
+
+    // Build the where condition for invoices
+    const whereCondition = {};
+
+    if (invoice_no) {
+      whereCondition.invoice_no = {
+        [Op.iLike]: `%${invoice_no.trim()}%`
+      };
+    }
+
+    // Add customer IDs to where condition if mobile number was provided
+    if (customerIds.length > 0) {
+      whereCondition.customer_id = {
+        [Op.in]: customerIds
+      };
+    }
+
+    // Find all matching invoices
+    const invoices = await models.SalesInvoiceBill.findAll({
+      where: whereCondition,
       raw: true
     });
 
-    if (!invoice) {
-      return commonService.notFound(res, 'Invoice not found');
+    if (!invoices || invoices.length === 0) {
+      return commonService.notFound(res, 'No invoices found matching the criteria');
     }
 
-    // Fetch related data in parallel
-    const [customer, branch, payment, items] = await Promise.all([
-      models.Customer.findOne({
-        where: { id: invoice.customer_id },
-        attributes: ['customer_name', 'address', 'mobile_number', 'pin_code'],
-        raw: true
-      }),
-      models.Branch.findOne({
-        where: { id: invoice.branch_id },
-        attributes: ['branch_name', 'address', 'mobile', 'pin_code', 'gst_no'],
-        raw: true
-      }),
-      models.Payment.findOne({
-        where: { invoice_bill_id: invoice.id },
-        raw: true
-      }),
-      models.SalesInvoiceBillItem.findAll({
-        where: { invoice_bill_id: invoice.id },
-        raw: true
-      })
-    ]);
+    // Fetch related data for all found invoices
+    const result = await Promise.all(invoices.map(async (invoice) => {
+      const [customer, branch, payment, items] = await Promise.all([
+        models.Customer.findOne({
+          where: { id: invoice.customer_id },
+          attributes: ['id', 'customer_name', 'address', 'mobile_number', 'pin_code'],
+          raw: true
+        }),
+        models.Branch.findOne({
+          where: { id: invoice.branch_id },
+          attributes: ['branch_name', 'address', 'mobile', 'pin_code', 'gst_no'],
+          raw: true
+        }),
+        models.Payment.findOne({
+          where: { invoice_bill_id: invoice.id },
+          raw: true
+        }),
+        models.SalesInvoiceBillItem.findAll({
+          where: { invoice_bill_id: invoice.id },
+          raw: true
+        })
+      ]);
 
-    // Construct the response
-    const response = {
-      invoice,
-      customer: customer || null,
-      branch: branch || null,
-      payment: payment || null,
-      items: items || []
-    };
+      return {
+        invoice: invoice,
+        customer: customer || null,
+        branch: branch || null,
+        payment: payment || null,
+        items: items || []
+      };
+    }));
 
-    return commonService.okResponse(res, response);
+    return commonService.okResponse(res, {
+      count: result.length,
+      invoices: result
+    });
   } catch (error) {
-    console.error('Error searching invoice:', error);
+    console.error('Error searching invoices:', error);
     return commonService.handleError(res, error);
   }
 };
