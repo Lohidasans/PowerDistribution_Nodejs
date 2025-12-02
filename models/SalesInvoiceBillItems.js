@@ -28,6 +28,18 @@ module.exports = (sequelize, DataTypes) => {
                 type: DataTypes.STRING,
                 allowNull: true,
             },
+            gross_weight: {
+                type: DataTypes.DECIMAL(15, 3),
+                allowNull: true
+            },
+            net_weight: {
+                type: DataTypes.DECIMAL(15, 3),
+                allowNull: true
+            },
+            wastage: {
+                type: DataTypes.DECIMAL(15, 2),
+                allowNull: true
+            },
             quantity: {
                 type: DataTypes.INTEGER,
                 allowNull: false,

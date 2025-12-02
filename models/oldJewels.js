@@ -21,7 +21,7 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.DATEONLY,
         allowNull: true,
       },
-      sub_totat_amount: { // total amount of old jewels
+      sub_total_amount: { // total amount of old jewels
         type: DataTypes.DECIMAL(10, 3),
         allowNull: true,
       },
@@ -42,6 +42,10 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.DECIMAL(15, 2),
         allowNull: false,
         defaultValue: 0,
+      },
+      discount_type: {
+        type: DataTypes.ENUM("Amount", "Percentage"),
+        allowNull: true,
       },
       discount: {
         type: DataTypes.DECIMAL(15, 2),

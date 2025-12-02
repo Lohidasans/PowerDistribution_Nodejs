@@ -25,7 +25,7 @@ const createOldJewel = async (req, res) => {
     // Create the main jewel record with calculated values
     const jewel = await models.OldJewel.create({
       ...jewelData,
-      sub_totat_amount: subTotal,
+      sub_total_amount: subTotal,
       cgst_amount: cgstAmount,
       sgst_amount: sgstAmount,
       total_amount: totalAmount,
