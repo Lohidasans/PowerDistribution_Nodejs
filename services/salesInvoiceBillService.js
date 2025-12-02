@@ -192,15 +192,34 @@ const getSalesInvoiceById = async (req, res) => {
   }
 };
 
-// List invoices
+// List invoices - bill page/ customer scheme details page
 const listSalesInvoices = async (req, res) => {
   try {
     const { from, to, employee_id, customer_id, search } = req.query || {};
 
     let sql = `
+      WITH invoice_items AS (
+        SELECT 
+          invoice_bill_id,
+          JSON_AGG(
+            JSON_BUILD_OBJECT(
+              'id', id,
+              'product_name_snapshot', product_name_snapshot,
+              'quantity', quantity,
+              'rate', rate,
+              'amount', amount
+            )
+          ) as items,
+          SUM(quantity) as total_quantity,
+          SUM(amount) as total_amount
+        FROM sales_invoice_bill_items
+        WHERE deleted_at IS NULL
+        GROUP BY invoice_bill_id
+      )
       SELECT
         i.*,
         -- Customer details
+        c.customer_name,
         c.address AS customer_address,
         c.mobile_number as customer_mobile_number,
         c.pin_code as customer_pincode,
@@ -208,15 +227,17 @@ const listSalesInvoices = async (req, res) => {
         ct.country_name as customer_country_name,
         d.district_name as customer_district_name,
         s.state_name as customer_state_name,
-        p.transaction_id,
-        COALESCE(SUM(p.amount_received), 0) AS total_paid_amount,
-        p.payment_mode,
         -- Branch details
+        b.branch_name,
         b.address AS branch_address,
         b.mobile as branch_mobile_number,
         b.pin_code as branch_pincode,
         bd.district_name as branch_district_name,
-        bs.state_name as branch_state_name
+        bs.state_name as branch_state_name,
+        -- Item totals
+        COALESCE(ii.items, '[]'::json) as invoice_items,
+        COALESCE(ii.total_quantity, 0) as total_items_quantity,
+        COALESCE(ii.total_amount, 0) as total_items_amount
       FROM "sales_invoice_bills" i
       -- Customer joins
       LEFT JOIN "customers" c ON c.id = i.customer_id
@@ -227,7 +248,10 @@ const listSalesInvoices = async (req, res) => {
       LEFT JOIN "branches" b ON b.id = i.branch_id
       LEFT JOIN "districts" bd ON bd.id = b.district_id
       LEFT JOIN "states" bs ON bs.id = b.state_id
-      LEFT JOIN "payments" p ON p.invoice_bill_id = i.id
+      -- Invoice items
+      LEFT JOIN invoice_items ii ON ii.invoice_bill_id = i.id
+      -- Invoice payments
+      --LEFT JOIN invoice_payments ip ON ip.invoice_bill_id = i.id
       WHERE i.deleted_at IS NULL
     `;
 
@@ -244,12 +268,26 @@ const listSalesInvoices = async (req, res) => {
       )`;
       replacements.search = `%${search}%`;
     }
-    sql += ` GROUP BY i.id, c.id, d.id, s.id, ct.id, b.id, bd.id, bs.id, p.transaction_id, p.payment_mode
-    ORDER BY i.created_at DESC`;
 
-    const [rows] = await sequelize.query(sql, { replacements });
-    return commonService.okResponse(res, { invoices: rows });
+    sql += ` ORDER BY i.created_at DESC`;
+
+    const [invoices] = await sequelize.query(sql, { replacements });
+
+    // Process the results to format the response
+    const formattedInvoices = invoices.map(invoice => {
+      // Calculate amount due
+      const amountDue = parseFloat(invoice.total_amount) - parseFloat(invoice.total_paid_amount || 0);
+
+      return {
+        ...invoice,
+        amount_due: amountDue.toFixed(2),
+        // Add any additional formatting here
+      };
+    });
+
+    return commonService.okResponse(res, { invoices: formattedInvoices });
   } catch (err) {
+    console.error('Error in listSalesInvoices:', err);
     return commonService.handleError(res, err);
   }
 };

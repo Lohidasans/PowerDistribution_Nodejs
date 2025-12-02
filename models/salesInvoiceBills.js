@@ -89,6 +89,11 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
         defaultValue: "Draft",
       },
+      order_type: {
+        type: DataTypes.ENUM("Online", "Offline"),
+        allowNull: false,
+        defaultValue: "Offline",
+      },
     },
     {
       timestamps: true,
