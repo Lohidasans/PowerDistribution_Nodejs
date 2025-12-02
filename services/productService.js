@@ -621,7 +621,8 @@ const getAllProductDetails = async (req, res) => {
       search,
       min_price,
       max_price,
-      sort_by
+      sort_by,
+      variant_type_ids
     } = req.query;
 
     let query = `
@@ -730,6 +731,19 @@ const getAllProductDetails = async (req, res) => {
     if (ref_no_id) {
       query += ` AND p.ref_no_id = :ref_no_id`;
       replacements.ref_no_id = +ref_no_id;
+    }
+
+    if (variant_type_ids) {
+      // Convert comma-separated string to array of numbers
+      const typeIds = variant_type_ids.split(',').map(id => parseInt(id.trim()));
+
+      // Use array overlap operator (&&) to find any match
+      query += ` AND EXISTS (
+        SELECT 1 
+        FROM product_variants pv
+        WHERE pv.product_id = p.id
+        AND pv.variant_type_ids && ARRAY[${typeIds.join(',')}]::integer[]
+      )`;
     }
 
     if (search) {
