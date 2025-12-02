@@ -708,7 +708,7 @@ const getAllProductDetails = async (req, res) => {
       LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
       LEFT JOIN categories ct ON ct.id = p.category_id
       LEFT JOIN subcategories sc ON sc.id = p.subcategory_id
-      WHERE 1=1 AND p.status = 'Active' `;
+      WHERE 1=1 AND p.status = 'Active' AND p.deleted_at IS NULL`;
 
     const replacements = {};
 
