@@ -32,6 +32,10 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.DECIMAL(10, 3),
         allowNull: false,
       },
+      wastage: {
+        type: DataTypes.DECIMAL(10, 3),
+        allowNull: true,
+      },
       rate: {
         type: DataTypes.DECIMAL(10, 3),
         allowNull: false,
