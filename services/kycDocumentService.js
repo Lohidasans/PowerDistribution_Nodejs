@@ -170,6 +170,6 @@ module.exports = {
     if (validDocs.length === 0) {
       return [];
     }
-    return models.KycDocument.bulkCreate(rows, { transaction, returning: true });
+    return models.KycDocument.bulkCreate(validDocs, { transaction, returning: true });
   },
 };
