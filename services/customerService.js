@@ -276,9 +276,137 @@ const listCustomerNameMobileDropdown = async (req, res) => {
 };
 
 // List Customer Page
-// const listCustomers = async (req, res) => {
+const listCustomers = async (req, res) => {
+  try {
+    const { search, mode, branch_name } = req.query || {};
 
-// };
+    // Build the base query
+    let sql = `
+      SELECT 
+        c.id,
+        c.customer_code AS customer_no,
+        c.customer_name,
+        c.mobile_number,
+        COUNT(DISTINCT sib.id) AS no_of_orders,
+        c.created_at,
+        -- Get the most recent order type as the mode
+        (
+          SELECT sib2.order_type 
+          FROM sales_invoice_bills sib2 
+          WHERE sib2.customer_id = c.id 
+          AND sib2.deleted_at IS NULL
+          ${mode ? 'AND sib2.order_type = :mode' : ''}
+          ORDER BY sib2.created_at DESC 
+          LIMIT 1
+        ) AS mode,
+        -- Get the most recent branch
+        (
+          SELECT b.branch_name 
+          FROM sales_invoice_bills sib2
+          LEFT JOIN branches b ON b.id = sib2.branch_id
+          WHERE sib2.customer_id = c.id 
+          AND sib2.deleted_at IS NULL
+          ${branch_name ? 'AND b.branch_name = :branch_name' : ''}
+          ORDER BY sib2.created_at DESC 
+          LIMIT 1
+        ) AS branch,
+        -- Total purchase amount
+        COALESCE((
+          SELECT SUM(total_amount)
+          FROM sales_invoice_bills sib3
+          WHERE sib3.customer_id = c.id
+          AND sib3.deleted_at IS NULL
+        ), 0) AS purchase_amount,
+        -- Check if customer has any active enrollment
+        EXISTS (
+          SELECT 1 
+          FROM customer_enrollments e 
+          WHERE e.customer_id = c.id 
+          AND e.deleted_at IS NULL
+        ) AS has_scheme
+      FROM 
+        customers c
+      LEFT JOIN 
+        sales_invoice_bills sib ON sib.customer_id = c.id AND sib.deleted_at IS NULL
+      LEFT JOIN 
+        branches b ON b.id = sib.branch_id
+      WHERE 
+        c.deleted_at IS NULL
+    `;
+
+    const replacements = {};
+
+    // Add search condition if search term exists
+    if (search) {
+      sql += ` AND (
+        c.customer_name ILIKE :search OR 
+        c.mobile_number ILIKE :search OR
+        c.customer_code ILIKE :search OR
+        b.branch_name ILIKE :search
+      )`;
+      replacements.search = `%${search}%`;
+    }
+
+    // Add mode filter if provided
+    if (mode) {
+      sql += ` AND EXISTS (
+        SELECT 1 
+        FROM sales_invoice_bills sib4
+        WHERE sib4.customer_id = c.id
+        AND sib4.order_type = :mode
+        AND sib4.deleted_at IS NULL
+      )`;
+      replacements.mode = mode;
+    }
+
+    // Add branch filter if provided
+    if (branch_name) {
+      sql += ` AND EXISTS (
+        SELECT 1 
+        FROM sales_invoice_bills sib5
+        JOIN branches b2 ON b2.id = sib5.branch_id
+        WHERE sib5.customer_id = c.id
+        AND b2.branch_name = :branch_name
+        AND sib5.deleted_at IS NULL
+      )`;
+      replacements.branch_name = branch_name;
+    }
+
+    // Add GROUP BY and ORDER BY
+    sql += `
+      GROUP BY 
+        c.id
+      ORDER BY 
+        c.customer_name ASC
+    `;
+
+    // Execute the query
+    const customers = await sequelize.query(sql, {
+      replacements,
+      type: sequelize.QueryTypes.SELECT
+    });
+
+    // Format the response
+    const formattedCustomers = customers.map(customer => ({
+      id: customer.id,
+      customer_no: customer.customer_no,
+      customer_name: customer.customer_name,
+      mobile_number: customer.mobile_number,
+      no_of_orders: parseInt(customer.no_of_orders, 10),
+      mode: customer.mode || null,
+      branch: customer.branch || null,
+      purchase_amount: parseFloat(customer.purchase_amount || 0).toFixed(2),
+      scheme_details: customer.has_scheme ? 'Yes' : 'No',
+      created_at: customer.created_at
+    }));
+
+    return commonService.okResponse(res, { customers: formattedCustomers });
+  } catch (error) {
+    console.error('Error in listCustomers:', error);
+    return commonService.handleError(res, error);
+  }
+};
+
 
 module.exports = {
   createCustomer,
@@ -289,5 +417,5 @@ module.exports = {
   generateCustomerCode,
   listCustomerMobilesDropdown,
   listCustomerNameMobileDropdown,
-  //listCustomers
+  listCustomers
 };

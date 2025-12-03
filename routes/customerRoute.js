@@ -4,7 +4,8 @@ const customerService = require("../services/customerService");
 
 // CRUD
 router.post("/customers", customerService.createCustomer);
-router.get("/customers", customerService.listCustomers);
+router.get("/customers/list", customerService.listCustomers);
+router.get("/customers", customerService.listCustomersWithMobileNumber);
 router.get("/customers/mobile/dropdown", customerService.listCustomerMobilesDropdown);
 router.get("/customers/dropdown", customerService.listCustomerNameMobileDropdown);
 router.get("/customers/:id", customerService.getCustomerById);
