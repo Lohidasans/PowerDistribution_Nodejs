@@ -192,10 +192,10 @@ const getSalesInvoiceById = async (req, res) => {
   }
 };
 
-// List invoices - bill page/ customer scheme details page
+// List invoices - bill page/ customer - order details page
 const listSalesInvoices = async (req, res) => {
   try {
-    const { from, to, employee_id, customer_id, search } = req.query || {};
+    const { from, to, employee_id, customer_id, branch_id, order_type, search } = req.query || {};
 
     let sql = `
       WITH invoice_items AS (
@@ -260,11 +260,20 @@ const listSalesInvoices = async (req, res) => {
     if (to) { sql += ` AND i.invoice_date <= :to`; replacements.to = to; }
     if (employee_id) { sql += ` AND i.employee_id = :employee_id`; replacements.employee_id = employee_id; }
     if (customer_id) { sql += ` AND i.customer_id = :customer_id`; replacements.customer_id = customer_id; }
+    if (branch_id) { sql += ` AND i.branch_id = :branch_id`; replacements.branch_id = branch_id; }
+    if (order_type) { sql += ` AND i.order_type = :order_type`; replacements.order_type = order_type; }
     if (search) {
       sql += ` AND (
         i.invoice_no ILIKE :search OR
         c.customer_name ILIKE :search OR
-        c.mobile_number ILIKE :search
+        b.branch_name ILIKE :search OR
+        EXISTS (
+          SELECT 1
+          FROM sales_invoice_bill_items sii
+          WHERE sii.invoice_bill_id = i.id
+          AND sii.product_name_snapshot ILIKE :search
+          AND sii.deleted_at IS NULL
+        )
       )`;
       replacements.search = `%${search}%`;
     }
