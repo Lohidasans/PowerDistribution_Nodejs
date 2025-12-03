@@ -23,7 +23,7 @@ const createCustomer = async (req, res) => {
     }
 
     const payload = {
-      customer_code: req.body.customer_code ?? null,
+      customer_code: req.body.customer_code,
       customer_name: req.body.customer_name,
       mobile_number: req.body.mobile_number,
       address: req.body.address,
@@ -32,6 +32,22 @@ const createCustomer = async (req, res) => {
       district_id: +req.body.district_id,
       pin_code: req.body.pin_code,
     };
+    // Check if a non-deleted customer already uses this code
+    if (payload.customer_code) {
+      const existing = await models.Customer.findOne({
+        where: {
+          customer_code: payload.customer_code,
+          deleted_at: null,     // only check active (non-deleted) records
+        },
+      });
+
+      if (existing) {
+        return commonService.badRequest(res, {
+          message: "Customer code already exists",
+        });
+      }
+    }
+
 
     const customer = await models.Customer.create(payload);
     return commonService.createdResponse(res, { customer });
@@ -41,7 +57,7 @@ const createCustomer = async (req, res) => {
 };
 
 // List customers (simple filters)
-const listCustomers = async (req, res) => {
+const listCustomersWithMobileNumber = async (req, res) => {
   try {
     const { search, mobile_number } = req.query;
 
@@ -107,6 +123,22 @@ const updateCustomer = async (req, res) => {
   const entity = await commonService.findById(models.Customer, req.params.id, res);
   if (!entity) return;
   try {
+    // Validate code uniqueness if user tries to change it
+    if (req.body.customer_code && req.body.customer_code !== entity.customer_code) {
+      const existing = await models.Customer.findOne({
+        where: {
+          customer_code: req.body.customer_code,
+          deleted_at: null,
+          id: { [Op.ne]: entity.id }, // exclude the current customer
+        },
+      });
+
+      if (existing) {
+        return commonService.badRequest(res, {
+          message: "Customer code already exists",
+        });
+      }
+    }
     const up = {
       customer_code: req.body.customer_code ?? entity.customer_code,
       customer_name: req.body.customer_name ?? entity.customer_name,
@@ -243,13 +275,19 @@ const listCustomerNameMobileDropdown = async (req, res) => {
   }
 };
 
+// List Customer Page
+// const listCustomers = async (req, res) => {
+
+// };
+
 module.exports = {
   createCustomer,
-  listCustomers,
+  listCustomersWithMobileNumber,
   getCustomerById,
   updateCustomer,
   deleteCustomer,
   generateCustomerCode,
   listCustomerMobilesDropdown,
   listCustomerNameMobileDropdown,
+  //listCustomers
 };
