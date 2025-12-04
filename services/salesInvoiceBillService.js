@@ -59,16 +59,18 @@ const createSalesInvoice = async (req, res) => {
 
     const cgstAmt = Number(header.cgst_amount ?? 0);
     const sgstAmt = Number(header.sgst_amount ?? 0);
-    const discountAmt = Number(header.discount_amount ?? 0);
+
+    // DISCOUNT CALCULATION (Amount / Percentage)
+    let discountAmt = Number(header.discount_amount ?? 0);
+
+    if (header.discount_type === "Percentage") {
+      discountAmt = (subtotal * discountAmt) / 100;
+    }
+    // FINAL BILL TOTAL
     const total = subtotal - discountAmt + cgstAmt + sgstAmt;
 
     // Validate payment for high-value transactions
     if (total > 200000) {
-      // if (!payment.payment_mode) {
-      //   await t.rollback();
-      //   return commonService.badRequest(res, "Payment mode is required for orders above ₹2,00,000");
-      // }
-      
       if (payment.payment_mode === 'Cash') {
         await t.rollback();
         return commonService.badRequest(res, enMessage.billing.panCardRequired);
@@ -89,7 +91,7 @@ const createSalesInvoice = async (req, res) => {
         sgst_percent: header.sgst_percent || null,
         cgst_amount: cgstAmt,
         sgst_amount: sgstAmt,
-        discount_type: header.discount_type,
+        discount_type: header.discount_type || null,
         discount_amount: discountAmt,
         total_amount: total,
         amount_due: header.amount_due,
