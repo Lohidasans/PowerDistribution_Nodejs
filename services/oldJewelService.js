@@ -29,7 +29,8 @@ const createOldJewel = async (req, res) => {
       cgst_amount: cgstAmount,
       sgst_amount: sgstAmount,
       total_amount: totalAmount,
-      date: jewelData.date || new Date().toISOString().split('T')[0]
+      date: jewelData.date || new Date().toISOString().split('T')[0],
+      discount_type: jewelData.discount_type 
     }, { transaction });
     
     // Create jewel items if any
@@ -40,6 +41,7 @@ const createOldJewel = async (req, res) => {
         grs_weight: parseFloat(item.grs_weight) || 0,
         dust_weight: parseFloat(item.dust_weight) || 0,
         net_weight: parseFloat(item.net_weight) || 0,
+        wastage: parseFloat(item.wastage) || 0,
         rate: parseFloat(item.rate) || 0,
         amount: parseFloat(item.amount) || 0
       }));

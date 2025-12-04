@@ -89,6 +89,7 @@ const createSalesInvoice = async (req, res) => {
         sgst_percent: header.sgst_percent || null,
         cgst_amount: cgstAmt,
         sgst_amount: sgstAmt,
+        discount_type: header.discount_type,
         discount_amount: discountAmt,
         total_amount: total,
         amount_due: header.amount_due,
