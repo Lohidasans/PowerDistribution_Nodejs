@@ -1004,7 +1004,9 @@ const searchProductBySkuNew = async (req, res) => {
         product_item_details_id: item.id,
         hsn_code: product.hsn_code,
         base_price: item.base_price,
+        gross_weight: item.gross_weight,
         net_weight: item.net_weight,
+        product_item_wastage: item.wastage,
         ...priceDetails
       };
     };
