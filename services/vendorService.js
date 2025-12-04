@@ -64,39 +64,13 @@ const createVendor = async (req, res) => {
     // Login (optional) via reusable create helper
     let createdUser = null;
     if (login && typeof login === "object" && Object.keys(login).length > 0) {
-      // Check duplicate email BEFORE creating user
-      if (login.email) {
-        const existingUser = await models.User.findOne({
-          where: { email: login.email },
-        });
-        if (existingUser) {
-          console.log("Duplicate email found:", login.email);
-          await t.rollback();
-          return commonService.badRequest(res, "User Email already exists.");
-        }
-      }
+      const result = await userSvc.createUserByEntity(t, "vendor", vendor.id, login);
 
-      try {
-        createdUser = await userSvc.createUserByEntity(
-          t,
-          "vendor",
-          vendor.id,
-          login
-        );
-      } catch (e) {
-        console.error("Error creating user:", e);
+      if (result.error) {
         await t.rollback();
-
-        // Validation error
-        if (e?.name === "SequelizeValidationError") {
-          return commonService.badRequest(res, "Invalid user data provided.");
-        }
-
-        return commonService.badRequest(
-          res,
-          "Failed to create user login details."
-        );
+        return commonService.badRequest(res, result.error);
       }
+      createdUser = result.user;
     }
 
     let createdSpocs = [];

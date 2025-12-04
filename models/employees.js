@@ -15,7 +15,6 @@ module.exports = (sequelize, DataTypes) => {
             employee_no: {
                 type: DataTypes.STRING,
                 allowNull: false,
-                unique: true,
             },
             employee_name: {
                 type: DataTypes.STRING,

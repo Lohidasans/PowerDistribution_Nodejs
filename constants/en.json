@@ -46,7 +46,8 @@
     "notFound": "Vendor not found"
   },
   "user": {
-    "passwordRequired": "Password is required for user login."
+    "passwordRequired": "Password is required for user login.",
+    "invalidPayload": "Invalid data payload"
   },
   "billing": {
     "invoiceCreationSuccess":"Sales Invoice created successfully",

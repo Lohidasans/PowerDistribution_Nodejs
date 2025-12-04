@@ -84,28 +84,46 @@ module.exports = {
   deleteUser,
   createUserByEntity: async (transaction, entity_type, entity_id, data) => {
     if (!data || typeof data !== "object")
-      return { error: enMessage.failure.requiredFields };
+      return { error: enMessage.user.invalidPayload };
     // Allow multiple users per entity; no uniqueness check on (entity_type, entity_id)
     if (!data.password_hash)
+      return { error: enMessage.user.passwordRequired };
+
+    try {
+      const created = await models.User.create(
+        {
+          email: data.email || null,
+          password_hash: data.password_hash,
+          role_id: data.role_id || null,
+          entity_type,
+          entity_id,
+        },
+        { transaction }
+      );
+
+      return { user: created };
+    }
+    catch (err) {
+      // Handle Sequelize unique constraint errors
+      if (err.name === "SequelizeUniqueConstraintError") {
+        const field = Object.keys(err.fields || {})[0] || "email";
+        console.log("******Duplicate email found******");
+        return {
+          error: `${field} already exists`,
+          details: err.fields,
+        };
+      }
+
+      // Other Sequelize / DB errors
       return {
-        error:
-          enMessage.user?.passwordRequired || enMessage.failure.requiredFields,
+        error: "Failed to create user",
+        details: err.message,
       };
-    const created = await models.User.create(
-      {
-        email: data.email || null,
-        password_hash: data.password_hash,
-        role_id: data.role_id || null,
-        entity_type,
-        entity_id,
-      },
-      { transaction }
-    );
-    return created;
+    }
   },
   updateUserByEntity: async (transaction, entity_type, entity_id, data) => {
     if (!data || typeof data !== "object")
-      return { error: enMessage.failure.requiredFields };
+      return { error: enMessage.user.invalidPayload };
     const existing = await models.User.findOne({
       where: { entity_type, entity_id },
       transaction,

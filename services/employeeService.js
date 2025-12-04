@@ -29,11 +29,27 @@ const createEmployee = async (req, res) => {
       experiences,
     } = req.body;
 
-    if (!employee_no || !employee_name || !department_id || !designation_id) {
+    // List and list required fields
+    const requiredFields = { employee_no, employee_name, department_id, designation_id};
+    const missingFields = Object.keys(requiredFields).filter(key => !requiredFields[key]);
+
+    if (missingFields.length > 0) {
       await transaction.rollback();
-      return commonService.badRequest(res, enMessage.failure.requiredFields);
+      return commonService.badRequest(res,`Missing required fields: ${missingFields.join(", ")}`);
     }
 
+    // Check if employee_no already exists among non-deleted employees
+    const existingEmployee = await models.Employee.findOne({
+      where: {
+        employee_no,
+        deleted_at: null,     // only check active (non-deleted) records
+      }
+    });
+
+    if (existingEmployee) {
+      await transaction.rollback();
+      return commonService.badRequest(res, "Employee number already exists.");
+    }
     // Create employee
     const employee = await models.Employee.create(
       {
@@ -81,14 +97,17 @@ const createEmployee = async (req, res) => {
 
     // Optional: Login via helper
     let createdUser = null;
+
     if (login && typeof login === "object") {
-      try {
-        createdUser = await userSvc.createUserByEntity(transaction, "employee", employee.id, login);
-      } catch (e) {
+      const result = await userSvc.createUserByEntity(transaction, "employee", employee.id, login);
+      if (result.error) {
         await transaction.rollback();
-        return commonService.badRequest(res, enMessage.failure.requiredFields);
+        return commonService.badRequest(res, result.error);
       }
+
+      createdUser = result.user;
     }
+
 
     // Optional: Experiences
     let createdExperiences = [];
@@ -429,6 +448,7 @@ const updateEmployee = async (req, res) => {
       },
       { transaction }
     );
+    
 
     let updatedContact = null;
     if (contact && typeof contact === "object") {

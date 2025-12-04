@@ -112,31 +112,21 @@ const createBranch = async (req, res) => {
 
     // Optionally create login via reusable create helper
     let createdUser = null;
-    if (login && typeof login === "object") {
-      try {
-        createdUser = await userSvc.createUserByEntity(
-          t,
-          "branch",
-          branch.id,
-          login
-        );
-      } catch (e) {
+    if (login && typeof login === "object" && Object.keys(login).length > 0) {
+      const result = await userSvc.createUserByEntity(
+        t,
+        "branch",
+        branch.id,
+        login
+      );
+
+      if (result.error) {
         await t.rollback();
-        // Surface meaningful Sequelize errors (e.g., unique email)
-        let errMsg = message.failure.requiredFields;
-        if (e && typeof e === "object") {
-          if (e.name === "SequelizeUniqueConstraintError" || e.name === "SequelizeValidationError") {
-            const parts = Array.isArray(e.errors)
-              ? e.errors.map((er) => er.message || er.type || "Validation error")
-              : [];
-            if (parts.length) errMsg = parts.join(", ");
-          } else if (e.message) {
-            errMsg = e.message;
-          }
-        }
-        return commonService.badRequest(res, errMsg);
+        return commonService.badRequest(res, result.error);
       }
+      createdUser = result.user;
     }
+
 
     // Create default invoice settings for the branch
     let createdInvoiceSettings = [];
