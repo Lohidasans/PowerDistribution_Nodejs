@@ -142,6 +142,8 @@ module.exports = {
   // Multiple logins per entity: create-only helper
   createUsersByEntity: async (transaction, entity_type, entity_id, users) => {
     if (!Array.isArray(users) || users.length === 0) return [];
+
+    // Filter only valid objects with password_hash
     const rows = users
       .filter((u) => u && typeof u === "object" && u.password_hash)
       .map((u) => ({
@@ -151,13 +153,41 @@ module.exports = {
         entity_type,
         entity_id,
       }));
-    if (!rows.length)
+
+    if (!rows.length) {
+      return { error: enMessage.user.passwordRequired || enMessage.failure.requiredFields};
+    }
+
+    try {
+      const created = await models.User.bulkCreate(rows, {
+        transaction,
+        returning: true,
+        validate: true,        // ensures per-row validation 
+        individualHooks: true, // catches individual row errors
+      });
+
+      return { users: created };
+    }
+
+    catch (err) {
+      // Unique constraint error (e.g., duplicate email)
+      if (err.name === "SequelizeUniqueConstraintError") {
+        const field = Object.keys(err.fields || {})[0] || "email";
+        console.log("******Duplicate email found in Super Admin Profile******");
+        return {
+          error: `${field} already exists`,
+          details: err.fields,
+        };
+      }
+
+      // Other DB errors
       return {
-        error:
-          enMessage.user?.passwordRequired || enMessage.failure.requiredFields,
+        error: "Failed to create users",
+        details: err.message,
       };
-    return models.User.bulkCreate(rows, { transaction, returning: true });
+    }
   },
+
   // Multiple logins per entity: update-only helper (requires id)
   updateUsersByEntity: async (transaction, entity_type, entity_id, users) => {
     if (!Array.isArray(users) || users.length === 0) return [];

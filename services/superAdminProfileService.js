@@ -84,11 +84,11 @@ const createSuperAdminProfile = async (req, res) => {
     }
     if (Array.isArray(logins) && logins.length > 0) {
       const result = await userSvc.createUsersByEntity(t, "superadmin", profile.id, logins);
-      if (result && result.error) {
+      if (result.error) {
         await t.rollback();
         return commonService.badRequest(res, result.error);
       }
-      createdUsers = result || [];
+      createdUsers = result.users || [];
     }
 
     await t.commit();
