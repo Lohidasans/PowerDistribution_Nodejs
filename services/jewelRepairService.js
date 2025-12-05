@@ -139,6 +139,8 @@ const createJewelRepair = async (req, res) => {
       payments: payments || []
     };
     
+    await transaction.commit();  
+    
     return commonService.createdResponse(res, result);
   } catch (error) {
     await transaction.rollback();
