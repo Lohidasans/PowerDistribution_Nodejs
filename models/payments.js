@@ -7,7 +7,11 @@ module.exports = (sequelize, DataTypes) => {
     },
     invoice_bill_id: {
       type: DataTypes.INTEGER,
-      allowNull: false,
+      allowNull: true,
+    },
+    jewel_repair_id: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
     },
     payment_mode: {
       type: DataTypes.ENUM('Cash', 'Card', 'UPI', 'Bank Transfer', 'Cheque', 'Other'),

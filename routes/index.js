@@ -40,6 +40,7 @@ const LeaveTypeRoute = require("./leaveTypeRoutes");
 const BillAdjustmentTypeRoute = require("./billAdjustmentTypeRoutes");
 const OldJewelRoute = require("./oldJewelRoutes");
 const SalesReturnRoute = require("./salesReturnRoute");
+const JewelRepairRoute = require("./jewelRepairRoutes");
 
 module.exports = (app) => {
   app.use("/api/v1", RoleRouter);
@@ -84,5 +85,6 @@ module.exports = (app) => {
   app.use("/api/v1", BillAdjustmentTypeRoute);
   app.use("/api/v1", OldJewelRoute);
   app.use("/api/v1", SalesReturnRoute);
+  app.use("/api/v1", JewelRepairRoute);
 };
 

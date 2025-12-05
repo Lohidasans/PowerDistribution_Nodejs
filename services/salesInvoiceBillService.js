@@ -296,7 +296,6 @@ const listSalesInvoices = async (req, res) => {
       return {
         ...invoice,
         amount_due: amountDue.toFixed(2),
-        // Add any additional formatting here
       };
     });
 
