@@ -981,16 +981,8 @@ const searchProductBySkuNew = async (req, res) => {
     const { sku } = req.query;
 
     // Helper: convert product + item → flat response object
-    const formatItem = async (product, item) => {  // Made async
+    const formatItem = async (product, item) => {
       let name = product.product_name;
-
-      if (product.variation_type === "With Variations") {
-        try {
-          const varObj = JSON.parse(item.variation);
-          const val = Object.values(varObj)[0];
-          if (val) name += ` - ${val}`;
-        } catch { }
-      }
 
       // Add await here
       const priceDetails = await calculateSellingPrice(product, item, models);
@@ -998,6 +990,7 @@ const searchProductBySkuNew = async (req, res) => {
       return {
         sku_id: item.sku_id || product.sku_id,  // Use item.sku_id if available
         product_name: name,
+        product_variations: product.product_variations,
         purity: product.purity,
         branch_id: product.branch_id,
         product_id: product.id,
