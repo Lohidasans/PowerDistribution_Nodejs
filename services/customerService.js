@@ -7,15 +7,7 @@ const { Op } = require("sequelize");
 // Create customer
 const createCustomer = async (req, res) => {
   try {
-    const required = [
-      "customer_name",
-      "mobile_number",
-      "address",
-      "country_id",
-      "state_id",
-      "district_id",
-      "pin_code",
-    ];
+    const required = ["customer_name", "mobile_number" ];
     for (const f of required) {
       if (req.body?.[f] === undefined || req.body?.[f] === null || req.body?.[f] === "") {
         return commonService.badRequest(res, enMessage.failure.requiredFields);
@@ -26,12 +18,14 @@ const createCustomer = async (req, res) => {
       customer_code: req.body.customer_code,
       customer_name: req.body.customer_name,
       mobile_number: req.body.mobile_number,
-      address: req.body.address,
-      country_id: +req.body.country_id,
-      state_id: +req.body.state_id,
-      district_id: +req.body.district_id,
-      pin_code: req.body.pin_code,
+      // Optional fields
+      address: req.body.address || null,
+      country_id: +req.body.country_id || null,
+      state_id: +req.body.state_id || null,
+      district_id: +req.body.district_id || null,
+      pin_code: req.body.pin_code || null,
     };
+    
     // Check if a non-deleted customer already uses this code
     if (payload.customer_code) {
       const existing = await models.Customer.findOne({

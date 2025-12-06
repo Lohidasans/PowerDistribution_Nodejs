@@ -21,23 +21,23 @@ module.exports = (sequelize, DataTypes) => {
       },
       address: {
         type: DataTypes.TEXT,
-        allowNull: false
+        allowNull: true
       },
       country_id: {
         type: DataTypes.INTEGER,
-        allowNull: false
+        allowNull: true
       },
       state_id: {
         type: DataTypes.INTEGER,
-        allowNull: false
+        allowNull: true
       },
       district_id: {
         type: DataTypes.INTEGER,
-        allowNull: false
+        allowNull: true
       },
       pin_code: {
         type: DataTypes.STRING,
-        allowNull: false
+        allowNull: true
       },
       pan_no: {
         type: DataTypes.STRING,
