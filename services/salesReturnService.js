@@ -132,7 +132,8 @@ const listSalesReturns = async (req, res) => {
       customer_id,
       start_date,
       end_date,
-      branch_id
+      branch_id,
+      sales_return_no    
     } = req.query;
 
     const offset = (parseInt(page) - 1) * parseInt(limit);
@@ -143,9 +144,9 @@ const listSalesReturns = async (req, res) => {
     if (status) where += ` AND sr.status = '${status}'`;
     if (customer_id) where += ` AND sr.customer_id = ${customer_id}`;
     if (branch_id) where += ` AND sr.branch_id = ${branch_id}`;
-
     if (start_date) where += ` AND sr.return_date >= '${start_date}'`;
     if (end_date) where += ` AND sr.return_date <= '${end_date}'`;
+    if (sales_return_no) where += ` AND sr.sales_return_no LIKE '%${sales_return_no}%'`;
 
     // 1️⃣ Total count
     const countQuery = `
