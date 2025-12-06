@@ -133,12 +133,10 @@ const listSalesReturns = async (req, res) => {
       start_date,
       end_date,
       branch_id,
-      sales_return_no    
+      sales_return_no
     } = req.query;
 
     const offset = (parseInt(page) - 1) * parseInt(limit);
-
-    // Build WHERE conditions manually
     let where = "WHERE 1 = 1";
 
     if (status) where += ` AND sr.status = '${status}'`;
@@ -148,20 +146,16 @@ const listSalesReturns = async (req, res) => {
     if (end_date) where += ` AND sr.return_date <= '${end_date}'`;
     if (sales_return_no) where += ` AND sr.sales_return_no LIKE '%${sales_return_no}%'`;
 
-    // 1️⃣ Total count
+    // Count
     const countQuery = `
       SELECT COUNT(*) AS total
       FROM sales_returns sr
       ${where};
     `;
-
-    const countResult = await sequelize.query(countQuery, {
-      type: sequelize.QueryTypes.SELECT
-    });
-
+    const countResult = await sequelize.query(countQuery, { type: sequelize.QueryTypes.SELECT });
     const total = countResult[0].total;
 
-    // 2️⃣ Fetch paginated data with joins (no associations)
+    // Data
     const dataQuery = `
       SELECT 
         sr.*, 
@@ -176,16 +170,53 @@ const listSalesReturns = async (req, res) => {
       ORDER BY sr.return_date DESC, sr.id DESC
       LIMIT ${limit} OFFSET ${offset};
     `;
+    const data = await sequelize.query(dataQuery, { type: sequelize.QueryTypes.SELECT });
 
-    const data = await sequelize.query(dataQuery, {
-      type: sequelize.QueryTypes.SELECT
+    // --- Fetch items for all IDs ---
+    const salesReturnIds = data.map(d => d.id);
+    let itemsMap = {};
+
+    if (salesReturnIds.length > 0) {
+      const itemsQuery = `
+        SELECT *
+        FROM sales_return_items
+        WHERE sales_return_id IN (${salesReturnIds.join(",")})
+        ORDER BY sales_return_id;
+      `;
+
+      const items = await sequelize.query(itemsQuery, { type: sequelize.QueryTypes.SELECT });
+
+      items.forEach(it => {
+        if (!itemsMap[it.sales_return_id]) {
+          itemsMap[it.sales_return_id] = [];
+        }
+        itemsMap[it.sales_return_id].push(it);
+      });
+    }
+
+    // Attach items to each sales return
+    const finalData = data.map(d => {
+      const items = itemsMap[d.id] || [];
+
+      // SUM net_weight (convert to number and ignore nulls)
+      const totalNetWeight = items.reduce((sum, it) => {
+        const w = parseFloat(it.net_weight);
+        return sum + (!isNaN(w) ? w : 0);
+      }, 0);
+
+      return {
+        ...d,
+        total_net_weight: totalNetWeight,
+        items,        
+      };
     });
+
 
     return commonService.okResponse(res, {
       total,
       page: parseInt(page),
       total_pages: Math.ceil(total / limit),
-      data
+      data: finalData
     });
 
   } catch (err) {

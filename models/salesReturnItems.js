@@ -48,10 +48,6 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.STRING,
         allowNull: true,
       },
-      gross_weight: {
-        type: DataTypes.STRING,
-        allowNull: true,
-      },
       quantity: {
         type: DataTypes.INTEGER,
         allowNull: false,

@@ -25,7 +25,7 @@ const generateSalesInvoiceNo = async (req, res) => {
 const createSalesInvoice = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const { header = {}, items = [], payment = {} } = req.body || {};
+    const { header = {}, items = [], payment = {}, adjustment = null } = req.body || {};
     
     // Validate items
     if (!Array.isArray(items) || items.length === 0) {
@@ -62,12 +62,24 @@ const createSalesInvoice = async (req, res) => {
 
     // DISCOUNT CALCULATION (Amount / Percentage)
     let discountAmt = Number(header.discount_amount ?? 0);
-
     if (header.discount_type === "Percentage") {
       discountAmt = (subtotal * discountAmt) / 100;
     }
-    // FINAL BILL TOTAL
-    const total = subtotal - discountAmt + cgstAmt + sgstAmt;
+
+    // TOTAL BEFORE ADJUSTMENT
+    let total = subtotal - discountAmt + cgstAmt + sgstAmt;
+
+    // APPLY SINGLE BILL ADJUSTMENT
+    let adjAmount = 0;
+    if (adjustment && adjustment.adjustment_amount) {
+      adjAmount = Number(adjustment.adjustment_amount || 0);
+
+      // Subtract adjustment
+      total -= adjAmount;
+
+      // Prevent negative totals
+      if (total < 0) total = 0;
+    }
 
     // Validate payment for high-value transactions
     if (total > 200000) {
@@ -103,6 +115,21 @@ const createSalesInvoice = async (req, res) => {
       { transaction: t }
     );
 
+    // INSERT ADJUSTMENT ENTRY (only if exists)
+    let savedAdjustment = null;
+    if (adjustment) {
+      savedAdjustment = await models.SalesInvoiceAdjustment.create(
+        {
+          sales_invoice_id: bill.id,
+          adjustment_type_id: adjustment.adjustment_type_id,
+          reference_id: adjustment.reference_id,
+          reference_no: adjustment.reference_no,
+          adjustment_amount: adjAmount,
+        },
+        { transaction: t }
+      );
+    }
+
     // Create invoice items
     const withFK = itemRows.map((row) => ({ ...row, invoice_bill_id: bill.id }));
     await models.SalesInvoiceBillItem.bulkCreate(withFK, { transaction: t });
@@ -137,7 +164,8 @@ const createSalesInvoice = async (req, res) => {
       message: enMessage.billing.invoiceCreationSuccess,
       invoice: bill,
       items: withFK,
-      payments: paymentRows
+      payments: paymentRows,
+      adjustment: savedAdjustment
     });
   } catch (err) {
     await t.rollback();
