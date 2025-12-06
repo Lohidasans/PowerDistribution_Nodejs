@@ -9,25 +9,14 @@ const createOldJewel = async (req, res) => {
   try {
     const { items = [], ...jewelData } = req.body;
     
-    // Calculate subtotal from items
-    const subTotal = items.reduce((sum, item) => {
+    // Calculate totalAmount from items
+    const totalAmount = items.reduce((sum, item) => {
       return sum + (parseFloat(item.amount) || 0);
     }, 0);
-    
-    // Calculate GST amounts if applicable
-    const cgstPercent = parseFloat(jewelData.cgst_percent) || 0;
-    const sgstPercent = parseFloat(jewelData.sgst_percent) || 0;
-    const cgstAmount = (subTotal * cgstPercent) / 100;
-    const sgstAmount = (subTotal * sgstPercent) / 100;
-    const discount = parseFloat(jewelData.discount) || 0;
-    const totalAmount = subTotal + cgstAmount + sgstAmount - discount;
-    
+        
     // Create the main jewel record with calculated values
     const jewel = await models.OldJewel.create({
       ...jewelData,
-      sub_total_amount: subTotal,
-      cgst_amount: cgstAmount,
-      sgst_amount: sgstAmount,
       total_amount: totalAmount,
       date: jewelData.date || new Date().toISOString().split('T')[0],
       discount_type: jewelData.discount_type 
@@ -35,16 +24,25 @@ const createOldJewel = async (req, res) => {
     
     // Create jewel items if any
     if (items && items.length > 0) {
-      const jewelItems = items.map(item => ({
-        ...item,
-        old_jewel_id: jewel.id,
-        grs_weight: parseFloat(item.grs_weight) || 0,
-        dust_weight: parseFloat(item.dust_weight) || 0,
-        net_weight: parseFloat(item.net_weight) || 0,
-        wastage: parseFloat(item.wastage) || 0,
-        rate: parseFloat(item.rate) || 0,
-        amount: parseFloat(item.amount) || 0
-      }));
+      const jewelItems = items.map(item => {
+        const grsWeight = parseFloat(item.grs_weight) || 0;
+        const wastage = parseFloat(item.wastage) || 0;
+        const dustWeight = parseFloat(item.dust_weight) || 0;
+
+        // ---- Correct net weight calculation ----
+        const netWeight = grsWeight - wastage - dustWeight;
+
+        return {
+          ...item,
+          old_jewel_id: jewel.id,
+          grs_weight: grsWeight,
+          wastage,
+          dust_weight: dustWeight,
+          net_weight: netWeight,
+          rate: parseFloat(item.rate) || 0,
+          amount: parseFloat(item.amount) || 0
+        };
+      });
       
       await models.OldJewelItem.bulkCreate(jewelItems, { transaction });
     }
@@ -198,26 +196,19 @@ const updateOldJewel = async (req, res) => {
       return commonService.notFound(res, "Old jewel record not found");
     }
 
-    // --- Recalculate totals if item data is passed ---
+    // --- Recalculate total_amount from items (NEW UI logic) ---
     if (items.length > 0) {
-      const subTotal = items.reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0);
-      const cgstPercent = parseFloat(updateData.cgst_percent) || 0;
-      const sgstPercent = parseFloat(updateData.sgst_percent) || 0;
-      const cgstAmount = (subTotal * cgstPercent) / 100;
-      const sgstAmount = (subTotal * sgstPercent) / 100;
-      const discount = parseFloat(updateData.discount) || 0;
-      const totalAmount = subTotal + cgstAmount + sgstAmount - discount;
+      const totalAmount = items.reduce((sum, item) => {
+        return sum + (parseFloat(item.amount) || 0);
+      }, 0);
 
-      updateData.sub_total_amount = subTotal;
-      updateData.cgst_amount = cgstAmount;
-      updateData.sgst_amount = sgstAmount;
       updateData.total_amount = totalAmount;
     }
 
-    // --- Update Old Jewel header fields ---
+    // --- Update Old Jewel (header fields) ---
     await jewel.update(updateData, { transaction });
 
-    // --- Update each existing item (only if ID is provided) ---
+    // --- Update each item (only if ID exists) ---
     for (const item of items) {
       if (item && item.id) {
         const existingItem = await models.OldJewelItem.findOne({
@@ -226,16 +217,34 @@ const updateOldJewel = async (req, res) => {
         });
 
         if (existingItem) {
-          const { id: _omit, old_jewel_id: _omit2, created_at, updated_at, deleted_at, ...updatableFields } = item;
+          const {
+            id: _omit,
+            old_jewel_id: _omit2,
+            created_at,
+            updated_at,
+            deleted_at,
+            ...updatableFields
+          } = item;
 
-          await existingItem.update(updatableFields, { transaction });
+          await existingItem.update(
+            {
+              ...updatableFields,
+              grs_weight: parseFloat(item.grs_weight) || 0,
+              dust_weight: parseFloat(item.dust_weight) || 0,
+              net_weight: parseFloat(item.net_weight) || 0,
+              wastage: parseFloat(item.wastage) || 0,
+              rate: parseFloat(item.rate) || 0,
+              amount: parseFloat(item.amount) || 0
+            },
+            { transaction }
+          );
         }
       }
     }
 
     await transaction.commit();
 
-    // --- Fetch updated record with items ---
+    // --- Fetch updated record and items ---
     const [updatedJewel, updatedItems] = await Promise.all([
       models.OldJewel.findByPk(id, { raw: true }),
       models.OldJewelItem.findAll({
@@ -248,6 +257,7 @@ const updateOldJewel = async (req, res) => {
       ...updatedJewel,
       items: updatedItems,
     });
+
   } catch (error) {
     await transaction.rollback();
     console.error("Error updating Old Jewel:", error);
