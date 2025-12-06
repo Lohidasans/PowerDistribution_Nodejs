@@ -111,7 +111,8 @@ const listEstimates = async (req, res) => {
     let sql = `
       SELECT 
         e.*, 
-        emp.employee_no AS employee_no
+        emp.employee_no AS employee_no,
+        emp.employee_name
       FROM "estimate_bills" e
       LEFT JOIN employees emp ON emp.id = e.employee_id AND emp.deleted_at IS NULL
       WHERE e.deleted_at IS NULL

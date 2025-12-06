@@ -72,38 +72,51 @@ const createOldJewel = async (req, res) => {
 
 const getAllOldJewels = async (req, res) => {
   try {
-    const { page = 1, pageSize = 10 } = req.query;
-    const limit = parseInt(pageSize, 10);
-    const offset = (page - 1) * limit;
+    const { old_jewel_code } = req.query;
 
-    // Fetch main jewel records
-    const { count, rows: jewels } = await models.OldJewel.findAndCountAll({
-      offset,
-      limit,
+    // Build filter conditions
+    const where = {};
+    if (old_jewel_code) {
+      where.old_jewel_code = old_jewel_code;
+    }
+
+    // Fetch all jewels (no pagination)
+    const jewels = await models.OldJewel.findAll({
+      where,
       order: [['id', 'DESC']],
       raw: true,
     });
 
     if (jewels.length === 0) {
-      return commonService.okResponse(res, {
-        data: [],
-        pagination: { total: 0, page, pageSize: limit, totalPages: 0 },
-      });
+      return commonService.okResponse(res, { data: [] });
     }
 
-    // Collect unique employee IDs
+    // Collect employee and customer IDs
     const employeeIds = [...new Set(jewels.map(j => j.employee_id))];
+    const customerIds = [...new Set(jewels.map(j => j.customer_id).filter(Boolean))];
 
-    // Fetch employees (only needed fields)
+    // Fetch employees
     const employees = await models.Employee.findAll({
       where: { id: employeeIds },
-      attributes: ['id', 'employee_no', 'employee_name'],
+      attributes: ["id", "employee_no", "employee_name"],
       raw: true,
     });
 
-    // Map employee info by ID for fast lookup
+    // Fetch customers
+    const customers = await models.Customer.findAll({
+      where: { id: customerIds },
+      attributes: ["id", "customer_name", "mobile_number"],
+      raw: true,
+    });
+
+    // Create lookup maps
     const employeeMap = employees.reduce((acc, emp) => {
       acc[emp.id] = emp;
+      return acc;
+    }, {});
+
+    const customerMap = customers.reduce((acc, cust) => {
+      acc[cust.id] = cust;
       return acc;
     }, {});
 
@@ -114,7 +127,7 @@ const getAllOldJewels = async (req, res) => {
       raw: true,
     });
 
-    // Group items by jewel ID
+    // Group items
     const itemsMap = items.reduce((acc, item) => {
       if (!acc[item.old_jewel_id]) acc[item.old_jewel_id] = [];
       acc[item.old_jewel_id].push(item);
@@ -126,23 +139,21 @@ const getAllOldJewels = async (req, res) => {
       ...jewel,
       employee_no: employeeMap[jewel.employee_id]?.employee_no || null,
       employee_name: employeeMap[jewel.employee_id]?.employee_name || null,
+
+      customer_name: customerMap[jewel.customer_id]?.customer_name || null,
+      customer_mobile: customerMap[jewel.customer_id]?.mobile_number || null,
+
       items: itemsMap[jewel.id] || [],
     }));
 
-    // Pagination info
-    const pagination = {
-      total: count,
-      page: parseInt(page, 10),
-      pageSize: limit,
-      totalPages: Math.ceil(count / limit),
-    };
+    return commonService.okResponse(res, { data: result });
 
-    return commonService.okResponse(res, { data: result, pagination });
   } catch (error) {
-    console.error('Error fetching Old Jewels:', error);
+    console.error("Error fetching Old Jewels:", error);
     return commonService.handleError(res, error);
   }
 };
+
 
 // Get a single old jewel record by ID
 const getOldJewelById = async (req, res) => {
