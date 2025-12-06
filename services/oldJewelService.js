@@ -133,16 +133,24 @@ const getAllOldJewels = async (req, res) => {
     }, {});
 
     // Merge all data
-    const result = jewels.map(jewel => ({
-      ...jewel,
-      employee_no: employeeMap[jewel.employee_id]?.employee_no || null,
-      employee_name: employeeMap[jewel.employee_id]?.employee_name || null,
+    const result = jewels.map(jewel => {
+      const jewelItems = itemsMap[jewel.id] || [];
 
-      customer_name: customerMap[jewel.customer_id]?.customer_name || null,
-      customer_mobile: customerMap[jewel.customer_id]?.mobile_number || null,
+      const totalNetWeight = jewelItems.reduce((sum, item) => {
+        return sum + (parseFloat(item.net_weight) || 0);
+      }, 0);
 
-      items: itemsMap[jewel.id] || [],
-    }));
+      return {
+        ...jewel,
+        employee_no: employeeMap[jewel.employee_id]?.employee_no || null,
+        employee_name: employeeMap[jewel.employee_id]?.employee_name || null,
+        customer_name: customerMap[jewel.customer_id]?.customer_name || null,
+        customer_mobile: customerMap[jewel.customer_id]?.mobile_number || null,
+        total_net_weight: totalNetWeight.toFixed(3), // format same as DB
+        items: jewelItems,       
+      };
+    });
+
 
     return commonService.okResponse(res, { data: result });
 
