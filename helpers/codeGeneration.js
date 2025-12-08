@@ -99,7 +99,7 @@ const generateFiscalSeriesCode = async (model, field, prefix, { pad = 3 } = {}) 
   const regex = new RegExp(`^${escapedPrefix}(\\d+)$`, "i");
 
   // Fetch all entries with the given prefix
-  const entries = await model.findAll({
+  const entries = await model.  findAll({
     where: {
       [field]: { [Op.iLike]: `${cleanPrefix}%` },
     },
@@ -122,7 +122,6 @@ const generateFiscalSeriesCode = async (model, field, prefix, { pad = 3 } = {}) 
 
   return `${cleanPrefix}${String(nextNumber).padStart(pad, "0")}`;
 };
-
 
 
 const generateProductSKUCode = async (prefixFromQuery = "", options = {}) => {

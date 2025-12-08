@@ -203,7 +203,9 @@ const models = {
   SalesReturn,
   SalesReturnItem,
   JewelRepair,
-  JewelRepairItem
+  JewelRepairItem,
+  StockTransfer,
+  StockTransferItem
 };
 
 Object.values(models).forEach((model) => {

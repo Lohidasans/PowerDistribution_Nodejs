@@ -1,6 +1,24 @@
 const { models, sequelize } = require("../models");
 const commonService = require("./commonService");
 const message = require("../constants/en.json");
+const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
+
+// Generate auto code: TRA001
+const generateStockCode = async (req, res) => {
+  try {
+    const { prefix } = req.query || {};
+
+    const code = await generateFiscalSeriesCode(
+      models.StockTransfer,
+      "transfer_no",
+      String(prefix).toUpperCase(),
+      { pad: 3 }
+    );
+    return commonService.okResponse(res, { stock_transfer_code: code });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
 
 // Create Stock Transfer with items
 const createStockTransfer = async (req, res) => {
@@ -18,6 +36,19 @@ const createStockTransfer = async (req, res) => {
       }
     }
 
+    if (transferData.transfer_no)
+    {
+      const existing = await models.StockTransfer.findOne({
+        where: {
+          transfer_no: transferData.transfer_no,
+          deleted_at: null,     // only check active (non-deleted) records
+        }
+      });
+      if (existing) {
+        return commonService.badRequest(res, { message: "Customer code already exists" });
+      }
+    }
+    
     // Create Stock Transfer
     const stockTransfer = await models.StockTransfer.create(transferData, { transaction });
 
@@ -254,6 +285,7 @@ const listStockTransfers = async (req, res) => {
 };
 
 module.exports = {
+  generateStockCode,
   createStockTransfer,
   getStockTransferById,
   updateStockTransfer,
