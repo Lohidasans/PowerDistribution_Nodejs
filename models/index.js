@@ -129,6 +129,9 @@ const Leave = require("./leave")(sequelize, Sequelize.DataTypes);
 const SuperAdminProfile = require("./superAdminProfiles")(sequelize, Sequelize.DataTypes);
 const InvoiceSettingEnum = require("./invoiceSettingEnum")(sequelize, Sequelize.DataTypes);
 
+const StockTransfer = require("./stockTransfer")(sequelize, Sequelize.DataTypes);
+const StockTransferItem = require("./stockTransferItem")(sequelize, Sequelize.DataTypes);
+
 const models = {
   Permission,
   Role,
