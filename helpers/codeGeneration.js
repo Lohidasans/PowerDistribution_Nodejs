@@ -92,27 +92,32 @@ const generateUniqueCode = async ( model, field, parts = [],
 const generateFiscalSeriesCode = async (model, field, prefix, { pad = 3 } = {}) => {
   const cleanPrefix = String(prefix || "").trim().toUpperCase();
 
-  // Find last record for this prefix
-  const lastEntry = await model.findOne({
+  // Fetch ALL codes starting with prefix
+  const entries = await model.findAll({
     where: {
       [field]: { [Op.iLike]: `${cleanPrefix}%` },
     },
-    order: [["id", "DESC"]],
     attributes: [field],
+    order: [["id", "DESC"]],
+    raw: true
   });
 
   let nextNumber = 1;
 
-  if (lastEntry?.[field]) {
-    // Match numeric suffix (e.g., EST023 → 23)
-    const regex = new RegExp(`^${cleanPrefix}(\\d+)$`, "i");
-    const match = String(lastEntry[field]).match(regex);
-    if (match) nextNumber = parseInt(match[1], 10) + 1;
+  for (const entry of entries) {
+    const code = entry[field];
+
+    // Allow only correct pattern: EST123
+    const match = String(code).match(/^EST(\d+)$/i);
+    if (match) {
+      nextNumber = parseInt(match[1], 10) + 1;
+      break;  // stop at the first valid one
+    }
   }
 
-  // Return code like EST001
   return `${cleanPrefix}${String(nextNumber).padStart(pad, "0")}`;
 };
+
 
 const generateProductSKUCode = async (prefixFromQuery = "", options = {}) => {
   const { pad = 3, separator = "_" } = options;
