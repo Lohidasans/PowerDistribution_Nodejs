@@ -1,6 +1,6 @@
 const { models, sequelize } = require("../models");
 const commonService = require("./commonService");
-const message = require("../constants/en.json");
+const { Op } = require("sequelize");
 const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
 
 // Generate auto code: TRA001
@@ -45,7 +45,7 @@ const createStockTransfer = async (req, res) => {
         }
       });
       if (existing) {
-        return commonService.badRequest(res, { message: "Customer code already exists" });
+        return commonService.badRequest(res, { message: "Stock Transfer code already exists" });
       }
     }
     
@@ -133,8 +133,8 @@ const getStockTransferWithItems = async (stockTransferId) => {
     ]);
 
     // Get staff details
-    const staff = await models.Staff.findByPk(stockTransfer.staff_name_id, {
-      attributes: ["id", "staff_name"],
+    const staff = await models.Employee.findByPk(stockTransfer.staff_name_id, {
+      attributes: ["id", "employee_name"],
       raw: true,
     });
 
@@ -142,7 +142,7 @@ const getStockTransferWithItems = async (stockTransferId) => {
       ...stockTransfer,
       branch_from_detail: branchFrom || { id: stockTransfer.branch_from, branch_name: "Branch Not Found" },
       branch_to_detail: branchTo || { id: stockTransfer.branch_to, branch_name: "Branch Not Found" },
-      staff_detail: staff || { id: stockTransfer.staff_name_id, staff_name: "Staff Not Found" },
+      staff_detail: staff || { id: stockTransfer.staff_name_id, staff_name: "Employee Not Found" },
       items,
     };
   } catch (error) {
@@ -232,9 +232,9 @@ const listStockTransfers = async (req, res) => {
     const offset = (page - 1) * limit;
 
     const whereCondition = {
-      [sequelize.Op.or]: [
-        { transfer_no: { [sequelize.Op.iLike]: `%${search}%` } },
-        { reference_no: { [sequelize.Op.iLike]: `%${search}%` } },
+      [Op.or]: [
+        { transfer_no: { [Op.iLike]: `%${search}%` } },
+        { reference_no: { [Op.iLike]: `%${search}%` } },
       ],
     };
 
@@ -257,17 +257,17 @@ const listStockTransfers = async (req, res) => {
             attributes: ['branch_name'],
             raw: true,
           }),
-          models.Staff.findByPk(transfer.staff_name_id, {
-            attributes: ['staff_name'],
+          models.Employee.findByPk(transfer.staff_name_id, {
+            attributes: ['employee_name'],
             raw: true,
           }),
         ]);
 
         return {
           ...transfer.get({ plain: true }),
-          branch_from_name: branchFrom?.branch_name || 'N/A',
-          branch_to_name: branchTo?.branch_name || 'N/A',
-          staff_name: staff?.staff_name || 'N/A',
+          branch_from_name: branchFrom?.branch_name || null,
+          branch_to_name: branchTo?.branch_name || null,
+          staff_name: staff?.staff_name || null,
         };
       })
     );
