@@ -33,6 +33,20 @@ const createSalesInvoice = async (req, res) => {
       return commonService.badRequest(res, "At least one item is required");
     }
 
+    // Check if a non-deleted invoice already uses this code
+    if (header.invoice_no) {
+      const existing = await models.SalesInvoiceBill.findOne({
+        where: {
+          invoice_no: header.invoice_no,
+          deleted_at: null,     // only check active (non-deleted) records
+        },
+      });
+
+      if (existing) {
+        return commonService.badRequest(res, { message: "Invoice no already exists" });
+      }
+    }
+
     // Calculate totals
     let subtotal = 0;
     let totalQty = 0;
@@ -88,6 +102,8 @@ const createSalesInvoice = async (req, res) => {
         return commonService.badRequest(res, enMessage.billing.panCardRequired);
       }
     }
+
+    
 
     // Create invoice
     const bill = await models.SalesInvoiceBill.create(
