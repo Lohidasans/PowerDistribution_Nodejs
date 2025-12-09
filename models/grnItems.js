@@ -24,7 +24,7 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
       },
       purity: {
-        type: DataTypes.ENUM("92.5", "99.9", "91.75", "100"),
+        type: DataTypes.ENUM("80", "92.5", "99.9", "91.75", "100"),
         allowNull: true,
       },
       material_price_per_g: {
