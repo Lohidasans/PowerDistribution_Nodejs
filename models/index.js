@@ -132,6 +132,8 @@ const InvoiceSettingEnum = require("./invoiceSettingEnum")(sequelize, Sequelize.
 const StockTransfer = require("./stockTransfer")(sequelize, Sequelize.DataTypes);
 const StockTransferItem = require("./stockTransferItem")(sequelize, Sequelize.DataTypes);
 
+const BillType = require("./billTypes")(sequelize, Sequelize.DataTypes);
+
 const models = {
   Permission,
   Role,
@@ -205,7 +207,8 @@ const models = {
   JewelRepair,
   JewelRepairItem,
   StockTransfer,
-  StockTransferItem
+  StockTransferItem,
+  BillType
 };
 
 Object.values(models).forEach((model) => {
