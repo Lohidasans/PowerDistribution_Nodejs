@@ -276,17 +276,36 @@ const listInstallmentAmounts = async (req, res) => {
   }
 };
 
-const listSchemeNumbers = async (_req, res) => {
+const listSchemeNumbers = async (req, res) => {
   try {
-    const rows = await models.Scheme.findAll({
-      attributes: ["id", "scheme_name", "scheme_code"],
-      order: [["scheme_name", "ASC"]],
-    });
+    const { customer_id } = req.query;
+
+    if (!customer_id) {
+      return commonService.badRequest(res, "customer_id is required");
+    }
+
+    const [rows] = await sequelize.query(
+      `
+      SELECT s.id, s.scheme_name, s.scheme_code
+      FROM schemes s
+      INNER JOIN customer_enrollments ce
+        ON ce.scheme_plan_id = s.id
+      WHERE ce.customer_id = :customer_id
+      ORDER BY s.scheme_name ASC
+      `,
+      {
+        replacements: { customer_id },
+        type: sequelize.QueryTypes.SELECT
+      }
+    );
+
     return commonService.okResponse(res, { scheme_data: rows });
+
   } catch (err) {
     return commonService.handleError(res, err);
   }
 };
+
 
 const generateSchemeCode = async (req, res) => {
   try {

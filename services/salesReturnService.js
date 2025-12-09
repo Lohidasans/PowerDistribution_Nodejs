@@ -260,8 +260,16 @@ const deleteSalesReturn = async (req, res) => {
 // Dropdown: listSalesReturnDropdown -> [{ id, sales_return_no }]
 const listSalesReturnDropdown = async (req, res) => {
   try {
+    const { customer_id } = req.query;
+    const where = {};
+
+    if (customer_id) {
+      where.customer_id = customer_id; // apply filter only if passed
+    }
+
     const rows = await models.SalesReturn.findAll({
-      attributes: ["id", "sales_return_no"],
+      attributes: ["id", "sales_return_no", "customer_id"],
+      where,
       order: [["sales_return_no", "ASC"]],
     });
     return commonService.okResponse(res, { sales_return_no: rows });
