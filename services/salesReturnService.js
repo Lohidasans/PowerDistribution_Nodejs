@@ -50,6 +50,7 @@ const createSalesReturn = async (req, res) => {
         product_description: it.product_description || null,
         net_weight: it.net_weight || null,
         gross_weight: it.gross_weight || null,
+        wastage: it.wastage || null,
         quantity: qty,
         rate,
         amount
