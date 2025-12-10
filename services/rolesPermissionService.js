@@ -67,13 +67,65 @@ const createRolePermissionsBulk = async (req, res) => {
 
     // Insert & RETURN created rows
     const createdRecords = await models.RolePermission.bulkCreate(records, {
-      returning: true, // IMPORTANT ✅
+      returning: true,
     });
 
     return commonService.createdResponse(res, {
       message: "Role Permissions Created",
       created_permissions: createdRecords, 
     });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
+/**
+ * Get Role Permission by ID (WITHOUT ASSOCIATIONS)
+ */
+const getRolePermissionById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // 1. Get the role permission
+    const rolePermission = await models.RolePermission.findOne({
+      where: { id },
+      raw: true
+    });
+
+    if (!rolePermission) {
+      return commonService.notFoundResponse(res, "Role permission not found");
+    }
+
+    // 2. Manual lookup for the Module
+    const moduleData = await models.Module.findOne({
+      where: { id: rolePermission.module_id },
+      raw: true,
+      attributes: ["id", "module_name"]
+    });
+
+    // 3️. Manual lookup for the Access Level
+    const accessLevelData = await models.AccessLevel.findOne({
+      where: { id: rolePermission.access_level_id },
+      raw: true,
+      attributes: ["id", "access_name"]
+    });
+
+    // 4️. Manual lookup for Employee Department
+    const departmentData = await models.EmployeeDepartment.findOne({
+      where: { id: rolePermission.department_id },
+      raw: true,
+      attributes: ["id", "department_name"]
+    });
+
+    // 5️. Build response object manually
+    const finalResult = {
+      ...rolePermission,
+      module: moduleData || null,
+      accessLevel: accessLevelData || null,
+      department: departmentData || null,
+    };
+
+    return commonService.okResponse(res, { role_permission: finalResult });
   } catch (err) {
     return commonService.handleError(res, err);
   }
@@ -212,5 +264,6 @@ module.exports = {
   deleteRolePermissions, 
   createRolePermissionsBulk, 
   updateRolePermissionsBulk, 
+  getRolePermissionById,
   listAccess,
 };
