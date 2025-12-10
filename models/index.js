@@ -135,6 +135,8 @@ const StockTransferItem = require("./stockTransferItem")(sequelize, Sequelize.Da
 // Vendor Payment models
 const BillType = require("./billTypes")(sequelize, Sequelize.DataTypes);
 const PaymentMode = require("./paymentModes")(sequelize, Sequelize.DataTypes);
+const VendorPayment = require("./vendorPayment")(sequelize, Sequelize.DataTypes);
+
 
 const models = {
   Permission,
@@ -211,7 +213,8 @@ const models = {
   StockTransfer,
   StockTransferItem,
   BillType,
-  PaymentMode
+  PaymentMode,
+  VendorPayment
 };
 
 Object.values(models).forEach((model) => {
