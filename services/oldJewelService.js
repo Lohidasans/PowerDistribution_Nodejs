@@ -19,6 +19,7 @@ const createOldJewel = async (req, res) => {
       ...jewelData,
       total_amount: totalAmount,
       date: jewelData.date || new Date().toISOString().split('T')[0],
+      time: jewelData.time || null,
       discount_type: jewelData.discount_type 
     }, { transaction });
     
