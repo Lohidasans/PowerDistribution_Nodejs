@@ -3,12 +3,12 @@ var router = express.Router();
 const svc = require("../services/vendorPaymentService");
 
 // CRUD
-router.post("/vendor-payment", svc.createVendorPayment);
-router.post("/vendor-payment/code", svc.generatePaymentNumber);
-router.get("/vendor-payment", svc.getVendorPayments);
-router.get("/vendor-payment/:id", svc.getVendorPaymentById);
-router.put("/vendor-payment/:id", svc.updateVendorPayment); 
-router.delete("/vendor-payment/:id", svc.deleteVendorPayment);
+router.post("/vendor-payments", svc.createVendorPayment);
+router.post("/vendor-payments/code", svc.generatePaymentNumber);
+router.get("/vendor-payments", svc.getVendorPayments);
+router.get("/vendor-payments/:id", svc.getVendorPaymentById);
+router.put("/vendor-payments/:id", svc.updateVendorPayment); 
+router.delete("/vendor-payments/:id", svc.deleteVendorPayment);
 
 module.exports = router;
 

@@ -129,13 +129,13 @@ const Leave = require("./leave")(sequelize, Sequelize.DataTypes);
 const SuperAdminProfile = require("./superAdminProfiles")(sequelize, Sequelize.DataTypes);
 const InvoiceSettingEnum = require("./invoiceSettingEnum")(sequelize, Sequelize.DataTypes);
 
-const StockTransfer = require("./stockTransfer")(sequelize, Sequelize.DataTypes);
-const StockTransferItem = require("./stockTransferItem")(sequelize, Sequelize.DataTypes);
+const StockTransfer = require("./stockTransfers")(sequelize, Sequelize.DataTypes);
+const StockTransferItem = require("./stockTransferItems")(sequelize, Sequelize.DataTypes);
 
 // Vendor Payment models
 const BillType = require("./billTypes")(sequelize, Sequelize.DataTypes);
 const PaymentMode = require("./paymentModes")(sequelize, Sequelize.DataTypes);
-const VendorPayment = require("./vendorPayment")(sequelize, Sequelize.DataTypes);
+const VendorPayment = require("./vendorPayments")(sequelize, Sequelize.DataTypes);
 
 
 const models = {
