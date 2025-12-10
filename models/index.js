@@ -132,7 +132,9 @@ const InvoiceSettingEnum = require("./invoiceSettingEnum")(sequelize, Sequelize.
 const StockTransfer = require("./stockTransfer")(sequelize, Sequelize.DataTypes);
 const StockTransferItem = require("./stockTransferItem")(sequelize, Sequelize.DataTypes);
 
+// Vendor Payment models
 const BillType = require("./billTypes")(sequelize, Sequelize.DataTypes);
+const PaymentMode = require("./paymentModes")(sequelize, Sequelize.DataTypes);
 
 const models = {
   Permission,
@@ -208,7 +210,8 @@ const models = {
   JewelRepairItem,
   StockTransfer,
   StockTransferItem,
-  BillType
+  BillType,
+  PaymentMode
 };
 
 Object.values(models).forEach((model) => {
