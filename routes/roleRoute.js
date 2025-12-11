@@ -2,91 +2,222 @@ var express = require("express");
 var roleRouter = express.Router();
 const roleService = require("../services/rolesService");
 
-roleRouter.post("/role", roleService.create);
-roleRouter.get("/role", roleService.list);
-roleRouter.get("/role/:id", roleService.getById);
-roleRouter.put("/role/:id", roleService.update);
-roleRouter.delete("/role/:id", roleService.remove);
+roleRouter.post("/roles", roleService.createRole);
+roleRouter.get("/roles", roleService.getRoles);
+roleRouter.get("/roles/dropdown", roleService.listRolesDropdown);
+roleRouter.get("/roles/:id", roleService.getRoleById);
+roleRouter.put("/roles/:id", roleService.updateRole);
+roleRouter.delete("/roles/:id", roleService.deleteRole);
+
 
 module.exports = roleRouter;
 
 /**
- * @openapi
+ * @swagger
  * tags:
- *   - name: Role
- *     description: Role management
+ *   name: Roles
+ *   description: Employee Role Management
  */
+
 /**
- * @openapi
- * /api/v1/role:
- *   get:
- *     summary: List roles
- *     tags: [Role]
- *     parameters:
- *       - in: query
- *         name: search
- *         schema: { type: string }
- *     responses:
- *       200:
- *         description: OK
+ * @swagger
+ * components:
+ *   schemas:
+ *     Role:
+ *       type: object
+ *       properties:
+ *         id:
+ *           type: integer
+ *         role_name:
+ *           type: string
+ *         created_at:
+ *           type: string
+ *         updated_at:
+ *           type: string
+ *         deleted_at:
+ *           type: string
+ *
+ *     CreateRoleRequest:
+ *       type: object
+ *       required:
+ *         - role_name
+ *       properties:
+ *         role_name:
+ *           type: string
+ *
+ *     UpdateRoleRequest:
+ *       type: object
+ *       properties:
+ *         role_name:
+ *           type: string
+ *
+ *     PaginatedRoles:
+ *       type: object
+ *       properties:
+ *         data:
+ *           type: array
+ *           items:
+ *             $ref: '#/components/schemas/Role'
+ *         pagination:
+ *           type: object
+ *           properties:
+ *             total:
+ *               type: integer
+ *             page:
+ *               type: integer
+ *             pageSize:
+ *               type: integer
+ *             totalPages:
+ *               type: integer
+ */
+
+/**
+ * @swagger
+ * /api/v1/roles:
  *   post:
- *     summary: Create role
- *     tags: [Role]
+ *     summary: Create a new employee role
+ *     tags: [Roles]
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
- *             type: object
- *             properties:
- *               role_name: { type: string }
- *             required: [role_name]
+ *             $ref: '#/components/schemas/CreateRoleRequest'
  *     responses:
  *       201:
- *         description: Created
+ *         description: Role created successfully
+ *       400:
+ *         description: Role already exists
  */
+
 /**
- * @openapi
- * /api/v1/role/{id}:
+ * @swagger
+ * /api/v1/roles:
  *   get:
- *     summary: Get role by ID
- *     tags: [Role]
+ *     summary: Get all roles with pagination & search
+ *     tags: [Roles]
  *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema: { type: integer }
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *         required: false
+ *       - in: query
+ *         name: pageSize
+ *         schema:
+ *           type: integer
+ *         required: false
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         required: false
  *     responses:
  *       200:
- *         description: OK
- *   put:
- *     summary: Update role
- *     tags: [Role]
+ *         description: List of roles
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/PaginatedRoles'
+ */
+
+/**
+ * @swagger
+ * /api/v1/roles/{id}:
+ *   get:
+ *     summary: Get a role by ID
+ *     tags: [Roles]
  *     parameters:
  *       - in: path
  *         name: id
  *         required: true
- *         schema: { type: integer }
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Role fetched successfully
+ *       404:
+ *         description: Role not found
+ */
+
+/**
+ * @swagger
+ * /api/v1/roles/{id}:
+ *   put:
+ *     summary: Update a role
+ *     tags: [Roles]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
- *             type: object
- *             properties:
- *               role_name: { type: string }
+ *             $ref: '#/components/schemas/UpdateRoleRequest'
  *     responses:
  *       200:
- *         description: OK
+ *         description: Role updated successfully
+ *       404:
+ *         description: Role not found
+ */
+
+/**
+ * @swagger
+ * /api/v1/roles/{id}:
  *   delete:
- *     summary: Delete role (soft)
- *     tags: [Role]
+ *     summary: Soft delete a role
+ *     tags: [Roles]
  *     parameters:
  *       - in: path
  *         name: id
+ *         schema:
+ *           type: integer
  *         required: true
- *         schema: { type: integer }
  *     responses:
  *       204:
- *         description: No Content
+ *         description: Role deleted successfully
+ *       404:
+ *         description: Role not found
+ */
+
+/**
+ * @swagger
+ * /api/v1/roles/dropdown:
+ *   get:
+ *     tags:
+ *       - Roles
+ *     summary: Get list of roles for dropdown
+ *     description: Returns all employee roles in { id, name } format.
+ *     responses:
+ *       200:
+ *         description: Successfully retrieved list of roles
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 statusCode:
+ *                   type: integer
+ *                   example: 200
+ *                 message:
+ *                   type: string
+ *                   example: Success
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     roles:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                             example: 1
+ *                           name:
+ *                             type: string
+ *                             example: Manager
  */

@@ -26,6 +26,18 @@ const createRolePermissionsBulk = async (req, res) => {
     if (!departmentRow)
       return commonService.badRequest(res, "Invalid department_id");
 
+    // Check if role permissions already exist for this role & department
+    const existingPermissions = await models.RolePermission.findOne({
+      where: { role_name, department_id }
+    });
+
+    if (existingPermissions) {
+      return commonService.badRequest(
+        res,
+        `Permissions for role "${role_name}" in this department already exist`
+      );
+    }
+
     // Validate all modules & access levels exist
     const moduleIds = permissions.map((p) => p.module_id);
     const accessLevelIds = permissions.map((p) => p.access_level_id);
@@ -79,9 +91,7 @@ const createRolePermissionsBulk = async (req, res) => {
   }
 };
 
-/**
- * Get Role Permission by ID (WITHOUT ASSOCIATIONS)
- */
+// Get Role Permission by ID (WITHOUT ASSOCIATIONS)
 const getRolePermissionById = async (req, res) => {
   try {
     const { id } = req.params;

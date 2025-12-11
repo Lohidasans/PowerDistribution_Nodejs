@@ -1,98 +1,157 @@
-const { models } = require("../models/index");
-const { Op } = require("sequelize");
-const commonService = require("../services/commonService");
-const message = require("../constants/en.json");
+const { models, sequelize } = require("../models");
+const commonService = require('./commonService');
+const { Op } = require('sequelize');
 
-// Create Role
-const create = async (req, res) => {
+// Create a new employee role
+const createRole = async (req, res) => {
+  const t = await sequelize.transaction();
+  console.log('Available models:', Object.keys(models));
   try {
     const { role_name } = req.body;
 
-    // Check if role already exists
-    const roleExists = await models.Role.findOne({ where: { role_name } });
-    if (roleExists) {
-      return commonService.badRequest(res, message.role.roleExists);
-    }
-
-    // Create new role
-    const role = await models.Role.create({ role_name });
-    return commonService.createdResponse(res, { role });
-  } catch (err) {
-    return commonService.handleError(res, err);
-  }
-};
-
-// List Roles with optional search
-const list = async (req, res) => {
-  try {
-    const searchKey = req.query.search || "";
-
-    const roles = await models.Role.findAll({
-      where: searchKey ? { role_name: { [Op.iLike]: `%${searchKey}%` } } : {},
+    // Check if role with same name already exists
+    const existingDept = await models.Role.findOne({
+      where: {
+        role_name: {
+          [Op.iLike]: role_name
+        }
+      }
     });
 
-    return commonService.okResponse(res, { roles });
-  } catch (err) {
-    return commonService.handleError(res, err);
-  }
-};
-
-// Get Role by ID
-const getById = async (req, res) => {
-  try {
-    const role = await commonService.findById(models.Role, req.params.id, res);
-    if (!role) return;
-
-    return commonService.okResponse(res, { role });
-  } catch (err) {
-    return commonService.handleError(res, err);
-  }
-};
-
-// Update Role
-const update = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { role_name } = req.body;
-
-    const role = await commonService.findById(models.Role, id, res);
-    if (!role) return;
-
-    // Check if the new role_name already exists (excluding current role)
-    const roleExists = await models.Role.findOne({
-      where: { role_name, id: { [Op.ne]: id } },
-    });
-
-    if (roleExists) {
-      return commonService.badRequest(res, message.role.roleExists);
+    if (existingDept) {
+      return commonService.badRequest(res, 'Role with this name already exists');
     }
 
-    // Update role
-    role.role_name = role_name;
-    await role.save();
+    const role = await models.Role.create({
+      role_name
+    }, { transaction: t });
 
-    return commonService.okResponse(res, { role });
-  } catch (err) {
-    return commonService.handleError(res, err);
+    await t.commit();
+    return commonService.createdResponse(res, { row: role });
+  } catch (error) {
+    await t.rollback();
+    return commonService.handleError(res, error, 'Error creating role');
   }
 };
 
-// Soft Delete Role
-const remove = async (req, res) => {
+// Get all employee roles with pagination and search
+const getRoles = async (req, res) => {
   try {
-    const role = await commonService.findById(models.Role, req.params.id, res);
-    if (!role) return;
-    await role.destroy();
+    const { page = 1, pageSize = 10, search } = req.query;
+    const offset = (page - 1) * pageSize;
+
+    const whereClause = {};
+    if (search) {
+      whereClause.role_name = {
+        [Op.iLike]: `%${search}%`
+      };
+    }
+
+    const { count, rows } = await models.Role.findAndCountAll({
+      where: whereClause,
+      limit: parseInt(pageSize),
+      offset: parseInt(offset),
+      order: [['role_name', 'ASC']],
+      paranoid: true
+    });
+
+    return commonService.okResponse(res, {
+      data: rows,
+      pagination: {
+        total: count,
+        page: parseInt(page),
+        pageSize: parseInt(pageSize),
+        totalPages: Math.ceil(count / pageSize)
+      }
+    });
+  } catch (error) {
+    return commonService.handleError(res, error, 'Error fetching roles');
+  }
+};
+
+//Get employee role by ID
+const getRoleById = async (req, res) => {
+  try {
+    const role = await models.Role.findByPk(req.params.id);
+    if (!role) {
+      return commonService.notFound(res, 'Role not found');
+    }
+    return commonService.okResponse(res, { data: role });
+  } catch (error) {
+    return commonService.handleError(res, error, 'Error fetching role');
+  }
+};
+
+// Update employee role
+const updateRole = async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const role = await models.Role.findByPk(req.params.id);
+    if (!role) {
+      return commonService.notFound(res, 'Role not found');
+    }
+
+    // Check if another role with the same name exists
+    if (req.body.role_name) {
+      const existingDept = await models.Role.findOne({
+        where: {
+          id: { [Op.ne]: req.params.id },
+          role_name: {
+            [Op.iLike]: req.body.role_name
+          }
+        }
+      });
+
+      if (existingDept) {
+        return commonService.badRequest(res, 'Another role with this name already exists');
+      }
+    }
+
+    const updatedrole = await role.update(req.body, { transaction: t });
+    await t.commit();
+    return commonService.okResponse(res, { row: updatedrole });
+  } catch (error) {
+    await t.rollback();
+    return commonService.handleError(res, error, 'Error updating role');
+  }
+};
+
+//Delete employee role (soft delete)
+const deleteRole = async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const role = await models.Role.findByPk(req.params.id);
+    if (!role) {
+      return commonService.notFound(res, 'Role not found');
+    }
+
+    await role.destroy({ transaction: t });
+    await t.commit();
     return commonService.noContentResponse(res);
+  } catch (error) {
+    await t.rollback();
+    return commonService.handleError(res, error, 'Error deleting role');
+  }
+};
+
+// Dropdown: Employee Roles -> [{ id, name }]
+const listRolesDropdown = async (req, res) => {
+  try {
+    const rows = await models.Role.findAll({
+      attributes: ["id", ["role_name", "name"]],
+      order: [["role_name", "ASC"]],
+    });
+    return commonService.okResponse(res, { roles: rows });
   } catch (err) {
     return commonService.handleError(res, err);
   }
 };
 
 module.exports = {
-  create,
-  list,
-  getById,
-  update,
-  remove,
+  createRole,
+  getRoles,
+  getRoleById,
+  updateRole,
+  deleteRole,
+  listRolesDropdown
 };
