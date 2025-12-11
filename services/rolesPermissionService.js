@@ -214,7 +214,7 @@ const updateRolePermissionsBulk = async (req, res) => {
 };
 
 
-// List Role Access (department, role, members, access_control) for UI
+// List Role Access Page(department, role, members, access_control) for UI
 const listAccess = async (req, res) => {
   try {
     const { department_id, search, role } = req.query;
@@ -269,6 +269,70 @@ const listAccess = async (req, res) => {
   }
 };
 
+// List the selected permisions by using rolename and department_id
+const getRolePermissions = async (req, res) => {
+  try {
+    const { role_name, department_id } = req.query;
+
+    if (!role_name || !department_id) {
+      return commonService.badRequest(res, "role_name and department_id are required");
+    }
+
+    // 1️⃣ Fetch permissions for role + department
+    const permissions = await models.RolePermission.findAll({
+      where: { role_name, department_id }
+    });
+
+    if (!permissions.length) {
+      return commonService.okResponse(res, { data: [] });
+    }
+
+    // Extract module_ids & access_level_ids
+    const moduleIds = [...new Set(permissions.map(p => p.module_id))];
+    const accessLevelIds = [...new Set(permissions.map(p => p.access_level_id))];
+
+    // 2️⃣ Fetch modules
+    const modules = await models.Module.findAll({
+      where: { id: moduleIds }
+    });
+
+    // 3️⃣ Extract module_group_ids and fetch groups
+    const groupIds = [...new Set(modules.map(m => m.module_group_id))];
+
+    const moduleGroups = await models.ModuleGroup.findAll({
+      where: { id: groupIds }
+    });
+
+    // 4️⃣ Fetch access levels
+    const accessLevels = await models.AccessLevel.findAll({
+      where: { id: accessLevelIds }
+    });
+
+    // 5️⃣ Merge data manually
+    const result = permissions.map(p => {
+      const moduleData = modules.find(m => m.id === p.module_id);
+      const groupData = moduleGroups.find(g => g.id === moduleData.module_group_id);
+      const accessData = accessLevels.find(a => a.id === p.access_level_id);
+
+      return {
+        ...p.toJSON(),
+        module: moduleData,
+        module_group: groupData,
+        access_level: accessData
+      };
+    });
+
+    return commonService.okResponse(res, {
+      message: "Role Permissions Fetched",
+      data: result
+    });
+
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
+
 
 module.exports = {
   deleteRolePermissions, 
@@ -276,4 +340,5 @@ module.exports = {
   updateRolePermissionsBulk, 
   getRolePermissionById,
   listAccess,
+  getRolePermissions
 };
