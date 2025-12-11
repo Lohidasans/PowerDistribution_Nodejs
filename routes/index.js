@@ -44,6 +44,7 @@ const JewelRepairRoute = require("./jewelRepairRoutes");
 const StockTransferRoute = require("./stockTransferRoute");
 const VendorPaymentRoute = require("./vendorPaymentRoute");
 const ModuleRoute = require("./moduleRoute");
+const EmployeeDepartmentRoute = require("./employeeDepartmentRoute");
 
 module.exports = (app) => {
   app.use("/api/v1", RoleRouter);
@@ -92,5 +93,6 @@ module.exports = (app) => {
   app.use("/api/v1", StockTransferRoute);
   app.use("/api/v1", VendorPaymentRoute);
   app.use("/api/v1", ModuleRoute);
+  app.use("/api/v1", EmployeeDepartmentRoute);
 };
 

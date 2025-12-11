@@ -1,10 +1,10 @@
-const models = require('../models');
+const { models, sequelize } = require("../models");
 const commonService = require('./commonService');
 const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
 const { Op } = require('sequelize');
 
 const createVendorPayment = async (req, res) => {
-  const t = await models.sequelize.transaction();
+  const t = await sequelize.transaction();
   try {
     const { payment_no, payment_date, bill_type, payment_mode, account_name_id, amount, amount_in_words, invoice_id, purchase_id, ref_id, remarks } = req.body;
 
@@ -74,7 +74,7 @@ const getVendorPayments = async (req, res) => {
       order: [['created_at', 'DESC']]
     });
 
-    return commonService.successResponse(res, {
+    return commonService.okResponse(res, {
       data: rows,
       pagination: {
         total: count,
@@ -93,9 +93,9 @@ const getVendorPaymentById = async (req, res) => {
   try {
     const payment = await models.VendorPayment.findByPk(req.params.id);
     if (!payment) {
-      return commonService.notFoundResponse(res, 'Vendor payment not found');
+      return commonService.notFound(res, 'Vendor payment not found');
     }
-    return commonService.successResponse(res, { data: payment });
+    return commonService.okResponse(res, { data: payment });
   } catch (error) {
     return commonService.handleError(res, error, 'Error fetching vendor payment');
   }
@@ -103,16 +103,16 @@ const getVendorPaymentById = async (req, res) => {
 
 
 const updateVendorPayment = async (req, res) => {
-  const t = await models.sequelize.transaction();
+  const t = await sequelize.transaction();
   try {
     const payment = await models.VendorPayment.findByPk(req.params.id);
     if (!payment) {
-      return commonService.notFoundResponse(res, 'Vendor payment not found');
+      return commonService.notFound(res, 'Vendor payment not found');
     }
 
     const updatedPayment = await payment.update(req.body, { transaction: t });
     await t.commit();
-    return commonService.successResponse(res, 'Vendor payment updated successfully', updatedPayment);
+    return commonService.okResponse(res, 'Vendor payment updated successfully', updatedPayment);
   } catch (error) {
     await t.rollback();
     return commonService.handleError(res, error, 'Error updating vendor payment');
@@ -120,16 +120,16 @@ const updateVendorPayment = async (req, res) => {
 };
 
 const deleteVendorPayment = async (req, res) => {
-  const t = await models.sequelize.transaction();
+  const t = await sequelize.transaction();
   try {
     const payment = await models.VendorPayment.findByPk(req.params.id);
     if (!payment) {
-      return commonService.notFoundResponse(res, 'Vendor payment not found');
+      return commonService.notFound(res, 'Vendor payment not found');
     }
 
     await payment.destroy({ transaction: t });
     await t.commit();
-    return commonService.successResponse(res, 'Vendor payment deleted successfully');
+    return commonService.noContentResponse(res);
   } catch (error) {
     await t.rollback();
     return commonService.handleError(res, error, 'Error deleting vendor payment');
