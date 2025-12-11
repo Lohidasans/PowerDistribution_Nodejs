@@ -18,12 +18,15 @@ const createJewelRepair = async (req, res) => {
       return sum + (parseInt(item.quantity) || 0);
     }, 0);
     
-    let discountAmt = Number(repairData.discount_amount ?? 0);
+    let discountAmt = 0;
 
-    if (repairData.discount_type === "Percentage") {
-      discountAmt = (subTotal * discountAmt) / 100;
+    if (repairData.discount_type === "Percentage" && repairData.discount_amount) {
+      // For percentage, calculate the discount amount
+      discountAmt = (subTotal * parseFloat(repairData.discount_amount)) / 100;
+    } else if (repairData.discount_amount) {
+      // For fixed amount, use the amount directly
+      discountAmt = parseFloat(repairData.discount_amount);
     }
-    //const discount = parseFloat(repairData.discount) || 0;
     const totalAmount = subTotal - discountAmt;
 
     // Check if a non-deleted record already uses this code

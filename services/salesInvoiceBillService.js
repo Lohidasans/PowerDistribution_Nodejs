@@ -53,9 +53,13 @@ const createSalesInvoice = async (req, res) => {
     const itemRows = items.map((it) => {
       const qty = Number(it.quantity || 0);
       const rate = Number(it.rate || 0);
-      const amount = Number(it.amount != null ? it.amount : qty * rate);
+      const itemAmount = qty * rate;
+      const itemDiscount = Number(it.discount_amount || 0);
+      const amount = itemAmount - itemDiscount;
+
       subtotal += amount;
       totalQty += qty;
+
       return {
         product_id: it.product_id,
         product_item_detail_id: it.product_item_detail_id ?? null,
@@ -65,23 +69,31 @@ const createSalesInvoice = async (req, res) => {
         gross_weight: it.gross_weight,
         wastage: it.wastage,
         quantity: qty,
-        rate,
-        discount_amount: it.discount_amount ?? 0,
-        amount,
+        rate: rate,
+        discount_amount: itemDiscount,
+        amount: amount,
       };
     });
 
+    // Get tax amounts (assuming these are already calculated as fixed amounts)
     const cgstAmt = Number(header.cgst_amount ?? 0);
     const sgstAmt = Number(header.sgst_amount ?? 0);
 
-    // DISCOUNT CALCULATION (Amount / Percentage)
-    let discountAmt = Number(header.discount_amount ?? 0);
-    if (header.discount_type === "Percentage") {
-      discountAmt = (subtotal * discountAmt) / 100;
+    // Apply header-level discount if any
+    let headerDiscountAmt = 0;
+    if (header.discount_amount && header.discount_amount > 0) {
+      if (header.discount_type === "Percentage") {
+        headerDiscountAmt = (subtotal * Number(header.discount_amount)) / 100;
+      } else {
+        headerDiscountAmt = Number(header.discount_amount);
+      }
+      // Ensure header discount doesn't make subtotal negative
+      headerDiscountAmt = Math.min(headerDiscountAmt, subtotal);
     }
 
-    // TOTAL BEFORE ADJUSTMENT
-    let total = subtotal - discountAmt + cgstAmt + sgstAmt;
+    // Calculate final total before adjustment
+    const taxableAmount = subtotal - headerDiscountAmt;
+    let total = taxableAmount + cgstAmt + sgstAmt;
 
     // APPLY SINGLE BILL ADJUSTMENT
     let adjAmount = 0;
@@ -120,7 +132,7 @@ const createSalesInvoice = async (req, res) => {
         cgst_amount: cgstAmt,
         sgst_amount: sgstAmt,
         discount_type: header.discount_type || null,
-        discount_amount: discountAmt,
+        discount_amount: headerDiscountAmt,
         total_amount: total,
         amount_due: header.amount_due,
         total_quantity: totalQty,
