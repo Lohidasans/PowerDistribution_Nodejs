@@ -322,9 +322,21 @@ const getRolePermissions = async (req, res) => {
       };
     });
 
+    // Transform the result to the desired format
+    const formattedModules = result.map(item => ({
+      id: item.id,
+      module_id: item.module_id,
+      module_name: item.module.module_name,
+      module_group_id: item.module_group.id,
+      module_group_name: item.module_group.module_group_name,
+      access_level_id: item.access_level_id
+    }));
+
     return commonService.okResponse(res, {
       message: "Role Permissions Fetched",
-      data: result
+      data: {
+        modules: formattedModules
+      }
     });
 
   } catch (err) {
