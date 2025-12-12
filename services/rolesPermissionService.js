@@ -150,64 +150,55 @@ const updateRolePermissionsBulk = async (req, res) => {
       return commonService.badRequest(res, "permissions must be a non-empty array");
     }
 
-    // Extract IDs
-    const ids = permissions.map(p => p.id);
-
-    // Fetch existing rows
-    const existingRecords = await models.RolePermission.findAll({
-      where: { id: ids }
-    });
-
-    if (existingRecords.length !== ids.length) {
-      const existingIds = existingRecords.map(r => r.id);
-      const missing = ids.filter(id => !existingIds.includes(id));
-      return commonService.badRequest(
-        res,
-        `Some ids not found: ${missing.join(", ")}`
-      );
-    }
-
-    // Validate access levels & modules if present
-    const accessIds = [...new Set(permissions.map(p => p.access_level_id).filter(Boolean))];
-    const moduleIds = [...new Set(permissions.map(p => p.module_id).filter(Boolean))];
-
-    if (accessIds.length > 0) {
-      const found = await models.AccessLevel.findAll({ where: { id: accessIds } });
-      if (found.length !== accessIds.length) {
-        const valid = found.map(a => a.id);
-        const invalid = accessIds.filter(id => !valid.includes(id));
-        return commonService.badRequest(res, `Invalid access_level_id(s): ${invalid.join(", ")}`);
-      }
-    }
-
-    if (moduleIds.length > 0) {
-      const found = await models.Module.findAll({ where: { id: moduleIds } });
-      if (found.length !== moduleIds.length) {
-        const valid = found.map(m => m.id);
-        const invalid = moduleIds.filter(id => !valid.includes(id));
-        return commonService.badRequest(res, `Invalid module_id(s): ${invalid.join(", ")}`);
-      }
-    }
-
-    // Update each record
     const updatedRows = [];
-    for (const item of permissions) {
-      const row = existingRecords.find(r => r.id === item.id);
-      if (!row) continue;
+    const createdRows = [];
 
-      if (item.access_level_id) row.access_level_id = item.access_level_id;
-      if (item.module_id) row.module_id = item.module_id;
-      if (item.department_id) row.department_id = item.department_id;
-      if (item.role_name) row.role_name = item.role_name;
+    for (const p of permissions) {
+      // If ID exists → UPDATE
+      if (p.id) {
+        const record = await models.RolePermission.findByPk(p.id);
 
-      await row.save();
-      updatedRows.push(row);
+        if (!record) {
+          return commonService.badRequest(res, `ID ${p.id} not found`);
+        }
+
+        // Update only provided keys
+        await record.update({
+          module_id: p.module_id ?? record.module_id,
+          access_level_id: p.access_level_id ?? record.access_level_id,
+          role_name: p.role_name ?? record.role_name,
+          department_id: p.department_id ?? record.department_id,
+        });
+
+        updatedRows.push(record);
+      }
+
+      // If ID is missing → CREATE NEW
+      else {
+        if (!p.module_id || !p.access_level_id || !p.role_name || !p.department_id) {
+          return commonService.badRequest(
+            res,
+            "Missing required fields for creating: module_id, access_level_id, role_name, department_id"
+          );
+        }
+
+        const newRecord = await models.RolePermission.create({
+          module_id: p.module_id,
+          access_level_id: p.access_level_id,
+          role_name: p.role_name,
+          department_id: p.department_id,
+        });
+
+        createdRows.push(newRecord);
+      }
     }
 
     return commonService.okResponse(res, {
-      message: "Role Permissions Updated",
-      updated_permissions: updatedRows
+      message: "Role Permissions Updated / Created",
+      updated: updatedRows,
+      created: createdRows
     });
+
   } catch (err) {
     return commonService.handleError(res, err);
   }
