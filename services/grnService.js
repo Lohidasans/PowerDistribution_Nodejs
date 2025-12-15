@@ -155,6 +155,22 @@ const updateGrn = async (req, res) => {
       await transaction.rollback();
       return commonService.notFound(res, "GRN not found");
     }
+
+    // CHECK: Is GRN already used in products?
+    const productExists = await models.Product.findOne({
+      where: { grn_id: id },
+      attributes: ["id"],
+      transaction,
+    });
+
+    if (productExists) {
+      await transaction.rollback();
+      return commonService.badRequest(
+        res,
+        "This GRN is already used in products and cannot be modified"
+      );
+    }
+
     // GRN NO VALIDATION (only if provided)
     if (grn_no) {
       const existing = await models.Grn.findOne({
