@@ -9,6 +9,7 @@ const createGrn = async (req, res) => {
 
   try {
     const { items = [], ...grnData } = req.body;
+    const { grn_no } = grnData;
 
     // Required validation
     const requiredFields = ["grn_no", "grn_date", "vendor_id"];
@@ -19,6 +20,22 @@ const createGrn = async (req, res) => {
       }
     }
 
+    // Check if a non-deleted grn already uses this code
+    if (grn_no) {
+      const existing = await models.Grn.findOne({
+        where: {
+          grn_no: grn_no,
+          deleted_at: null,     // only check active (non-deleted) records
+        },
+      });
+
+      if (existing) {
+        return commonService.badRequest(res, {
+          message: "Grn code already exists",
+        });
+      }
+    }
+        
     // Create GRN
     const grn = await models.Grn.create(grnData, { transaction });
 
@@ -130,7 +147,7 @@ const updateGrn = async (req, res) => {
 
   try {
     const { id } = req.params;
-    const { items = [], ...updateData } = req.body;
+    const { items = [], grn_no, ...updateData } = req.body;
 
     // Find existing GRN
     const grn = await models.Grn.findByPk(id, { transaction });
@@ -138,9 +155,26 @@ const updateGrn = async (req, res) => {
       await transaction.rollback();
       return commonService.notFound(res, "GRN not found");
     }
+    // GRN NO VALIDATION (only if provided)
+    if (grn_no) {
+      const existing = await models.Grn.findOne({
+        where: {
+          grn_no,
+          id: { [Op.ne]: id },   // exclude current GRN
+          deleted_at: null,
+        },
+      });
 
+      if (existing) {
+        await transaction.rollback();
+        return commonService.badRequest(res, "GRN number already exists");
+      }
+    }
     // Update GRN header fields
-    await grn.update(updateData, { transaction });
+    await grn.update(
+      { ...updateData, ...(grn_no && { grn_no }) },
+      { transaction }
+    );
 
     // HARD DELETE old items
     await models.GrnItem.destroy({
@@ -321,8 +355,12 @@ const getAllGrns = async (req, res) => {
 const listGrnNumbers = async (req, res) => {
   try {
     const { vendor_id } = req.query;
+    // Base condition: only active GRNs
+    const whereCondition = {
+      is_active: true,
+    };
 
-    const whereCondition = {};
+    // Optional vendor filter
     if (vendor_id) {
       whereCondition.vendor_id = vendor_id;
     }
@@ -543,6 +581,54 @@ const getAllGrnInfos = async (req, res) => {
   }
 };
 
+const updateGrnStatus = async (req, res) => {
+  const { grn_id } = req.params;
+  const { is_active } = req.body;  
+  const t = await sequelize.transaction();
+
+  try {
+    // 1. Check GRN exists
+    const grn = await models.Grn.findOne({
+      where: { id: grn_id },
+      transaction: t,
+    });
+
+    if (!grn) {
+      await t.rollback();
+      return commonService.notFound(res, "GRN not found");
+    }
+
+    // 2️. Check if GRN has items
+    if (is_active === false) {
+      const itemCount = await models.GrnItem.count({
+        where: { grn_id },
+        transaction: t,
+      });
+
+      if (itemCount > 0) {
+        await t.rollback();
+        return commonService.notFound(res, "Cannot deactivate GRN because items exist for this GRN");
+      }
+    }
+
+    // 3️. Update is_active field
+    await models.Grn.update({ is_active },
+      {
+        where: { id: grn_id },
+        transaction: t,
+      }
+    )
+    await t.commit();
+
+    return commonService.okResponse(res, `GRN ${is_active ? "activated" : "deactivated"} successfully`);
+  } catch (err) {
+    await t.rollback();
+    console.error(err);
+    return commonService.handleError(res, err);
+  }
+};
+
+
 module.exports = {
   createGrn,
   getGrnById,
@@ -553,4 +639,5 @@ module.exports = {
   generateGrnCode,
   getGrnView,
   getAllGrnInfos,
+  updateGrnStatus
 };

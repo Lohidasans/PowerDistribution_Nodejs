@@ -10,6 +10,7 @@ router.get("/grns/dropdown", svc.listGrnNumbers);
 router.get("/grns/:id", svc.getGrnById);
 router.get("/grns/:id/view", svc.getGrnView);
 router.put("/grns/:id", svc.updateGrn);
+router.put("/grns/:grn_id/status", svc.updateGrnStatus);
 router.delete("/grns/:id", svc.deleteGrn);
 router.post("/grns/code", svc.generateGrnCode);
 
@@ -298,4 +299,35 @@ module.exports = router;
  *                   type: object
  *                   properties:
  *                     grn_no: { type: string, example: "GRN 01/24-25" }
+ */
+
+/**
+ * @openapi
+ * /api/v1/grns/{grn_id}/status:
+ *   put:
+ *     summary: Activate or Deactivate a GRN
+ *     tags: [GRN]
+ *     parameters:
+ *       - in: path
+ *         name: grn_id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               is_active:
+ *                 type: boolean
+ *                 example: false
+ *     responses:
+ *       200:
+ *         description: GRN status updated successfully
+ *       400:
+ *         description: Validation error
+ *       404:
+ *         description: GRN not found
  */

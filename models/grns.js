@@ -11,7 +11,6 @@ module.exports = (sequelize, DataTypes) => {
       grn_no: {
         type: DataTypes.STRING,
         allowNull: false,
-        unique: true,
       },
       grn_date: {
         type: DataTypes.DATEONLY,
@@ -82,6 +81,11 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.INTEGER, // 1- pending, 2 - completed
         allowNull: false,
         defaultValue: 1,
+      },
+      is_active: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: true,
       },
     },
     {
