@@ -45,6 +45,7 @@ const StockTransferRoute = require("./stockTransferRoute");
 const VendorPaymentRoute = require("./vendorPaymentRoute");
 const ModuleRoute = require("./moduleRoute");
 const EmployeeDepartmentRoute = require("./employeeDepartmentRoute");
+const EmployeePermissionRoute = require("./employeePermissionRoutes");
 
 module.exports = (app) => {
   app.use("/api/v1", RoleRouter);
@@ -94,5 +95,5 @@ module.exports = (app) => {
   app.use("/api/v1", VendorPaymentRoute);
   app.use("/api/v1", ModuleRoute);
   app.use("/api/v1", EmployeeDepartmentRoute);
+  app.use("/api/v1", EmployeePermissionRoute);
 };
-

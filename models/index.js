@@ -64,6 +64,10 @@ const EmployeeDesignation = require("./employeeDesignations")(
   sequelize,
   Sequelize.DataTypes
 );
+const EmployeePermission = require("./employeePermissions")(
+  sequelize,
+  Sequelize.DataTypes
+);
 
 //Collection and UOM related modes
 const MaterialType = require("./materialTypes")(sequelize, Sequelize.DataTypes);
@@ -214,7 +218,8 @@ const models = {
   StockTransferItem,
   BillType,
   PaymentMode,
-  VendorPayment
+  VendorPayment,
+  EmployeePermission
 };
 
 Object.values(models).forEach((model) => {
