@@ -28,28 +28,46 @@ module.exports = roleRouter;
  *       properties:
  *         id:
  *           type: integer
+ *           example: 1
  *         role_name:
  *           type: string
+ *           example: Sales Executive
+ *         department_id:
+ *           type: integer
+ *           example: 1
  *         created_at:
  *           type: string
+ *           format: date-time
  *         updated_at:
  *           type: string
+ *           format: date-time
  *         deleted_at:
  *           type: string
+ *           format: date-time
+ *           nullable: true
  *
  *     CreateRoleRequest:
  *       type: object
  *       required:
  *         - role_name
+ *         - department_id
  *       properties:
  *         role_name:
  *           type: string
+ *           example: Sales Executive
+ *         department_id:
+ *           type: integer
+ *           example: 1
  *
  *     UpdateRoleRequest:
  *       type: object
  *       properties:
  *         role_name:
  *           type: string
+ *           example: Branch Admin
+ *         department_id:
+ *           type: integer
+ *           example: 2
  *
  *     PaginatedRoles:
  *       type: object
@@ -63,12 +81,16 @@ module.exports = roleRouter;
  *           properties:
  *             total:
  *               type: integer
+ *               example: 25
  *             page:
  *               type: integer
+ *               example: 1
  *             pageSize:
  *               type: integer
+ *               example: 10
  *             totalPages:
  *               type: integer
+ *               example: 3
  */
 
 /**
@@ -87,14 +109,14 @@ module.exports = roleRouter;
  *       201:
  *         description: Role created successfully
  *       400:
- *         description: Role already exists
+ *         description: Role already exists in this department
  */
 
 /**
  * @swagger
  * /api/v1/roles:
  *   get:
- *     summary: Get all roles with pagination & search
+ *     summary: Get all roles with pagination, search, and department filter
  *     tags: [Roles]
  *     parameters:
  *       - in: query
@@ -112,6 +134,12 @@ module.exports = roleRouter;
  *         schema:
  *           type: string
  *         required: false
+ *       - in: query
+ *         name: department_id
+ *         schema:
+ *           type: integer
+ *         required: false
+ *         description: Filter roles by department
  *     responses:
  *       200:
  *         description: List of roles
@@ -190,8 +218,15 @@ module.exports = roleRouter;
  *   get:
  *     tags:
  *       - Roles
- *     summary: Get list of roles for dropdown
- *     description: Returns all employee roles in { id, name } format.
+ *     summary: Get roles dropdown by department
+ *     description: Returns active roles for a department in `{ id, name }` format.
+ *     parameters:
+ *       - in: query
+ *         name: department_id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Department ID to fetch roles for
  *     responses:
  *       200:
  *         description: Successfully retrieved list of roles
@@ -219,5 +254,5 @@ module.exports = roleRouter;
  *                             example: 1
  *                           name:
  *                             type: string
- *                             example: Manager
+ *                             example: Sales Executive
  */

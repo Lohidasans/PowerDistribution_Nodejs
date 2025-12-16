@@ -7,6 +7,10 @@ module.exports = (sequelize, DataTypes) => {
         primaryKey: true,
         type: DataTypes.INTEGER,
       },
+      department_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+      },
       role_name: {
         type: DataTypes.STRING,
         allowNull: false,
