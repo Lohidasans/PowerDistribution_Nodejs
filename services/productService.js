@@ -638,6 +638,7 @@ const getAllProductDetails = async (req, res) => {
         p.material_type_id,
         p.category_id,
         ct.category_name,
+        ct.category_image_url,
         p.subcategory_id,
         sc.subcategory_name,
         p.ref_no_id,
@@ -764,7 +765,7 @@ const getAllProductDetails = async (req, res) => {
     }
 
     query += `
-      GROUP BY p.id, mt.material_type, mt.material_price, ct.category_name, sc.subcategory_name,
+      GROUP BY p.id, mt.material_type, mt.material_price, ct.category_name, ct.category_image_url, sc.subcategory_name,
       g.grn_no, g.grn_date, g.total_gross_wt_in_g, g.total_amount, gi.ref_no, gi.gross_wt_in_g, gi.net_wt_in_g,
       gi.quantity, gi.type
       ORDER BY p.id DESC`;
