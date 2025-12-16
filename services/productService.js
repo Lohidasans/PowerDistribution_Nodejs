@@ -54,6 +54,21 @@ const createProduct = async (req, res) => {
       }
     }
 
+    // Product SKU validation
+    if (req.body.sku_id) {
+      const existingSku = await models.Product.findOne({
+        where: { sku_id: req.body.sku_id },
+        raw: true,
+      });
+
+      if (existingSku) {
+        return commonService.badRequest(
+          res,
+          `Product SKU "${req.body.sku_id}" already exists`
+        );
+      }
+    }
+
     const { item_details, ...productData } = req.body;
 
     const result = await sequelize.transaction(async (t) => {
