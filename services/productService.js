@@ -367,16 +367,30 @@ const getProductById = async (req, res) => {
       return acc;
     }, {});
 
-    // Attach additional_details to their respective item_detail
-    const itemsWithAdds = itemDetails.map((it) => ({
-      ...it.get({ plain: true }),
-      additional_details: addsByItem[it.id] || [],
-    }));
+    // CALCULATE SELLING PRICE PER ITEM
+    const itemsWithAdds = await Promise.all(
+      itemDetails.map(async (it) => {
+        const plainItem = it.get({ plain: true });
+
+        const priceDetails = await calculateSellingPrice(
+          row.get({ plain: true }),
+          plainItem,
+          models
+        );
+
+        return {
+          ...plainItem,
+          additional_details: addsByItem[it.id] || [],
+          price_details: priceDetails, // dynamic selling price
+        };
+      })
+    );
 
     // If product has add-ons, fetch mapped add-on product info
     let addon_products = [];
     const isAddOn =
       row.is_addOn === true || row.is_addOn === 1 || row.is_addOn === "true";
+
     if (isAddOn) {
       const [addonRows] = await sequelize.query(
         `
@@ -396,7 +410,7 @@ const getProductById = async (req, res) => {
       addon_products = addonRows;
     }
 
-    // Variant details mapped to this product (from product_variants)
+    // Variant details mapped to this product
     const [variantDetails] = await sequelize.query(
       `
         SELECT
