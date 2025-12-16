@@ -143,67 +143,139 @@ const getRolePermissionById = async (req, res) => {
 
 // Update multiple RolePermission rows by id
 const updateRolePermissionsBulk = async (req, res) => {
+  const transaction = await sequelize.transaction();
   try {
-    const { permissions } = req.body;
+    const { role_name, department_id, permissions = [] } = req.body;
 
-    if (!Array.isArray(permissions) || permissions.length === 0) {
-      return commonService.badRequest(res, "permissions must be a non-empty array");
+    if (!role_name || !department_id) {
+      return commonService.badRequest(res, "role_name and department_id are required");
+    }
+
+    if (!Array.isArray(permissions)) {
+      return commonService.badRequest(res, "permissions must be an array");
     }
 
     const updatedRows = [];
     const createdRows = [];
+    const createdIds = []; // NEW: collect IDs of newly created records
 
+    // 1. Handle Updates and Creates
     for (const p of permissions) {
-      // If ID exists → UPDATE
       if (p.id) {
-        const record = await models.RolePermission.findByPk(p.id);
-
-        if (!record) {
-          return commonService.badRequest(res, `ID ${p.id} not found`);
-        }
-
-        // Update only provided keys
-        await record.update({
-          module_id: p.module_id ?? record.module_id,
-          access_level_id: p.access_level_id ?? record.access_level_id,
-          role_name: p.role_name ?? record.role_name,
-          department_id: p.department_id ?? record.department_id,
+        // UPDATE
+        const record = await models.RolePermission.findByPk(p.id, {
+          transaction,
+          paranoid: false,
         });
 
-        updatedRows.push(record);
-      }
+        if (!record) {
+          await transaction.rollback();
+          return commonService.badRequest(res, `Permission ID ${p.id} not found`);
+        }
 
-      // If ID is missing → CREATE NEW
-      else {
-        if (!p.module_id || !p.access_level_id || !p.role_name || !p.department_id) {
+        if (record.role_name !== role_name || record.department_id !== department_id) {
+          await transaction.rollback();
           return commonService.badRequest(
             res,
-            "Missing required fields for creating: module_id, access_level_id, role_name, department_id"
+            `Permission ID ${p.id} does not belong to role '${role_name}' in department ${department_id}`
           );
         }
 
-        const newRecord = await models.RolePermission.create({
-          module_id: p.module_id,
-          access_level_id: p.access_level_id,
-          role_name: p.role_name,
-          department_id: p.department_id,
-        });
+        await record.update(
+          {
+            module_id: p.module_id ?? record.module_id,
+            access_level_id: p.access_level_id ?? record.access_level_id,
+            deleted_at: null, // restore if soft-deleted
+          },
+          { transaction }
+        );
+
+        updatedRows.push(record);
+      } else {
+        // CREATE
+        if (!p.module_id || !p.access_level_id) {
+          await transaction.rollback();
+          return commonService.badRequest(
+            res,
+            "module_id and access_level_id are required for new permissions"
+          );
+        }
+
+        const newRecord = await models.RolePermission.create(
+          {
+            module_id: p.module_id,
+            access_level_id: p.access_level_id,
+            role_name,
+            department_id,
+          },
+          { transaction }
+        );
 
         createdRows.push(newRecord);
+        createdIds.push(newRecord.id); // Collect new IDs
       }
     }
 
-    return commonService.okResponse(res, {
-      message: "Role Permissions Updated / Created",
-      updated: updatedRows,
-      created: createdRows
+    // 2. Soft-delete only existing records that were NOT sent in payload
+    // (Exclude newly created IDs)
+    const incomingIds = permissions
+      .filter(p => p.id)
+      .map(p => p.id);
+
+    const protectedIds = [...incomingIds, ...createdIds];
+
+    let softDeletedCount = 0;
+
+    if (protectedIds.length > 0) {
+      const [count] = await models.RolePermission.update(
+        { deleted_at: new Date() },
+        {
+          where: {
+            role_name,
+            department_id,
+            id: { [Op.notIn]: protectedIds },
+          },
+          transaction,
+          paranoid: false,
+        }
+      );
+      softDeletedCount = count;
+    } else {
+      // If no IDs sent at all, delete all for this role/dept
+      const [count] = await models.RolePermission.update(
+        { deleted_at: new Date() },
+        {
+          where: { role_name, department_id },
+          transaction,
+          paranoid: false,
+        }
+      );
+      softDeletedCount = count;
+    }
+
+    await transaction.commit();
+
+    // Fetch final active permissions for response
+    const activePermissions = await models.RolePermission.findAll({
+      where: { role_name, department_id, deleted_at: null },
+      order: [["module_id", "ASC"]],
+      raw: true,
     });
 
+    return commonService.okResponse(res, {
+      message: "Role permissions updated successfully",
+      role_name,
+      department_id,
+      updated: updatedRows.length,
+      created: createdRows.length,
+      softDeletedCount,           // NEW: number of records soft-deleted
+      activePermissions,
+    });
   } catch (err) {
+    await transaction.rollback();
     return commonService.handleError(res, err);
   }
 };
-
 
 // List Role Access Page(department, role, members, access_control) for UI
 const listAccess = async (req, res) => {
