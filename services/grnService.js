@@ -1,6 +1,6 @@
 const { models, sequelize } = require("../models");
 const commonService = require("./commonService");
-const message = require("../constants/en.json");
+const { Op } = require("sequelize");
 const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
 
 // Create GRN with items
