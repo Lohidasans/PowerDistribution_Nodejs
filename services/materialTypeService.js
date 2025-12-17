@@ -6,8 +6,16 @@ const { buildSearchCondition } = require("../helpers/queryHelper");
 
 const createMaterialType = async (req, res) => {
   try {
-    const { material_type, material_image_url, material_price } = req.body;
+    const { 
+      material_type, 
+      material_image_url, 
+      material_price,
+      purity_name,
+      purity_percentage,
+      website_visibility
+    } = req.body;
 
+    // Only material_type is required
     if (!material_type) {
       return commonService.badRequest(res, enMessage.materialType.required);
     }
@@ -16,9 +24,9 @@ const createMaterialType = async (req, res) => {
     const existingMaterialType = await models.MaterialType.findOne({
       where: {
         material_type: material_type,
-        deleted_at: null, // Only check non-deleted records
+        deleted_at: null,
       },
-      paranoid: false, // Include soft-deleted records in search but filter them out with deleted_at: null
+      paranoid: false,
     });
 
     if (existingMaterialType) {
@@ -28,36 +36,38 @@ const createMaterialType = async (req, res) => {
       );
     }
 
-    const row = await models.MaterialType.create({
+    // Create with only the provided fields
+    const materialData = {
       material_type,
-      material_price,
-      material_image_url,
-    });
+      ...(material_price !== undefined && { material_price }),
+      ...(material_image_url !== undefined && { material_image_url }),
+      ...(purity_name !== undefined && { purity_name }),
+      ...(purity_percentage !== undefined && { purity_percentage }),
+      ...(website_visibility !== undefined && { website_visibility })
+    };
 
+    const row = await models.MaterialType.create(materialData);
     return commonService.createdResponse(res, { materialType: row });
   } catch (err) {
-    // Handle duplication or race condition (unique constraint)
     if (err.name === "SequelizeUniqueConstraintError") {
       return commonService.badRequest(res, enMessage.materialType.duplication);
     }
-
     return commonService.handleError(res, err);
   }
 };
 
+// Update the listMaterialTypes function to include new fields in the response
 const listMaterialTypes = async (req, res) => {
   try {
     const { search = "", material_type } = req.query;
     const where = {};
-    const searchCondition = buildSearchCondition(search, ["material_type"]);
+    const searchCondition = buildSearchCondition(search, [
+      "material_type",
+      "purity_name" // Add new searchable field
+    ]);
     if (searchCondition) Object.assign(where, searchCondition);
 
-    // Additional explicit filter by material_type query (case-insensitive, partial)
-    if (
-      material_type &&
-      typeof material_type === "string" &&
-      material_type.trim()
-    ) {
+    if (material_type && typeof material_type === "string" && material_type.trim()) {
       where.material_type = { [Op.iLike]: `%${material_type.trim()}%` };
     }
 
@@ -71,10 +81,18 @@ const listMaterialTypes = async (req, res) => {
   }
 };
 
+// Update the listMaterialTypesDropdown to include new fields if needed
 const listMaterialTypesDropdown = async (req, res) => {
   try {
     const items = await models.MaterialType.findAll({
-      attributes: ["id", "material_type", "material_price"],
+      attributes: [
+        "id", 
+        "material_type", 
+        "material_price",
+        "purity_name",
+        "purity_percentage",
+        "website_visibility"
+      ],
       order: [["material_type", "ASC"]],
     });
     return commonService.okResponse(res, { materialTypes: items });
@@ -93,6 +111,7 @@ const getMaterialTypeById = async (req, res) => {
   return commonService.okResponse(res, { materialType: entity });
 };
 
+// Update the updateMaterialType function
 const updateMaterialType = async (req, res) => {
   const entity = await commonService.findById(
     models.MaterialType,
@@ -109,10 +128,10 @@ const updateMaterialType = async (req, res) => {
       const existingMaterialType = await models.MaterialType.findOne({
         where: {
           material_type: material_type,
-          id: { [Op.ne]: req.params.id }, // Exclude current record
-          deleted_at: null, // Only check non-deleted records
+          id: { [Op.ne]: req.params.id },
+          deleted_at: null,
         },
-        paranoid: false, // Include soft-deleted records in search but filter them out with deleted_at: null
+        paranoid: false,
       });
 
       if (existingMaterialType) {
@@ -123,13 +142,22 @@ const updateMaterialType = async (req, res) => {
       }
     }
 
-    await entity.update(req.body);
+    // Only update fields that are provided in the request
+    const updateData = { ...req.body };
+    
+    // Remove undefined or null values to avoid overwriting with null
+    Object.keys(updateData).forEach(key => {
+      if (updateData[key] === undefined || updateData[key] === null) {
+        delete updateData[key];
+      }
+    });
+
+    await entity.update(updateData);
     return commonService.okResponse(res, { materialType: entity });
   } catch (err) {
     return commonService.handleError(res, err);
   }
 };
-
 const deleteMaterialType = async (req, res) => {
   const entity = await commonService.findById(
     models.MaterialType,

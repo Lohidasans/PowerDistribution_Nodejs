@@ -20,6 +20,20 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: true,
       },
+      // New fields
+      purity_name: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+      purity_percentage: {
+        type: DataTypes.DECIMAL(5, 2), // Allows for percentages like 99.99
+        allowNull: true,
+      },
+      website_visibility: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+      },
     },
     {
       timestamps: true,
