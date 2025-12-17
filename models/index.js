@@ -145,6 +145,7 @@ const VendorPayment = require("./vendorPayments")(sequelize, Sequelize.DataTypes
 // Order Related models
 const Order = require("./orders")(sequelize, Sequelize.DataTypes);
 const OrderItem = require("./orderItems")(sequelize, Sequelize.DataTypes);
+const CartWishlistItem = require("./cartWishlistItems")(sequelize, Sequelize.DataTypes);
 
 const models = {
   Permission,
@@ -226,7 +227,7 @@ const models = {
   EmployeePermission,
   Order, 
   OrderItem,
-
+  CartWishlistItem
 };
 
 Object.values(models).forEach((model) => {
