@@ -142,6 +142,10 @@ const PaymentMode = require("./paymentModes")(sequelize, Sequelize.DataTypes);
 const VendorPayment = require("./vendorPayments")(sequelize, Sequelize.DataTypes);
 
 
+// Order Related models
+const Order = require("./orders")(sequelize, Sequelize.DataTypes);
+const OrderItem = require("./orderItems")(sequelize, Sequelize.DataTypes);
+
 const models = {
   Permission,
   Role,
@@ -219,7 +223,10 @@ const models = {
   BillType,
   PaymentMode,
   VendorPayment,
-  EmployeePermission
+  EmployeePermission,
+  Order, 
+  OrderItem,
+
 };
 
 Object.values(models).forEach((model) => {

@@ -15,6 +15,10 @@ module.exports = (sequelize, DataTypes) => {
                 type: DataTypes.INTEGER,
                 allowNull: false,
             },
+            product_item_id: {
+                type: DataTypes.INTEGER,
+                allowNull: false,
+            },
             product_name: {
                 type: DataTypes.STRING,
                 allowNull: false,
@@ -28,11 +32,28 @@ module.exports = (sequelize, DataTypes) => {
                 allowNull: false,
                 defaultValue: 1,
             },
-            unit_price: {
+            offer_id: { // for the discount on particular pdt comes from offer table
+                type: DataTypes.INTEGER,
+                allowNull: false,
+            },
+            // price breakup details
+            rate: {
                 type: DataTypes.DECIMAL(15, 2),
                 allowNull: false,
             },
-            total_price: {
+            amount: {  // rate* net weight
+                type: DataTypes.DECIMAL(15, 2),
+                allowNull: false,
+            },
+            making_charge:{
+                type: DataTypes.DECIMAL(15, 2),
+                allowNull: false,
+            },
+            tax: {
+                type: DataTypes.DECIMAL(15, 2),
+                allowNull: false,
+            },
+            total_amount: {
                 type: DataTypes.DECIMAL(15, 2),
                 allowNull: false,
             },
@@ -56,22 +77,6 @@ module.exports = (sequelize, DataTypes) => {
             measurement_details: { //Array of objects: [{label_name, value, measurement_type}]'
                 type: DataTypes.JSONB, //[{"label_name": "Length", "value": "18", "measurement_type": "Inches" }]
                 allowNull: true,
-            },
-            // Store the image URL for the ordered item
-            image_url: {
-                type: DataTypes.STRING,
-                allowNull: true,
-            },
-            status: {
-                type: DataTypes.ENUM(
-                    "wishlist",
-                    "in_cart",
-                    "ordered",
-                    "shipped",
-                    "delivered",
-                    "cancelled"
-                ),
-                defaultValue: "wishlist",
             },
         },
         {

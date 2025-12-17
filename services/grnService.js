@@ -301,11 +301,13 @@ const getAllGrns = async (req, res) => {
          v.vendor_name,
          v.vendor_image_url,
          COALESCE(gi.total_net_weight, 0) AS "order",
-         u.email AS created_by,
+         u.email_id AS created_by,
+         d.district_name AS location,
          COALESCE(pi.total_updated_weight, 0) AS updated_weight
        FROM grns g
        LEFT JOIN vendors v ON v.id = g.vendor_id
-       LEFT JOIN users u ON u.id = g.order_by_user_id
+       LEFT JOIN superadmin_profiles u ON u.id = g.order_by_user_id
+       LEFT JOIN districts d ON d.id = u.district_id  -- Join with districts table
        LEFT JOIN (
          SELECT 
            grn_id, 
@@ -324,7 +326,7 @@ const getAllGrns = async (req, res) => {
         GROUP BY p.grn_id
       ) pi ON pi.grn_id = g.id
        ${whereSql}
-       GROUP BY g.id, v.id, v.vendor_name, v.vendor_image_url, u.email, gi.total_net_weight, pi.total_updated_weight
+       GROUP BY g.id, v.id, v.vendor_name, v.vendor_image_url, u.email_id, gi.total_net_weight, pi.total_updated_weight, d.district_name
        ORDER BY g.created_at DESC, g.grn_date DESC, g.grn_no DESC`,
       { replacements, type: sequelize.QueryTypes.SELECT }
     );

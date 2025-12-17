@@ -16,23 +16,13 @@ module.exports = (sequelize, DataTypes) => {
                 type: DataTypes.INTEGER,
                 allowNull: false,
             },
-            status: {
-                type: DataTypes.ENUM(
-                    "wishlist",
-                    "in_cart",
-                    "order_placed",
-                    "processing",
-                    "shipped",
-                    "delivered",
-                    "cancelled",
-                    "returned",
-                    "failed"
-                ),
-                defaultValue: "wishlist",
+            order_status: {
+                type: DataTypes.INTEGER,  // 1 - order placed. 2 -Payment Success, 3 -Cancelled, 4 - Completed
+                allowNull: false,
             },
             subtotal: {
                 type: DataTypes.DECIMAL(15, 2),
-                allowNull: false,
+                allowNull: true,
             },
             tax_amount: {
                 type: DataTypes.DECIMAL(15, 2),
@@ -48,16 +38,8 @@ module.exports = (sequelize, DataTypes) => {
             },
             total_amount: {
                 type: DataTypes.DECIMAL(15, 2),
-                allowNull: false,
+                allowNull: true,
             },
-            // payment_method: DataTypes.STRING,
-            // payment_status: {
-            //     type: DataTypes.ENUM("pending", "paid", "failed", "refunded"),
-            //     defaultValue: "pending",
-            // },
-            // shipping_address: DataTypes.JSONB,
-            // billing_address: DataTypes.JSONB,
-            // notes: DataTypes.TEXT,
         },
         {
             timestamps: true,
