@@ -224,7 +224,7 @@ const listEmployees = async (req, res) => {
       FROM employees e
       LEFT JOIN branches b ON b.id = e.branch_id
       LEFT JOIN "employee_departments" d ON d.id = e.department_id
-      LEFT JOIN "employee_designations" des ON des.id = e.designation_id
+      LEFT JOIN "roles" des ON des.id = e.designation_id
       LEFT JOIN employee_contacts c ON c.employee_id = e.id
       LEFT JOIN countries coun ON coun.country_name = c.country_id
       LEFT JOIN states s ON s.state_name = c.state_id
