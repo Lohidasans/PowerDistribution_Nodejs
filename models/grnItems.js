@@ -28,7 +28,7 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: true,
       },
       material_price_per_g: {
-        type: DataTypes.DECIMAL(15, 2),
+        type: DataTypes.DECIMAL(15, 4),
         allowNull: true,
       },
       category_id: {
@@ -48,11 +48,11 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: true,
       },
       gross_wt_in_g: {
-        type: DataTypes.DECIMAL(15, 3),
+        type: DataTypes.DECIMAL(15, 4),
         allowNull: true,
       },
       stone_wt_in_g: {
-        type: DataTypes.DECIMAL(15, 3),
+        type: DataTypes.DECIMAL(15, 4),
         allowNull: true,
       },
       others: {
@@ -60,31 +60,31 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: true,
       },
       others_wt_in_g: {
-        type: DataTypes.DECIMAL(15, 3),
+        type: DataTypes.DECIMAL(15, 4),
         allowNull: true,
       },
       others_value: {
-        type: DataTypes.DECIMAL(15, 2),
+        type: DataTypes.DECIMAL(15, 4),
         allowNull: true,
       },
       net_wt_in_g: {
-        type: DataTypes.DECIMAL(15, 3),
+        type: DataTypes.DECIMAL(15, 4),
         allowNull: true,
       },
       purchase_rate: {
-        type: DataTypes.DECIMAL(15, 2),
+        type: DataTypes.DECIMAL(15, 4),
         allowNull: true,
       },
       stone_rate: {
-        type: DataTypes.DECIMAL(15, 2),
+        type: DataTypes.DECIMAL(15, 4),
         allowNull: true,
       },
       making_charge: {
-        type: DataTypes.DECIMAL(15, 2),
+        type: DataTypes.DECIMAL(15, 4),
         allowNull: true,
       },
       rate_per_g: {
-        type: DataTypes.DECIMAL(15, 2),
+        type: DataTypes.DECIMAL(15, 4),
         allowNull: true,
       },
       total_amount: {
