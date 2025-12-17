@@ -9,6 +9,13 @@ const REST_API_STATUSCODE = {
   internalServerError: 500,
 };
 
+// 1 = Wishlist, 2 = Cart
+const ITEM_TYPE = {
+  WISHLIST: 1,
+  CART: 2,
+};
+
 module.exports = {
   REST_API_STATUSCODE,
+  ITEM_TYPE
 };
