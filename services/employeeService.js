@@ -207,7 +207,7 @@ const listEmployees = async (req, res) => {
         e.*,
         b.branch_name,
         d.department_name,
-        des.designation_name,
+        des.role_name as designation_name,
         c.mobile_number,
         c.email_id,
         c.address,
