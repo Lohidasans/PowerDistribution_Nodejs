@@ -80,7 +80,7 @@ const getEmployeePermissions = async (req, res) => {
 
     const [department, designation] = await Promise.all([
       models.EmployeeDepartment.findByPk(employee.department_id, { raw: true }),
-      models.Role.findByPk(employee.designation_id, { raw: true }),
+      models.Role.findByPk(employee.role_id, { raw: true }),
     ]);
 
     const moduleMap = Object.fromEntries(modules.map((m) => [m.id, m]));
@@ -96,7 +96,7 @@ const getEmployeePermissions = async (req, res) => {
         groupMap[moduleMap[p.module_id]?.module_group_id]?.module_group_name,
       department_id: employee.department_id,
       department_name: department?.department_name,
-      designation_id: employee.designation_id,
+      role_id: employee.role_id,
       designation_name: designation?.role_name,
     }));
 

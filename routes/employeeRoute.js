@@ -136,7 +136,7 @@ module.exports = router;
  *         name: department_id
  *         schema: { type: integer }
  *       - in: query
- *         name: designation_id
+ *         name: role_id
  *         schema: { type: integer }
  *       - in: query
  *         name: search

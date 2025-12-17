@@ -15,7 +15,7 @@ const createEmployee = async (req, res) => {
       employee_no,
       employee_name,
       department_id,
-      designation_id,
+      role_id,
       joining_date,
       employment_type,
       gender,
@@ -30,7 +30,7 @@ const createEmployee = async (req, res) => {
     } = req.body;
 
     // List and list required fields
-    const requiredFields = { employee_no, employee_name, department_id, designation_id};
+    const requiredFields = { employee_no, employee_name, department_id, role_id};
     const missingFields = Object.keys(requiredFields).filter(key => !requiredFields[key]);
 
     if (missingFields.length > 0) {
@@ -57,7 +57,7 @@ const createEmployee = async (req, res) => {
         employee_no,
         employee_name,
         department_id,
-        designation_id,
+        role_id,
         joining_date,
         employment_type,
         gender,
@@ -200,7 +200,7 @@ const updateEmployeeExperiences = async (transaction, employee_id, experiences) 
 // List employees with optional simple filters
 const listEmployees = async (req, res) => {
   try {
-    const { branch_id, department_id, designation_id, search } = req.query;
+    const { branch_id, department_id, role_id, search } = req.query;
 
     let query = `
       SELECT
@@ -224,7 +224,7 @@ const listEmployees = async (req, res) => {
       FROM employees e
       LEFT JOIN branches b ON b.id = e.branch_id
       LEFT JOIN "employee_departments" d ON d.id = e.department_id
-      LEFT JOIN "roles" des ON des.id = e.designation_id
+      LEFT JOIN "roles" des ON des.id = e.role_id
       LEFT JOIN employee_contacts c ON c.employee_id = e.id
       LEFT JOIN countries coun ON coun.country_name = c.country_id
       LEFT JOIN states s ON s.state_name = c.state_id
@@ -242,9 +242,9 @@ const listEmployees = async (req, res) => {
       query += ` AND e.department_id = :department_id`;
       replacements.department_id = department_id;
     }
-    if (designation_id) {
-      query += ` AND e.designation_id = :designation_id`;
-      replacements.designation_id = designation_id;
+    if (role_id) {
+      query += ` AND e.role_id = :role_id`;
+      replacements.role_id = role_id;
     }
     if (search) {
       query += ` AND (e.employee_name ILIKE :search OR e.employee_no ILIKE :search)`;
@@ -386,12 +386,12 @@ const getEmployeeById = async (req, res) => {
 
 const listEmployeeDropdown = async (req, res) => {
   try {
-    const { branch_id, department_id, designation_id } = req.query;
+    const { branch_id, department_id, role_id } = req.query;
 
     const where = { deleted_at: null };
     if (branch_id) where.branch_id = branch_id;
     if (department_id) where.department_id = department_id;
-    if (designation_id) where.designation_id = designation_id;
+    if (role_id) where.role_id = role_id;
 
     const employees = await models.Employee.findAll({
       attributes: ["id", "employee_name"],
@@ -419,7 +419,7 @@ const updateEmployee = async (req, res) => {
       profile_image_url,
       employee_name,
       department_id,
-      designation_id,
+      role_id,
       joining_date,
       employment_type,
       gender,
@@ -438,7 +438,7 @@ const updateEmployee = async (req, res) => {
         profile_image_url,
         employee_name,
         department_id,
-        designation_id,
+        role_id,
         joining_date,
         employment_type,
         gender,
