@@ -30,7 +30,7 @@ const generateUniqueOrderNumber = async (transaction) => {
         orderNumber = await generateFiscalSeriesCode(
             models.Order,
             "order_number",
-            "ORD",
+            "ORD-",
             { pad: 4 }
         );
 
@@ -51,7 +51,6 @@ const createOrder = async (req, res) => {
         const {
             customer_id,
             discount_amount,
-            image_url,
             items = [],
         } = req.body;
 
@@ -62,11 +61,11 @@ const createOrder = async (req, res) => {
             );
         }
 
-        // 1️⃣ Generate Order Number
+        // 1️. Generate Order Number
         const orderNumber = await generateUniqueOrderNumber(transaction);
 
-        let subtotal = 0;
-        let taxAmount = 0;
+        let orderSubTotal = 0;
+        let orderTaxAmount = 0;
 
         const orderItemsPayload = [];
 
@@ -75,6 +74,7 @@ const createOrder = async (req, res) => {
                 product_id,
                 product_item_id,
                 quantity,
+                image_url,
                 product_name,
                 sku_id,
                 purity,
@@ -85,35 +85,41 @@ const createOrder = async (req, res) => {
                 rate,
                 making_charge,
                 tax,
-                total_amount,
             } = item;
 
-            // 🔒 Lock product item row
+            // Lock product item row
             const productItem = await models.ProductItemDetail.findOne({
                 where: { id: product_item_id },
                 transaction,
                 lock: transaction.LOCK.UPDATE,
             });
 
-            if (!productItem || productItem.quantity < quantity) {
-                throw new Error("Insufficient product quantity");
-            }
+            if (!productItem) throw new Error("ProductItem not Found");
+            if (productItem.quantity < quantity) throw new Error("Insufficient product quantity");            
 
-            subtotal += Number(rate * net_weight);
-            taxAmount += Number(tax || 0);
+            //Order Items Calculations
+            const amountValue = Number(rate) * Number(net_weight) * Number(quantity);  
+            const taxValue = Number(tax || 0) * Number(quantity);
+            const makingChargeValue = Number(making_charge || 0) * Number(quantity);
+            const totalAmount = amountValue + makingChargeValue + taxValue;
+
+            // Order calculation
+            orderSubTotal += totalAmount; // sum of all the totalAmount in the items loop
+            orderTaxAmount += taxValue; // sum of all the tax in the items loop
 
             orderItemsPayload.push({
                 product_id,
                 product_item_id,
                 product_name,
+                image_url,
                 sku_id,
                 quantity,
                 offer_id: 0,
                 rate,
-                amount: rate * net_weight,
-                making_charge,
-                tax,
-                total_amount,
+                amount: amountValue,
+                making_charge: makingChargeValue,
+                tax: taxValue,
+                total_amount: totalAmount,
                 purity,
                 gross_weight,
                 net_weight,
@@ -121,13 +127,13 @@ const createOrder = async (req, res) => {
                 measurement_details,
             });
 
-            // 2️⃣ Reduce stock
+            // 2️. Reduce stock
             await productItem.update(
                 { quantity: productItem.quantity - quantity },
                 { transaction }
             );
 
-            // 3️⃣ HARD DELETE from Cart/Wishlist if exists
+            // 3️. HARD DELETE from Cart/Wishlist if exists
             await models.CartWishlistItem.destroy({
                 where: {
                     user_id: customer_id,
@@ -138,22 +144,21 @@ const createOrder = async (req, res) => {
             });
         }
 
-        // 4️⃣ Create Order
+        // 4️. Create Order
         const order = await models.Order.create(
             {
                 order_number: orderNumber,
-                image_url,
                 customer_id,
                 order_status: 1,
-                subtotal,
-                tax_amount: taxAmount,
+                subtotal: orderSubTotal,  // sum of item total_amount
+                tax_amount: orderTaxAmount,  // sum of item tax
                 discount_amount,
-                total_amount: subtotal + taxAmount - discount_amount,
+                total_amount: orderSubTotal - discount_amount, //Do NOT add tax again here — it’s already inside subtotal
             },
             { transaction }
         );
 
-        // 5️⃣ Bulk Create Order Items
+        // 5️. Bulk Create Order Items
         const finalItems = orderItemsPayload.map((i) => ({
             ...i,
             order_id: order.id,
@@ -163,7 +168,7 @@ const createOrder = async (req, res) => {
 
         await transaction.commit();
 
-        // 6️⃣ Response
+        // 6️. Response
         const [orderData, orderItems] = await Promise.all([
             models.Order.findByPk(order.id),
             models.OrderItem.findAll({ where: { order_id: order.id } }),

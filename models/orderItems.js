@@ -32,6 +32,10 @@ module.exports = (sequelize, DataTypes) => {
                 allowNull: false,
                 defaultValue: 1,
             },
+            image_url: {
+                type: DataTypes.STRING,
+                allowNull: true,
+            },
             offer_id: { // for the discount on particular pdt comes from offer table
                 type: DataTypes.INTEGER,
                 allowNull: false,

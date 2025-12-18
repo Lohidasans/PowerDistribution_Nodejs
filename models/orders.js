@@ -19,10 +19,6 @@ module.exports = (sequelize, DataTypes) => {
                 type: DataTypes.INTEGER,  // 1 - order placed. 2 -Payment Success, 3 -Cancelled, 4 - Completed, 5 - Ready to ship
                 allowNull: false,
             },
-            image_url: {
-                type: DataTypes.STRING,// Images (bulk)
-                allowNull: true,
-            },
             subtotal: {
                 type: DataTypes.DECIMAL(15, 2),
                 allowNull: true,
