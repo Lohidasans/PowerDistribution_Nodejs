@@ -10,15 +10,18 @@ module.exports = (sequelize, DataTypes) => {
             order_number: {
                 type: DataTypes.STRING,
                 allowNull: false,
-                unique: true,
             },
             customer_id: {
                 type: DataTypes.INTEGER,
                 allowNull: false,
             },
             order_status: {
-                type: DataTypes.INTEGER,  // 1 - order placed. 2 -Payment Success, 3 -Cancelled, 4 - Completed
+                type: DataTypes.INTEGER,  // 1 - order placed. 2 -Payment Success, 3 -Cancelled, 4 - Completed, 5 - Ready to ship
                 allowNull: false,
+            },
+            image_url: {
+                type: DataTypes.STRING,// Images (bulk)
+                allowNull: true,
             },
             subtotal: {
                 type: DataTypes.DECIMAL(15, 2),
@@ -28,7 +31,7 @@ module.exports = (sequelize, DataTypes) => {
                 type: DataTypes.DECIMAL(15, 2),
                 defaultValue: 0,
             },
-            shipping_charge: {
+            shipping_charge: { // delivery fee
                 type: DataTypes.DECIMAL(15, 2),
                 defaultValue: 0,
             },

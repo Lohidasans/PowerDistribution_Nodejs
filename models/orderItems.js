@@ -53,7 +53,7 @@ module.exports = (sequelize, DataTypes) => {
                 type: DataTypes.DECIMAL(15, 2),
                 allowNull: false,
             },
-            total_amount: {
+            total_amount: {//(amount+ making CHarge+ Tax)
                 type: DataTypes.DECIMAL(15, 2),
                 allowNull: false,
             },

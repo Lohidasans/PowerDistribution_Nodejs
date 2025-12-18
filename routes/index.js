@@ -47,6 +47,7 @@ const ModuleRoute = require("./moduleRoute");
 const EmployeeDepartmentRoute = require("./employeeDepartmentRoute");
 const EmployeePermissionRoute = require("./employeePermissionRoutes");
 const CartWishlistRoute = require("./cartWishlistRoute");
+const OrderRoute = require("./orderRoute");
 
 module.exports = (app) => {
   app.use("/api/v1", RoleRouter);
@@ -98,4 +99,5 @@ module.exports = (app) => {
   app.use("/api/v1", EmployeeDepartmentRoute);
   app.use("/api/v1", EmployeePermissionRoute);
   app.use("/api/v1", CartWishlistRoute);
+  app.use("/api/v1", OrderRoute);
 };

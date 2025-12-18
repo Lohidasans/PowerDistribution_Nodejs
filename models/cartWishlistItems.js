@@ -29,7 +29,10 @@ module.exports = (sequelize, DataTypes) => {
                 allowNull: false,
                 defaultValue: 1,
             },
-
+            net_weight: {
+                type: DataTypes.DECIMAL(15, 3),
+                allowNull: true,
+            },
             // Basic snapshot (NOT full order snapshot)
             product_name: {
                 type: DataTypes.STRING,
