@@ -20,11 +20,26 @@ const createRolePermissionsBulk = async (req, res) => {
     }
 
     // Validate department exists
-    const departmentRow = await models.EmployeeDepartment.findByPk(
-      department_id
-    );
-    if (!departmentRow)
+    const departmentRow = await models.EmployeeDepartment.findByPk(department_id);
+    if (!departmentRow) {
       return commonService.badRequest(res, "Invalid department_id");
+    }
+
+    // Check if role with department already exists
+    const existingRole = await models.Role.findOne({
+      where: {
+        role_name,
+        department_id
+      }
+    });
+
+    // If role doesn't exist, create it
+    if (!existingRole) {
+      await models.Role.create({
+        role_name,
+        department_id
+      });
+    }
 
     // Check if role permissions already exist for this role & department
     const existingPermissions = await models.RolePermission.findOne({
@@ -84,7 +99,8 @@ const createRolePermissionsBulk = async (req, res) => {
 
     return commonService.createdResponse(res, {
       message: "Role Permissions Created",
-      created_permissions: createdRecords, 
+      created_permissions: createdRecords,
+      role_created: !existingRole // Indicates if a new role was created
     });
   } catch (err) {
     return commonService.handleError(res, err);
@@ -155,9 +171,25 @@ const updateRolePermissionsBulk = async (req, res) => {
       return commonService.badRequest(res, "permissions must be an array");
     }
 
+    // Check if role with department exists, if not create it
+    let role = await models.Role.findOne({
+      where: {
+        role_name,
+        department_id
+      },
+      transaction
+    });
+
+    if (!role) {
+      role = await models.Role.create({
+        role_name,
+        department_id
+      }, { transaction });
+    }
+
     const updatedRows = [];
     const createdRows = [];
-    const createdIds = []; // NEW: collect IDs of newly created records
+    const createdIds = []; // collect IDs of newly created records
 
     // 1. Handle Updates and Creates
     for (const p of permissions) {
@@ -268,8 +300,9 @@ const updateRolePermissionsBulk = async (req, res) => {
       department_id,
       updated: updatedRows.length,
       created: createdRows.length,
-      softDeletedCount,           // NEW: number of records soft-deleted
+      softDeletedCount,
       activePermissions,
+      role_created: !role.createdAt || role.updatedAt > new Date(Date.now() - 1000) // Check if role was just created
     });
   } catch (err) {
     await transaction.rollback();
