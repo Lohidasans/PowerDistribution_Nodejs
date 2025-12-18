@@ -60,7 +60,6 @@ module.exports = (sequelize, DataTypes) => {
             updatedAt: "updated_at",
             paranoid: true,
             deletedAt: "deleted_at",
-            indexes: [{ fields: ["employee_no"] }],
         }
     );
     return Employee;
