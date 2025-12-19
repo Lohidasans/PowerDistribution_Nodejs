@@ -505,7 +505,6 @@ const updateProduct = async (req, res) => {
       transaction: t,
       force: true,
     });
-
     await models.ProductAddOn.destroy({
       where: { product_id: id },
       force: true,
@@ -1214,6 +1213,109 @@ const updateProductStatus = async (req, res) => {
   }
 };
 
+// List products for Website List (lightweight)
+const getProductsForWebsiteList = async (req, res) => {
+  try {
+
+    // 1. Fetch products
+    const products = await models.Product.findAll({
+      where: {
+        is_published: true,
+        status: "Active",
+        deleted_at: null
+      },
+      attributes: [
+        "id",
+        "product_code",
+        "product_name",
+        "image_urls",
+        "material_type_id",
+        "product_type"
+      ],
+      order: [["created_at", "DESC"]],
+      raw: true
+    });
+
+    if (!products.length) {
+      return res.status(200).json({
+        statusCode: 200,
+        message: "Success",
+        data: []
+      });
+    }
+
+    const productIds = products.map(p => p.id);
+
+    // 2. Fetch item details separately
+    const itemDetails = await models.ProductItemDetail.findAll({
+      where: {
+        product_id: productIds,
+        is_visible: true,
+        deleted_at: null
+      },
+      raw: true
+    });
+
+    // 3. Group item details by product_id
+    const itemMap = {};
+    for (const item of itemDetails) {
+      if (!itemMap[item.product_id]) {
+        itemMap[item.product_id] = [];
+      }
+      itemMap[item.product_id].push(item);
+    }
+
+    const response = [];
+
+    // 4. Calculate highest price per product
+    for (const product of products) {
+      const items = itemMap[product.id] || [];
+
+      let highestPrice = 0;
+      let highestItemId = null;
+
+      for (const item of items) {
+        const priceResult = await calculateSellingPrice(
+          product,
+          item,
+          models
+        );
+
+        if (priceResult.selling_price > highestPrice) {
+          highestPrice = priceResult.selling_price;
+          highestItemId = item.id;
+        }
+      }
+
+      // Skip products without items
+      if (!highestItemId) continue;
+
+      response.push({
+        id: product.id,
+        product_code: product.product_code,
+        product_name: product.product_name,
+        image_urls: product.image_urls,
+        product_item_id: highestItemId,
+        selling_price: Number(highestPrice.toFixed(2))
+      });
+    }
+
+    return res.status(200).json({
+      statusCode: 200,
+      message: "Success",
+      data: response
+    });
+
+  } catch (error) {
+    console.error("Product Listing Error:", error);
+    return res.status(500).json({
+      statusCode: 500,
+      message: "Internal Server Error"
+    });
+  }
+};
+
+
 
 module.exports = {
   createProductSKUCode,
@@ -1229,4 +1331,5 @@ module.exports = {
   updateProductStatus,
   searchProductBySkuNew,
   calculateSellingPrice,
+  getProductsForWebsiteList
 };
