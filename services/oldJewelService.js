@@ -73,94 +73,86 @@ const getAllOldJewels = async (req, res) => {
   try {
     const { old_jewel_code } = req.query;
 
-    // Build filter conditions
-    const where = {};
+    const replacements = {};
+    let whereSql = `oj.deleted_at IS NULL`;
+
     if (old_jewel_code) {
-      where.old_jewel_code = old_jewel_code;
+      whereSql += ` AND oj.old_jewel_code = :old_jewel_code`;
+      replacements.old_jewel_code = old_jewel_code;
     }
 
-    // Fetch all jewels (no pagination)
-    const jewels = await models.OldJewel.findAll({
-      where,
-      order: [['id', 'DESC']],
-      raw: true,
-    });
+    // 1️. Fetch old jewels with employee & customer info
+    const jewels = await sequelize.query(
+      `
+      SELECT
+        oj.*,
+        emp.employee_no,
+        emp.employee_name,
+        c.customer_name,
+        c.mobile_number AS customer_mobile
+      FROM old_jewels oj
+      LEFT JOIN employees emp ON emp.id = oj.employee_id AND emp.deleted_at IS NULL
+      LEFT JOIN customers c ON c.id = oj.customer_id AND c.deleted_at IS NULL
+      WHERE ${whereSql}
+      ORDER BY oj.id DESC
+      `,
+      {
+        replacements,
+        type: sequelize.QueryTypes.SELECT,
+      }
+    );
 
-    if (jewels.length === 0) {
+    if (!jewels || jewels.length === 0) {
       return commonService.okResponse(res, { data: [] });
     }
 
-    // Collect employee and customer IDs
-    const employeeIds = [...new Set(jewels.map(j => j.employee_id))];
-    const customerIds = [...new Set(jewels.map(j => j.customer_id).filter(Boolean))];
-
-    // Fetch employees
-    const employees = await models.Employee.findAll({
-      where: { id: employeeIds },
-      attributes: ["id", "employee_no", "employee_name"],
-      raw: true,
-    });
-
-    // Fetch customers
-    const customers = await models.Customer.findAll({
-      where: { id: customerIds },
-      attributes: ["id", "customer_name", "mobile_number"],
-      raw: true,
-    });
-
-    // Create lookup maps
-    const employeeMap = employees.reduce((acc, emp) => {
-      acc[emp.id] = emp;
-      return acc;
-    }, {});
-
-    const customerMap = customers.reduce((acc, cust) => {
-      acc[cust.id] = cust;
-      return acc;
-    }, {});
-
-    // Fetch items for all jewels
+    // 2️. Fetch all items for these jewels
     const jewelIds = jewels.map(j => j.id);
-    const items = await models.OldJewelItem.findAll({
-      where: { old_jewel_id: jewelIds },
-      raw: true,
-    });
+    const items = await sequelize.query(
+      `
+      SELECT *
+      FROM old_jewel_items
+      WHERE deleted_at IS NULL
+        AND old_jewel_id IN (:jewelIds)
+      ORDER BY old_jewel_id ASC, id ASC
+      `,
+      {
+        replacements: { jewelIds },
+        type: sequelize.QueryTypes.SELECT,
+      }
+    );
 
-    // Group items
+    // 3️. Group items by old_jewel_id
     const itemsMap = items.reduce((acc, item) => {
       if (!acc[item.old_jewel_id]) acc[item.old_jewel_id] = [];
       acc[item.old_jewel_id].push(item);
       return acc;
     }, {});
 
-    // Merge all data
+    // 4️. Final response formatting
     const result = jewels.map(jewel => {
       const jewelItems = itemsMap[jewel.id] || [];
 
-      const totalNetWeight = jewelItems.reduce((sum, item) => {
-        return sum + (parseFloat(item.net_weight) || 0);
-      }, 0);
+      const totalNetWeight = jewelItems.reduce(
+        (sum, it) => sum + (parseFloat(it.net_weight) || 0),
+        0
+      );
+      const quantityCount = jewelItems.length;
 
       return {
         ...jewel,
-        employee_no: employeeMap[jewel.employee_id]?.employee_no || null,
-        employee_name: employeeMap[jewel.employee_id]?.employee_name || null,
-        customer_name: customerMap[jewel.customer_id]?.customer_name || null,
-        customer_mobile: customerMap[jewel.customer_id]?.mobile_number || null,
-        total_net_weight: totalNetWeight.toFixed(3), // format same as DB
-        items: jewelItems,       
+        total_net_weight: totalNetWeight.toFixed(3),
+        quantity_count: quantityCount,
+        items: jewelItems,
       };
     });
 
-
     return commonService.okResponse(res, { data: result });
-
   } catch (error) {
     console.error("Error fetching Old Jewels:", error);
     return commonService.handleError(res, error);
   }
 };
-
 
 // Get a single old jewel record by ID
 const getOldJewelById = async (req, res) => {
