@@ -6,151 +6,155 @@ const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
 // Create a new jewel repair record with items
 const createJewelRepair = async (req, res) => {
   const transaction = await sequelize.transaction();
+
   try {
-    const { items = [], payment = {}, ...repairData } = req.body;
-    
-    // Calculate subtotal and total quantity from items
-    const subTotal = items.reduce((sum, item) => {
-      return sum + (parseFloat(item.amount) || 0);
-    }, 0);
-    
-    const totalQuantity = items.reduce((sum, item) => {
-      return sum + (parseInt(item.quantity) || 0);
-    }, 0);
-    
-    let discountAmt = 0;
+    const { items = [], payment = [], ...repairData } = req.body;
 
-    if (repairData.discount_type === "Percentage" && repairData.discount_amount) {
-      // For percentage, calculate the discount amount
-      discountAmt = (subTotal * parseFloat(repairData.discount_amount)) / 100;
-    } else if (repairData.discount_amount) {
-      // For fixed amount, use the amount directly
-      discountAmt = parseFloat(repairData.discount_amount);
+    if (!items.length) {
+      return commonService.badRequest(res, "At least one item is required");
     }
-    const totalAmount = subTotal - discountAmt;
 
-    // Check if a non-deleted record already uses this code
+    const subTotal = items.reduce(
+      (sum, item) => sum + Number(item.amount || 0),
+      0
+    );
+``
+    const totalQuantity = items.reduce(
+      (sum, item) => sum + Number(item.quantity || 0),
+      0
+    );
+
+    let discountCalculated = 0;
+
+    if (repairData.discount_type === "Percentage" && repairData.discount) {
+      discountCalculated = (subTotal * Number(repairData.discount)) / 100;
+    }
+
+    if (repairData.discount_type === "Amount" && repairData.discount) {
+      discountCalculated = Number(repairData.discount);
+    }
+
+    if (discountCalculated > subTotal) {
+      discountCalculated = subTotal;
+    }
+
+    const totalAmount = subTotal - discountCalculated;
+
+    // Prevent duplicate repair code
     if (repairData.repair_code) {
-      const existing = await models.JewelRepair.findOne({
+      const exists = await models.JewelRepair.findOne({
         where: {
           repair_code: repairData.repair_code,
-          deleted_at: null,     // only check active (non-deleted) records
+          deleted_at: null,
         },
       });
 
-      if (existing) {
-        return commonService.badRequest(res, {
-          message: "Jewel Repair code already exists",
-        });
+      if (exists) {
+        return commonService.badRequest(
+          res,
+          "Jewel Repair code already exists"
+        );
       }
-    }    
-    
-    // Create the main repair record with calculated values
-    const repair = await models.JewelRepair.create({
-      ...repairData,
-      sub_total_amount: subTotal,
-      total_amount: totalAmount,
-      total_quantity: totalQuantity,
-      date: repairData.date || new Date().toISOString().split('T')[0],
-      status: 'Pending' // Default status
-    }, { transaction });
-    
-    // Create repair items if any
-    if (items && items.length > 0) {
-      const repairItems = items.map(item => ({
-        ...item,
-        repair_id: repair.id,
-        weight: parseFloat(item.weight) || 0,
-        quantity: parseFloat(item.quantity) || 1,
-        amount: parseFloat(item.amount) || 0
+    }
+
+    // Create Jewel Repair
+    const repair = await models.JewelRepair.create(
+      {
+        repair_code: repairData.repair_code,
+        customer_id: repairData.customer_id,
+        employee_id: repairData.employee_id,
+        branch_id: repairData.branch_id,
+        date: repairData.date || new Date().toISOString().split("T")[0],
+        time: repairData.time || null,
+        status: "Pending",
+
+        sub_total_amount: subTotal,
+        discount_type: repairData.discount_type || null,
+        discount: repairData.discount || 0,   // STORE PAYLOAD VALUE
+        total_amount: totalAmount,
+        total_quantity: totalQuantity,
+        amount_in_words: repairData.amount_in_words || null,
+        amount_due: repairData.amount_due || 0,
+      },
+      { transaction }
+    );
+  
+    // Create Repair Items
+    const repairItemsPayload = items.map(item => ({
+      repair_id: repair.id,
+      description: item.description,
+      quantity: Number(item.quantity || 1),
+      weight: Number(item.weight || 0),
+      amount: Number(item.amount || 0),
+      remarks: item.remarks || null,
+    }));
+
+    await models.JewelRepairItem.bulkCreate(repairItemsPayload, {
+      transaction,
+    });
+
+    // Payments
+    if (Array.isArray(payment) && payment.length) {
+      const paymentPayload = payment.map(p => ({
+        jewel_repair_id: repair.id,
+        payment_mode: p.payment_mode,
+        amount_received: Number(p.amount_received || 0),
+        transaction_id: p.transaction_id || null,
+        payment_date: new Date(),
+        status: "Completed",
       }));
-      
-      await models.JewelRepairItem.bulkCreate(repairItems, { transaction });
-    }
- 
-    // Handle payments - only array of payments is accepted
-    if (payment && Array.isArray(payment)) {
-      const paymentRows = payment
-        .filter(p => p.payment_mode) // ignore any empty objects
-        .map(p => ({
-          jewel_repair_id: repair.id,
-          payment_mode: p.payment_mode,
-          amount_received: p.amount_received || 0,
-          payment_date: p.payment_date || new Date(),
-          transaction_id: p.transaction_id || null,
-          status: 'Completed',
-          created_by: req.user?.id || null,
-        }));
 
-      if (paymentRows.length > 0) {
-        await models.Payment.bulkCreate(paymentRows, { transaction });
-      }
+      await models.Payment.bulkCreate(paymentPayload, { transaction });
     }
 
-    // Update the final query to fetch all payments
+    // Fetch full response
     const [repairRecord, repairItems, payments] = await Promise.all([
       models.JewelRepair.findByPk(repair.id, { transaction }),
       models.JewelRepairItem.findAll({
         where: { repair_id: repair.id },
-        transaction
+        transaction,
       }),
       models.Payment.findAll({
         where: { jewel_repair_id: repair.id },
-        transaction
-      })
+        transaction,
+      }),
     ]);
 
-    
-    // Get customer, employee, and branch data separately
     const [customer, employee, branch] = await Promise.all([
-      repairRecord.customer_id ? models.Customer.findByPk(repairRecord.customer_id, {
-        attributes: ['id', 'customer_name', 'mobile_number']
-      }) : null,
-      repairRecord.employee_id ? models.Employee.findByPk(repairRecord.employee_id, {
-        attributes: ['id', 'employee_name']
-      }) : null,
-      repairRecord.branch_id ? models.Branch.findByPk(repairRecord.branch_id, {
-        attributes: ['id', 'branch_name']
-      }) : null
+      repairRecord.customer_id
+        ? models.Customer.findByPk(repairRecord.customer_id, {
+          attributes: ["id", "customer_name", "mobile_number"],
+        })
+        : null,
+      repairRecord.employee_id
+        ? models.Employee.findByPk(repairRecord.employee_id, {
+          attributes: ["id", "employee_name"],
+        })
+        : null,
+      repairRecord.branch_id
+        ? models.Branch.findByPk(repairRecord.branch_id, {
+          attributes: ["id", "branch_name"],
+        })
+        : null,
     ]);
-    
-    // Get product data for items
-    const itemProductIds = repairItems.map(item => item.product_id).filter(Boolean);
-    const products = itemProductIds.length > 0 ? await models.Product.findAll({
-      where: { id: itemProductIds },
-      attributes: ['id', 'product_name', 'product_code'],
-      raw: true
-    }) : [];
-    
-    const productsMap = products.reduce((acc, product) => {
-      acc[product.id] = product;
-      return acc;
-    }, {});
-    
-    // Format items with product data
-    const formattedItems = repairItems.map(item => ({
-      ...item.get({ plain: true }),
-      product: item.product_id ? productsMap[item.product_id] : null
-    }));
-    
-    const result = {
+
+    await transaction.commit();
+
+    return commonService.createdResponse(res, {
       ...repairRecord.get({ plain: true }),
       customer,
       employee,
       branch,
-      items: formattedItems,
-      payments: payments || []
-    };
-    
-    await transaction.commit();  
-    
-    return commonService.createdResponse(res, result);
+      items: repairItems,
+      payments,
+    });
   } catch (error) {
     await transaction.rollback();
-    console.error('Error creating jewel repair:', error);
+    console.error("Create Jewel Repair Error:", error);
     return commonService.handleError(res, error);
   }
 };
+
 
 // Get all jewel repairs with pagination
 const getAllJewelRepairs = async (req, res) => {
