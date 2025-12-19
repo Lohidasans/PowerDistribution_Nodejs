@@ -51,6 +51,7 @@ const createOrder = async (req, res) => {
         const {
             customer_id,
             discount_amount,
+            order_date,
             items = [],
         } = req.body;
 
@@ -148,6 +149,7 @@ const createOrder = async (req, res) => {
         const order = await models.Order.create(
             {
                 order_number: orderNumber,
+                order_date,
                 customer_id,
                 order_status: 1,
                 subtotal: orderSubTotal,  // sum of item total_amount
@@ -185,7 +187,6 @@ const createOrder = async (req, res) => {
     }
 };
 
-
 // Delete Order
 const deleteOrder = async (req, res) => {
     try {
@@ -205,20 +206,81 @@ const deleteOrder = async (req, res) => {
 const getOrders = async (req, res) => {
     try {
         const { customer_id } = req.query;
-        const where = {};
 
-        if (customer_id) where.customer_id = customer_id;
+        if (!customer_id) {
+            return commonService.badRequest(res, "customer_id is required");
+        }
 
-        const rows = await models.Order.findAll({
-            where,
+        // 1️. Fetch orders
+        const orders = await models.Order.findAll({
+            where: { customer_id },
             order: [["created_at", "DESC"]],
         });
 
-        return commonService.okResponse(res, { orders: rows });
+        if (orders.length === 0) {
+            return commonService.okResponse(res, { orders: [] });
+        }
+
+        const orderIds = orders.map(o => o.id);
+
+        // 2️. Fetch order items
+        const orderItems = await models.OrderItem.findAll({
+            where: {
+                order_id: { [Op.in]: orderIds },
+            },
+        });
+
+        // Group items by order_id
+        const itemsByOrderId = orderItems.reduce((acc, item) => {
+            if (!acc[item.order_id]) acc[item.order_id] = [];
+            acc[item.order_id].push(item);
+            return acc;
+        }, {});
+
+        // 3️. Fetch default customer address
+        const address = await models.CustomerAddress.findOne({
+            where: {
+                customer_id,
+                is_default: true,
+            },
+        });
+
+        let addressResponse = null;
+
+        if (address) {
+            // 4️. Fetch country / state / district names
+            const [country, state, district] = await Promise.all([
+                models.Country.findByPk(address.country_id),
+                models.State.findByPk(address.state_id),
+                models.District.findByPk(address.district_id),
+            ]);
+
+            addressResponse = {
+                id: address.id,
+                name: address.name,
+                mobile_number: address.mobile_number,
+                address_line: address.address_line,
+                pin_code: address.pin_code,
+                country_name: country?.country_name || null,
+                state_name: state?.state_name || null,
+                district_name: district?.district_name || null,
+            };
+        }
+
+        // 5️. Merge everything
+        const response = orders.map(order => ({
+            ...order.get({ plain: true }),
+            delivery_address: addressResponse,
+            items: itemsByOrderId[order.id] || [],
+        }));
+
+        return commonService.okResponse(res, { orders: response });
     } catch (err) {
+        console.error("Get Orders Error:", err);
         return commonService.handleError(res, err);
     }
 };
+
 
 // Get By Id
 const getOrderById = async (req, res) => {
