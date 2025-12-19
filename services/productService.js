@@ -1025,6 +1025,7 @@ const searchProductBySkuNew = async (req, res) => {
         branch_id: product.branch_id,
         product_id: product.id,
         product_item_details_id: item.id,
+        quantity: item.quantity,
         hsn_code: product.hsn_code,
         base_price: item.base_price,
         gross_weight: item.gross_weight,
