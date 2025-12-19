@@ -48,6 +48,7 @@ const EmployeeDepartmentRoute = require("./employeeDepartmentRoute");
 const EmployeePermissionRoute = require("./employeePermissionRoutes");
 const CartWishlistRoute = require("./cartWishlistRoute");
 const OrderRoute = require("./orderRoute");
+const CustomerAddressRoute = require("./customerAddressRoute");
 
 module.exports = (app) => {
   app.use("/api/v1", RoleRouter);
@@ -63,6 +64,7 @@ module.exports = (app) => {
   app.use("/api/v1", VendorSpocDetailsRoute);
   app.use("/api/v1", VendorRoutes);
   app.use("/api/v1", ProductRouter);
+
   app.use("/api/v1", GrnRouter);
   app.use("/api/v1", ProductGrnInfoRoute);
   app.use("/api/v1", VariantRouter);
@@ -100,4 +102,5 @@ module.exports = (app) => {
   app.use("/api/v1", EmployeePermissionRoute);
   app.use("/api/v1", CartWishlistRoute);
   app.use("/api/v1", OrderRoute);
+  app.use("/api/v1", CustomerAddressRoute);
 };

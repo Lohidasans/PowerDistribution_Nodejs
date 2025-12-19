@@ -19,6 +19,7 @@ const createCustomer = async (req, res) => {
       customer_name: req.body.customer_name,
       mobile_number: req.body.mobile_number,
       // Optional fields
+      email_id: req.body.email_id || null,
       address: req.body.address || null,
       country_id: +req.body.country_id || null,
       state_id: +req.body.state_id || null,
