@@ -155,151 +155,152 @@ const createJewelRepair = async (req, res) => {
 // Get all jewel repairs with pagination
 const getAllJewelRepairs = async (req, res) => {
   try {
-    const { page = 1, pageSize = 10, search, status, customer_id, branch_id, from_date, to_date } = req.query;
-    const limit = parseInt(pageSize, 10);
+    const {page = 1, pageSize = 10, search, status, customer_id, branch_id, repair_code, from_date, to_date } = req.query;
+
+    const limit = Number(pageSize);
     const offset = (page - 1) * limit;
-    
-    const whereClause = { deleted_at: null };
-    
-    // Apply filters
-        // Apply filters
-    if (status) whereClause.status = status;
-    if (customer_id) whereClause.customer_id = customer_id;
-    if (branch_id) whereClause.branch_id = branch_id;
-    
-    // Date range filter
+
+    const replacements = { limit, offset };
+    let whereSql = `jr.deleted_at IS NULL`;
+
+    // Filters
+    if (status) {  whereSql += ` AND jr.status = :status`;  replacements.status = status; }
+    if (customer_id) { whereSql += ` AND jr.customer_id = :customer_id`; replacements.customer_id = customer_id; }
+    if (branch_id) { whereSql += ` AND jr.branch_id = :branch_id`; replacements.branch_id = branch_id; }
+    if (repair_code) { whereSql += ` AND jr.repair_code = :repair_code`; replacements.repair_code = repair_code; }
+
     if (from_date && to_date) {
-      whereClause.date = {
-        [Op.between]: [new Date(from_date), new Date(to_date)]
-      };
+      whereSql += ` AND jr.date BETWEEN :from_date AND :to_date`;
+      replacements.from_date = from_date;
+      replacements.to_date = to_date;
     }
-    
-    // Search functionality
+
     if (search) {
-      whereClause[Op.or] = [
-        { repair_code: { [Op.iLike]: `%${search}%` } },
-        { '$customer.customer_name$': { [Op.iLike]: `%${search}%` } },
-        { '$customer.mobile_number$': { [Op.iLike]: `%${search}%` } }
-      ];
+      whereSql += `
+        AND (
+          jr.repair_code ILIKE :search
+          OR c.customer_name ILIKE :search
+          OR c.mobile_number ILIKE :search
+        )
+      `;
+      replacements.search = `%${search}%`;
     }
-    
-    // Fetch main repair records
-    const { count, rows: repairs } = await models.JewelRepair.findAndCountAll({
-      where: whereClause,
-      offset,
-      limit,
-      order: [['id', 'DESC']],
-      raw: true
-    });
-    
-    // Get all related IDs
-    const customerIds = [...new Set(repairs.map(r => r.customer_id).filter(Boolean))];
-    const employeeIds = [...new Set(repairs.map(r => r.employee_id).filter(Boolean))];
-    const branchIds = [...new Set(repairs.map(r => r.branch_id).filter(Boolean))];
-    
-    // Fetch related data in parallel
-    const [customers, employees, branches] = await Promise.all([
-      customerIds.length > 0 ? models.Customer.findAll({
-        where: { id: customerIds },
-        attributes: ['id', 'customer_name', 'mobile_number'],
-        raw: true
-      }) : [],
-      employeeIds.length > 0 ? models.Employee.findAll({
-        where: { id: employeeIds },
-        attributes: ['id', 'employee_name'],
-        raw: true
-      }) : [],
-      branchIds.length > 0 ? models.Branch.findAll({
-        where: { id: branchIds },
-        attributes: ['id', 'branch_name'],
-        raw: true
-      }) : []
-    ]);
-    
-    // Create lookup maps
-    const customersMap = customers.reduce((acc, customer) => {
-      acc[customer.id] = customer;
-      return acc;
-    }, {});
-    
-    const employeesMap = employees.reduce((acc, employee) => {
-      acc[employee.id] = employee;
-      return acc;
-    }, {});
-    
-    const branchesMap = branches.reduce((acc, branch) => {
-      acc[branch.id] = branch;
-      return acc;
-    }, {});
-    
-    // Enrich repairs with related data
-    const enrichedRepairs = repairs.map(repair => ({
-      ...repair,
-      customer: repair.customer_id ? customersMap[repair.customer_id] : null,
-      employee: repair.employee_id ? employeesMap[repair.employee_id] : null,
-      branch: repair.branch_id ? branchesMap[repair.branch_id] : null
-    }));
-    
+
+    // 1️. Main repairs query with JOINs
+    const repairs = await sequelize.query(
+      `SELECT
+        jr.*,
+
+        -- Customer details
+        c.customer_name AS customer_name,
+        c.address AS customer_address,
+        c.mobile_number AS customer_mobile_number,
+        c.pin_code AS customer_pincode,
+        c.pan_no AS customer_pan_no,
+        -- Customer location
+        cc.country_name AS customer_country_name,
+        cd.district_name AS customer_district_name,
+        cs.state_name AS customer_state_name,
+
+        -- Branch details
+        b.branch_name AS branch_name,
+        b.address AS branch_address,
+        b.mobile AS branch_mobile_number,
+        b.pin_code AS branch_pincode,
+        b.gst_no AS branch_gst_no,
+
+        -- Branch location
+        bd.district_name AS branch_district_name,
+        bs.state_name AS branch_state_name
+      FROM jewel_repairs jr
+
+      -- Customer joins
+      LEFT JOIN customers c ON c.id = jr.customer_id
+      LEFT JOIN countries cc ON cc.id = c.country_id
+      LEFT JOIN states cs ON cs.id = c.state_id
+      LEFT JOIN districts cd ON cd.id = c.district_id
+
+      -- Branch joins
+      LEFT JOIN branches b ON b.id = jr.branch_id
+      LEFT JOIN states bs ON bs.id = b.state_id
+      LEFT JOIN districts bd ON bd.id = b.district_id
+
+      WHERE ${whereSql}
+      ORDER BY jr.id DESC
+      LIMIT :limit OFFSET :offset`,
+      {
+        replacements,
+        type: sequelize.QueryTypes.SELECT,
+      });
+
+    // 2️. Count query
+    const [{ total }] = await sequelize.query(
+      `SELECT COUNT(*)::int AS total
+      FROM jewel_repairs jr
+      LEFT JOIN customers c ON c.id = jr.customer_id
+      WHERE ${whereSql}`,
+      {
+        replacements,
+        type: sequelize.QueryTypes.SELECT
+      }
+    );
+
     if (repairs.length === 0) {
       return commonService.okResponse(res, {
         data: [],
-        pagination: { total: 0, page: parseInt(page), pageSize: limit, totalPages: 0 },
+        pagination: {
+          total,
+          page: Number(page),
+          pageSize: limit,
+          totalPages: Math.ceil(total / limit),
+        },
       });
     }
-    
-    // Get repair IDs to fetch items
-    const repairIds = enrichedRepairs.map(r => r.id);
-    
-    // Fetch all items for these repairs
-    const items = repairIds.length > 0 ? await models.JewelRepairItem.findAll({
-      where: { repair_id: repairIds },
-      raw: true
-    }) : [];
-    
-    // Get product IDs for items
-    const productIds = [...new Set(items.map(item => item.product_id).filter(Boolean))];
-    const products = productIds.length > 0 ? await models.Product.findAll({
-      where: { id: productIds },
-      attributes: ['id', 'product_name'],
-      raw: true
-    }) : [];
-    
-    // Create products map
-    const productsMap = products.reduce((acc, product) => {
-      acc[product.id] = product;
-      return acc;
-    }, {});
-    
-    // Group items by repair_id and add product data
+
+    // 3️. Fetch repair items
+    const repairIds = repairs.map(r => r.id);
+
+    const items = await sequelize.query(
+      `SELECT
+        jri.*,
+        p.product_name
+      FROM jewel_repair_items jri
+      LEFT JOIN products p ON p.id = jri.product_id
+      WHERE jri.repair_id IN (:repairIds)`,
+      {
+        replacements: { repairIds },
+        type: sequelize.QueryTypes.SELECT
+      }
+    );
+
+    // 4️. Group items by repair_id
     const itemsMap = items.reduce((acc, item) => {
       if (!acc[item.repair_id]) acc[item.repair_id] = [];
-      acc[item.repair_id].push({
-        ...item,
-        product: item.product_id ? productsMap[item.product_id] : null
-      });
+      acc[item.repair_id].push(item);
       return acc;
     }, {});
-    
-    // Combine repairs with their items
-    const result = enrichedRepairs.map(repair => ({
+
+    // 5️. Final response
+    const result = repairs.map(repair => ({
       ...repair,
       items: itemsMap[repair.id] || []
     }));
-    
-    // Pagination info
-    const pagination = {
-      total: count,
-      page: parseInt(page, 10),
-      pageSize: limit,
-      totalPages: Math.ceil(count / limit),
-    };
-    
-    return commonService.okResponse(res, { data: result, pagination });
+
+    return commonService.okResponse(res, {
+      data: result,
+      pagination: {
+        total,
+        page: Number(page),
+        pageSize: limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    });
   } catch (error) {
-    console.error('Error fetching jewel repairs:', error);
+    console.error("Error fetching jewel repairs:", error);
     return commonService.handleError(res, error);
   }
 };
+
 
 // Get a single jewel repair record by ID
 const getJewelRepairById = async (req, res) => {

@@ -257,7 +257,7 @@ const getSalesInvoiceById = async (req, res) => {
 // List invoices - bill page/ customer - order details page
 const listSalesInvoices = async (req, res) => {
   try {
-    const { from, to, employee_id, customer_id, branch_id, order_type, search } = req.query || {};
+    const { from, to, invoice_no,employee_id, customer_id, branch_id, order_type, search } = req.query || {};
 
     let sql = `
       WITH invoice_items AS (
@@ -294,6 +294,7 @@ const listSalesInvoices = async (req, res) => {
         b.address AS branch_address,
         b.mobile as branch_mobile_number,
         b.pin_code as branch_pincode,
+        b.gst_no as branch_gst_no,
         bd.district_name as branch_district_name,
         bs.state_name as branch_state_name,
         -- Item totals
@@ -321,6 +322,7 @@ const listSalesInvoices = async (req, res) => {
     if (from) { sql += ` AND i.invoice_date >= :from`; replacements.from = from; }
     if (to) { sql += ` AND i.invoice_date <= :to`; replacements.to = to; }
     if (employee_id) { sql += ` AND i.employee_id = :employee_id`; replacements.employee_id = employee_id; }
+    if (invoice_no) { sql += ` AND i.invoice_no = :invoice_no`; replacements.invoice_no = invoice_no; }
     if (customer_id) { sql += ` AND i.customer_id = :customer_id`; replacements.customer_id = customer_id; }
     if (branch_id) { sql += ` AND i.branch_id = :branch_id`; replacements.branch_id = branch_id; }
     if (order_type) { sql += ` AND i.order_type = :order_type`; replacements.order_type = order_type; }

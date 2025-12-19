@@ -105,23 +105,40 @@ const getEstimateById = async (req, res) => {
 // List estimates (simple filters)
 const listEstimates = async (req, res) => {
   try {
-    const { from, to, employee_id, customer_id, search } = req.query || {};
+    const { from, to, employee_id, customer_id, search, estimate_no } = req.query || {};
 
     // 1) Header rows with employee_no via join
     let sql = `
       SELECT 
-        e.*, 
+        e.*,
+
+        -- Employee
         emp.employee_no AS employee_no,
-        emp.employee_name
-      FROM "estimate_bills" e
+        emp.employee_name AS employee_name,
+
+        -- Branch details
+        b.branch_name AS branch_name,
+        b.address AS branch_address,
+        b.mobile AS branch_mobile_number,
+        b.pin_code AS branch_pincode,
+        b.gst_no AS branch_gst_no,
+        bd.district_name AS branch_district_name,
+        bs.state_name AS branch_state_name
+      FROM estimate_bills e
+
       LEFT JOIN employees emp ON emp.id = e.employee_id AND emp.deleted_at IS NULL
+      LEFT JOIN branches b ON b.id = e.branch_id AND b.deleted_at IS NULL
+      LEFT JOIN districts bd ON bd.id = b.district_id
+      LEFT JOIN states bs ON bs.id = b.state_id
       WHERE e.deleted_at IS NULL
     `;
+
     const replacements = {};
     if (from) { sql += ` AND e.estimate_date >= :from`; replacements.from = from; }
     if (to) { sql += ` AND e.estimate_date <= :to`; replacements.to = to; }
     if (employee_id) { sql += ` AND e.employee_id = :employee_id`; replacements.employee_id = employee_id; }
     if (customer_id) { sql += ` AND e.customer_id = :customer_id`; replacements.customer_id = customer_id; }
+    if (estimate_no) { sql += ` AND e.estimate_no = :estimate_no`; replacements.estimate_no = estimate_no; }
     if (search) { sql += ` AND e.estimate_no ILIKE :search`; replacements.search = `%${search}%`; }
     sql += ` ORDER BY e.created_at DESC`;
 
