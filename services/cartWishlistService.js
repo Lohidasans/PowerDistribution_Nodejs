@@ -159,6 +159,112 @@ const listItems = async (req, res) => {
     }
 };
 
+// Toggle Wishlist by Product ID
+const updateWishlistByProduct = async (req, res) => {
+    try {
+        const { product_id } = req.params;
+        const { is_wishlisted, user_id } = req.body;
+
+        const WISHLIST_TYPE = type.ITEM_TYPE.WISHLIST;
+
+        // Find existing record (even if soft-deleted)
+        const existing = await models.CartWishlistItem.findOne({
+            where: {
+                user_id,
+                product_id,
+                order_item_type: WISHLIST_TYPE,
+            },
+            paranoid: false
+        });
+
+        // Do NOT create new record
+        if (!existing) {
+            return commonService.badRequest(res, "Wishlist record does not exist");
+        }
+
+        // ADD TO WISHLIST
+        if (is_wishlisted) {
+            await existing.update({
+                is_wishlisted: true,
+                deleted_at: null
+            });
+
+            return commonService.okResponse(res, {
+                is_wishlisted: true,
+                message: "Wishlist updated"
+            });
+        }
+
+        // REMOVE FROM WISHLIST
+        await existing.update({
+            is_wishlisted: false,
+            deleted_at: new Date()
+        });
+
+        return commonService.okResponse(res, {
+            is_wishlisted: false,
+            message: "Removed from wishlist"
+        });
+
+    } catch (err) {
+        return commonService.handleError(res, err);
+    }
+};
+
+// Toggle Cart by Product ID
+const updateCartByProduct = async (req, res) => {
+    try {
+        const { product_id } = req.params;
+        const { is_in_cart, user_id } = req.body;
+
+        const WISHLIST_TYPE = type.ITEM_TYPE.CART;
+
+        // Find existing record (even if soft-deleted)
+        const existing = await models.CartWishlistItem.findOne({
+            where: {
+                user_id,
+                product_id,
+                order_item_type: WISHLIST_TYPE,
+            },
+            paranoid: false
+        });
+
+        // Do NOT create new record
+        if (!existing) {
+            return commonService.badRequest(res, "Cart record does not exist");
+        }
+
+        // ADD TO WISHLIST
+        if (is_in_cart) {
+            await existing.update({
+                is_in_cart: true,
+                deleted_at: null
+            });
+
+            return commonService.okResponse(res, {
+                is_in_cart: true,
+                message: "Cart updated"
+            });
+        }
+
+        // REMOVE FROM WISHLIST
+        await existing.update({
+            is_in_cart: false,
+            deleted_at: new Date()
+        });
+
+        return commonService.okResponse(res, {
+            is_in_cart: false,
+            message: "Removed from Cart"
+        });
+
+    } catch (err) {
+        return commonService.handleError(res, err);
+    }
+};
+
+
+
 
 module.exports = {
     addItem,
@@ -166,4 +272,6 @@ module.exports = {
     updateQuantity,
     removeItem,
     listItems,
+    updateWishlistByProduct,
+    updateCartByProduct
 };

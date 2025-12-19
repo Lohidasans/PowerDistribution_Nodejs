@@ -14,6 +14,12 @@ router.put("/user-items/:id/quantity", service.updateQuantity);
 // Remove item
 router.delete("/user-items/:id", service.removeItem);
 
+// toggle wishlist status by product
+router.put("/user-items/wish-list/:product_id", service.updateWishlistByProduct);
+
+// toggle add to cart status by product
+router.put("/user-items/add-to-cart/:product_id", service.updateCartByProduct);
+
 // List wishlist or cart
 // ?user_id=1&type=1 (wishlist)
 // ?user_id=1&type=2 (cart)
