@@ -684,9 +684,6 @@ const getAllProductDetails = async (req, res) => {
       grn_id,
       ref_no_id,
       search,
-      min_price,
-      max_price,
-      sort_by,
       variant_type_ids
     } = req.query;
 
@@ -907,69 +904,6 @@ const getAllProductDetails = async (req, res) => {
       );
 
       products = itemsWithPrices;
-    }
-
-    // Apply sorting if sort_by parameter is provided
-    if (sort_by) {
-      switch (sort_by) {
-        case 'price_low_to_high':
-          products.sort((a, b) => {
-            const minPriceA = Math.min(...a.itemDetails.map(item => item.price_details?.selling_price || Infinity));
-            const minPriceB = Math.min(...b.itemDetails.map(item => item.price_details?.selling_price || Infinity));
-            return minPriceA - minPriceB;
-          });
-          break;
-          
-        case 'price_high_to_low':
-          products.sort((a, b) => {
-            const maxPriceA = Math.max(...a.itemDetails.map(item => item.price_details?.selling_price || 0));
-            const maxPriceB = Math.max(...b.itemDetails.map(item => item.price_details?.selling_price || 0));
-            return maxPriceB - maxPriceA;
-          });
-          break;
-          
-        case 'last_updated':
-          products.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
-          break;
-          
-        default:
-          // No sorting or invalid sort_by value
-          break;
-      }
-    }
-
-    // Apply price range filtering only if both min_price and max_price are provided
-    if (min_price && max_price) {
-      const min = parseFloat(min_price);
-      const max = parseFloat(max_price);
-
-      // Validate that both min and max are valid numbers
-      if (isNaN(min) || isNaN(max)) {
-        return commonService.badRequest(res, 'Both min_price and max_price must be valid numbers');
-      }
-
-      if (min > max) {
-        return commonService.badRequest(res, 'min_price must be less than or equal to max_price');
-      }
-
-      // Filter itemDetails within each product instead of filtering products
-      products = products.map(product => {
-        // Create a new product object with filtered itemDetails
-        const filteredItemDetails = (product.itemDetails || []).filter(item => {
-          const sellingPrice = item.price_details?.selling_price;
-          if (sellingPrice === undefined || sellingPrice === null) return false;
-          return sellingPrice >= min && sellingPrice <= max;
-        });
-        
-        // Only include the product if it has any itemDetails after filtering
-        if (filteredItemDetails.length > 0) {
-          return {
-            ...product,
-            itemDetails: filteredItemDetails
-          };
-        }
-        return null;
-      }).filter(Boolean); // Remove any null entries (products with no matching items)
     }
 
     return commonService.okResponse(res, { products });
