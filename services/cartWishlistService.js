@@ -23,21 +23,45 @@ const addItem = async (req, res) => {
             return commonService.badRequest(res, "Invalid order_item_type");
         }
 
-        // Prevent duplicates
+        // HARD-CODE FLAGS (single source of truth)
+        const is_wishlisted = order_item_type === type.ITEM_TYPE.WISHLIST;
+        const is_in_cart = order_item_type === type.ITEM_TYPE.CART;
+
+        // Prevent duplicates (even soft-deleted)
         const existing = await models.CartWishlistItem.findOne({
             where: {
                 user_id,
                 product_item_id,
                 order_item_type,
-                deleted_at: null,
             },
             paranoid: false,
         });
 
-        if (existing) {
+        if (existing && !existing.deleted_at) {
             return commonService.badRequest(res, "Item already exists");
         }
 
+        // Restore soft-deleted row
+        if (existing && existing.deleted_at) {
+            await existing.restore();
+            await existing.update({
+                quantity,
+                net_weight,
+                product_name,
+                sku_id,
+                thumbnail_image,
+                estimated_price,
+                is_wishlisted,
+                is_in_cart,
+            });
+
+            return commonService.okResponse(res, {
+                item: existing,
+                message: "Item restored successfully",
+            });
+        }
+
+        // ✅ Create new row
         const row = await models.CartWishlistItem.create({
             user_id,
             product_id,
@@ -49,13 +73,17 @@ const addItem = async (req, res) => {
             sku_id,
             thumbnail_image,
             estimated_price,
+            is_wishlisted,
+            is_in_cart,
         });
 
         return commonService.createdResponse(res, { item: row });
+
     } catch (err) {
         return commonService.handleError(res, err);
     }
 };
+
 
 // Move item between Wishlist ↔ Cart - Update
 const moveItem = async (req, res) => {
