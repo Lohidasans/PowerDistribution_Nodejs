@@ -1187,104 +1187,176 @@ const updateProductStatus = async (req, res) => {
 // List products for Website List (lightweight)
 const getProductsForWebsiteList = async (req, res) => {
   try {
+    const {
+      material_type_id,
+      category_id,
+      subcategory_id,
+      min_price,
+      max_price,
+      sort_by = 'best_seller', // default
+    } = req.query;
 
-    // 1. Fetch products
-    const products = await models.Product.findAll({
-      where: {
-        is_published: true,
-        status: "Active",
-        deleted_at: null
-      },
-      attributes: [
-        "id",
-        "product_code",
-        "product_name",
-        "image_urls",
-        "material_type_id",
-        "product_type"
-      ],
-      order: [["created_at", "DESC"]],
-      raw: true
+    // Build dynamic WHERE
+    let whereConditions = `
+      WHERE 
+        p.is_published = true
+        AND p.status = 'Active'
+        AND p.deleted_at IS NULL
+        AND pi.is_visible = true
+        AND pi.deleted_at IS NULL
+    `;
+
+    const queryParams = [];
+
+    if (material_type_id) {
+      whereConditions += ` AND p.material_type_id = ?`;
+      queryParams.push(material_type_id);
+    }
+    if (category_id) {
+      whereConditions += ` AND p.category_id = ?`;
+      queryParams.push(category_id);
+    }
+    if (subcategory_id) {
+      whereConditions += ` AND p.subcategory_id = ?`;
+      queryParams.push(subcategory_id);
+    }
+
+    // Dynamic ORDER BY
+    let orderByClause = 'ORDER BY p.created_at DESC'; // default = newest / best_seller
+
+    if (sort_by === 'newest') {
+      orderByClause = 'ORDER BY p.created_at DESC';
+    }
+    // For price sorts, we'll sort in JS after calculation
+
+    const dynamicQuery = `
+      SELECT 
+        p.id AS product_id,
+        p.product_code,
+        p.product_name,
+        p.image_urls,
+        p.material_type_id,
+        p.product_type,
+        p.category_id,
+        p.subcategory_id,
+        p.created_at,  -- NEW: needed for newest sort
+
+        pi.id AS item_id,
+        pi.rate_per_gram,
+        pi.net_weight,
+        pi.making_charge,
+        pi.making_charge_type,
+        pi.wastage,
+        pi.wastage_type,
+        pi.stone_value
+
+      FROM products p
+      INNER JOIN "productItemDetails" pi
+        ON p.id = pi.product_id
+      ${whereConditions}
+      ${orderByClause};
+    `;
+
+    const rows = await sequelize.query(dynamicQuery, {
+      replacements: queryParams,
+      type: sequelize.QueryTypes.SELECT,
     });
 
-    if (!products.length) {
+    if (!rows.length) {
       return res.status(200).json({
         statusCode: 200,
         message: "Success",
-        data: []
+        data: [],
       });
     }
 
-    const productIds = products.map(p => p.id);
+    const productMap = new Map();
 
-    // 2. Fetch item details separately
-    const itemDetails = await models.ProductItemDetail.findAll({
-      where: {
-        product_id: productIds,
-        is_visible: true,
-        deleted_at: null
-      },
-      raw: true
-    });
+    for (const row of rows) {
+      const product = {
+        id: row.product_id,
+        product_code: row.product_code,
+        product_name: row.product_name,
+        image_urls: row.image_urls,
+        material_type_id: row.material_type_id,
+        category_id: row.category_id,
+        subcategory_id: row.subcategory_id,
+        product_type: row.product_type,
+        created_at: row.created_at, // pass through for sorting
+      };
 
-    // 3. Group item details by product_id
-    const itemMap = {};
-    for (const item of itemDetails) {
-      if (!itemMap[item.product_id]) {
-        itemMap[item.product_id] = [];
-      }
-      itemMap[item.product_id].push(item);
-    }
+      const item = {
+        id: row.item_id,
+        rate_per_gram: row.rate_per_gram,
+        net_weight: row.net_weight,
+        making_charge: row.making_charge,
+        making_charge_type: row.making_charge_type,
+        wastage: row.wastage,
+        wastage_type: row.wastage_type,
+        stone_value: row.stone_value,
+      };
 
-    const response = [];
+      const priceResult = await calculateSellingPrice(product, item, models);
+      let sellingPrice = priceResult.selling_price;
 
-    // 4. Calculate highest price per product
-    for (const product of products) {
-      const items = itemMap[product.id] || [];
+      if (!sellingPrice || sellingPrice <= 0) continue;
 
-      let highestPrice = 0;
-      let highestItemId = null;
+      // Apply price range filters
+      if (min_price && sellingPrice < parseFloat(min_price)) continue;
+      if (max_price && sellingPrice > parseFloat(max_price)) continue;
 
-      for (const item of items) {
-        const priceResult = await calculateSellingPrice(
-          product,
-          item,
-          models
-        );
+      const finalPrice = Number(sellingPrice.toFixed(2));
 
-        if (priceResult.selling_price > highestPrice) {
-          highestPrice = priceResult.selling_price;
-          highestItemId = item.id;
-        }
-      }
-
-      // Skip products without items
-      if (!highestItemId) continue;
-
-      response.push({
+      const productEntry = {
         id: product.id,
         product_code: product.product_code,
         product_name: product.product_name,
         image_urls: product.image_urls,
-        product_item_id: highestItemId,
-        selling_price: Number(highestPrice.toFixed(2))
-      });
+        material_type_id: product.material_type_id,
+        category_id: product.category_id,
+        subcategory_id: product.subcategory_id,
+        product_type: product.product_type,
+        product_item_id: item.id,
+        selling_price: finalPrice,
+        created_at: product.created_at, // keep for sorting
+      };
+
+      // Keep highest priced item per product (your existing logic)
+      if (
+        !productMap.has(product.id) ||
+        productMap.get(product.id).selling_price < finalPrice
+      ) {
+        productMap.set(product.id, productEntry);
+      }
     }
+
+    let result = Array.from(productMap.values());
+
+    // Apply price-based sorting in JS
+    if (sort_by === 'price_low_to_high') {
+      result.sort((a, b) => a.selling_price - b.selling_price);
+    } else if (sort_by === 'price_high_to_low') {
+      result.sort((a, b) => b.selling_price - a.selling_price);
+    }
+    // For 'newest' and 'best_seller' → already sorted by created_at DESC in SQL
+
+    // Remove created_at from final response (optional)
+    result = result.map(({ created_at, ...rest }) => rest);
 
     return res.status(200).json({
       statusCode: 200,
       message: "Success",
-      data: response
+      data: result,
     });
-
   } catch (error) {
     console.error("Product Listing Error:", error);
     return res.status(500).json({
       statusCode: 500,
-      message: "Internal Server Error"
+      message: "Internal Server Error",
     });
   }
 };
+
 
 
 
