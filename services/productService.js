@@ -1,4 +1,5 @@
 const { models, sequelize } = require("../models/index");
+const { Op } = require("sequelize");
 const commonService = require("../services/commonService");
 const message = require("../constants/en.json");
 const { buildSearchCondition } = require("../helpers/queryHelper");
@@ -1187,16 +1188,18 @@ const updateProductStatus = async (req, res) => {
 // List products for Website List (lightweight)
 const getProductsForWebsiteList = async (req, res) => {
   try {
+    const userId = req.user?.id || 0; // Change based on your auth setup (e.g., req.user.id)
+
     const {
       material_type_id,
       category_id,
       subcategory_id,
       min_price,
       max_price,
-      sort_by = 'best_seller', // default
+      sort_by = 'best_seller',
     } = req.query;
 
-    // Build dynamic WHERE
+    // Build WHERE clause
     let whereConditions = `
       WHERE 
         p.is_published = true
@@ -1221,13 +1224,11 @@ const getProductsForWebsiteList = async (req, res) => {
       queryParams.push(subcategory_id);
     }
 
-    // Dynamic ORDER BY
-    let orderByClause = 'ORDER BY p.created_at DESC'; // default = newest / best_seller
+    let orderByClause = 'ORDER BY p.created_at DESC';
 
     if (sort_by === 'newest') {
       orderByClause = 'ORDER BY p.created_at DESC';
     }
-    // For price sorts, we'll sort in JS after calculation
 
     const dynamicQuery = `
       SELECT 
@@ -1239,7 +1240,7 @@ const getProductsForWebsiteList = async (req, res) => {
         p.product_type,
         p.category_id,
         p.subcategory_id,
-        p.created_at,  -- NEW: needed for newest sort
+        p.created_at,
 
         pi.id AS item_id,
         pi.rate_per_gram,
@@ -1251,8 +1252,7 @@ const getProductsForWebsiteList = async (req, res) => {
         pi.stone_value
 
       FROM products p
-      INNER JOIN "productItemDetails" pi
-        ON p.id = pi.product_id
+      INNER JOIN "productItemDetails" pi ON p.id = pi.product_id
       ${whereConditions}
       ${orderByClause};
     `;
@@ -1270,6 +1270,38 @@ const getProductsForWebsiteList = async (req, res) => {
       });
     }
 
+    // 1. Fetch ALL cart/wishlist entries for this user + all products in the result set
+    const productIds = [...new Set(rows.map(r => r.product_id))];
+
+    const userCartWishlistItems = await models.CartWishlistItem.findAll({
+      where: {
+        user_id: userId,
+        product_id: { [Op.in]: productIds },
+        deleted_at: null,
+      },
+      attributes: [
+        'product_id',
+        'product_item_id',
+        'order_item_type',     // 1 = Wishlist, 2 = Cart
+        'is_wishlisted',
+        'is_in_cart',
+      ],
+      raw: true,
+    });
+
+    // 2. Build lookup map: key = `${product_id}-${product_item_id}`
+    const cartWishlistMap = {};
+
+    userCartWishlistItems.forEach(item => {
+      const key = `${item.product_id}-${item.product_item_id}`;
+      cartWishlistMap[key] = {
+        order_item_type: item.order_item_type,
+        is_wishlisted: Boolean(item.is_wishlisted),
+        is_in_cart: Boolean(item.is_in_cart),
+      };
+    });
+
+    // 3. Process products and calculate price
     const productMap = new Map();
 
     for (const row of rows) {
@@ -1282,7 +1314,7 @@ const getProductsForWebsiteList = async (req, res) => {
         category_id: row.category_id,
         subcategory_id: row.subcategory_id,
         product_type: row.product_type,
-        created_at: row.created_at, // pass through for sorting
+        created_at: row.created_at,
       };
 
       const item = {
@@ -1297,15 +1329,21 @@ const getProductsForWebsiteList = async (req, res) => {
       };
 
       const priceResult = await calculateSellingPrice(product, item, models);
-      let sellingPrice = priceResult.selling_price;
+      const sellingPrice = priceResult.selling_price;
 
       if (!sellingPrice || sellingPrice <= 0) continue;
 
-      // Apply price range filters
       if (min_price && sellingPrice < parseFloat(min_price)) continue;
       if (max_price && sellingPrice > parseFloat(max_price)) continue;
 
       const finalPrice = Number(sellingPrice.toFixed(2));
+
+      const key = `${product.id}-${item.id}`;
+      const cartState = cartWishlistMap[key] || {
+        order_item_type: null,
+        is_wishlisted: false,
+        is_in_cart: false,
+      };
 
       const productEntry = {
         id: product.id,
@@ -1318,10 +1356,15 @@ const getProductsForWebsiteList = async (req, res) => {
         product_type: product.product_type,
         product_item_id: item.id,
         selling_price: finalPrice,
-        created_at: product.created_at, // keep for sorting
+        created_at: product.created_at,
+
+        // NEW FIELDS
+        order_item_type: cartState.order_item_type,
+        is_wishlisted: cartState.is_wishlisted,
+        is_in_cart: cartState.is_in_cart,
       };
 
-      // Keep highest priced item per product (your existing logic)
+      // Keep only the highest priced item per product
       if (
         !productMap.has(product.id) ||
         productMap.get(product.id).selling_price < finalPrice
@@ -1332,15 +1375,14 @@ const getProductsForWebsiteList = async (req, res) => {
 
     let result = Array.from(productMap.values());
 
-    // Apply price-based sorting in JS
+    // Apply price sorting in JS
     if (sort_by === 'price_low_to_high') {
       result.sort((a, b) => a.selling_price - b.selling_price);
     } else if (sort_by === 'price_high_to_low') {
       result.sort((a, b) => b.selling_price - a.selling_price);
     }
-    // For 'newest' and 'best_seller' → already sorted by created_at DESC in SQL
 
-    // Remove created_at from final response (optional)
+    // Clean up: remove internal fields
     result = result.map(({ created_at, ...rest }) => rest);
 
     return res.status(200).json({
