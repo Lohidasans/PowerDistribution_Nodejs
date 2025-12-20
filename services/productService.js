@@ -356,14 +356,17 @@ const getProductAddonList = async (req, res) => {
 // Get Detailed product by product_id - mobile & view summary
 const getProductById = async (req, res) => {
   try {
+    const productId = +req.params.id;
+
+    // Fetch product
     const row = await commonService.findById(
       models.Product,
-      req.params.id,
+      productId,
       res
     );
     if (!row) return;
 
-    // fetch child details
+    // etch product item details & additional details
     const [itemDetails, additionalDetails] = await Promise.all([
       models.ProductItemDetail.findAll({
         where: { product_id: row.id },
@@ -382,7 +385,31 @@ const getProductById = async (req, res) => {
       return acc;
     }, {});
 
-    // CALCULATE SELLING PRICE PER ITEM
+    // Fetch wishlist/cart rows for this product 
+    const userItems = await models.CartWishlistItem.findAll({
+      where: {
+        user_id: 0,
+        product_id: row.id,
+        deleted_at: null,
+      },
+      attributes: [
+        "product_item_id",
+        "is_wishlisted",
+        "is_in_cart",
+      ],
+    });
+
+    // Build lookup map by product_item_id 
+    const itemStateMap = {};
+
+    userItems.forEach((ui) => {
+      itemStateMap[ui.product_item_id] = {
+        is_wishlisted: Boolean(ui.is_wishlisted),
+        is_in_cart: Boolean(ui.is_in_cart),
+      };
+    });
+
+    // Build item_details with correct flags
     const itemsWithAdds = await Promise.all(
       itemDetails.map(async (it) => {
         const plainItem = it.get({ plain: true });
@@ -393,15 +420,24 @@ const getProductById = async (req, res) => {
           models
         );
 
+        const itemState = itemStateMap[it.id] || {
+          is_wishlisted: false,
+          is_in_cart: false,
+        };
+
         return {
           ...plainItem,
           additional_details: addsByItem[it.id] || [],
-          price_details: priceDetails, // dynamic selling price
+          price_details: priceDetails,
+
+          // PER ITEM FLAGS (CORRECT)
+          is_wishlisted: itemState.is_wishlisted,
+          is_in_cart: itemState.is_in_cart,
         };
       })
     );
 
-    // If product has add-ons, fetch mapped add-on product info
+    // Fetch add-on products
     let addon_products = [];
     const isAddOn =
       row.is_addOn === true || row.is_addOn === 1 || row.is_addOn === "true";
@@ -419,50 +455,50 @@ const getProductById = async (req, res) => {
         JOIN products p ON p.id = pa.addon_product_id
         WHERE pa.product_id = :pid
         ORDER BY pa.id ASC
-      `,
-        { replacements: { pid: +row.id } }
+        `,
+        { replacements: { pid: row.id } }
       );
       addon_products = addonRows;
     }
 
-    // Variant details mapped to this product
+    // Fetch variant details
     const [variantDetails] = await sequelize.query(
       `
-        SELECT
-          pv.variant_id,
-          v.variant_type,
-          COALESCE(
-            json_agg(
-              json_build_object('id', vv.id, 'value', vv.value)
-              ORDER BY vv.id
-            ) FILTER (WHERE vv.id IS NOT NULL),
-            '[]'::json
-          ) AS values
-        FROM "product_variants" pv
-        JOIN variants v ON v.id = pv.variant_id AND v.deleted_at IS NULL
-        LEFT JOIN "variantValues" vv ON vv.id = ANY(pv.variant_type_ids) AND vv.deleted_at IS NULL
-        WHERE pv.product_id = :pid AND pv.deleted_at IS NULL
-        GROUP BY pv.variant_id, v.variant_type
-        ORDER BY pv.variant_id ASC
+      SELECT
+        pv.variant_id,
+        v.variant_type,
+        COALESCE(
+          json_agg(
+            json_build_object('id', vv.id, 'value', vv.value)
+            ORDER BY vv.id
+          ) FILTER (WHERE vv.id IS NOT NULL),
+          '[]'::json
+        ) AS values
+      FROM "product_variants" pv
+      JOIN variants v ON v.id = pv.variant_id AND v.deleted_at IS NULL
+      LEFT JOIN "variantValues" vv ON vv.id = ANY(pv.variant_type_ids) AND vv.deleted_at IS NULL
+      WHERE pv.product_id = :pid AND pv.deleted_at IS NULL
+      GROUP BY pv.variant_id, v.variant_type
+      ORDER BY pv.variant_id ASC
       `,
-      { replacements: { pid: +row.id } }
+      { replacements: { pid: row.id } }
     );
 
-    // Get material type name
+    // Fetch material type name
     let materialTypeName = null;
     if (row.material_type_id) {
       const material = await sequelize.query(
-        `SELECT material_type FROM "materialTypes" WHERE id = :materialTypeId`,
+        `SELECT material_type FROM "materialTypes" WHERE id = :id`,
         {
-          replacements: { materialTypeId: row.material_type_id },
+          replacements: { id: row.material_type_id },
           type: sequelize.QueryTypes.SELECT,
           plain: true,
         }
       );
-      materialTypeName = material ? material.material_type : null;
+      materialTypeName = material?.material_type || null;
     }
 
-    // Final structured response
+    // Final response
     return commonService.okResponse(res, {
       product: {
         ...row.get({ plain: true }),
@@ -472,6 +508,7 @@ const getProductById = async (req, res) => {
       addon_products,
       variant_details: variantDetails,
     });
+
   } catch (err) {
     return commonService.handleError(res, err);
   }
