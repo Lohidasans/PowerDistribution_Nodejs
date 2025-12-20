@@ -85,8 +85,20 @@ const createOrder = async (req, res) => {
                 measurement_details,
                 rate,
                 making_charge,
-                tax,
+                wastage,
             } = item;
+
+            //Fetch the product to get the product_type
+            const product = await models.Product.findByPk(product_id, {
+                attributes: ['product_type'],
+                raw: true
+            });
+
+            if (!product) {
+                throw new Error(`Product with ID ${product_id} not found`);
+            }
+
+            const product_type = product.product_type;
 
             // Lock product item row
             const productItem = await models.ProductItemDetail.findOne({
@@ -98,11 +110,37 @@ const createOrder = async (req, res) => {
             if (!productItem) throw new Error("ProductItem not Found");
             if (productItem.quantity < quantity) throw new Error("Insufficient product quantity");            
 
-            //Order Items Calculations
-            const amountValue = Number(rate) * Number(net_weight) * Number(quantity);  
-            const taxValue = Number(tax || 0) * Number(quantity);
-            const makingChargeValue = Number(making_charge || 0) * Number(quantity);
-            const totalAmount = amountValue + makingChargeValue + taxValue;
+            // Order Items Calculations based on product_type
+            let amountValue, taxValue, makingChargeValue, wastageValue, totalAmount;
+            const TAX_PERCENTAGE = 3; // 3% tax
+
+            if (product_type === 'Piece Rate') {
+                // For Piece Rate: amount = rate * quantity
+                amountValue = Number(rate) * Number(quantity);
+                makingChargeValue = 0; // Set to 0 for Piece Rate
+                wastageValue = 0;     // Set to 0 for Piece Rate
+                taxValue = (amountValue * TAX_PERCENTAGE) / 100;
+                totalAmount = amountValue + taxValue;
+            } else {
+                // For Weight-Based (rate * net_weight)
+                const silverValue = Number(rate) * Number(net_weight || 0);
+
+                makingChargeValue = Number(making_charge || 0);
+                wastageValue = Number(wastage || 0);
+
+                const subtotal = silverValue + makingChargeValue + wastageValue;
+
+                // Calculate GST (3% of Subtotal)
+                taxValue = (subtotal * TAX_PERCENTAGE) / 100;
+                totalAmount = subtotal + taxValue;
+
+                // Multiply by quantity for the order items
+                amountValue = silverValue * Number(quantity);
+                makingChargeValue *= Number(quantity);
+                wastageValue *= Number(quantity);
+                taxValue *= Number(quantity);
+                totalAmount *= Number(quantity);
+            }
 
             // Order calculation
             orderSubTotal += totalAmount; // sum of all the totalAmount in the items loop
@@ -119,6 +157,7 @@ const createOrder = async (req, res) => {
                 rate,
                 amount: amountValue,
                 making_charge: makingChargeValue,
+                wastage: wastageValue,
                 tax: taxValue,
                 total_amount: totalAmount,
                 purity,
@@ -155,7 +194,7 @@ const createOrder = async (req, res) => {
                 subtotal: orderSubTotal,  // sum of item total_amount
                 tax_amount: orderTaxAmount,  // sum of item tax
                 discount_amount,
-                total_amount: orderSubTotal - discount_amount, //Do NOT add tax again here — it’s already inside subtotal
+                total_amount: orderSubTotal - discount_amount, //Do NOT add tax again here — it's already inside subtotal
             },
             { transaction }
         );

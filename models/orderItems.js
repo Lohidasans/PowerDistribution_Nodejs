@@ -53,7 +53,11 @@ module.exports = (sequelize, DataTypes) => {
                 type: DataTypes.DECIMAL(15, 2),
                 allowNull: false,
             },
-            tax: {
+            wastage: {
+                type: DataTypes.DECIMAL(15, 2),
+                allowNull: true,
+            },
+            tax: {  //Gst or Tax amount
                 type: DataTypes.DECIMAL(15, 2),
                 allowNull: false,
             },
