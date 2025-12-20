@@ -3,7 +3,7 @@ const commonService = require("./commonService");
 const { Op } = require("sequelize");
 const type = require("../constants/enum");
 
-// Add to Wishlist / Cart
+// Add to Wishlist / Cart - Create
 const addItem = async (req, res) => {
     try {
         const {
@@ -57,7 +57,7 @@ const addItem = async (req, res) => {
     }
 };
 
-// Move item between Wishlist ↔ Cart
+// Move item between Wishlist ↔ Cart - Update
 const moveItem = async (req, res) => {
     try {
         const { id } = req.params;
@@ -90,7 +90,6 @@ const moveItem = async (req, res) => {
         return commonService.handleError(res, err);
     }
 };
-
 
 // Update Quantity (Cart only)
 const updateQuantity = async (req, res) => {
@@ -159,11 +158,11 @@ const listItems = async (req, res) => {
     }
 };
 
-// Toggle Wishlist by Product ID
+// Toggle Wishlist by Product ID - Update
 const updateWishlistByProduct = async (req, res) => {
     try {
         const { product_id } = req.params;
-        const { is_wishlisted, user_id } = req.body;
+        const { is_wishlisted, user_id, product_item_id } = req.body;
 
         const WISHLIST_TYPE = type.ITEM_TYPE.WISHLIST;
 
@@ -172,6 +171,7 @@ const updateWishlistByProduct = async (req, res) => {
             where: {
                 user_id,
                 product_id,
+                product_item_id,
                 order_item_type: WISHLIST_TYPE,
             },
             paranoid: false
@@ -211,11 +211,11 @@ const updateWishlistByProduct = async (req, res) => {
     }
 };
 
-// Toggle Cart by Product ID
+// Toggle Cart by Product ID - Update
 const updateCartByProduct = async (req, res) => {
     try {
         const { product_id } = req.params;
-        const { is_in_cart, user_id } = req.body;
+        const { is_in_cart, user_id, product_item_id } = req.body;
 
         const WISHLIST_TYPE = type.ITEM_TYPE.CART;
 
@@ -224,6 +224,7 @@ const updateCartByProduct = async (req, res) => {
             where: {
                 user_id,
                 product_id,
+                product_item_id,
                 order_item_type: WISHLIST_TYPE,
             },
             paranoid: false
