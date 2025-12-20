@@ -1,7 +1,7 @@
 const { models, sequelize } = require("../models");
 const commonService = require("./commonService");
 const { Op } = require("sequelize");
-const type = require("../constants/enum");
+const enumType = require("../constants/enum");
 
 // Add to Wishlist / Cart - Create
 const addItem = async (req, res) => {
@@ -19,13 +19,13 @@ const addItem = async (req, res) => {
             estimated_price,
         } = req.body;
 
-        if (![type.ITEM_TYPE.WISHLIST, type.ITEM_TYPE.CART].includes(order_item_type)) {
+        if (![enumType.ITEM_TYPE.WISHLIST, enumType.ITEM_TYPE.CART].includes(order_item_type)) {
             return commonService.badRequest(res, "Invalid order_item_type");
         }
 
         // HARD-CODE FLAGS (single source of truth)
-        const is_wishlisted = order_item_type === type.ITEM_TYPE.WISHLIST;
-        const is_in_cart = order_item_type === type.ITEM_TYPE.CART;
+        const is_wishlisted = order_item_type === enumType.ITEM_TYPE.WISHLIST;
+        const is_in_cart = order_item_type === enumType.ITEM_TYPE.CART;
 
         // Prevent duplicates (even soft-deleted)
         const existing = await models.CartWishlistItem.findOne({
@@ -91,7 +91,7 @@ const moveItem = async (req, res) => {
         const { id } = req.params;
         const { order_item_type } = req.body;
 
-        if (![type.ITEM_TYPE.WISHLIST, type.ITEM_TYPE.CART].includes(order_item_type)) {
+        if (![enumType.ITEM_TYPE.WISHLIST, enumType.ITEM_TYPE.CART].includes(order_item_type)) {
             return commonService.badRequest(
                 res,
                 "Invalid order_item_type. Use 1 for Wishlist, 2 for Cart"
@@ -166,13 +166,29 @@ const listItems = async (req, res) => {
             return commonService.badRequest(res, "type is required");
         }
 
+        const itemType = Number(type);
+
+        if (![enumType.ITEM_TYPE.WISHLIST, enumType.ITEM_TYPE.CART].includes(itemType)) {
+            return commonService.badRequest(res, "Invalid type");
+        }
+
         const whereClause = {
-            order_item_type: Number(type),
+            order_item_type: itemType,
+            deleted_at: null, // respect soft delete
         };
 
         // user_id is optional
         if (user_id) {
             whereClause.user_id = Number(user_id);
+        }
+
+        // filter by correct boolean flag
+        if (itemType === enumType.ITEM_TYPE.WISHLIST) {
+            whereClause.is_wishlisted = true;
+        }
+
+        if (itemType === enumType.ITEM_TYPE.CART) {
+            whereClause.is_in_cart = true;
         }
 
         const rows = await models.CartWishlistItem.findAll({
@@ -181,10 +197,12 @@ const listItems = async (req, res) => {
         });
 
         return commonService.okResponse(res, { items: rows });
+
     } catch (err) {
         return commonService.handleError(res, err);
     }
 };
+
 
 // Toggle Wishlist by Product ID - Update
 const updateWishlistByProduct = async (req, res) => {
@@ -192,7 +210,7 @@ const updateWishlistByProduct = async (req, res) => {
         const { product_id } = req.params;
         const { is_wishlisted, user_id, product_item_id } = req.body;
 
-        const WISHLIST_TYPE = type.ITEM_TYPE.WISHLIST;
+        const WISHLIST_TYPE = enumType.ITEM_TYPE.WISHLIST;
 
         // Find existing record (even if soft-deleted)
         const existing = await models.CartWishlistItem.findOne({
@@ -245,7 +263,7 @@ const updateCartByProduct = async (req, res) => {
         const { product_id } = req.params;
         const { is_in_cart, user_id, product_item_id } = req.body;
 
-        const WISHLIST_TYPE = type.ITEM_TYPE.CART;
+        const WISHLIST_TYPE = enumType.ITEM_TYPE.CART;
 
         // Find existing record (even if soft-deleted)
         const existing = await models.CartWishlistItem.findOne({
