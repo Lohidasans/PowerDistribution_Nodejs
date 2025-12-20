@@ -10,9 +10,7 @@ const {
 
 const createProductSKUCode = async (req, res) => {
   const t = await sequelize.transaction();
-
   try {
-    // prefix comes from query params:// e.g. "CER"
     const prefix = req.query.prefix;
 
     if (!prefix) {
@@ -20,8 +18,8 @@ const createProductSKUCode = async (req, res) => {
       return commonService.badRequest(res, "Prefix query param is required");
     }
 
-    // Generate Product Code
-    const productCode = await generateProductSKUCode(prefix);
+    // Pass pad=4 or higher
+    const productCode = await generateProductSKUCode(prefix, { pad: 4 });
 
     await t.commit();
     return commonService.createdResponse(res, productCode);

@@ -125,9 +125,10 @@ const generateFiscalSeriesCode = async (model, field, prefix, { pad = 3 } = {}) 
 
 
 const generateProductSKUCode = async (prefixFromQuery = "", options = {}) => {
-  const { pad = 3, separator = "_" } = options;
+  const { separator = "_" } = options;
+  let { pad = 4 } = options; // ← Increase default to 4 or more
 
-  // 1. Get Company Prefix (CJ, ABC, etc.)
+  // 1. Get Company Prefix
   const superAdmin = await models.SuperAdminProfile.findOne({
     order: [["id", "ASC"]],
     attributes: ["branch_sequence_value"],
@@ -142,7 +143,7 @@ const generateProductSKUCode = async (prefixFromQuery = "", options = {}) => {
     .toUpperCase()
     .replace(/[^A-Z0-9]/g, "");
 
-  // 2. Clean Product Prefix (CHN, CER, RING, etc.)
+  // 2. Clean Product Prefix
   const cleanPrefix = String(prefixFromQuery || "")
     .toUpperCase()
     .trim()
@@ -152,39 +153,44 @@ const generateProductSKUCode = async (prefixFromQuery = "", options = {}) => {
     throw new Error("Product prefix is required");
   }
 
-  const likePattern = `${companyPrefix}${separator}${cleanPrefix}${separator}%`;
+  const basePattern = `${companyPrefix}${separator}${cleanPrefix}${separator}`;
 
-  console.log("Searching for pattern:", likePattern);
-
-  // 3. Find latest SKU with this prefix
-  const lastProduct = await models.Product.findOne({
+  // 3. Find the highest sequence number numerically
+  const products = await models.Product.findAll({
     where: {
       sku_id: {
-        [Op.iLike]: likePattern   // Changed from product_code to sku_id
-      }
+        [Op.iLike]: `${basePattern}%`,
+      },
     },
-    order: [["sku_id", "DESC"]],   // Changed from product_code to sku_id
-    attributes: ["sku_id"],         // Changed from product_code to sku_id
+    attributes: ["sku_id"],
     raw: true,
   });
 
   let nextSeq = 1;
 
-  if (lastProduct && lastProduct.sku_id) {  // Check sku_id instead of product_code
-    console.log("Last product found:", lastProduct.sku_id);
-    const parts = lastProduct.sku_id.split(separator);
-    const lastNumber = parts[parts.length - 1];
-    const num = parseInt(lastNumber, 10);
-    if (!isNaN(num)) nextSeq = num + 1;
-  } else {
-    console.log("No existing product with prefix:", cleanPrefix);
+  if (products.length > 0) {
+    const sequences = products
+      .map(p => {
+        const parts = p.sku_id.split(separator);
+        const numStr = parts[parts.length - 1];
+        const num = parseInt(numStr, 10);
+        return isNaN(num) ? 0 : num;
+      })
+      .filter(n => n > 0);
+
+    if (sequences.length > 0) {
+      nextSeq = Math.max(...sequences) + 1;
+    }
   }
 
-  // 4. Generate next SKU
-  const padded = String(nextSeq).padStart(pad, "0");
+  // 4. Dynamic padding: at least 4 digits, or enough to fit nextSeq
+  const minDigits = Math.max(pad, String(nextSeq).length);
+  const padded = String(nextSeq).padStart(minDigits, "0");
+
   const finalSKU = `${companyPrefix}${separator}${cleanPrefix}${separator}${padded}`;
 
-  console.log("Generated SKU:", finalSKU);
+  console.log("Generated SKU:", finalSKU, "(nextSeq:", nextSeq, ")");
+
   return finalSKU;
 };
 
