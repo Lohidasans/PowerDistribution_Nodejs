@@ -23,11 +23,9 @@ const addItem = async (req, res) => {
             return commonService.badRequest(res, "Invalid order_item_type");
         }
 
-        // HARD-CODE FLAGS (single source of truth)
         const is_wishlisted = order_item_type === enumType.ITEM_TYPE.WISHLIST;
         const is_in_cart = order_item_type === enumType.ITEM_TYPE.CART;
 
-        // Prevent duplicates (even soft-deleted)
         const existing = await models.CartWishlistItem.findOne({
             where: {
                 user_id,
@@ -37,14 +35,14 @@ const addItem = async (req, res) => {
             paranoid: false,
         });
 
-        if (existing && !existing.deleted_at) {
-            return commonService.badRequest(res, "Item already exists");
-        }
+        // Row exists (active OR deleted) → RESTORE / UPDATE
+        if (existing) {
+            if (existing.deleted_at) {
+                await existing.restore();
+            }
 
-        // Restore soft-deleted row
-        if (existing && existing.deleted_at) {
-            await existing.restore();
             await existing.update({
+                product_id,
                 quantity,
                 net_weight,
                 product_name,
@@ -53,15 +51,16 @@ const addItem = async (req, res) => {
                 estimated_price,
                 is_wishlisted,
                 is_in_cart,
+                deleted_at: null,
             });
 
             return commonService.okResponse(res, {
                 item: existing,
-                message: "Item restored successfully",
+                message: "Item updated successfully",
             });
         }
 
-        // ✅ Create new row
+        //  Create new row
         const row = await models.CartWishlistItem.create({
             user_id,
             product_id,
@@ -83,6 +82,7 @@ const addItem = async (req, res) => {
         return commonService.handleError(res, err);
     }
 };
+
 
 
 // Move item between Wishlist ↔ Cart - Update
