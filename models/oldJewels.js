@@ -29,6 +29,11 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.STRING,
         allowNull: true,
       },
+      is_bill_adjusted: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+      },
       total_amount: {  // total amount of old jewels
         type: DataTypes.DECIMAL(15, 2),
         allowNull: false,

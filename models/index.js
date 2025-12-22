@@ -94,6 +94,7 @@ const ProductVariant = require("./productVariants")(sequelize, Sequelize.DataTyp
 const Grn = require("./grns")(sequelize, Sequelize.DataTypes);
 const GrnItem = require("./grnItems")(sequelize, Sequelize.DataTypes);
 const ProductGrnInfo = require("./productGrnInfos")(sequelize, Sequelize.DataTypes);
+const Purity = require("./purities")(sequelize, Sequelize.DataTypes);
 
 // Purchase Order related models
 const PurchaseOrder = require("./purchaseOrders")(sequelize, Sequelize.DataTypes);
@@ -229,7 +230,8 @@ const models = {
   Order, 
   OrderItem,
   CartWishlistItem,
-  CustomerAddress
+  CustomerAddress,
+  Purity
 };
 
 Object.values(models).forEach((model) => {
