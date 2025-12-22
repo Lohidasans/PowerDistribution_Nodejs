@@ -1186,7 +1186,7 @@ const updateProductStatus = async (req, res) => {
 // List products for Website List (lightweight)
 const getProductsForWebsiteList = async (req, res) => {
   try {
-    const userId = req.user?.id || 0; // Change based on your auth setup (e.g., req.user.id)
+    const userId = req.user?.id || 0;
 
     const {
       material_type_id,
@@ -1277,13 +1277,7 @@ const getProductsForWebsiteList = async (req, res) => {
         product_id: { [Op.in]: productIds },
         deleted_at: null,
       },
-      attributes: [
-        'product_id',
-        'product_item_id',
-        'order_item_type',     // 1 = Wishlist, 2 = Cart
-        'is_wishlisted',
-        'is_in_cart',
-      ],
+      attributes: ['product_id', 'product_item_id', 'order_item_type', 'is_wishlisted', 'is_in_cart'],
       raw: true,
     });
 
@@ -1299,7 +1293,45 @@ const getProductsForWebsiteList = async (req, res) => {
       };
     });
 
-    // 3. Process products and calculate price
+    //  Fetch ALL variants for all products in one query
+    const variantRows = await sequelize.query(`
+      SELECT 
+        pv.product_id,
+        pv.variant_id,
+        v.variant_type,
+        json_agg(
+          json_build_object(
+            'id', vv.id,
+            'value', vv.value
+          ) ORDER BY vv.sort_order ASC
+        ) AS values
+      FROM "product_variants" pv
+      JOIN variants v ON v.id = pv.variant_id AND v.deleted_at IS NULL
+      LEFT JOIN "variantValues" vv ON vv.id = ANY(pv.variant_type_ids) AND vv.deleted_at IS NULL
+      WHERE pv.product_id IN (:productIds)
+        AND pv.deleted_at IS NULL
+      GROUP BY pv.product_id, pv.variant_id, v.variant_type
+      ORDER BY pv.product_id, pv.variant_id`,
+      {
+      replacements: { productIds: productIds.length ? productIds : [0] }, // prevent empty IN ()
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    const variantMap = {};
+    if (Array.isArray(variantRows)) {
+      variantRows.forEach(row => {
+        if (!variantMap[row.product_id]) {
+          variantMap[row.product_id] = [];
+        }
+        variantMap[row.product_id].push({
+          id: row.variant_id,
+          variant_type: row.variant_type,
+          type_ids: row.values || [],
+        });
+      });
+    }
+
+    // === Process products ===
     const productMap = new Map();
 
     for (const row of rows) {
@@ -1330,7 +1362,6 @@ const getProductsForWebsiteList = async (req, res) => {
       const sellingPrice = priceResult.selling_price;
 
       if (!sellingPrice || sellingPrice <= 0) continue;
-
       if (min_price && sellingPrice < parseFloat(min_price)) continue;
       if (max_price && sellingPrice > parseFloat(max_price)) continue;
 
@@ -1355,11 +1386,10 @@ const getProductsForWebsiteList = async (req, res) => {
         product_item_id: item.id,
         selling_price: finalPrice,
         created_at: product.created_at,
-
-        // NEW FIELDS
         order_item_type: cartState.order_item_type,
         is_wishlisted: cartState.is_wishlisted,
         is_in_cart: cartState.is_in_cart,
+        variants: variantMap[product.id] || [],
       };
 
       // Keep only the highest priced item per product
@@ -1373,14 +1403,14 @@ const getProductsForWebsiteList = async (req, res) => {
 
     let result = Array.from(productMap.values());
 
-    // Apply price sorting in JS
+    // Apply price sorting
     if (sort_by === 'price_low_to_high') {
       result.sort((a, b) => a.selling_price - b.selling_price);
     } else if (sort_by === 'price_high_to_low') {
       result.sort((a, b) => b.selling_price - a.selling_price);
     }
 
-    // Clean up: remove internal fields
+    // Clean up internal fields
     result = result.map(({ created_at, ...rest }) => rest);
 
     return res.status(200).json({
