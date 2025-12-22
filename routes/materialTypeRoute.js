@@ -2,27 +2,13 @@ var express = require("express");
 var materialTypeRouter = express.Router();
 const materialTypeService = require("../services/materialTypeService");
 
-materialTypeRouter.post(
-  "/material-type",
-  materialTypeService.createMaterialType
-);
+materialTypeRouter.post("/material-type",  materialTypeService.createMaterialType);
 materialTypeRouter.get("/material-type", materialTypeService.listMaterialTypes);
-materialTypeRouter.get(
-  "/material-type/dropdown",
-  materialTypeService.listMaterialTypesDropdown
-);
-materialTypeRouter.get(
-  "/material-type/:id",
-  materialTypeService.getMaterialTypeById
-);
-materialTypeRouter.put(
-  "/material-type/:id",
-  materialTypeService.updateMaterialType
-);
-materialTypeRouter.delete(
-  "/material-type/:id",
-  materialTypeService.deleteMaterialType
-);
+materialTypeRouter.get("/material-type/dropdown", materialTypeService.listMaterialTypesDropdown);
+materialTypeRouter.get("/material-type/:id", materialTypeService.getMaterialTypeById);
+materialTypeRouter.put("/material-type/bulk", materialTypeService.updateMaterialTypesBulk);
+materialTypeRouter.put("/material-type/:id", materialTypeService.updateMaterialType);
+materialTypeRouter.delete("/material-type/:id", materialTypeService.deleteMaterialType);
 
 module.exports = materialTypeRouter;
 

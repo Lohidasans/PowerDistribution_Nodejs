@@ -158,6 +158,92 @@ const updateMaterialType = async (req, res) => {
     return commonService.handleError(res, err);
   }
 };
+
+
+const updateMaterialTypesBulk = async (req, res) => {
+  const transaction = await sequelize.transaction();
+  try {
+    const { materials } = req.body;
+
+    if (!Array.isArray(materials) || materials.length === 0) {
+      await transaction.rollback();
+      return commonService.badRequest(res, "materials array is required");
+    }
+
+    const updatedMaterials = [];
+
+    for (const item of materials) {
+      const { id, material_type } = item;
+
+      if (!id) {
+        await transaction.rollback();
+        return commonService.badRequest(res, "Each material must have an id");
+      }
+
+      // Fetch material
+      const entity = await models.MaterialType.findByPk(id, {
+        transaction,
+        paranoid: false,
+      });
+
+      if (!entity || entity.deleted_at) {
+        await transaction.rollback();
+        return commonService.notFound(
+          res,
+          `MaterialType not found for id ${id}`
+        );
+      }
+
+      // Duplicate material_type check
+      if (material_type && material_type !== entity.material_type) {
+        const existingMaterialType = await models.MaterialType.findOne({
+          where: {
+            material_type,
+            id: { [Op.ne]: id },
+            deleted_at: null,
+          },
+          paranoid: false,
+          transaction,
+        });
+
+        if (existingMaterialType) {
+          await transaction.rollback();
+          return commonService.badRequest(
+            res,
+            `Material type '${material_type}' already exists`
+          );
+        }
+      }
+
+      //  Remove null / undefined fields
+      const updateData = { ...item };
+      delete updateData.id;
+
+      Object.keys(updateData).forEach((key) => {
+        if (updateData[key] === undefined || updateData[key] === null) {
+          delete updateData[key];
+        }
+      });
+
+      //  Update
+      await entity.update(updateData, { transaction });
+
+      updatedMaterials.push(entity);
+    }
+
+    await transaction.commit();
+
+    return commonService.okResponse(res, {
+      message: "Materials updated successfully",
+      materials: updatedMaterials,
+    });
+
+  } catch (error) {
+    await transaction.rollback();
+    return commonService.handleError(res, error);
+  }
+};
+
 const deleteMaterialType = async (req, res) => {
   const entity = await commonService.findById(
     models.MaterialType,
@@ -181,4 +267,5 @@ module.exports = {
   getMaterialTypeById,
   updateMaterialType,
   deleteMaterialType,
+  updateMaterialTypesBulk
 };
