@@ -2,6 +2,7 @@ const { Op } = require("sequelize");
 const commonService = require("./commonService");
 const { models, sequelize } = require("../models");
 const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
+const enumType = require("../constants/enum");
 
 // Generate Order Number
 const generateOrderCode = async (req, res) => {
@@ -173,11 +174,12 @@ const createOrder = async (req, res) => {
                 { transaction }
             );
 
-            // 3️. HARD DELETE from Cart/Wishlist if exists
+            // 3️. HARD DELETE from Cart only if exists
             await models.CartWishlistItem.destroy({
                 where: {
                     user_id: customer_id,
                     product_item_id,
+                    order_item_type: enumType.ITEM_TYPE.CART
                 },
                 force: true,
                 transaction,
