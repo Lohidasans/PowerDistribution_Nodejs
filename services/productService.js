@@ -1195,6 +1195,7 @@ const getProductsForWebsiteList = async (req, res) => {
       min_price,
       max_price,
       sort_by = 'best_seller',
+      variant_type_id,
     } = req.query;
 
     // Build WHERE clause
@@ -1222,8 +1223,32 @@ const getProductsForWebsiteList = async (req, res) => {
       queryParams.push(subcategory_id);
     }
 
-    let orderByClause = 'ORDER BY p.created_at DESC';
+    // Variant Type ID Filtering
+    let variantTypeIds = [];
 
+    if (variant_type_id) {
+      if (Array.isArray(req.query.variant_type_id)) {
+        variantTypeIds = req.query.variant_type_id
+          .map(id => parseInt(id, 10))
+          .filter(id => !isNaN(id));
+      } else {
+        variantTypeIds = req.query.variant_type_id
+          .split(',')
+          .map(id => parseInt(id.trim(), 10))
+          .filter(id => !isNaN(id));
+      }
+    }
+
+    if (variantTypeIds.length > 0) {
+      whereConditions += ` AND EXISTS (
+        SELECT 1 
+        FROM "product_variants" pv
+        WHERE pv.product_id = p.id
+          AND pv.variant_type_ids && ARRAY[${variantTypeIds.join(',')}]::integer[]
+      )`;
+    }
+
+    let orderByClause = 'ORDER BY p.created_at DESC';
     if (sort_by === 'newest') {
       orderByClause = 'ORDER BY p.created_at DESC';
     }
@@ -1271,6 +1296,7 @@ const getProductsForWebsiteList = async (req, res) => {
     // 1. Fetch ALL cart/wishlist entries for this user + all products in the result set
     const productIds = [...new Set(rows.map(r => r.product_id))];
 
+    // Cart/Wishlist flags
     const userCartWishlistItems = await models.CartWishlistItem.findAll({
       where: {
         user_id: userId,
@@ -1281,9 +1307,7 @@ const getProductsForWebsiteList = async (req, res) => {
       raw: true,
     });
 
-    // 2. Build lookup map: key = `${product_id}-${product_item_id}`
     const cartWishlistMap = {};
-
     userCartWishlistItems.forEach(item => {
       const key = `${item.product_id}-${item.product_item_id}`;
       cartWishlistMap[key] = {
@@ -1293,17 +1317,18 @@ const getProductsForWebsiteList = async (req, res) => {
       };
     });
 
-    //  Fetch ALL variants for all products in one query
+    // Fetch variants
     const variantRows = await sequelize.query(`
       SELECT 
         pv.product_id,
         pv.variant_id,
         v.variant_type,
-        json_agg(
-          json_build_object(
-            'id', vv.id,
-            'value', vv.value
-          ) ORDER BY vv.sort_order ASC
+        COALESCE(
+          json_agg(
+            json_build_object('id', vv.id, 'value', vv.value)
+            ORDER BY vv.sort_order ASC
+          ) FILTER (WHERE vv.id IS NOT NULL),
+          '[]'::json
         ) AS values
       FROM "product_variants" pv
       JOIN variants v ON v.id = pv.variant_id AND v.deleted_at IS NULL
@@ -1311,27 +1336,23 @@ const getProductsForWebsiteList = async (req, res) => {
       WHERE pv.product_id IN (:productIds)
         AND pv.deleted_at IS NULL
       GROUP BY pv.product_id, pv.variant_id, v.variant_type
-      ORDER BY pv.product_id, pv.variant_id`,
-      {
-      replacements: { productIds: productIds.length ? productIds : [0] }, // prevent empty IN ()
+      ORDER BY pv.product_id, pv.variant_id
+    `, {
+      replacements: { productIds: productIds.length ? productIds : [0] },
       type: sequelize.QueryTypes.SELECT,
     });
 
     const variantMap = {};
-    if (Array.isArray(variantRows)) {
-      variantRows.forEach(row => {
-        if (!variantMap[row.product_id]) {
-          variantMap[row.product_id] = [];
-        }
-        variantMap[row.product_id].push({
-          id: row.variant_id,
-          variant_type: row.variant_type,
-          type_ids: row.values || [],
-        });
+    variantRows.forEach(row => {
+      if (!variantMap[row.product_id]) variantMap[row.product_id] = [];
+      variantMap[row.product_id].push({
+        id: row.variant_id,
+        variant_type: row.variant_type,
+        type_ids: row.values || [],
       });
-    }
+    });
 
-    // === Process products ===
+    // Process products
     const productMap = new Map();
 
     for (const row of rows) {
@@ -1385,14 +1406,13 @@ const getProductsForWebsiteList = async (req, res) => {
         product_type: product.product_type,
         product_item_id: item.id,
         selling_price: finalPrice,
-        created_at: product.created_at,
         order_item_type: cartState.order_item_type,
         is_wishlisted: cartState.is_wishlisted,
         is_in_cart: cartState.is_in_cart,
         variants: variantMap[product.id] || [],
       };
 
-      // Keep only the highest priced item per product
+      // Keep highest priced item
       if (
         !productMap.has(product.id) ||
         productMap.get(product.id).selling_price < finalPrice
@@ -1403,14 +1423,14 @@ const getProductsForWebsiteList = async (req, res) => {
 
     let result = Array.from(productMap.values());
 
-    // Apply price sorting
+    // Price sorting
     if (sort_by === 'price_low_to_high') {
       result.sort((a, b) => a.selling_price - b.selling_price);
     } else if (sort_by === 'price_high_to_low') {
       result.sort((a, b) => b.selling_price - a.selling_price);
     }
 
-    // Clean up internal fields
+    // Remove internal fields
     result = result.map(({ created_at, ...rest }) => rest);
 
     return res.status(200).json({
