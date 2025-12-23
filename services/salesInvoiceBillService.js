@@ -328,7 +328,7 @@ const getSalesInvoiceById = async (req, res) => {
 // List invoices - bill page/ customer - order details page
 const listSalesInvoices = async (req, res) => {
   try {
-    const { from, to, invoice_no, employee_id,  customer_id, branch_id,  order_type, search } = req.query || {};
+    const { from, to, invoice_no, employee_id, customer_id, branch_id, order_type, search } = req.query || {};
 
     let sql = `
       WITH invoice_items AS (
@@ -348,24 +348,9 @@ const listSalesInvoices = async (req, res) => {
         FROM sales_invoice_bill_items
         WHERE deleted_at IS NULL
         GROUP BY invoice_bill_id
-      ),
-      invoice_adjustment AS (
-        SELECT
-          sia.sales_invoice_id,
-          JSON_BUILD_OBJECT(
-            'adjustment_type_id', sia.adjustment_type_id,
-            'adjustment_type_name', bat.type_name,
-            'reference_id', sia.reference_id,
-            'reference_no', sia.reference_no,
-            'adjustment_amount', sia.adjustment_amount
-          ) AS adjustment
-        FROM sales_invoice_adjustments sia
-        LEFT JOIN bill_adjustment_types bat ON bat.id = CAST(sia.adjustment_type_id AS INTEGER)
-        WHERE sia.deleted_at IS NULL
       )
       SELECT
         i.*,
-
         -- Customer details
         c.customer_name,
         c.address AS customer_address,
@@ -390,8 +375,22 @@ const listSalesInvoices = async (req, res) => {
         COALESCE(ii.total_quantity, 0) AS total_items_quantity,
         COALESCE(ii.total_amount, 0) AS total_items_amount,
 
-        -- Adjustment
-        ia.adjustment AS bill_adjustment
+        -- Get adjustments as a JSON array
+        (
+          SELECT COALESCE(JSON_AGG(
+            JSON_BUILD_OBJECT(
+              'adjustment_type_id', a.adjustment_type_id,
+              'adjustment_type_name', bat.type_name,
+              'reference_id', a.reference_id,
+              'reference_no', a.reference_no,
+              'adjustment_amount', a.adjustment_amount
+            )
+          ), '[]'::json)
+          FROM sales_invoice_adjustments a
+          LEFT JOIN bill_adjustment_types bat ON bat.id = a.adjustment_type_id::integer
+          WHERE a.sales_invoice_id = i.id
+          AND a.deleted_at IS NULL
+        ) AS bill_adjustments
 
       FROM sales_invoice_bills i
 
@@ -406,13 +405,13 @@ const listSalesInvoices = async (req, res) => {
       LEFT JOIN districts bd ON bd.id = b.district_id
       LEFT JOIN states bs ON bs.id = b.state_id
 
-      -- Aggregates
+      -- Items join
       LEFT JOIN invoice_items ii ON ii.invoice_bill_id = i.id
-      LEFT JOIN invoice_adjustment ia ON ia.sales_invoice_id = i.id
 
       WHERE i.deleted_at IS NULL
     `;
 
+    // Add your existing filter conditions here
     const replacements = {};
 
     if (from) {
@@ -468,15 +467,33 @@ const listSalesInvoices = async (req, res) => {
 
     sql += ` ORDER BY i.created_at DESC`;
 
-    const [invoices] = await sequelize.query(sql, { replacements });
+    // Execute the query
+    const invoices = await sequelize.query(sql, {
+      replacements,
+      type: sequelize.QueryTypes.SELECT
+    });
 
-    // Final formatting
-    const formattedInvoices = invoices.map((invoice) => {
+    // Format the response
+    const formattedInvoices = invoices.map(invoice => {
       const amountDue = parseFloat(invoice.total_amount || 0) - parseFloat(invoice.total_paid_amount || 0);
+
+      // Parse JSON fields if they're strings
+      const invoiceItems = typeof invoice.invoice_items === 'string'
+        ? JSON.parse(invoice.invoice_items)
+        : (invoice.invoice_items || []);
+
+      const billAdjustments = typeof invoice.bill_adjustments === 'string'
+        ? JSON.parse(invoice.bill_adjustments)
+        : (invoice.bill_adjustments || []);
 
       return {
         ...invoice,
         amount_due: amountDue.toFixed(2),
+        invoice_items: invoiceItems,
+        bill_adjustments: billAdjustments,
+        // Ensure these are numbers
+        total_items_quantity: parseInt(invoice.total_items_quantity) || 0,
+        total_items_amount: parseFloat(invoice.total_items_amount) || 0
       };
     });
 
@@ -488,7 +505,6 @@ const listSalesInvoices = async (req, res) => {
     return commonService.handleError(res, err);
   }
 };
-
 // Delete (soft)
 const deleteSalesInvoice = async (req, res) => {
   const t = await sequelize.transaction();
