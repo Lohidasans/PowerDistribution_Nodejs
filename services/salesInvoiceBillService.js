@@ -257,7 +257,7 @@ const getSalesInvoiceById = async (req, res) => {
 // List invoices - bill page/ customer - order details page
 const listSalesInvoices = async (req, res) => {
   try {
-    const { from, to, invoice_no,employee_id, customer_id, branch_id, order_type, search } = req.query || {};
+    const { from, to, invoice_no, employee_id,  customer_id, branch_id,  order_type, search } = req.query || {};
 
     let sql = `
       WITH invoice_items AS (
@@ -271,61 +271,114 @@ const listSalesInvoices = async (req, res) => {
               'rate', rate,
               'amount', amount
             )
-          ) as items,
-          SUM(quantity) as total_quantity,
-          SUM(amount) as total_amount
+          ) AS items,
+          SUM(quantity) AS total_quantity,
+          SUM(amount) AS total_amount
         FROM sales_invoice_bill_items
         WHERE deleted_at IS NULL
         GROUP BY invoice_bill_id
+      ),
+      invoice_adjustment AS (
+        SELECT
+          sia.sales_invoice_id,
+          JSON_BUILD_OBJECT(
+            'adjustment_type_id', sia.adjustment_type_id,
+            'adjustment_type_name', bat.type_name,
+            'reference_id', sia.reference_id,
+            'reference_no', sia.reference_no,
+            'adjustment_amount', sia.adjustment_amount
+          ) AS adjustment
+        FROM sales_invoice_adjustments sia
+        LEFT JOIN bill_adjustment_types bat ON bat.id = CAST(sia.adjustment_type_id AS INTEGER)
+        WHERE sia.deleted_at IS NULL
       )
       SELECT
         i.*,
+
         -- Customer details
         c.customer_name,
         c.address AS customer_address,
-        c.mobile_number as customer_mobile_number,
-        c.pin_code as customer_pincode,
-        c.pan_no as customer_pan_no,
-        ct.country_name as customer_country_name,
-        d.district_name as customer_district_name,
-        s.state_name as customer_state_name,
+        c.mobile_number AS customer_mobile_number,
+        c.pin_code AS customer_pincode,
+        c.pan_no AS customer_pan_no,
+        ct.country_name AS customer_country_name,
+        d.district_name AS customer_district_name,
+        s.state_name AS customer_state_name,
+
         -- Branch details
         b.branch_name,
         b.address AS branch_address,
-        b.mobile as branch_mobile_number,
-        b.pin_code as branch_pincode,
-        b.gst_no as branch_gst_no,
-        bd.district_name as branch_district_name,
-        bs.state_name as branch_state_name,
-        -- Item totals
-        COALESCE(ii.items, '[]'::json) as invoice_items,
-        COALESCE(ii.total_quantity, 0) as total_items_quantity,
-        COALESCE(ii.total_amount, 0) as total_items_amount
-      FROM "sales_invoice_bills" i
+        b.mobile AS branch_mobile_number,
+        b.pin_code AS branch_pincode,
+        b.gst_no AS branch_gst_no,
+        bd.district_name AS branch_district_name,
+        bs.state_name AS branch_state_name,
+
+        -- Items
+        COALESCE(ii.items, '[]'::json) AS invoice_items,
+        COALESCE(ii.total_quantity, 0) AS total_items_quantity,
+        COALESCE(ii.total_amount, 0) AS total_items_amount,
+
+        -- Adjustment
+        ia.adjustment AS bill_adjustment
+
+      FROM sales_invoice_bills i
+
       -- Customer joins
-      LEFT JOIN "customers" c ON c.id = i.customer_id
-      LEFT JOIN "districts" d ON d.id = c.district_id
-      LEFT JOIN "states" s ON s.id = c.state_id
-      LEFT JOIN "countries" ct ON ct.id = c.country_id
+      LEFT JOIN customers c ON c.id = i.customer_id
+      LEFT JOIN districts d ON d.id = c.district_id
+      LEFT JOIN states s ON s.id = c.state_id
+      LEFT JOIN countries ct ON ct.id = c.country_id
+
       -- Branch joins
-      LEFT JOIN "branches" b ON b.id = i.branch_id
-      LEFT JOIN "districts" bd ON bd.id = b.district_id
-      LEFT JOIN "states" bs ON bs.id = b.state_id
-      -- Invoice items
+      LEFT JOIN branches b ON b.id = i.branch_id
+      LEFT JOIN districts bd ON bd.id = b.district_id
+      LEFT JOIN states bs ON bs.id = b.state_id
+
+      -- Aggregates
       LEFT JOIN invoice_items ii ON ii.invoice_bill_id = i.id
-      -- Invoice payments
-      --LEFT JOIN invoice_payments ip ON ip.invoice_bill_id = i.id
+      LEFT JOIN invoice_adjustment ia ON ia.sales_invoice_id = i.id
+
       WHERE i.deleted_at IS NULL
     `;
 
     const replacements = {};
-    if (from) { sql += ` AND i.invoice_date >= :from`; replacements.from = from; }
-    if (to) { sql += ` AND i.invoice_date <= :to`; replacements.to = to; }
-    if (employee_id) { sql += ` AND i.employee_id = :employee_id`; replacements.employee_id = employee_id; }
-    if (invoice_no) { sql += ` AND i.invoice_no = :invoice_no`; replacements.invoice_no = invoice_no; }
-    if (customer_id) { sql += ` AND i.customer_id = :customer_id`; replacements.customer_id = customer_id; }
-    if (branch_id) { sql += ` AND i.branch_id = :branch_id`; replacements.branch_id = branch_id; }
-    if (order_type) { sql += ` AND i.order_type = :order_type`; replacements.order_type = order_type; }
+
+    if (from) {
+      sql += ` AND i.invoice_date >= :from`;
+      replacements.from = from;
+    }
+
+    if (to) {
+      sql += ` AND i.invoice_date <= :to`;
+      replacements.to = to;
+    }
+
+    if (employee_id) {
+      sql += ` AND i.employee_id = :employee_id`;
+      replacements.employee_id = employee_id;
+    }
+
+    if (invoice_no) {
+      sql += ` AND i.invoice_no = :invoice_no`;
+      replacements.invoice_no = invoice_no;
+    }
+
+    if (customer_id) {
+      sql += ` AND i.customer_id = :customer_id`;
+      replacements.customer_id = customer_id;
+    }
+
+    if (branch_id) {
+      sql += ` AND i.branch_id = :branch_id`;
+      replacements.branch_id = branch_id;
+    }
+
+    if (order_type) {
+      sql += ` AND i.order_type = :order_type`;
+      replacements.order_type = order_type;
+    }
+
     if (search) {
       sql += ` AND (
         i.invoice_no ILIKE :search OR
@@ -335,8 +388,8 @@ const listSalesInvoices = async (req, res) => {
           SELECT 1
           FROM sales_invoice_bill_items sii
           WHERE sii.invoice_bill_id = i.id
-          AND sii.product_name_snapshot ILIKE :search
-          AND sii.deleted_at IS NULL
+            AND sii.product_name_snapshot ILIKE :search
+            AND sii.deleted_at IS NULL
         )
       )`;
       replacements.search = `%${search}%`;
@@ -346,10 +399,9 @@ const listSalesInvoices = async (req, res) => {
 
     const [invoices] = await sequelize.query(sql, { replacements });
 
-    // Process the results to format the response
-    const formattedInvoices = invoices.map(invoice => {
-      // Calculate amount due
-      const amountDue = parseFloat(invoice.total_amount) - parseFloat(invoice.total_paid_amount || 0);
+    // Final formatting
+    const formattedInvoices = invoices.map((invoice) => {
+      const amountDue = parseFloat(invoice.total_amount || 0) - parseFloat(invoice.total_paid_amount || 0);
 
       return {
         ...invoice,
@@ -357,9 +409,11 @@ const listSalesInvoices = async (req, res) => {
       };
     });
 
-    return commonService.okResponse(res, { invoices: formattedInvoices });
+    return commonService.okResponse(res, {
+      invoices: formattedInvoices,
+    });
   } catch (err) {
-    console.error('Error in listSalesInvoices:', err);
+    console.error("Error in listSalesInvoices:", err);
     return commonService.handleError(res, err);
   }
 };
