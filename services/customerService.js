@@ -26,6 +26,20 @@ const createCustomer = async (req, res) => {
       district_id: +req.body.district_id || null,
       pin_code: req.body.pin_code || null,
     };
+
+    // Check duplicate mobile number (ACTIVE customers only)
+    const existingMobile = await models.Customer.findOne({
+      where: {
+        mobile_number: payload.mobile_number,
+        deleted_at: null,
+      },
+    });
+
+    if (existingMobile) {
+      return commonService.badRequest(res, {
+        message: "Mobile number already exists",
+      });
+    }
     
     // Check if a non-deleted customer already uses this code
     if (payload.customer_code) {
