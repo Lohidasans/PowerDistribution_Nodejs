@@ -8,13 +8,10 @@ const createAddress = async (req, res) => {
         const { addresses = [] } = req.body;
 
         if (!Array.isArray(addresses) || addresses.length === 0) {
-            return commonService.badRequest(
-                res,
-                "addresses array is required"
-            );
+            return commonService.badRequest(res, "addresses array is required");
         }
 
-        // Validate required fields
+        // 1️. Validate required fields
         for (const addr of addresses) {
             if (
                 !addr.customer_id ||
@@ -29,10 +26,26 @@ const createAddress = async (req, res) => {
             }
         }
 
-        // Find default address (if any)
+        // 2️. Validate only ONE default per customer in payload
+        const defaultCountMap = {};
+
+        for (const addr of addresses) {
+            if (addr.is_default === true) {
+                defaultCountMap[addr.customer_id] =
+                    (defaultCountMap[addr.customer_id] || 0) + 1;
+
+                if (defaultCountMap[addr.customer_id] > 1) {
+                    return commonService.badRequest(
+                        res,
+                        `Only one default address is allowed for customer_id ${addr.customer_id}`
+                    );
+                }
+            }
+        }
+
+        // 3️. Unset existing default if new default is provided
         const defaultAddress = addresses.find(a => a.is_default === true);
 
-        // If a default address is provided → unset old defaults
         if (defaultAddress) {
             await models.CustomerAddress.update(
                 { is_default: false },
@@ -43,7 +56,7 @@ const createAddress = async (req, res) => {
             );
         }
 
-        // Bulk create
+        // 4️. Bulk create
         const createdAddresses = await models.CustomerAddress.bulkCreate(
             addresses,
             { transaction }
@@ -59,6 +72,7 @@ const createAddress = async (req, res) => {
         return commonService.handleError(res, err);
     }
 };
+
 
 // LIST addresses
 const getAddresses = async (req, res) => {
