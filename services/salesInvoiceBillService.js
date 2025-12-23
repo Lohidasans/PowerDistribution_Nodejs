@@ -25,7 +25,7 @@ const generateSalesInvoiceNo = async (req, res) => {
 const createSalesInvoice = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const { header = {}, items = [], payment = {}, adjustment = null } = req.body || {};
+    const { header = {}, items = [], payment = {}, adjustments = [] } = req.body || {};
     
     // Validate items
     if (!Array.isArray(items) || items.length === 0) {
@@ -95,13 +95,27 @@ const createSalesInvoice = async (req, res) => {
     const taxableAmount = subtotal - headerDiscountAmt;
     let total = taxableAmount + cgstAmt + sgstAmt;
 
-    // APPLY SINGLE BILL ADJUSTMENT
-    let adjAmount = 0;
-    if (adjustment && adjustment.adjustment_amount) {
-      adjAmount = Number(adjustment.adjustment_amount || 0);
+    // APPLY MULTIPLE BILL ADJUSTMENTS
+    let totalAdjustment = 0;
+    if (Array.isArray(adjustments) && adjustments.length > 0) {
+      totalAdjustment = adjustments.reduce((sum, adj) => {
+        return sum + (Number(adj.adjustment_amount) || 0);
+      }, 0);
 
-      // Subtract adjustment
-      total -= adjAmount;
+      // Calculate the maximum allowed adjustment (total before adjustment)
+      const maxAllowedAdjustment = total; // This is the total before any adjustments
+
+      if (totalAdjustment > maxAllowedAdjustment) {
+        await t.rollback();
+        return commonService.badRequest(res, {
+          message: "Total adjustment amount cannot exceed the invoice total",
+          maxAllowedAdjustment,
+          attemptedAdjustment: totalAdjustment
+        });
+      }
+
+      // Subtract total adjustment
+      total -= totalAdjustment;
 
       // Prevent negative totals
       if (total < 0) total = 0;
@@ -114,7 +128,6 @@ const createSalesInvoice = async (req, res) => {
         return commonService.badRequest(res, enMessage.billing.panCardRequired);
       }
     }
-
     
 
     // Create invoice
@@ -143,19 +156,45 @@ const createSalesInvoice = async (req, res) => {
       { transaction: t }
     );
 
-    // INSERT ADJUSTMENT ENTRY (only if exists)
-    let savedAdjustment = null;
-    if (adjustment) {
-      savedAdjustment = await models.SalesInvoiceAdjustment.create(
-        {
-          sales_invoice_id: bill.id,
-          adjustment_type_id: adjustment.adjustment_type_id,
-          reference_id: adjustment.reference_id,
-          reference_no: adjustment.reference_no,
-          adjustment_amount: adjAmount,
-        },
+    // INSERT MULTIPLE ADJUSTMENT ENTRIES (only if exists)
+    let savedAdjustments = [];
+    if (Array.isArray(adjustments) && adjustments.length > 0) {
+      const adjustmentRows = adjustments.map(adj => ({
+        sales_invoice_id: bill.id,
+        adjustment_type_id: adj.adjustment_type_id,
+        reference_id: adj.reference_id,
+        reference_no: adj.reference_no,
+        adjustment_amount: Number(adj.adjustment_amount) || 0,
+      }));
+
+      savedAdjustments = await models.SalesInvoiceAdjustment.bulkCreate(
+        adjustmentRows,
         { transaction: t }
       );
+
+      // Update is_bill_adjusted flag for each adjustment
+      for (const adj of adjustments) {
+        if (adj.reference_id) {
+          if (adj.adjustment_type_id === 1) { // Sales Return
+            await models.SalesReturn.update(
+              { is_bill_adjusted: true },
+              {
+                where: { id: adj.reference_id },
+                transaction: t
+              }
+            );
+          }
+          else if (adj.adjustment_type_id === 2) { // Old Jewel
+            await models.OldJewel.update(
+              { is_bill_adjusted: true },
+              {
+                where: { id: adj.reference_id },
+                transaction: t
+              }
+            );
+          }
+        }
+      }
     }
 
     // Create invoice items
@@ -185,6 +224,38 @@ const createSalesInvoice = async (req, res) => {
 
     if (paymentRows.length > 0) {
       await models.Payment.bulkCreate(paymentRows, { transaction: t });
+      // Reduce stock quantities
+      for (const item of items) {
+        if (item.product_item_detail_id && item.quantity > 0) {
+          const productItemDetail = await models.ProductItemDetail.findByPk(
+            item.product_item_detail_id,
+            { transaction: t }
+          );
+
+          if (!productItemDetail) {
+            await t.rollback();
+            return commonService.badRequest(
+              res,
+              `Product item detail not found for ID: ${item.product_item_detail_id}`
+            );
+          }
+
+          const newQuantity = productItemDetail.quantity - item.quantity;
+
+          if (newQuantity < 0) {
+            await t.rollback();
+            return commonService.badRequest(
+              res,
+              `Insufficient stock for product item detail ID: ${item.product_item_detail_id}`
+            );
+          }
+
+          await productItemDetail.update(
+            { quantity: newQuantity },
+            { transaction: t }
+          );
+        }
+      }
     }
 
     await t.commit();
@@ -193,7 +264,7 @@ const createSalesInvoice = async (req, res) => {
       invoice: bill,
       items: withFK,
       payments: paymentRows,
-      adjustment: savedAdjustment
+      adjustment: savedAdjustments
     });
   } catch (err) {
     await t.rollback();
