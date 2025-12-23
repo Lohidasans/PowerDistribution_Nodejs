@@ -56,7 +56,7 @@ const addItem = async (req, res) => {
 
             return commonService.okResponse(res, {
                 item: existing,
-                message: "Item updated successfully",
+                message: "Same Item Already exists.",
             });
         }
 
@@ -82,8 +82,6 @@ const addItem = async (req, res) => {
         return commonService.handleError(res, err);
     }
 };
-
-
 
 // Move item between Wishlist ↔ Cart - Update
 const moveItem = async (req, res) => {
