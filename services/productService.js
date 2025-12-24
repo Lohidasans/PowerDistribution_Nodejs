@@ -310,7 +310,7 @@ const getProductAddonList = async (req, res) => {
           // treat as simple comma separated values
           ids = ids
             .split(",")
-            .map(n => Number(n.trim()))
+            .map((n) => Number(n.trim()))
             .filter(Boolean);
         }
       }
@@ -358,11 +358,7 @@ const getProductById = async (req, res) => {
     const productId = +req.params.id;
 
     // Fetch product
-    const row = await commonService.findById(
-      models.Product,
-      productId,
-      res
-    );
+    const row = await commonService.findById(models.Product, productId, res);
     if (!row) return;
 
     // etch product item details & additional details
@@ -384,21 +380,17 @@ const getProductById = async (req, res) => {
       return acc;
     }, {});
 
-    // Fetch wishlist/cart rows for this product 
+    // Fetch wishlist/cart rows for this product
     const userItems = await models.CartWishlistItem.findAll({
       where: {
         user_id: 0,
         product_id: row.id,
         deleted_at: null,
       },
-      attributes: [
-        "product_item_id",
-        "is_wishlisted",
-        "is_in_cart",
-      ],
+      attributes: ["product_item_id", "is_wishlisted", "is_in_cart"],
     });
 
-    // Build lookup map by product_item_id 
+    // Build lookup map by product_item_id
     const itemStateMap = {};
 
     userItems.forEach((ui) => {
@@ -507,7 +499,6 @@ const getProductById = async (req, res) => {
       addon_products,
       variant_details: variantDetails,
     });
-
   } catch (err) {
     return commonService.handleError(res, err);
   }
@@ -683,7 +674,7 @@ const getAllProductDetails = async (req, res) => {
       grn_id,
       ref_no_id,
       search,
-      variant_type_ids
+      variant_type_ids,
     } = req.query;
 
     let query = `
@@ -729,7 +720,7 @@ const getAllProductDetails = async (req, res) => {
           ),
           '[]'::json
         ) as variants,
-        
+
         -- GRN Details
         g.grn_no,
         g.grn_date,
@@ -797,14 +788,16 @@ const getAllProductDetails = async (req, res) => {
 
     if (variant_type_ids) {
       // Convert comma-separated string to array of numbers
-      const typeIds = variant_type_ids.split(',').map(id => parseInt(id.trim()));
+      const typeIds = variant_type_ids
+        .split(",")
+        .map((id) => parseInt(id.trim()));
 
       // Use array overlap operator (&&) to find any match
       query += ` AND EXISTS (
-        SELECT 1 
+        SELECT 1
         FROM product_variants pv
         WHERE pv.product_id = p.id
-        AND pv.variant_type_ids && ARRAY[${typeIds.join(',')}]::integer[]
+        AND pv.variant_type_ids && ARRAY[${typeIds.join(",")}]::integer[]
       )`;
     }
 
@@ -820,7 +813,7 @@ const getAllProductDetails = async (req, res) => {
         p.variation_type::text ILIKE :like OR
         mt.material_type ILIKE :like OR
         g.grn_no ILIKE :like OR
-        gi.ref_no ILIKE :like 
+        gi.ref_no ILIKE :like
       )`;
       replacements.like = like;
     }
@@ -834,9 +827,9 @@ const getAllProductDetails = async (req, res) => {
     const [rows] = await sequelize.query(query, { replacements });
 
     // Process variants and format the response
-    let products = rows.map(row => ({
+    let products = rows.map((row) => ({
       ...row,
-      variants: row.variants || []
+      variants: row.variants || [],
     }));
 
     if (products.length) {
@@ -849,8 +842,8 @@ const getAllProductDetails = async (req, res) => {
       const itemIds = itemDetails.map((it) => it.id);
       const additionalDetails = itemIds.length
         ? await models.ProductAdditionalDetail.findAll({
-          where: { item_detail_id: itemIds },
-        })
+            where: { item_detail_id: itemIds },
+          })
         : [];
 
       // Group additional by item_detail_id
@@ -987,7 +980,7 @@ const searchProductBySkuNew = async (req, res) => {
       const priceDetails = await calculateSellingPrice(product, item, models);
 
       return {
-        sku_id: item.sku_id || product.sku_id,  // Use item.sku_id if available
+        sku_id: item.sku_id || product.sku_id, // Use item.sku_id if available
         product_name: name,
         product_variations: product.product_variations,
         purity: product.purity,
@@ -1000,7 +993,7 @@ const searchProductBySkuNew = async (req, res) => {
         gross_weight: item.gross_weight,
         net_weight: item.net_weight,
         product_item_wastage: item.wastage,
-        ...priceDetails
+        ...priceDetails,
       };
     };
 
@@ -1008,13 +1001,13 @@ const searchProductBySkuNew = async (req, res) => {
     if (!sku || sku.trim() === "") {
       const [allProducts, allItems] = await Promise.all([
         models.Product.findAll({ raw: true }),
-        models.ProductItemDetail.findAll({ raw: true })
+        models.ProductItemDetail.findAll({ raw: true }),
       ]);
 
       // Process items in parallel
       const output = await Promise.all(
         allItems.map(async (item) => {
-          const product = allProducts.find(p => p.id === item.product_id);
+          const product = allProducts.find((p) => p.id === item.product_id);
           return product ? formatItem(product, item) : null;
         })
       );
@@ -1026,7 +1019,7 @@ const searchProductBySkuNew = async (req, res) => {
     // CASE 2 → SKU provided
     const [directProduct, itemDetail] = await Promise.all([
       models.Product.findOne({ where: { sku_id: sku }, raw: true }),
-      models.ProductItemDetail.findOne({ where: { sku_id: sku }, raw: true })
+      models.ProductItemDetail.findOne({ where: { sku_id: sku }, raw: true }),
     ]);
 
     let product = directProduct;
@@ -1053,11 +1046,10 @@ const searchProductBySkuNew = async (req, res) => {
 
     // Convert to flat response with price calculations
     const flatResponse = await Promise.all(
-      items.map(item => formatItem(product, item))
+      items.map((item) => formatItem(product, item))
     );
 
     return commonService.okResponse(res, flatResponse);
-
   } catch (error) {
     console.error("Error searching products by SKU:", error);
     return commonService.handleError(res, error);
@@ -1068,17 +1060,20 @@ const calculateSellingPrice = async (product, item, models) => {
   try {
     // 1. Get Material Rate Per Gram
     let materialRate;
-    const material = await models.MaterialType.findByPk(product.material_type_id, { raw: true });
+    const material = await models.MaterialType.findByPk(
+      product.material_type_id,
+      { raw: true }
+    );
     const materialPrice = parseFloat(material?.material_price) || 0;
-    
+
     if (product.product_type === "Piece Rate") {
       const ratePerGram = parseFloat(item.rate_per_gram) || 0;
       // For Piece Rate, take the higher value between rate_per_gram and material_price
       materialRate = Math.max(ratePerGram, materialPrice);
-    } else { // Weight based
+    } else {
+      // Weight based
       materialRate = materialPrice;
     }
-
 
     // 2. Material Contribution
     const netWeight = parseFloat(item.net_weight) || 0;
@@ -1090,7 +1085,7 @@ const calculateSellingPrice = async (product, item, models) => {
     // 4. Additional Details Sum
     const additionalDetails = await models.ProductAdditionalDetail.findAll({
       where: { item_detail_id: item.id },
-      raw: true
+      raw: true,
     });
 
     const additionalDetailsSum = additionalDetails.reduce((sum, detail) => {
@@ -1101,13 +1096,13 @@ const calculateSellingPrice = async (product, item, models) => {
     let makingCharge = 0;
     const makingChargeValue = parseFloat(item.making_charge) || 0;
     switch (item.making_charge_type) {
-      case 'Per Gram':
+      case "Per Gram":
         makingCharge = makingChargeValue * netWeight;
         break;
-      case 'Percentage':
+      case "Percentage":
         makingCharge = (makingChargeValue / 100) * materialContribution;
         break;
-      case 'Amount':
+      case "Amount":
         makingCharge = makingChargeValue;
         break;
     }
@@ -1116,19 +1111,24 @@ const calculateSellingPrice = async (product, item, models) => {
     let wastage = 0;
     const wastageValue = parseFloat(item.wastage) || 0;
     switch (item.wastage_type) {
-      case 'Per Gram':
+      case "Per Gram":
         wastage = wastageValue * netWeight;
         break;
-      case 'Percentage':
+      case "Percentage":
         wastage = (wastageValue / 100) * materialContribution;
         break;
-      case 'Amount':
+      case "Amount":
         wastage = wastageValue;
         break;
     }
 
     // 7. Final Selling Price
-    const sellingPrice = materialContribution + makingCharge + wastage + stoneValue + additionalDetailsSum;
+    const sellingPrice =
+      materialContribution +
+      makingCharge +
+      wastage +
+      stoneValue +
+      additionalDetailsSum;
 
     return {
       material_rate_per_gram: materialRate,
@@ -1137,7 +1137,7 @@ const calculateSellingPrice = async (product, item, models) => {
       wastage: wastage,
       stone_value: stoneValue,
       additional_details_value: additionalDetailsSum,
-      selling_price: sellingPrice
+      selling_price: sellingPrice,
     };
   } catch (error) {
     console.error("Error in calculateSellingPrice:", error);
@@ -1149,7 +1149,7 @@ const calculateSellingPrice = async (product, item, models) => {
       stone_value: 0,
       additional_details_value: 0,
       selling_price: 0,
-      error: "Error calculating price"
+      error: "Error calculating price",
     };
   }
 };
@@ -1194,13 +1194,13 @@ const getProductsForWebsiteList = async (req, res) => {
       subcategory_id,
       min_price,
       max_price,
-      sort_by = 'best_seller',
+      sort_by = "best_seller",
       variant_type_id,
     } = req.query;
 
     // Build WHERE clause
     let whereConditions = `
-      WHERE 
+      WHERE
         p.is_published = true
         AND p.status = 'Active'
         AND p.deleted_at IS NULL
@@ -1229,32 +1229,34 @@ const getProductsForWebsiteList = async (req, res) => {
     if (variant_type_id) {
       if (Array.isArray(req.query.variant_type_id)) {
         variantTypeIds = req.query.variant_type_id
-          .map(id => parseInt(id, 10))
-          .filter(id => !isNaN(id));
+          .map((id) => parseInt(id, 10))
+          .filter((id) => !isNaN(id));
       } else {
         variantTypeIds = req.query.variant_type_id
-          .split(',')
-          .map(id => parseInt(id.trim(), 10))
-          .filter(id => !isNaN(id));
+          .split(",")
+          .map((id) => parseInt(id.trim(), 10))
+          .filter((id) => !isNaN(id));
       }
     }
 
     if (variantTypeIds.length > 0) {
       whereConditions += ` AND EXISTS (
-        SELECT 1 
+        SELECT 1
         FROM "product_variants" pv
         WHERE pv.product_id = p.id
-          AND pv.variant_type_ids && ARRAY[${variantTypeIds.join(',')}]::integer[]
+          AND pv.variant_type_ids && ARRAY[${variantTypeIds.join(
+            ","
+          )}]::integer[]
       )`;
     }
 
-    let orderByClause = 'ORDER BY p.created_at DESC';
-    if (sort_by === 'newest') {
-      orderByClause = 'ORDER BY p.created_at DESC';
+    let orderByClause = "ORDER BY p.created_at DESC";
+    if (sort_by === "newest") {
+      orderByClause = "ORDER BY p.created_at DESC";
     }
 
     const dynamicQuery = `
-      SELECT 
+      SELECT
         p.id AS product_id,
         p.product_code,
         p.product_name,
@@ -1294,7 +1296,7 @@ const getProductsForWebsiteList = async (req, res) => {
     }
 
     // 1. Fetch ALL cart/wishlist entries for this user + all products in the result set
-    const productIds = [...new Set(rows.map(r => r.product_id))];
+    const productIds = [...new Set(rows.map((r) => r.product_id))];
 
     // Cart/Wishlist flags
     const userCartWishlistItems = await models.CartWishlistItem.findAll({
@@ -1303,12 +1305,18 @@ const getProductsForWebsiteList = async (req, res) => {
         product_id: { [Op.in]: productIds },
         deleted_at: null,
       },
-      attributes: ['product_id', 'product_item_id', 'order_item_type', 'is_wishlisted', 'is_in_cart'],
+      attributes: [
+        "product_id",
+        "product_item_id",
+        "order_item_type",
+        "is_wishlisted",
+        "is_in_cart",
+      ],
       raw: true,
     });
 
     const cartWishlistMap = {};
-    userCartWishlistItems.forEach(item => {
+    userCartWishlistItems.forEach((item) => {
       const key = `${item.product_id}-${item.product_item_id}`;
       cartWishlistMap[key] = {
         order_item_type: item.order_item_type,
@@ -1318,8 +1326,9 @@ const getProductsForWebsiteList = async (req, res) => {
     });
 
     // Fetch variants
-    const variantRows = await sequelize.query(`
-      SELECT 
+    const variantRows = await sequelize.query(
+      `
+      SELECT
         pv.product_id,
         pv.variant_id,
         v.variant_type,
@@ -1337,13 +1346,15 @@ const getProductsForWebsiteList = async (req, res) => {
         AND pv.deleted_at IS NULL
       GROUP BY pv.product_id, pv.variant_id, v.variant_type
       ORDER BY pv.product_id, pv.variant_id
-    `, {
-      replacements: { productIds: productIds.length ? productIds : [0] },
-      type: sequelize.QueryTypes.SELECT,
-    });
+    `,
+      {
+        replacements: { productIds: productIds.length ? productIds : [0] },
+        type: sequelize.QueryTypes.SELECT,
+      }
+    );
 
     const variantMap = {};
-    variantRows.forEach(row => {
+    variantRows.forEach((row) => {
       if (!variantMap[row.product_id]) variantMap[row.product_id] = [];
       variantMap[row.product_id].push({
         id: row.variant_id,
@@ -1424,9 +1435,9 @@ const getProductsForWebsiteList = async (req, res) => {
     let result = Array.from(productMap.values());
 
     // Price sorting
-    if (sort_by === 'price_low_to_high') {
+    if (sort_by === "price_low_to_high") {
       result.sort((a, b) => a.selling_price - b.selling_price);
-    } else if (sort_by === 'price_high_to_low') {
+    } else if (sort_by === "price_high_to_low") {
       result.sort((a, b) => b.selling_price - a.selling_price);
     }
 
@@ -1447,8 +1458,119 @@ const getProductsForWebsiteList = async (req, res) => {
   }
 };
 
+// Get product ID by SKU with variation fallback
+const getProductIdBySku = async (req, res) => {
+  try {
+    const { sku_id } = req.query;
 
+    if (!sku_id || sku_id.trim() === "") {
+      return commonService.badRequest(res, "sku_id is required");
+    }
 
+    const skuToSearch = sku_id.trim();
+
+    // Step 1: Try exact match in Product table
+    let product = await models.Product.findOne({
+      where: { sku_id: skuToSearch },
+      attributes: ["id", "sku_id", "product_name"],
+      raw: true,
+    });
+
+    if (product) {
+      return commonService.okResponse(res, {
+        product_id: product.id,
+        sku_id: product.sku_id,
+        product_name: product.product_name,
+        matched_type: "exact_product",
+      });
+    }
+
+    // Step 2: Try exact match in ProductItemDetail table
+    let itemDetail = await models.ProductItemDetail.findOne({
+      where: { sku_id: skuToSearch },
+      attributes: ["id", "product_id", "sku_id"],
+      raw: true,
+    });
+
+    if (itemDetail) {
+      const parentProduct = await models.Product.findByPk(
+        itemDetail.product_id,
+        {
+          attributes: ["id", "sku_id", "product_name"],
+          raw: true,
+        }
+      );
+
+      return commonService.okResponse(res, {
+        product_id: itemDetail.product_id,
+        sku_id: parentProduct?.sku_id,
+        product_name: parentProduct?.product_name,
+        item_detail_id: itemDetail.id,
+        item_sku_id: itemDetail.sku_id,
+        matched_type: "exact_item",
+      });
+    }
+
+    // Step 3: Check if SKU has suffix pattern (_XX) and remove it
+    const suffixPattern = /_\d+$/; // Matches _01, _02, _123, etc.
+
+    if (suffixPattern.test(skuToSearch)) {
+      const baseSku = skuToSearch.replace(suffixPattern, "");
+
+      // Try finding base SKU in Product table
+      product = await models.Product.findOne({
+        where: { sku_id: baseSku },
+        attributes: ["id", "sku_id", "product_name"],
+        raw: true,
+      });
+
+      if (product) {
+        return commonService.okResponse(res, {
+          product_id: product.id,
+          sku_id: product.sku_id,
+          product_name: product.product_name,
+          searched_sku: skuToSearch,
+          matched_type: "base_product",
+        });
+      }
+
+      // Try finding base SKU in ProductItemDetail table
+      itemDetail = await models.ProductItemDetail.findOne({
+        where: { sku_id: baseSku },
+        attributes: ["id", "product_id", "sku_id"],
+        raw: true,
+      });
+
+      if (itemDetail) {
+        const parentProduct = await models.Product.findByPk(
+          itemDetail.product_id,
+          {
+            attributes: ["id", "sku_id", "product_name"],
+            raw: true,
+          }
+        );
+
+        return commonService.okResponse(res, {
+          product_id: itemDetail.product_id,
+          sku_id: parentProduct?.sku_id,
+          product_name: parentProduct?.product_name,
+          item_detail_id: itemDetail.id,
+          item_sku_id: itemDetail.sku_id,
+          searched_sku: skuToSearch,
+          matched_type: "base_item",
+        });
+      }
+    }
+
+    // Step 4: Not found
+    return commonService.notFound(
+      res,
+      `No product found for SKU: ${skuToSearch}`
+    );
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
 
 module.exports = {
   createProductSKUCode,
@@ -1464,5 +1586,6 @@ module.exports = {
   updateProductStatus,
   searchProductBySkuNew,
   calculateSellingPrice,
-  getProductsForWebsiteList
+  getProductsForWebsiteList,
+  getProductIdBySku,
 };
