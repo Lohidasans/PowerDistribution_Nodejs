@@ -285,7 +285,7 @@ const getSalesInvoiceById = async (req, res) => {
     if (!invoice) return;
 
     // Get related data in parallel
-    const [items, payment, customer, branch] = await Promise.all([
+    const [items, payment, adjustments, customer, branch] = await Promise.all([
       // Get invoice items
       models.SalesInvoiceBillItem.findAll({
         where: { invoice_bill_id: id },
@@ -295,6 +295,12 @@ const getSalesInvoiceById = async (req, res) => {
       // Get payment details
       models.Payment.findAll({
         where: { invoice_bill_id: id },
+        raw: true
+      }),
+
+      // Adjustments
+      models.SalesInvoiceAdjustment.findAll({
+        where: { sales_invoice_id: id },
         raw: true
       }),
 
@@ -318,7 +324,8 @@ const getSalesInvoiceById = async (req, res) => {
       },
       customer: customer || null,
       branch: branch || null,
-      payment: payment || null,
+      payment: payment || [],
+      adjustments: adjustments || [],
       items: items || []
     };
 
