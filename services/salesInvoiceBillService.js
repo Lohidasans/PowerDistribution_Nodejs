@@ -150,7 +150,7 @@ const createSalesInvoice = async (req, res) => {
         amount_due: header.amount_due,
         total_quantity: totalQty,
         hasBillAdjustment: header.hasBillAdjustment || false,
-        status: header.status || "Draft",
+        status: header.status,
         created_by: req.user?.id || null,
       },
       { transaction: t }
@@ -221,39 +221,42 @@ const createSalesInvoice = async (req, res) => {
         status: "Completed",
         created_by: req.user?.id || null,
       }));
+    
+    // Reduce stock only the status is invoice
+    if (header.status === "Invoice") {
+      if (paymentRows.length > 0) {
+        await models.Payment.bulkCreate(paymentRows, { transaction: t });
+        // Reduce stock quantities
+        for (const item of items) {
+          if (item.product_item_detail_id && item.quantity > 0) {
+            const productItemDetail = await models.ProductItemDetail.findByPk(
+              item.product_item_detail_id,
+              { transaction: t }
+            );
 
-    if (paymentRows.length > 0) {
-      await models.Payment.bulkCreate(paymentRows, { transaction: t });
-      // Reduce stock quantities
-      for (const item of items) {
-        if (item.product_item_detail_id && item.quantity > 0) {
-          const productItemDetail = await models.ProductItemDetail.findByPk(
-            item.product_item_detail_id,
-            { transaction: t }
-          );
+            if (!productItemDetail) {
+              await t.rollback();
+              return commonService.badRequest(
+                res,
+                `Product item detail not found for ID: ${item.product_item_detail_id}`
+              );
+            }
 
-          if (!productItemDetail) {
-            await t.rollback();
-            return commonService.badRequest(
-              res,
-              `Product item detail not found for ID: ${item.product_item_detail_id}`
+            const newQuantity = productItemDetail.quantity - item.quantity;
+
+            if (newQuantity < 0) {
+              await t.rollback();
+              return commonService.badRequest(
+                res,
+                `Insufficient stock for product item detail ID: ${item.product_item_detail_id}`
+              );
+            }
+
+            await productItemDetail.update(
+              { quantity: newQuantity },
+              { transaction: t }
             );
           }
-
-          const newQuantity = productItemDetail.quantity - item.quantity;
-
-          if (newQuantity < 0) {
-            await t.rollback();
-            return commonService.badRequest(
-              res,
-              `Insufficient stock for product item detail ID: ${item.product_item_detail_id}`
-            );
-          }
-
-          await productItemDetail.update(
-            { quantity: newQuantity },
-            { transaction: t }
-          );
         }
       }
     }
@@ -505,6 +508,7 @@ const listSalesInvoices = async (req, res) => {
     return commonService.handleError(res, err);
   }
 };
+
 // Delete (soft)
 const deleteSalesInvoice = async (req, res) => {
   const t = await sequelize.transaction();
@@ -622,6 +626,341 @@ const searchInvoices = async (req, res) => {
   }
 };
 
+const updateSalesInvoice = async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const invoiceId = req.params.id;
+    const { header = {}, items = [], payment = [], adjustments = [] } = req.body || {};
+
+    /* -----------------------------------
+       1. FETCH & VALIDATE INVOICE
+    ----------------------------------- */
+
+    const invoice = await models.SalesInvoiceBill.findByPk(invoiceId, {
+      transaction: t,
+    });
+
+    if (!invoice) {
+      await t.rollback();
+      return commonService.notFound(res, "Invoice not found");
+    }
+
+    if (invoice.status === "Invoice") {
+      await t.rollback();
+      return commonService.badRequest(
+        res,
+        "Finalized invoice cannot be edited"
+      );
+    }
+
+    const status = header.status ?? invoice.status;
+
+    /* -----------------------------------
+       2. ITEMS VALIDATION
+    ----------------------------------- */
+
+    if (!Array.isArray(items) || items.length === 0) {
+      await t.rollback();
+      return commonService.badRequest(
+        res,
+        "At least one item is required"
+      );
+    }
+
+    /* -----------------------------------
+       4. RECALCULATE TOTALS
+    ----------------------------------- */
+
+    let subtotal = 0;
+    let totalQty = 0;
+
+    const itemRows = items.map(it => {
+      const qty = Number(it.quantity || 0);
+      const rate = Number(it.rate || 0);
+      const itemAmount = qty * rate;
+      const itemDiscount = Number(it.discount_amount || 0);
+      const amount = itemAmount - itemDiscount;
+
+      subtotal += amount;
+      totalQty += qty;
+
+      return {
+        id: it.id || null,
+        product_id: it.product_id,
+        product_item_detail_id: it.product_item_detail_id ?? null,
+        hsn_code: it.hsn_code ?? null,
+        product_name_snapshot: it.product_name_snapshot ?? null,
+        net_weight: it.net_weight,
+        gross_weight: it.gross_weight,
+        wastage: it.wastage,
+        quantity: qty,
+        rate: rate,
+        discount_amount: itemDiscount,
+        amount: amount,
+      };
+    });
+
+    const cgstAmt = Number(header.cgst_amount ?? 0);
+    const sgstAmt = Number(header.sgst_amount ?? 0);
+
+    let headerDiscountAmt = 0;
+    if (header.discount_amount && header.discount_amount > 0) {
+      if (header.discount_type === "Percentage") {
+        headerDiscountAmt = (subtotal * Number(header.discount_amount)) / 100;
+      } else {
+        headerDiscountAmt = Number(header.discount_amount);
+      }
+      headerDiscountAmt = Math.min(headerDiscountAmt, subtotal);
+    }
+
+    let total = subtotal - headerDiscountAmt + cgstAmt + sgstAmt;
+
+    /* -----------------------------------
+       5. APPLY ADJUSTMENTS (CALC ONLY)
+    ----------------------------------- */
+
+    let totalAdjustment = 0;
+    if (Array.isArray(adjustments) && adjustments.length > 0) {
+      totalAdjustment = adjustments.reduce(
+        (sum, adj) => sum + (Number(adj.adjustment_amount) || 0),
+        0
+      );
+
+      if (totalAdjustment > total) {
+        await t.rollback();
+        return commonService.badRequest(res, {
+          message: "Total adjustment amount cannot exceed invoice total",
+          maxAllowedAdjustment: total,
+          attemptedAdjustment: totalAdjustment,
+        });
+      }
+
+      total -= totalAdjustment;
+      if (total < 0) total = 0;
+    }
+
+    /* -----------------------------------
+       6. UPDATE INVOICE HEADER
+    ----------------------------------- */
+
+    await invoice.update(
+      {
+        invoice_date: header.invoice_date || invoice.invoice_date,
+        invoice_time: header.invoice_time || invoice.invoice_time,
+        employee_id: header.employee_id,
+        customer_id: header.customer_id,
+        branch_id: header.branch_id,
+        subtotal_amount: subtotal,
+        cgst_percent: header.cgst_percent,
+        sgst_percent: header.sgst_percent,
+        cgst_amount: cgstAmt,
+        sgst_amount: sgstAmt,
+        discount_type: header.discount_type,
+        discount_amount: headerDiscountAmt,
+        total_amount: total,
+        amount_due: header.amount_due ?? total,
+        total_quantity: totalQty,
+        hasBillAdjustment: header.hasBillAdjustment,
+        status: status,
+      },
+      { transaction: t }
+    );
+
+    /* -----------------------------------
+       7. UPSERT ITEMS
+    ----------------------------------- */
+
+    const existingItems = await models.SalesInvoiceBillItem.findAll({
+      where: { invoice_bill_id: invoice.id },
+      transaction: t,
+    });
+
+    const payloadItemIds = itemRows
+      .filter(i => i.id)
+      .map(i => i.id);
+
+    // DELETE omitted items
+    await models.SalesInvoiceBillItem.destroy({
+      where: {
+        invoice_bill_id: invoice.id,
+        id: { [Op.notIn]: payloadItemIds },
+      },
+      transaction: t,
+    });
+
+    // UPSERT
+    for (const row of itemRows) {
+      if (row.id) {
+        await models.SalesInvoiceBillItem.update(row, {
+          where: { id: row.id },
+          transaction: t,
+        });
+      } else {
+        await models.SalesInvoiceBillItem.create(
+          { ...row, invoice_bill_id: invoice.id },
+          { transaction: t }
+        );
+      }
+    }
+
+    /* -----------------------------------
+       8. UPSERT PAYMENTS
+    ----------------------------------- */
+
+    const existingPayments = await models.Payment.findAll({
+      where: { invoice_bill_id: invoice.id },
+      transaction: t,
+    });
+
+    const payloadPaymentIds = payment
+      .filter(p => p.id)
+      .map(p => p.id);
+
+    // delete omitted payments
+    await models.Payment.destroy({
+      where: {
+        invoice_bill_id: invoice.id,
+        id: { [Op.notIn]: payloadPaymentIds },
+      },
+      transaction: t,
+    });
+
+    // upsert
+    for (const p of payment) {
+      const data = {
+        payment_mode: p.payment_mode,
+        amount_received: p.amount_received,
+        payment_date: p.payment_date || new Date(),
+        transaction_id: p.transaction_id || null,
+        status: "Completed",
+      };
+
+      if (p.id) {
+        await models.Payment.update(data, {
+          where: { id: p.id },
+          transaction: t,
+        });
+      } else {
+        await models.Payment.create(
+          { ...data, invoice_bill_id: invoice.id },
+          { transaction: t }
+        );
+      }
+    }
+
+    /* -----------------------------------
+       9. UPSERT ADJUSTMENTS
+    ----------------------------------- */
+
+    const existingAdjustments =
+      await models.SalesInvoiceAdjustment.findAll({
+        where: { sales_invoice_id: invoice.id },
+        transaction: t,
+      });
+
+    const payloadAdjIds = adjustments
+      .filter(a => a.id)
+      .map(a => a.id);
+
+    // delete
+    await models.SalesInvoiceAdjustment.destroy({
+      where: {
+        sales_invoice_id: invoice.id,
+        id: { [Op.notIn]: payloadAdjIds },
+      },
+      transaction: t,
+    });
+
+    // upsert
+    for (const adj of adjustments) {
+      const data = {
+        adjustment_type_id: adj.adjustment_type_id,
+        reference_id: adj.reference_id,
+        reference_no: adj.reference_no,
+        adjustment_amount: Number(adj.adjustment_amount) || 0,
+      };
+
+      if (adj.id) {
+        await models.SalesInvoiceAdjustment.update(data, {
+          where: { id: adj.id },
+          transaction: t,
+        });
+      } else {
+        await models.SalesInvoiceAdjustment.create(
+          { ...data, sales_invoice_id: invoice.id },
+          { transaction: t }
+        );
+      }
+    }
+
+    /* -----------------------------------
+       10. FINALIZE SIDE EFFECTS (ONLY IF INVOICE)
+    ----------------------------------- */
+
+    if (status === "Invoice") {
+
+      // Reduce stock
+      for (const item of items) {
+        if (item.product_item_detail_id && item.quantity > 0) {
+          const productItemDetail =
+            await models.ProductItemDetail.findByPk(
+              item.product_item_detail_id,
+              { transaction: t }
+            );
+
+          if (!productItemDetail) {
+            await t.rollback();
+            return commonService.badRequest(
+              res,
+              `Product item detail not found: ${item.product_item_detail_id}`
+            );
+          }
+
+          const newQty =
+            productItemDetail.quantity - Number(item.quantity);
+
+          if (newQty < 0) {
+            await t.rollback();
+            return commonService.badRequest(
+              res,
+              `Insufficient stock for item ${item.product_item_detail_id}`
+            );
+          }
+
+          await productItemDetail.update(
+            { quantity: newQty },
+            { transaction: t }
+          );
+        }
+      }
+
+      // Lock adjustments
+      for (const adj of adjustments) {
+        if (adj.adjustment_type_id === 1) {
+          await models.SalesReturn.update(
+            { is_bill_adjusted: true },
+            { where: { id: adj.reference_id }, transaction: t }
+          );
+        } else if (adj.adjustment_type_id === 2) {
+          await models.OldJewel.update(
+            { is_bill_adjusted: true },
+            { where: { id: adj.reference_id }, transaction: t }
+          );
+        }
+      }
+    }
+
+    await t.commit();
+    return commonService.okResponse(res, {
+      message: "Invoice updated successfully",
+    });
+
+  } catch (err) {
+    await t.rollback();
+    return commonService.handleError(res, err);
+  }
+};
+
 
 module.exports = {
   generateSalesInvoiceNo,
@@ -630,4 +969,5 @@ module.exports = {
   listSalesInvoices,
   deleteSalesInvoice,
   searchInvoices,
+  updateSalesInvoice
 };

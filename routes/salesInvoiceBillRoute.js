@@ -4,6 +4,7 @@ const svc = require("../services/salesInvoiceBillService");
 
 router.post("/sales-invoice-bills/code", svc.generateSalesInvoiceNo);
 router.post("/sales-invoice-bills", svc.createSalesInvoice);
+router.put("/sales-invoice-bills/:id", svc.updateSalesInvoice);
 router.get("/sales-invoice-bills", svc.listSalesInvoices);
 router.get("/sales-invoice-bills/search", svc.searchInvoices);
 router.get("/sales-invoice-bills/:id", svc.getSalesInvoiceById);
