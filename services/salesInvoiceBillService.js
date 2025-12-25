@@ -632,9 +632,7 @@ const updateSalesInvoice = async (req, res) => {
     const invoiceId = req.params.id;
     const { header = {}, items = [], payment = [], adjustments = [] } = req.body || {};
 
-    /* -----------------------------------
-       1. FETCH & VALIDATE INVOICE
-    ----------------------------------- */
+    // 1. FETCH & VALIDATE INVOICE
 
     const invoice = await models.SalesInvoiceBill.findByPk(invoiceId, {
       transaction: t,
@@ -655,9 +653,7 @@ const updateSalesInvoice = async (req, res) => {
 
     const status = header.status ?? invoice.status;
 
-    /* -----------------------------------
-       2. ITEMS VALIDATION
-    ----------------------------------- */
+    // 2. ITEMS VALIDATION
 
     if (!Array.isArray(items) || items.length === 0) {
       await t.rollback();
@@ -667,9 +663,7 @@ const updateSalesInvoice = async (req, res) => {
       );
     }
 
-    /* -----------------------------------
-       4. RECALCULATE TOTALS
-    ----------------------------------- */
+    // 4. RECALCULATE TOTALS
 
     let subtotal = 0;
     let totalQty = 0;
@@ -715,9 +709,7 @@ const updateSalesInvoice = async (req, res) => {
 
     let total = subtotal - headerDiscountAmt + cgstAmt + sgstAmt;
 
-    /* -----------------------------------
-       5. APPLY ADJUSTMENTS (CALC ONLY)
-    ----------------------------------- */
+    // 5. APPLY ADJUSTMENTS (CALC ONLY)
 
     let totalAdjustment = 0;
     if (Array.isArray(adjustments) && adjustments.length > 0) {
@@ -739,9 +731,7 @@ const updateSalesInvoice = async (req, res) => {
       if (total < 0) total = 0;
     }
 
-    /* -----------------------------------
-       6. UPDATE INVOICE HEADER
-    ----------------------------------- */
+    // 6. UPDATE INVOICE HEADER
 
     await invoice.update(
       {
@@ -766,10 +756,7 @@ const updateSalesInvoice = async (req, res) => {
       { transaction: t }
     );
 
-    /* -----------------------------------
-       7. UPSERT ITEMS
-    ----------------------------------- */
-
+    // 7. UPSERT INVOICE ITEM DETAILS
     const existingItems = await models.SalesInvoiceBillItem.findAll({
       where: { invoice_bill_id: invoice.id },
       transaction: t,
@@ -803,10 +790,7 @@ const updateSalesInvoice = async (req, res) => {
       }
     }
 
-    /* -----------------------------------
-       8. UPSERT PAYMENTS
-    ----------------------------------- */
-
+    // 8. UPSERT PAYMENTS
     const existingPayments = await models.Payment.findAll({
       where: { invoice_bill_id: invoice.id },
       transaction: t,
@@ -848,10 +832,7 @@ const updateSalesInvoice = async (req, res) => {
       }
     }
 
-    /* -----------------------------------
-       9. UPSERT ADJUSTMENTS
-    ----------------------------------- */
-
+    // 9. UPSERT ADJUSTMENTS
     const existingAdjustments =
       await models.SalesInvoiceAdjustment.findAll({
         where: { sales_invoice_id: invoice.id },
@@ -893,10 +874,7 @@ const updateSalesInvoice = async (req, res) => {
       }
     }
 
-    /* -----------------------------------
-       10. FINALIZE SIDE EFFECTS (ONLY IF INVOICE)
-    ----------------------------------- */
-
+    // FINALIZE SIDE EFFECTS (ONLY IF INVOICE)
     if (status === "Invoice") {
 
       // Reduce stock
