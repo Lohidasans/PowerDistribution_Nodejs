@@ -262,7 +262,7 @@ const deleteSalesReturn = async (req, res) => {
 const listSalesReturnDropdown = async (req, res) => {
   try {
     const { customer_id } = req.query;
-    const where = {};
+    const where = { is_bill_adjusted: false, };
 
     if (customer_id) {
       where.customer_id = customer_id; // apply filter only if passed
