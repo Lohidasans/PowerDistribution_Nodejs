@@ -1264,7 +1264,9 @@ const getProductsForWebsiteList = async (req, res) => {
         p.material_type_id,
         p.product_type,
         p.category_id,
+        c.category_name,
         p.subcategory_id,
+        sc.subcategory_name,
         p.created_at,
 
         pi.id AS item_id,
@@ -1278,6 +1280,8 @@ const getProductsForWebsiteList = async (req, res) => {
 
       FROM products p
       INNER JOIN "productItemDetails" pi ON p.id = pi.product_id
+      LEFT JOIN categories c ON p.category_id = c.id
+      LEFT JOIN subcategories sc ON p.subcategory_id = sc.id
       ${whereConditions}
       ${orderByClause};
     `;
@@ -1374,7 +1378,9 @@ const getProductsForWebsiteList = async (req, res) => {
         image_urls: row.image_urls,
         material_type_id: row.material_type_id,
         category_id: row.category_id,
+        category_name: row.category_name,
         subcategory_id: row.subcategory_id,
+        subcategory_name: row.subcategory_name,
         product_type: row.product_type,
         created_at: row.created_at,
       };
@@ -1413,7 +1419,9 @@ const getProductsForWebsiteList = async (req, res) => {
         image_urls: product.image_urls,
         material_type_id: product.material_type_id,
         category_id: product.category_id,
+        category_name: product.category_name,
         subcategory_id: product.subcategory_id,
+        subcategory_name: product.subcategory_name,
         product_type: product.product_type,
         product_item_id: item.id,
         selling_price: finalPrice,
@@ -1571,6 +1579,7 @@ const getProductIdBySku = async (req, res) => {
     return commonService.handleError(res, err);
   }
 };
+
 
 module.exports = {
   createProductSKUCode,
