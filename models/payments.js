@@ -34,18 +34,6 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.ENUM('Pending', 'Completed', 'Failed', 'Refunded'),
       defaultValue: 'Completed'
     },
-    created_by: {
-      type: DataTypes.INTEGER,
-      allowNull: true
-    },
-    updated_by: {
-      type: DataTypes.INTEGER,
-      allowNull: true
-    },
-    deleted_by: {
-      type: DataTypes.INTEGER,
-      allowNull: true
-    }
   }, {
     timestamps: true,
     createdAt: 'created_at',
