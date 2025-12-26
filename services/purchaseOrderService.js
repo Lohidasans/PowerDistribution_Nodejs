@@ -16,6 +16,21 @@ const createPurchaseOrder = async (req, res) => {
         return commonService.badRequest(res, `${f} is required`);
       }
     }
+    if (header.po_no) {
+      const existing = await models.PurchaseOrder.findOne({
+        where: {
+          po_no: header.po_no,
+          deleted_at: null,     // only check active (non-deleted) records
+        },
+      });
+
+      if (existing) {
+        await t.rollback();
+        return commonService.badRequest(res, {
+          message: "Purchase order number already exists",
+        });
+      }
+    }
 
     const po = await models.PurchaseOrder.create(header, { transaction: t });
 
