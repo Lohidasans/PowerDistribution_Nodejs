@@ -66,5 +66,5 @@ module.exports = (sequelize, DataTypes) => {
         }
     );
 
-    return OfferPlan;
+    return Offer;
 };
