@@ -361,6 +361,7 @@ const listSalesInvoices = async (req, res) => {
       )
       SELECT
         i.*,
+
         -- Customer details
         c.customer_name,
         c.address AS customer_address,
@@ -406,7 +407,15 @@ const listSalesInvoices = async (req, res) => {
           AND a.deleted_at IS NULL
         ) AS bill_adjustments,
 
-        -- Get payments as a JSON array
+        -- Total adjustment amount
+        (
+          SELECT COALESCE(SUM(a.adjustment_amount), 0)
+          FROM sales_invoice_adjustments a
+          WHERE a.sales_invoice_id = i.id
+          AND a.deleted_at IS NULL
+        ) AS total_adjustment_amount,
+
+        -- Payment details
         (
           SELECT COALESCE(JSON_AGG(
             JSON_BUILD_OBJECT(
@@ -453,7 +462,6 @@ const listSalesInvoices = async (req, res) => {
       WHERE i.deleted_at IS NULL
     `;
 
-    // Add your existing filter conditions here
     const replacements = {};
 
     if (from) {
@@ -518,43 +526,54 @@ const listSalesInvoices = async (req, res) => {
     // Format the response
     const formattedInvoices = invoices.map(invoice => {
       const totalPaid = parseFloat(invoice.total_paid_amount || 0);
-      const totalAmount = parseFloat(invoice.total_amount || 0);
-      const amountDue = totalAmount - totalPaid;
+      const totalAfterAdjustment = parseFloat(invoice.total_amount || 0);
+      const totalAdjustment = parseFloat(invoice.total_adjustment_amount || 0);
 
-      // Parse JSON fields if they're strings
-      const invoiceItems = typeof invoice.invoice_items === 'string'
-        ? JSON.parse(invoice.invoice_items)
-        : (invoice.invoice_items || []);
+      const totalBeforeAdjustment = totalAfterAdjustment + totalAdjustment;
 
-      const billAdjustments = typeof invoice.bill_adjustments === 'string'
-        ? JSON.parse(invoice.bill_adjustments)
-        : (invoice.bill_adjustments || []);
-
-      const paymentDetails = typeof invoice.payment_details === 'string'
-        ? JSON.parse(invoice.payment_details)
-        : (invoice.payment_details || []);
+      const amountDue = totalAfterAdjustment - totalPaid;
 
       return {
         ...invoice,
-        amount_due: amountDue.toFixed(2),
+
+        total_amount_before_adjustment: totalBeforeAdjustment.toFixed(2),
+        total_amount_after_adjustment: totalAfterAdjustment.toFixed(2),
         total_paid_amount: totalPaid.toFixed(2),
-        invoice_items: invoiceItems,
-        bill_adjustments: billAdjustments,
-        payment_details: paymentDetails,
-        // Ensure these are numbers
-        total_items_quantity: parseInt(invoice.total_items_quantity) || 0,
-        total_items_amount: parseFloat(invoice.total_items_amount) || 0
+        amount_due: amountDue.toFixed(2),
+
+        invoice_items:
+          typeof invoice.invoice_items === "string"
+            ? JSON.parse(invoice.invoice_items)
+            : invoice.invoice_items || [],
+
+        bill_adjustments:
+          typeof invoice.bill_adjustments === "string"
+            ? JSON.parse(invoice.bill_adjustments)
+            : invoice.bill_adjustments || [],
+
+        payment_details:
+          typeof invoice.payment_details === "string"
+            ? JSON.parse(invoice.payment_details)
+            : invoice.payment_details || [],
+
+        total_items_quantity:
+          parseInt(invoice.total_items_quantity) || 0,
+
+        total_items_amount:
+          parseFloat(invoice.total_items_amount) || 0
       };
     });
 
     return commonService.okResponse(res, {
-      invoices: formattedInvoices,
+      invoices: formattedInvoices
     });
+
   } catch (err) {
     console.error("Error in listSalesInvoices:", err);
     return commonService.handleError(res, err);
   }
 };
+
 
 // Delete (soft)
 const deleteSalesInvoice = async (req, res) => {
