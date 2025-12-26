@@ -151,6 +151,7 @@ const CustomerAddress = require("./customerAddresses")(sequelize, Sequelize.Data
 // Offer Related models
 const OfferPlan = require("./offerPlans")(sequelize, Sequelize.DataTypes);
 const OfferApplicableType = require("./offerApplicableTypes")(sequelize, Sequelize.DataTypes);
+const Offer = require("./offers")(sequelize, Sequelize.DataTypes);
 
 const models = {
   Permission,
@@ -237,6 +238,7 @@ const models = {
   Purity,
   OfferPlan,
   OfferApplicableType,
+  Offer
 };
 
 Object.values(models).forEach((model) => {

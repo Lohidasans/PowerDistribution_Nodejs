@@ -683,9 +683,7 @@ const getAllProductDetails = async (req, res) => {
     const limitNum = parseInt(limit, 10);
     const offset = (pageNum - 1) * limitNum;
 
-    /* ------------------------------
-       COMMON WHERE CLAUSE
-    ------------------------------ */
+    // COMMON WHERE CLAUSE
     let whereClause = `
       WHERE p.status = 'Active'
       AND p.deleted_at IS NULL
@@ -752,9 +750,7 @@ const getAllProductDetails = async (req, res) => {
       replacements.like = like;
     }
 
-    /* ------------------------------
-       COUNT QUERY
-    ------------------------------ */
+    // COUNT QUERY
     const countQuery = `
       SELECT COUNT(DISTINCT p.id) AS total
       FROM products p
@@ -770,9 +766,6 @@ const getAllProductDetails = async (req, res) => {
     const [countResult] = await sequelize.query(countQuery, { replacements });
     const total = Number(countResult[0]?.total || 0);
 
-    /* ------------------------------
-       MAIN DATA QUERY
-    ------------------------------ */
     const query = `
       SELECT
         p.id,
@@ -858,9 +851,6 @@ const getAllProductDetails = async (req, res) => {
       }
     });
 
-    /* ------------------------------
-       ENRICH ITEM DETAILS
-    ------------------------------ */
     let products = rows.map(row => ({
       ...row,
       variants: row.variants || []
