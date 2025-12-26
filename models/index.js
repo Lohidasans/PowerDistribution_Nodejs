@@ -142,12 +142,15 @@ const BillType = require("./billTypes")(sequelize, Sequelize.DataTypes);
 const PaymentMode = require("./paymentModes")(sequelize, Sequelize.DataTypes);
 const VendorPayment = require("./vendorPayments")(sequelize, Sequelize.DataTypes);
 
-
 // Order Related models
 const Order = require("./orders")(sequelize, Sequelize.DataTypes);
 const OrderItem = require("./orderItems")(sequelize, Sequelize.DataTypes);
 const CartWishlistItem = require("./cartWishlistItems")(sequelize, Sequelize.DataTypes);
 const CustomerAddress = require("./customerAddresses")(sequelize, Sequelize.DataTypes);
+
+// Offer Related models
+const OfferPlan = require("./offerPlans")(sequelize, Sequelize.DataTypes);
+const OfferApplicableType = require("./offerApplicableTypes")(sequelize, Sequelize.DataTypes);
 
 const models = {
   Permission,
@@ -231,7 +234,9 @@ const models = {
   OrderItem,
   CartWishlistItem,
   CustomerAddress,
-  Purity
+  Purity,
+  OfferPlan,
+  OfferApplicableType,
 };
 
 Object.values(models).forEach((model) => {
