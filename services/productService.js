@@ -675,9 +675,105 @@ const getAllProductDetails = async (req, res) => {
       ref_no_id,
       search,
       variant_type_ids,
+      page = 1,
+      limit = 10
     } = req.query;
 
-    let query = `
+    const pageNum = parseInt(page, 10);
+    const limitNum = parseInt(limit, 10);
+    const offset = (pageNum - 1) * limitNum;
+
+    /* ------------------------------
+       COMMON WHERE CLAUSE
+    ------------------------------ */
+    let whereClause = `
+      WHERE p.status = 'Active'
+      AND p.deleted_at IS NULL
+    `;
+
+    const replacements = {};
+
+    if (material_type_id) {
+      whereClause += ` AND p.material_type_id = :material_type_id`;
+      replacements.material_type_id = +material_type_id;
+    }
+
+    if (category_id) {
+      whereClause += ` AND p.category_id = :category_id`;
+      replacements.category_id = +category_id;
+    }
+
+    if (subcategory_id) {
+      whereClause += ` AND p.subcategory_id = :subcategory_id`;
+      replacements.subcategory_id = +subcategory_id;
+    }
+
+    if (grn_id) {
+      whereClause += ` AND p.grn_id = :grn_id`;
+      replacements.grn_id = +grn_id;
+    }
+
+    if (ref_no_id) {
+      whereClause += ` AND p.ref_no_id = :ref_no_id`;
+      replacements.ref_no_id = +ref_no_id;
+    }
+
+    if (variant_type_ids) {
+      const typeIds = variant_type_ids
+        .split(",")
+        .map(id => parseInt(id.trim()));
+
+      whereClause += `
+        AND EXISTS (
+          SELECT 1
+          FROM product_variants pv
+          WHERE pv.product_id = p.id
+          AND pv.variant_type_ids && ARRAY[${typeIds.join(",")}]::integer[]
+        )
+      `;
+    }
+
+    if (search) {
+      const like = `%${search}%`;
+      whereClause += `
+        AND (
+          p.product_name ILIKE :like OR
+          p.product_code ILIKE :like OR
+          p.sku_id ILIKE :like OR
+          p.description ILIKE :like OR
+          p.hsn_code ILIKE :like OR
+          p.product_type::text ILIKE :like OR
+          p.variation_type::text ILIKE :like OR
+          mt.material_type ILIKE :like OR
+          g.grn_no ILIKE :like OR
+          gi.ref_no ILIKE :like
+        )
+      `;
+      replacements.like = like;
+    }
+
+    /* ------------------------------
+       COUNT QUERY
+    ------------------------------ */
+    const countQuery = `
+      SELECT COUNT(DISTINCT p.id) AS total
+      FROM products p
+      LEFT JOIN "productItemDetails" pid ON pid.product_id = p.id
+      LEFT JOIN grns g ON g.id = p.grn_id AND g.deleted_at IS NULL
+      LEFT JOIN "grnItems" gi ON gi.grn_id = g.id AND gi.id = p.ref_no_id AND gi.deleted_at IS NULL
+      LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
+      LEFT JOIN categories ct ON ct.id = p.category_id
+      LEFT JOIN subcategories sc ON sc.id = p.subcategory_id
+      ${whereClause}
+    `;
+
+    const [countResult] = await sequelize.query(countQuery, { replacements });
+    const total = Number(countResult[0]?.total || 0);
+
+    /* ------------------------------
+       MAIN DATA QUERY
+    ------------------------------ */
+    const query = `
       SELECT
         p.id,
         p.product_code,
@@ -698,12 +794,12 @@ const getAllProductDetails = async (req, res) => {
         g.grn_no,
         g.grn_date,
         g.total_gross_wt_in_g,
-        g.total_amount,
-        gi.ref_no,
-        gi.gross_wt_in_g,
-        gi.net_wt_in_g,
-        gi.quantity,
-        gi.type,
+        g.total_amount AS grn_total_amount,
+        gi.ref_no AS grn_ref_no,
+        gi.gross_wt_in_g AS grn_gross_weight,
+        gi.net_wt_in_g AS grn_net_weight,
+        gi.quantity AS grn_quantity,
+        gi.type AS grn_item_type,
         mt.material_type,
         mt.material_price,
         COALESCE(
@@ -719,21 +815,10 @@ const getAllProductDetails = async (req, res) => {
             AND pv.variant_id IS NOT NULL
           ),
           '[]'::json
-        ) as variants,
-
-        -- GRN Details
-        g.grn_no,
-        g.grn_date,
-        g.total_gross_wt_in_g,
-        g.total_amount AS grn_total_amount,
-
-        -- GRN Item Details
-        gi.ref_no AS grn_ref_no,
-        gi.gross_wt_in_g AS grn_gross_weight,
-        gi.net_wt_in_g AS grn_net_weight,
-        gi.quantity AS grn_quantity,
-        gi.type AS grn_item_type,
-
+        ) AS variants,
+        COALESCE(SUM(COALESCE(pid.quantity, 0)), 0) AS total_quantity,
+        COALESCE(SUM(COALESCE(pid.quantity, 0) * COALESCE(pid.net_weight, 0)), 0) AS total_weight,
+        COUNT(DISTINCT pid.id) AS variation_count,
         p.branch_id,
         p.sku_id,
         p.hsn_code,
@@ -746,129 +831,74 @@ const getAllProductDetails = async (req, res) => {
         p.total_products,
         p.remaining_weight,
         p.created_at,
-        p.updated_at,
-        p.deleted_at,
-        COALESCE(SUM(COALESCE(pid.quantity, 0)), 0) AS total_quantity,
-        COALESCE(SUM(COALESCE(pid.quantity, 0) * COALESCE(pid.net_weight, 0)), 0) AS total_weight,
-        COUNT(DISTINCT pid.id) AS variation_count,
-        mt.material_type,
-        mt.material_price
+        p.updated_at
       FROM products p
       LEFT JOIN "productItemDetails" pid ON pid.product_id = p.id
-      -- GRN Joins
       LEFT JOIN grns g ON g.id = p.grn_id AND g.deleted_at IS NULL
       LEFT JOIN "grnItems" gi ON gi.grn_id = g.id AND gi.id = p.ref_no_id AND gi.deleted_at IS NULL
       LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
       LEFT JOIN categories ct ON ct.id = p.category_id
       LEFT JOIN subcategories sc ON sc.id = p.subcategory_id
-      WHERE 1=1 AND p.status = 'Active' AND p.deleted_at IS NULL`;
+      ${whereClause}
+      GROUP BY
+        p.id, mt.material_type, mt.material_price,
+        ct.category_name, ct.category_image_url,
+        sc.subcategory_name,
+        g.grn_no, g.grn_date, g.total_gross_wt_in_g, g.total_amount,
+        gi.ref_no, gi.gross_wt_in_g, gi.net_wt_in_g, gi.quantity, gi.type
+      ORDER BY p.id DESC
+      LIMIT :limit OFFSET :offset
+    `;
 
-    const replacements = {};
+    const [rows] = await sequelize.query(query, {
+      replacements: {
+        ...replacements,
+        limit: limitNum,
+        offset
+      }
+    });
 
-    if (material_type_id) {
-      query += ` AND p.material_type_id = :material_type_id`;
-      replacements.material_type_id = +material_type_id;
-    }
-    if (category_id) {
-      query += ` AND p.category_id = :category_id`;
-      replacements.category_id = +category_id;
-    }
-    if (subcategory_id) {
-      query += ` AND p.subcategory_id = :subcategory_id`;
-      replacements.subcategory_id = +subcategory_id;
-    }
-    if (grn_id) {
-      query += ` AND p.grn_id = :grn_id`;
-      replacements.grn_id = +grn_id;
-    }
-    if (ref_no_id) {
-      query += ` AND p.ref_no_id = :ref_no_id`;
-      replacements.ref_no_id = +ref_no_id;
-    }
-
-    if (variant_type_ids) {
-      // Convert comma-separated string to array of numbers
-      const typeIds = variant_type_ids
-        .split(",")
-        .map((id) => parseInt(id.trim()));
-
-      // Use array overlap operator (&&) to find any match
-      query += ` AND EXISTS (
-        SELECT 1
-        FROM product_variants pv
-        WHERE pv.product_id = p.id
-        AND pv.variant_type_ids && ARRAY[${typeIds.join(",")}]::integer[]
-      )`;
-    }
-
-    if (search) {
-      const like = `%${search}%`;
-      query += ` AND (
-        p.product_name ILIKE :like OR
-        p.product_code ILIKE :like OR
-        p.sku_id ILIKE :like OR
-        p.description ILIKE :like OR
-        p.hsn_code ILIKE :like OR
-        p.product_type::text ILIKE :like OR
-        p.variation_type::text ILIKE :like OR
-        mt.material_type ILIKE :like OR
-        g.grn_no ILIKE :like OR
-        gi.ref_no ILIKE :like
-      )`;
-      replacements.like = like;
-    }
-
-    query += `
-      GROUP BY p.id, mt.material_type, mt.material_price, ct.category_name, ct.category_image_url, sc.subcategory_name,
-      g.grn_no, g.grn_date, g.total_gross_wt_in_g, g.total_amount, gi.ref_no, gi.gross_wt_in_g, gi.net_wt_in_g,
-      gi.quantity, gi.type
-      ORDER BY p.id DESC`;
-
-    const [rows] = await sequelize.query(query, { replacements });
-
-    // Process variants and format the response
-    let products = rows.map((row) => ({
+    /* ------------------------------
+       ENRICH ITEM DETAILS
+    ------------------------------ */
+    let products = rows.map(row => ({
       ...row,
-      variants: row.variants || [],
+      variants: row.variants || []
     }));
 
     if (products.length) {
-      const productIds = products.map((p) => p.id);
+      const productIds = products.map(p => p.id);
+
       const itemDetails = await models.ProductItemDetail.findAll({
         where: { product_id: productIds },
         order: [["id", "ASC"]],
       });
 
-      const itemIds = itemDetails.map((it) => it.id);
+      const itemIds = itemDetails.map(it => it.id);
+
       const additionalDetails = itemIds.length
         ? await models.ProductAdditionalDetail.findAll({
-            where: { item_detail_id: itemIds },
-          })
+          where: { item_detail_id: itemIds },
+        })
         : [];
 
-      // Group additional by item_detail_id
       const addsByItem = additionalDetails.reduce((acc, add) => {
         const key = String(add.item_detail_id);
         (acc[key] = acc[key] || []).push(add);
         return acc;
       }, {});
 
-      // Calculate selling price for each item and attach additional details
       const itemsWithPrices = await Promise.all(
-        products.flatMap(async (product) => {
+        products.map(async product => {
           const productItems = itemDetails.filter(
-            (item) => item.product_id === product.id
+            item => item.product_id === product.id
           );
 
-          const itemsWithAdds = await Promise.all(
-            productItems.map(async (item) => {
+          const enrichedItems = await Promise.all(
+            productItems.map(async item => {
               const itemData = item.get({ plain: true });
               const priceDetails = await calculateSellingPrice(
-                {
-                  ...product,
-                  material_type_id: product.material_type_id,
-                  product_type: product.product_type,
-                },
+                product,
                 itemData,
                 models
               );
@@ -881,16 +911,9 @@ const getAllProductDetails = async (req, res) => {
             })
           );
 
-          // Group items by product_id
-          const itemsByProduct = itemsWithAdds.reduce((acc, it) => {
-            const key = String(it.product_id);
-            (acc[key] = acc[key] || []).push(it);
-            return acc;
-          }, {});
-
           return {
             ...product,
-            itemDetails: itemsByProduct[String(product.id)] || [],
+            itemDetails: enrichedItems,
           };
         })
       );
@@ -898,11 +921,21 @@ const getAllProductDetails = async (req, res) => {
       products = itemsWithPrices;
     }
 
-    return commonService.okResponse(res, { products });
+    return commonService.okResponse(res, {
+      products,
+      pagination: {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum)
+      }
+    });
+
   } catch (err) {
     return commonService.handleError(res, err);
   }
 };
+
 
 // Search products by SKU (main or item details)
 const searchProductBySku = async (req, res) => {
