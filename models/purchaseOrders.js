@@ -11,7 +11,6 @@ module.exports = (sequelize, DataTypes) => {
       po_no: {
         type: DataTypes.STRING,
         allowNull: false,
-        unique: true,
       },
       po_date: {
         type: DataTypes.DATEONLY,

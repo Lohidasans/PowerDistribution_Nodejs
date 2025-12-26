@@ -86,7 +86,7 @@ const getGrnWithItems = async (grnId) => {
 
     if (!grn) return null;
 
-    // Get GRN items with related data using raw queries
+    // Get GRN items
     const items = await sequelize.query(
       `
       SELECT
@@ -100,20 +100,29 @@ const getGrnWithItems = async (grnId) => {
       LEFT JOIN subcategories sc ON gi.subcategory_id = sc.id
       WHERE gi.grn_id = :grnId
       ORDER BY gi.id ASC
-    `,
+      `,
       {
         replacements: { grnId },
         type: sequelize.QueryTypes.SELECT,
       }
     );
 
+    // Fetch Purchase Order Date
+    let purchaseOrder = null;
+    if (grn.po_id) {
+      purchaseOrder = await models.PurchaseOrder.findByPk(grn.po_id, {
+        attributes: ["id", "po_no", "po_date"],
+        raw: true,
+      });
+    }
+
     // Get vendor details
     const vendor = (await models.Vendor.findByPk(grn.vendor_id, {
-      attributes: ["id", "vendor_name"],
-      raw: true,
-    })) || { id: grn.vendor_id, vendor_name: "Vendor Not Found" };
+        attributes: ["id", "vendor_name"],
+        raw: true,
+      })) || { id: grn.vendor_id, vendor_name: "Vendor Not Found"};
 
-    // Get user details if order_by_user_id exists
+    // Get user details
     let user = null;
     if (grn.order_by_user_id) {
       user = await models.User.findByPk(grn.order_by_user_id, {
@@ -124,13 +133,14 @@ const getGrnWithItems = async (grnId) => {
       if (!user) {
         user = {
           id: grn.order_by_user_id,
-          name: "User Not Found",
+          email: "User Not Found",
         };
       }
     }
 
     return {
       ...grn,
+      purchase_order: purchaseOrder, // po_date comes here
       vendor,
       order_by_user: user,
       items,
@@ -140,6 +150,7 @@ const getGrnWithItems = async (grnId) => {
     throw error;
   }
 };
+
 
 // Update GRN and its items (upsert by item.id; do not destroy existing rows)
 const updateGrn = async (req, res) => {
