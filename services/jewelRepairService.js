@@ -194,6 +194,7 @@ const getAllJewelRepairs = async (req, res) => {
     const repairs = await sequelize.query(
       `SELECT
         jr.*,
+        e.employee_name AS employee_name,
 
         -- Customer details
         c.customer_name AS customer_name,
@@ -220,6 +221,7 @@ const getAllJewelRepairs = async (req, res) => {
 
       -- Customer joins
       LEFT JOIN customers c ON c.id = jr.customer_id
+      LEFT JOIN employees e ON e.id = jr.employee_id
       LEFT JOIN countries cc ON cc.id = c.country_id
       LEFT JOIN states cs ON cs.id = c.state_id
       LEFT JOIN districts cd ON cd.id = c.district_id

@@ -389,18 +389,50 @@ const listSalesInvoices = async (req, res) => {
         (
           SELECT COALESCE(JSON_AGG(
             JSON_BUILD_OBJECT(
+              'id', a.id,
               'adjustment_type_id', a.adjustment_type_id,
               'adjustment_type_name', bat.type_name,
               'reference_id', a.reference_id,
               'reference_no', a.reference_no,
-              'adjustment_amount', a.adjustment_amount
+              'adjustment_amount', a.adjustment_amount,
+              'created_at', a.created_at,
+              'updated_at', a.updated_at
             )
+            ORDER BY a.created_at DESC
           ), '[]'::json)
           FROM sales_invoice_adjustments a
           LEFT JOIN bill_adjustment_types bat ON bat.id = a.adjustment_type_id::integer
           WHERE a.sales_invoice_id = i.id
           AND a.deleted_at IS NULL
-        ) AS bill_adjustments
+        ) AS bill_adjustments,
+
+        -- Get payments as a JSON array
+        (
+          SELECT COALESCE(JSON_AGG(
+            JSON_BUILD_OBJECT(
+              'id', p.id,
+              'payment_mode', p.payment_mode,
+              'amount_received', p.amount_received,
+              'payment_date', p.payment_date,
+              'transaction_id', p.transaction_id,
+              'status', p.status,
+              'created_at', p.created_at,
+              'updated_at', p.updated_at
+            )
+            ORDER BY p.created_at DESC
+          ), '[]'::json)
+          FROM payments p
+          WHERE p.invoice_bill_id = i.id
+          AND p.deleted_at IS NULL
+        ) AS payment_details,
+
+        -- Calculate total paid amount
+        (
+          SELECT COALESCE(SUM(p.amount_received), 0)
+          FROM payments p
+          WHERE p.invoice_bill_id = i.id
+          AND p.deleted_at IS NULL
+        ) AS total_paid_amount
 
       FROM sales_invoice_bills i
 
@@ -485,7 +517,9 @@ const listSalesInvoices = async (req, res) => {
 
     // Format the response
     const formattedInvoices = invoices.map(invoice => {
-      const amountDue = parseFloat(invoice.total_amount || 0) - parseFloat(invoice.total_paid_amount || 0);
+      const totalPaid = parseFloat(invoice.total_paid_amount || 0);
+      const totalAmount = parseFloat(invoice.total_amount || 0);
+      const amountDue = totalAmount - totalPaid;
 
       // Parse JSON fields if they're strings
       const invoiceItems = typeof invoice.invoice_items === 'string'
@@ -496,11 +530,17 @@ const listSalesInvoices = async (req, res) => {
         ? JSON.parse(invoice.bill_adjustments)
         : (invoice.bill_adjustments || []);
 
+      const paymentDetails = typeof invoice.payment_details === 'string'
+        ? JSON.parse(invoice.payment_details)
+        : (invoice.payment_details || []);
+
       return {
         ...invoice,
         amount_due: amountDue.toFixed(2),
+        total_paid_amount: totalPaid.toFixed(2),
         invoice_items: invoiceItems,
         bill_adjustments: billAdjustments,
+        payment_details: paymentDetails,
         // Ensure these are numbers
         total_items_quantity: parseInt(invoice.total_items_quantity) || 0,
         total_items_amount: parseFloat(invoice.total_items_amount) || 0

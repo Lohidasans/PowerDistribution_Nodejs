@@ -43,6 +43,11 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.TEXT,
         allowNull: true,
       },
+      status: {
+        type: DataTypes.ENUM("Draft", "Printed", "On Hold", "Cancelled"),
+        allowNull: false,
+        defaultValue: "Printed",
+      },
     },
     {
       timestamps: true,
