@@ -182,86 +182,144 @@ const getOldJewelById = async (req, res) => {
   }
 };
 
-// Update Old Jewel and its items (update by item.id only; do not destroy or insert)
+// Update Old Jewel and its items
 const updateOldJewel = async (req, res) => {
   const transaction = await sequelize.transaction();
-
   try {
-    const { id } = req.params;
-    const { items = [], ...updateData } = req.body;
+    const oldJewelId = req.params.id;
+    const { items = [], ...jewelData } = req.body || {};
 
-    // --- Find existing Old Jewel record ---
-    const jewel = await models.OldJewel.findByPk(id, { transaction });
-    if (!jewel) {
+    // 1. FETCH & VALIDATE OLD JEWEL
+    const oldJewel = await models.OldJewel.findByPk(oldJewelId, {
+      transaction
+    });
+
+    if (!oldJewel) {
+      await transaction.rollback();``
+      return commonService.notFound(res, "Old jewel not found");
+    }
+
+    if (oldJewel.status != "On Hold") {
       await transaction.rollback();
-      return commonService.notFound(res, "Old jewel record not found");
+      return commonService.badRequest(
+        res,
+        "Finalized invoice cannot be edited"
+      );
     }
 
-    // --- Recalculate total_amount from items (NEW UI logic) ---
-    if (items.length > 0) {
-      const totalAmount = items.reduce((sum, item) => {
-        return sum + (parseFloat(item.amount) || 0);
-      }, 0);
-
-      updateData.total_amount = totalAmount;
+    // 2. ITEMS VALIDATION
+    if (!Array.isArray(items) || items.length === 0) {
+      await transaction.rollback();
+      return commonService.badRequest(
+        res,
+        "At least one item is required"
+      );
     }
 
-    // --- Update Old Jewel (header fields) ---
-    await jewel.update(updateData, { transaction });
+    // 3. CALCULATE TOTAL & ITEM VALUES
+    let totalAmount = 0;
 
-    // --- Update each item (only if ID exists) ---
-    for (const item of items) {
-      if (item && item.id) {
-        const existingItem = await models.OldJewelItem.findOne({
-          where: { id: item.id, old_jewel_id: id },
-          transaction,
-        });
+    const itemRows = items.map(item => {
+      const grsWeight = parseFloat(item.grs_weight) || 0;
+      const wastage = parseFloat(item.wastage) || 0;
+      const dustWeight = parseFloat(item.dust_weight) || 0;
 
-        if (existingItem) {
-          const {
-            id: _omit,
-            old_jewel_id: _omit2,
-            created_at,
-            updated_at,
-            deleted_at,
-            ...updatableFields
-          } = item;
+      // Net weight calculation (backend controlled)
+      const netWeight = grsWeight - wastage - dustWeight;
 
-          await existingItem.update(
-            {
-              ...updatableFields,
-              grs_weight: parseFloat(item.grs_weight) || 0,
-              dust_weight: parseFloat(item.dust_weight) || 0,
-              net_weight: parseFloat(item.net_weight) || 0,
-              wastage: parseFloat(item.wastage) || 0,
-              rate: parseFloat(item.rate) || 0,
-              amount: parseFloat(item.amount) || 0
-            },
-            { transaction }
-          );
-        }
+      const rate = parseFloat(item.rate) || 0;
+      const amount =
+        item.amount !== undefined
+          ? parseFloat(item.amount)
+          : netWeight * rate;
+
+      totalAmount += amount;
+
+      return {
+        id: item.id || null,
+        hsn_code: item.hsn_code || null,
+        jewel_description: item.jewel_description || null,
+        grs_weight: grsWeight,
+        wastage,
+        dust_weight: dustWeight,
+        net_weight: netWeight,
+        rate,
+        amount
+      };
+    });
+
+    // 4. UPDATE OLD JEWEL HEADER
+    await oldJewel.update(
+      {
+        old_jewel_code: jewelData.old_jewel_code ?? oldJewel.old_jewel_code,
+        employee_id: jewelData.employee_id,
+        customer_id: jewelData.customer_id,
+        date: jewelData.date || oldJewel.date,
+        time: jewelData.time || oldJewel.time,
+        status: jewelData.status || oldJewel.status,
+        discount_type: jewelData.discount_type ?? oldJewel.discount_type,
+        total_amount: totalAmount
+      },
+      { transaction }
+    );
+
+    // 5. UPSERT OLD JEWEL ITEMS
+    const existingItems = await models.OldJewelItem.findAll({
+      where: { old_jewel_id: oldJewel.id },
+      transaction
+    });
+
+    const payloadItemIds = itemRows
+      .filter(i => i.id)
+      .map(i => i.id);
+
+    // DELETE omitted items
+    await models.OldJewelItem.destroy({
+      where: {
+        old_jewel_id: oldJewel.id,
+        id: { [Op.notIn]: payloadItemIds }
+      },
+      transaction
+    });
+
+    // UPSERT items
+    for (const row of itemRows) {
+      if (row.id) {
+        await models.OldJewelItem.update(
+          {
+            hsn_code: row.hsn_code,
+            jewel_description: row.jewel_description,
+            grs_weight: row.grs_weight,
+            wastage: row.wastage,
+            dust_weight: row.dust_weight,
+            net_weight: row.net_weight,
+            rate: row.rate,
+            amount: row.amount
+          },
+          {
+            where: { id: row.id },
+            transaction
+          }
+        );
+      } else {
+        await models.OldJewelItem.create(
+          {
+            ...row,
+            old_jewel_id: oldJewel.id
+          },
+          { transaction }
+        );
       }
     }
 
     await transaction.commit();
-
-    // --- Fetch updated record and items ---
-    const [updatedJewel, updatedItems] = await Promise.all([
-      models.OldJewel.findByPk(id, { raw: true }),
-      models.OldJewelItem.findAll({
-        where: { old_jewel_id: id },
-        raw: true,
-      }),
-    ]);
-
     return commonService.okResponse(res, {
-      ...updatedJewel,
-      items: updatedItems,
+      message: "Old jewel updated successfully"
     });
 
   } catch (error) {
     await transaction.rollback();
-    console.error("Error updating Old Jewel:", error);
+    console.error("Error updating old jewel:", error);
     return commonService.handleError(res, error);
   }
 };
@@ -333,6 +391,7 @@ const listOldJewelDropdown = async (req, res) => {
     return commonService.handleError(res, err);
   }
 };
+
 
 module.exports = {
   createOldJewel,
