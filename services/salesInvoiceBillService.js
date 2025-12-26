@@ -94,7 +94,6 @@ const createSalesInvoice = async (req, res) => {
     // Calculate final total before adjustment
     const taxableAmount = subtotal - headerDiscountAmt;
     let total = taxableAmount + cgstAmt + sgstAmt;
-    const totalAmountBeforeAdjustment = total;
 
     // APPLY MULTIPLE BILL ADJUSTMENTS
     let totalAdjustment = 0;
@@ -104,11 +103,13 @@ const createSalesInvoice = async (req, res) => {
       }, 0);
 
       // Calculate the maximum allowed adjustment (total before adjustment)
-      if (totalAdjustment > totalAmountBeforeAdjustment) {
+      const maxAllowedAdjustment = total; // This is the total before any adjustments
+
+      if (totalAdjustment > maxAllowedAdjustment) {
         await t.rollback();
         return commonService.badRequest(res, {
           message: "Total adjustment amount cannot exceed the invoice total",
-          maxAllowedAdjustment: totalAmountBeforeAdjustment,
+          maxAllowedAdjustment,
           attemptedAdjustment: totalAdjustment
         });
       }
@@ -210,7 +211,7 @@ const createSalesInvoice = async (req, res) => {
 
     // Create payments if array is provided
     const paymentRows = (payment || [])
-      .filter(p => p.payment_mode)
+      .filter(p => p.payment_mode) // ignore any empty objects
       .map(p => ({
         invoice_bill_id: bill.id,
         payment_mode: p.payment_mode,
@@ -264,7 +265,6 @@ const createSalesInvoice = async (req, res) => {
     return commonService.createdResponse(res, { 
       message: enMessage.billing.invoiceCreationSuccess,
       invoice: bill,
-      totalAmountBeforeAdjustment,
       items: withFK,
       payments: paymentRows,
       adjustment: savedAdjustments
@@ -755,22 +755,21 @@ const updateSalesInvoice = async (req, res) => {
     }
 
     let total = subtotal - headerDiscountAmt + cgstAmt + sgstAmt;
-    // before adjustments
-    const totalAmountBeforeAdjustment = total;
 
     // 5. APPLY ADJUSTMENTS (CALC ONLY)
+
     let totalAdjustment = 0;
     if (Array.isArray(adjustments) && adjustments.length > 0) {
       totalAdjustment = adjustments.reduce(
         (sum, adj) => sum + (Number(adj.adjustment_amount) || 0),
         0
       );
-      
-      if (totalAdjustment > totalAmountBeforeAdjustment) {
+
+      if (totalAdjustment > total) {
         await t.rollback();
         return commonService.badRequest(res, {
           message: "Total adjustment amount cannot exceed invoice total",
-          maxAllowedAdjustment: totalAmountBeforeAdjustment,
+          maxAllowedAdjustment: total,
           attemptedAdjustment: totalAdjustment,
         });
       }
