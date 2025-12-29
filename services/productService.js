@@ -479,7 +479,7 @@ const getProductById = async (req, res) => {
     let materialTypeName = null;
     if (row.material_type_id) {
       const material = await sequelize.query(
-        `SELECT material_type FROM "materialTypes" WHERE id = :id`,
+        `SELECT material_type, material_price FROM "materialTypes" WHERE id = :id`,
         {
           replacements: { id: row.material_type_id },
           type: sequelize.QueryTypes.SELECT,
@@ -487,6 +487,7 @@ const getProductById = async (req, res) => {
         }
       );
       materialTypeName = material?.material_type || null;
+      materialPrice = material?.material_price || null;
     }
 
     // Final response
@@ -494,6 +495,7 @@ const getProductById = async (req, res) => {
       product: {
         ...row.get({ plain: true }),
         material_type_name: materialTypeName,
+        material_price: materialPrice,
       },
       item_details: itemsWithAdds,
       addon_products,
