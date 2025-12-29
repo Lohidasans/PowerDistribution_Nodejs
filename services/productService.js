@@ -7,6 +7,7 @@ const {
   generateUniqueCode,
   generateProductSKUCode,
 } = require("../helpers/codeGeneration");
+const GST_PERCENT = 3;
 
 const createProductSKUCode = async (req, res) => {
   const t = await sequelize.transaction();
@@ -361,6 +362,22 @@ const getProductById = async (req, res) => {
     const row = await commonService.findById(models.Product, productId, res);
     if (!row) return;
 
+    // Fetch material type name
+    let materialTypeName = null;
+    let materialPrice = 0;
+    if (row.material_type_id) {
+      const material = await sequelize.query(
+        `SELECT material_type, material_price FROM "materialTypes" WHERE id = :id`,
+        {
+          replacements: { id: row.material_type_id },
+          type: sequelize.QueryTypes.SELECT,
+          plain: true,
+        }
+      );
+      materialTypeName = material?.material_type || null;
+      materialPrice = Number(material?.material_price || 0);
+    }
+
     // etch product item details & additional details
     const [itemDetails, additionalDetails] = await Promise.all([
       models.ProductItemDetail.findAll({
@@ -411,6 +428,15 @@ const getProductById = async (req, res) => {
           models
         );
 
+        // Inject price_details before final price calc
+        plainItem.price_details = priceDetails;
+
+        const finalPrice = calculateFinalPriceRate(
+          row.get({ plain: true }),
+          plainItem,
+          Number(materialPrice)
+        );
+
         const itemState = itemStateMap[it.id] || {
           is_wishlisted: false,
           is_in_cart: false,
@@ -419,9 +445,10 @@ const getProductById = async (req, res) => {
         return {
           ...plainItem,
           additional_details: addsByItem[it.id] || [],
-          price_details: priceDetails,
-
-          // PER ITEM FLAGS (CORRECT)
+          price_details: {
+            ...priceDetails,
+            final_price_rate: finalPrice.final_price_rate
+          },
           is_wishlisted: itemState.is_wishlisted,
           is_in_cart: itemState.is_in_cart,
         };
@@ -474,21 +501,6 @@ const getProductById = async (req, res) => {
       `,
       { replacements: { pid: row.id } }
     );
-
-    // Fetch material type name
-    let materialTypeName = null;
-    if (row.material_type_id) {
-      const material = await sequelize.query(
-        `SELECT material_type, material_price FROM "materialTypes" WHERE id = :id`,
-        {
-          replacements: { id: row.material_type_id },
-          type: sequelize.QueryTypes.SELECT,
-          plain: true,
-        }
-      );
-      materialTypeName = material?.material_type || null;
-      materialPrice = material?.material_price || null;
-    }
 
     // Final response
     return commonService.okResponse(res, {
@@ -1615,6 +1627,81 @@ const getProductIdBySku = async (req, res) => {
   }
 };
 
+// Calculate final price rate for a product item
+const calculateFinalPriceRate = (product, item, materialPrice) => {
+  const netWeight = Number(item.net_weight || 0);
+  const stoneValue = Number(item.stone_value || 0);
+  const sellingPrice = Number(item.price_details?.selling_price || 0);
+
+  let makingChargeValue = 0;
+  let wastageValue = 0;
+  let subtotal = 0;
+  let tax = 0;
+  let finalPrice = 0;
+
+  // PIECE RATE
+  if (product.product_type === "Piece Rate") {
+    subtotal = sellingPrice;
+    tax = (subtotal * GST_PERCENT) / 100;
+    finalPrice = subtotal + tax;
+
+    return {
+      base_price: subtotal,
+      tax,
+      final_price_rate: finalPrice,
+    };
+  }
+
+  // WEIGHT BASED
+  const materialValue = materialPrice * netWeight;
+
+  // Making Charge
+  if (item.making_charge_type === "Amount") {
+    makingChargeValue = Number(item.making_charge || 0);
+  }
+  else if (item.making_charge_type === "Per Gram") {
+    makingChargeValue = netWeight * Number(item.making_charge || 0);
+  }
+  else if (item.making_charge_type === "Percentage") {
+    const gm = (netWeight * Number(item.making_charge || 0)) / 100;
+    makingChargeValue = gm * materialPrice;
+  }
+
+  // Wastage
+  if (item.wastage_type === "Amount") {
+    wastageValue = Number(item.wastage || 0);
+  }
+  else if (item.wastage_type === "Per Gram") {
+    wastageValue = netWeight * Number(item.wastage || 0);
+  }
+  else if (item.wastage_type === "Percentage") {
+    const gm = (netWeight * Number(item.wastage || 0)) / 100;
+    wastageValue = gm * materialPrice;
+  }
+
+  // Subtotal
+  subtotal =
+    materialValue +
+    makingChargeValue +
+    wastageValue +
+    stoneValue;
+
+  // Tax
+  tax = (subtotal * GST_PERCENT) / 100;
+
+  finalPrice = subtotal + tax;
+
+  return {
+    material_value: materialValue,
+    making_charge: makingChargeValue,
+    wastage: wastageValue,
+    stone_value: stoneValue,
+    subtotal,
+    tax,
+    final_price_rate: finalPrice,
+  };
+};
+
 
 module.exports = {
   createProductSKUCode,
@@ -1632,4 +1719,5 @@ module.exports = {
   calculateSellingPrice,
   getProductsForWebsiteList,
   getProductIdBySku,
+  calculateFinalPriceRate
 };
