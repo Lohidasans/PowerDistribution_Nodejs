@@ -677,13 +677,15 @@ const getAllProductDetails = async (req, res) => {
       ref_no_id,
       search,
       variant_type_ids,
-      page = 1,
-      limit = 10
+      page,
+      limit
     } = req.query;
 
-    const pageNum = parseInt(page, 10);
-    const limitNum = parseInt(limit, 10);
-    const offset = (pageNum - 1) * limitNum;
+    const usePagination = page !== undefined || limit !== undefined;
+
+    const pageNum = usePagination ? parseInt(page || 1, 10) : null;
+    const limitNum = usePagination ? parseInt(limit || 10, 10) : null;
+    const offset = usePagination ? (pageNum - 1) * limitNum : null;
 
     // COMMON WHERE CLAUSE
     let whereClause = `
@@ -752,23 +754,27 @@ const getAllProductDetails = async (req, res) => {
       replacements.like = like;
     }
 
-    // COUNT QUERY
-    const countQuery = `
-      SELECT COUNT(DISTINCT p.id) AS total
-      FROM products p
-      LEFT JOIN "productItemDetails" pid ON pid.product_id = p.id
-      LEFT JOIN grns g ON g.id = p.grn_id AND g.deleted_at IS NULL
-      LEFT JOIN "grnItems" gi ON gi.grn_id = g.id AND gi.id = p.ref_no_id AND gi.deleted_at IS NULL
-      LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
-      LEFT JOIN categories ct ON ct.id = p.category_id
-      LEFT JOIN subcategories sc ON sc.id = p.subcategory_id
-      ${whereClause}
-    `;
+    // COUNT QUERY (only if pagination is used)
+    let total = null;
+    if (usePagination) {
+      const countQuery = `
+        SELECT COUNT(DISTINCT p.id) AS total
+        FROM products p
+        LEFT JOIN "productItemDetails" pid ON pid.product_id = p.id
+        LEFT JOIN grns g ON g.id = p.grn_id AND g.deleted_at IS NULL
+        LEFT JOIN "grnItems" gi ON gi.grn_id = g.id AND gi.id = p.ref_no_id AND gi.deleted_at IS NULL
+        LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
+        LEFT JOIN categories ct ON ct.id = p.category_id
+        LEFT JOIN subcategories sc ON sc.id = p.subcategory_id
+        ${whereClause}
+      `;
 
-    const [countResult] = await sequelize.query(countQuery, { replacements });
-    const total = Number(countResult[0]?.total || 0);
+      const [countResult] = await sequelize.query(countQuery, { replacements });
+      total = Number(countResult[0]?.total || 0);
+    }
 
-    const query = `
+    // MAIN QUERY
+    let query = `
       SELECT
         p.id,
         p.product_code,
@@ -842,14 +848,16 @@ const getAllProductDetails = async (req, res) => {
         g.grn_no, g.grn_date, g.total_gross_wt_in_g, g.total_amount,
         gi.ref_no, gi.gross_wt_in_g, gi.net_wt_in_g, gi.quantity, gi.type
       ORDER BY p.id DESC
-      LIMIT :limit OFFSET :offset
     `;
+
+    if (usePagination) {
+      query += ` LIMIT :limit OFFSET :offset`;
+    }
 
     const [rows] = await sequelize.query(query, {
       replacements: {
         ...replacements,
-        limit: limitNum,
-        offset
+        ...(usePagination ? { limit: limitNum, offset } : {})
       }
     });
 
@@ -913,21 +921,23 @@ const getAllProductDetails = async (req, res) => {
       products = itemsWithPrices;
     }
 
-    return commonService.okResponse(res, {
-      products,
-      pagination: {
+    const response = { products };
+
+    if (usePagination) {
+      response.pagination = {
         total,
         page: pageNum,
         limit: limitNum,
         totalPages: Math.ceil(total / limitNum)
-      }
-    });
+      };
+    }
+
+    return commonService.okResponse(res, response);
 
   } catch (err) {
     return commonService.handleError(res, err);
   }
 };
-
 
 // Search products by SKU (main or item details)
 const searchProductBySku = async (req, res) => {
