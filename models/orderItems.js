@@ -49,11 +49,19 @@ module.exports = (sequelize, DataTypes) => {
                 type: DataTypes.DECIMAL(15, 2),
                 allowNull: false,
             },
+            discount: {
+                type: DataTypes.DECIMAL(15, 2),
+                allowNull: true,
+            },
             making_charge:{
                 type: DataTypes.DECIMAL(15, 2),
                 allowNull: false,
             },
             wastage: {
+                type: DataTypes.DECIMAL(15, 2),
+                allowNull: true,
+            },
+            stone_value: {
                 type: DataTypes.DECIMAL(15, 2),
                 allowNull: true,
             },

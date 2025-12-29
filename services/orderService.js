@@ -87,8 +87,10 @@ const createOrder = async (req, res) => {
                 // Values from UI Calculation
                 rate,
                 amount,
+                discount,
                 making_charge,
                 wastage,
+                stone_value,
                 tax,
                 total_amount,
             } = item;
@@ -117,8 +119,10 @@ const createOrder = async (req, res) => {
 
                 rate,
                 amount,
+                discount,
                 making_charge,
                 wastage,
+                stone_value,
                 tax,
                 total_amount,
                 purity,
