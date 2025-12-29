@@ -1,0 +1,251 @@
+const { models } = require("../models/index");
+const { Op } = require("sequelize");
+const commonService = require("../services/commonService");
+const enMessage = require("../constants/en.json");
+const { buildSearchCondition } = require("../helpers/queryHelper");
+
+const createOffer = async (req, res) => {
+  try {
+    const { 
+      offer_code,
+      offer_plan_id,
+      offer_description,
+      offer_type,
+      offer_value,
+      valid_from,
+      valid_to,
+      applicable_type_id,
+      status = "Active"
+    } = req.body;
+
+    // Required field validation
+    if (!offer_code || !offer_plan_id || !offer_type || !offer_value || !valid_from || !valid_to || !applicable_type_id) {
+      return commonService.badRequest(res, enMessage.common.requiredFields);
+    }
+
+    // Check if offer code already exists (only among non-deleted records)
+    const existingOffer = await models.Offer.findOne({
+      where: {
+        offer_code: offer_code,
+        deleted_at: null,
+      },
+      paranoid: false,
+    });
+
+    if (existingOffer) {
+      return commonService.badRequest(
+        res,
+        enMessage.offer.alreadyExists || "Offer with this code already exists"
+      );
+    }
+
+    // Validate date range
+    if (new Date(valid_from) >= new Date(valid_to)) {
+      return commonService.badRequest(res, "Valid To date must be after Valid From date");
+    }
+
+    const offerData = {
+      offer_code,
+      offer_plan_id,
+      offer_description,
+      offer_type,
+      offer_value,
+      valid_from,
+      valid_to,
+      applicable_type_id,
+      status
+    };
+
+    const row = await models.Offer.create(offerData);
+    
+    return commonService.createdResponse(res, { offer: row });
+  } catch (err) {
+    if (err.name === "SequelizeUniqueConstraintError") {
+      return commonService.badRequest(res, enMessage.offer.duplication || "Duplicate entry for offer code");
+    }
+    return commonService.handleError(res, err);
+  }
+};
+
+const listOffers = async (req, res) => {
+  try {
+    const { search = "", status } = req.query;
+    const where = {
+      deleted_at: null
+    };
+    
+    const searchCondition = buildSearchCondition(search, [
+      "offer_code",
+      "offer_description"
+    ]);
+    
+    if (searchCondition) Object.assign(where, searchCondition);
+
+    if (status && ["Active", "Inactive"].includes(status)) {
+      where.status = status;
+    }
+
+    const items = await models.Offer.findAll({
+      where,
+      order: [["created_at", "DESC"]],
+    });
+    
+    return commonService.okResponse(res, { offers: items });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
+const getOfferById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const entity = await models.Offer.findOne({
+      where: { id, deleted_at: null },
+      paranoid: false
+    });
+    
+    if (!entity) {
+      return commonService.notFound(res, enMessage.offer.notFound || "Offer not found");
+    }
+    
+    return commonService.okResponse(res, { offer: entity });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
+const updateOffer = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      offer_code,
+      offer_plan_id,
+      offer_description,
+      offer_type,
+      offer_value,
+      valid_from,
+      valid_to,
+      applicable_type_id,
+      status
+    } = req.body;
+
+    // Find the offer
+    const entity = await models.Offer.findByPk(id, { paranoid: false });
+    
+    if (!entity || entity.deleted_at) {
+      return commonService.notFound(res, enMessage.offer.notFound || "Offer not found");
+    }
+
+    // Check if offer_code is being updated and if it already exists in another record
+    if (offer_code && offer_code !== entity.offer_code) {
+      const existingOffer = await models.Offer.findOne({
+        where: {
+          offer_code,
+          id: { [Op.ne]: id },
+          deleted_at: null,
+        },
+        paranoid: false,
+      });
+
+      if (existingOffer) {
+        return commonService.badRequest(
+          res,
+          enMessage.offer.alreadyExists || "Offer with this code already exists"
+        );
+      }
+    }
+
+    // Validate date range if either date is being updated
+    if ((valid_from || valid_to) && 
+        new Date(valid_from || entity.valid_from) >= new Date(valid_to || entity.valid_to)) {
+      return commonService.badRequest(res, "Valid To date must be after Valid From date");
+    }
+
+    // Only update fields that are provided in the request
+    const updateData = {};
+    const fields = [
+      'offer_code', 'offer_plan_id', 'offer_description', 'offer_type',
+      'offer_value', 'valid_from', 'valid_to', 'applicable_type_id', 'status'
+    ];
+    
+    fields.forEach(field => {
+      if (req.body[field] !== undefined) {
+        updateData[field] = req.body[field];
+      }
+    });
+
+    await entity.update(updateData);
+    
+    const updatedOffer = await models.Offer.findByPk(id);
+    
+    return commonService.okResponse(res, { offer: updatedOffer });
+  } catch (err) {
+    if (err.name === "SequelizeUniqueConstraintError") {
+      return commonService.badRequest(res, enMessage.offer.duplication || "Duplicate entry for offer code");
+    }
+    return commonService.handleError(res, err);
+  }
+};
+
+const deleteOffer = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const entity = await models.Offer.findByPk(id);
+    
+    if (!entity) {
+      return commonService.notFound(res, enMessage.offer.notFound || "Offer not found");
+    }
+    
+    await entity.destroy();
+    
+    return commonService.okResponse(res, { message: enMessage.offer.deleted || "Offer deleted successfully" });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
+// For dropdown/list selection
+const listOffersDropdown = async (req, res) => {
+  try {
+    const { status = 'Active' } = req.query;
+    
+    const where = {
+      deleted_at: null
+    };
+    
+    if (status) {
+      where.status = status;
+    }
+    
+    const items = await models.Offer.findAll({
+      attributes: [
+        'id',
+        'offer_code',
+        'offer_plan_id',
+        'offer_type',
+        'offer_value',
+        'valid_from',
+        'valid_to',
+        'applicable_type_id',
+        'status'
+      ],
+      where,
+      order: [['offer_code', 'ASC']]
+    });
+    
+    return commonService.okResponse(res, { offers: items });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
+module.exports = {
+  createOffer,
+  listOffers,
+  getOfferById,
+  updateOffer,
+  deleteOffer,
+  listOffersDropdown
+};
