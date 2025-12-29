@@ -342,16 +342,27 @@ const listSalesInvoices = async (req, res) => {
 
     let sql = `
       WITH invoice_items AS (
-        SELECT 
+        SELECT
           invoice_bill_id,
           JSON_AGG(
             JSON_BUILD_OBJECT(
               'id', id,
+              'invoice_bill_id', invoice_bill_id,
+              'product_id', product_id,
+              'product_item_detail_id', product_item_detail_id,
+              'hsn_code', hsn_code,
               'product_name_snapshot', product_name_snapshot,
+              'gross_weight', gross_weight,
+              'net_weight', net_weight,
+              'wastage', wastage,
               'quantity', quantity,
               'rate', rate,
-              'amount', amount
+              'discount_amount', discount_amount,
+              'amount', amount,
+              'created_at', created_at,
+              'updated_at', updated_at
             )
+            ORDER BY id ASC
           ) AS items,
           SUM(quantity) AS total_quantity,
           SUM(amount) AS total_amount
