@@ -82,6 +82,7 @@ const createJewelRepair = async (req, res) => {
     // Create Repair Items
     const repairItemsPayload = items.map(item => ({
       repair_id: repair.id,
+      material_type_id: item.material_type_id,
       description: item.description,
       quantity: Number(item.quantity || 1),
       weight: Number(item.weight || 0),

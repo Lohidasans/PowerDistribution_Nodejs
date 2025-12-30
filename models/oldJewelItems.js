@@ -12,6 +12,10 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.INTEGER,
         allowNull: false,
       },
+      material_type_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+      },
       hsn_code: {
         type: DataTypes.STRING,
         allowNull: true,

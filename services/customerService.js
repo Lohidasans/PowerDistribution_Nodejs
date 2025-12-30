@@ -25,6 +25,7 @@ const createCustomer = async (req, res) => {
       state_id: +req.body.state_id || null,
       district_id: +req.body.district_id || null,
       pin_code: req.body.pin_code || null,
+      pan_no: req.body.pan_no || null,
     };
 
     // Check duplicate mobile number (ACTIVE customers only)
@@ -157,6 +158,7 @@ const updateCustomer = async (req, res) => {
       state_id: req.body.state_id !== undefined ? +req.body.state_id : entity.state_id,
       district_id: req.body.district_id !== undefined ? +req.body.district_id : entity.district_id,
       pin_code: req.body.pin_code ?? entity.pin_code,
+      pan_no: req.body.pan_no ?? entity.pan_no,
     };
     await entity.update(up);
     return commonService.okResponse(res, { customer: entity });
