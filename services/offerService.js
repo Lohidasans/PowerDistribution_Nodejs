@@ -67,29 +67,60 @@ const createOffer = async (req, res) => {
 
 const listOffers = async (req, res) => {
   try {
-    const { search = "", status } = req.query;
+    const {
+      search = "",
+      status,
+      offer_plan_id
+    } = req.query;
+
     const where = {
       deleted_at: null
     };
-    
+
     const searchCondition = buildSearchCondition(search, [
       "offer_code",
-      "offer_description"
+      "offer_description",
     ]);
-    
-    if (searchCondition) Object.assign(where, searchCondition);
+
+    if (searchCondition) {
+      Object.assign(where, searchCondition);
+    }
 
     if (status && ["Active", "Inactive"].includes(status)) {
       where.status = status;
     }
 
-    const items = await models.Offer.findAll({
+    if (offer_plan_id) {
+      where.offer_plan_id = offer_plan_id;
+    }
+
+    const offers = await models.Offer.findAll({
       where,
       order: [["created_at", "DESC"]],
     });
-    
-    return commonService.okResponse(res, { offers: items });
+
+    const [totalCount, activeCount, inactiveCount] = await Promise.all([
+      models.Offer.count({
+        where: { deleted_at: null }
+      }),
+      models.Offer.count({
+        where: { deleted_at: null, status: "Active" }
+      }),
+      models.Offer.count({
+        where: { deleted_at: null, status: "Inactive" }
+      })
+    ]);
+
+    return commonService.okResponse(res, {
+      counts: {
+        total: totalCount,
+        active: activeCount,
+        inactive: inactiveCount
+      },
+      offers
+    });
   } catch (err) {
+    console.error("List Offers Error:", err);
     return commonService.handleError(res, err);
   }
 };

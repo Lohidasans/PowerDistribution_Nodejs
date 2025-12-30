@@ -5,10 +5,10 @@ const offerService = require("../services/offerService");
 // Create a new offer
 offerRouter.post("/offers", offerService.createOffer);
 offerRouter.get("/offers", offerService.listOffers);
+offerRouter.get("/offers/dropdown", offerService.listOffersDropdown);
 offerRouter.get("/offers/:id", offerService.getOfferById);
 offerRouter.put("/offers/:id", offerService.updateOffer);
 offerRouter.delete("/offers/:id", offerService.deleteOffer);
-offerRouter.get("/offers/dropdown", offerService.listOffersDropdown);
 offerRouter.post("/offers/code", offerService.generateOfferCode);
 module.exports = offerRouter;
 
