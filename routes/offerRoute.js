@@ -3,23 +3,13 @@ var offerRouter = express.Router();
 const offerService = require("../services/offerService");
 
 // Create a new offer
-offerRouter.post("/offer", offerService.createOffer);
-
-// Get all offers with optional search and status filter
-offerRouter.get("/offer", offerService.listOffers);
-
-// Get offer by ID
-offerRouter.get("/offer/:id", offerService.getOfferById);
-
-// Update an offer
-offerRouter.put("/offer/:id", offerService.updateOffer);
-
-// Delete an offer
-offerRouter.delete("/offer/:id", offerService.deleteOffer);
-
-// Get offers for dropdown/list selection
-offerRouter.get("/offer/dropdown", offerService.listOffersDropdown);
-
+offerRouter.post("/offers", offerService.createOffer);
+offerRouter.get("/offers", offerService.listOffers);
+offerRouter.get("/offers/:id", offerService.getOfferById);
+offerRouter.put("/offers/:id", offerService.updateOffer);
+offerRouter.delete("/offers/:id", offerService.deleteOffer);
+offerRouter.get("/offers/dropdown", offerService.listOffersDropdown);
+offerRouter.post("/offers/code", offerService.generateOfferCode);
 module.exports = offerRouter;
 
 /**
@@ -31,7 +21,7 @@ module.exports = offerRouter;
 
 /**
  * @openapi
- * /api/v1/offer:
+ * /api/v1/offers:
  *   post:
  *     summary: Create a new offer
  *     tags: [Offer]
@@ -120,7 +110,7 @@ module.exports = offerRouter;
 
 /**
  * @openapi
- * /api/v1/offer/{id}:
+ * /api/v1/offers/{id}:
  *   get:
  *     summary: Get an offer by ID
  *     tags: [Offer]
@@ -192,7 +182,7 @@ module.exports = offerRouter;
 
 /**
  * @openapi
- * /api/v1/offer/dropdown:
+ * /api/v1/offers/dropdown:
  *   get:
  *     summary: Get offers for dropdown/list selection
  *     tags: [Offer]

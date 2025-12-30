@@ -3,6 +3,7 @@ const { Op } = require("sequelize");
 const commonService = require("../services/commonService");
 const enMessage = require("../constants/en.json");
 const { buildSearchCondition } = require("../helpers/queryHelper");
+const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
 
 const createOffer = async (req, res) => {
   try {
@@ -35,7 +36,7 @@ const createOffer = async (req, res) => {
     if (existingOffer) {
       return commonService.badRequest(
         res,
-        enMessage.offer.alreadyExists || "Offer with this code already exists"
+        enMessage.offer.alreadyExists
       );
     }
 
@@ -103,7 +104,7 @@ const getOfferById = async (req, res) => {
     });
     
     if (!entity) {
-      return commonService.notFound(res, enMessage.offer.notFound || "Offer not found");
+      return commonService.notFound(res, enMessage.offer.notFound);
     }
     
     return commonService.okResponse(res, { offer: entity });
@@ -131,7 +132,7 @@ const updateOffer = async (req, res) => {
     const entity = await models.Offer.findByPk(id, { paranoid: false });
     
     if (!entity || entity.deleted_at) {
-      return commonService.notFound(res, enMessage.offer.notFound || "Offer not found");
+      return commonService.notFound(res, enMessage.offer.notFound);
     }
 
     // Check if offer_code is being updated and if it already exists in another record
@@ -148,7 +149,7 @@ const updateOffer = async (req, res) => {
       if (existingOffer) {
         return commonService.badRequest(
           res,
-          enMessage.offer.alreadyExists || "Offer with this code already exists"
+          enMessage.offer.alreadyExists
         );
       }
     }
@@ -189,7 +190,7 @@ const deleteOffer = async (req, res) => {
     const entity = await models.Offer.findByPk(id);
     
     if (!entity) {
-      return commonService.notFound(res, enMessage.offer.notFound || "Offer not found");
+      return commonService.notFound(res, enMessage.offer.notFound);
     }
     
     await entity.destroy();
@@ -235,11 +236,27 @@ const listOffersDropdown = async (req, res) => {
   }
 };
 
+const generateOfferCode = async (req, res) => {
+  try {
+    const { prefix } = req.query || {};
+
+    const code = await generateFiscalSeriesCode(
+      models.Offer,
+      "offer_code",
+      String(prefix).toUpperCase(),
+      { pad: 3 }
+    );
+    return commonService.okResponse(res, { offer_code: code });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
 module.exports = {
   createOffer,
   listOffers,
   getOfferById,
   updateOffer,
   deleteOffer,
-  listOffersDropdown
+  listOffersDropdown,
+  generateOfferCode
 };
