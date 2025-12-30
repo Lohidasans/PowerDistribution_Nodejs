@@ -338,7 +338,7 @@ const getSalesInvoiceById = async (req, res) => {
 // List invoices - bill page/ customer - order details page
 const listSalesInvoices = async (req, res) => {
   try {
-    const { from, to, invoice_no, employee_id, customer_id, branch_id, order_type, search } = req.query || {};
+    const { from, to, invoice_no, employee_id, customer_id, branch_id, order_type, search, status } = req.query || {};
 
     let sql = `
       WITH invoice_items AS (
@@ -372,6 +372,7 @@ const listSalesInvoices = async (req, res) => {
       )
       SELECT
         i.*,
+        e.employee_name as sales_person_name,
 
         -- Customer details
         c.customer_name,
@@ -455,6 +456,7 @@ const listSalesInvoices = async (req, res) => {
         ) AS total_paid_amount
 
       FROM sales_invoice_bills i
+      LEFT JOIN employees e ON e.id = i.employee_id
 
       -- Customer joins
       LEFT JOIN customers c ON c.id = i.customer_id
@@ -508,6 +510,11 @@ const listSalesInvoices = async (req, res) => {
     if (order_type) {
       sql += ` AND i.order_type = :order_type`;
       replacements.order_type = order_type;
+    }
+
+    if (status) {
+      sql += ` AND i.status = :status`;
+      replacements.status = status;
     }
 
     if (search) {
