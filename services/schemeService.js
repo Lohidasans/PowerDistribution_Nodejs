@@ -90,7 +90,7 @@ const createScheme = async (req, res) => {
 /** List Schemes with filters (joined with master names) */
 const listSchemes = async (req, res) => {
   try {
-    const { material_type_id, scheme_type_id, status, duration_id, payment_frequency_id, redemption_id, scheme_code } = req.query;
+    const { material_type_id, scheme_type_id, status, scheme_code, search } = req.query;
 
     let query = `
       SELECT
@@ -118,18 +118,6 @@ const listSchemes = async (req, res) => {
       query += ` AND s.scheme_type_id = :scheme_type_id`;
       replacements.scheme_type_id = +scheme_type_id;
     }
-    if (duration_id) {
-      query += ` AND s.duration_id = :duration_id`;
-      replacements.duration_id = +duration_id;
-    }
-    if (payment_frequency_id) {
-      query += ` AND s.payment_frequency_id = :payment_frequency_id`;
-      replacements.payment_frequency_id = +payment_frequency_id;
-    }
-    if (redemption_id) {
-      query += ` AND s.redemption_id = :redemption_id`;
-      replacements.redemption_id = +redemption_id;
-    }
     if (status) {
       query += ` AND s.status = :status`;
       replacements.status = status;
@@ -137,6 +125,21 @@ const listSchemes = async (req, res) => {
     if (scheme_code) {
       query += ` AND s.scheme_code = :scheme_code`;
       replacements.scheme_code = scheme_code;
+    }
+
+    if (search) {
+      query += `
+        AND (
+          s.scheme_name ILIKE :search OR
+          s.scheme_code ILIKE :search OR
+          mt.material_type ILIKE :search OR
+          st.type_name ILIKE :search OR
+          sd.duration_name ILIKE :search OR
+          pf.frequency_name ILIKE :search OR
+          rt.type_name ILIKE :search
+        )
+      `;
+      replacements.search = `%${search}%`;
     }
 
     query += ` ORDER BY s.created_at DESC`;
