@@ -153,6 +153,10 @@ const OfferPlan = require("./offerPlans")(sequelize, Sequelize.DataTypes);
 const OfferApplicableType = require("./offerApplicableTypes")(sequelize, Sequelize.DataTypes);
 const Offer = require("./offers")(sequelize, Sequelize.DataTypes);
 
+// Assest Management related models
+const Maintenance = require("./maintenances")(sequelize, Sequelize.DataTypes);
+const MaintenanceType = require("./maintenanceTypes")(sequelize, Sequelize.DataTypes);
+
 const models = {
   Permission,
   Role,
@@ -238,7 +242,9 @@ const models = {
   Purity,
   OfferPlan,
   OfferApplicableType,
-  Offer
+  Offer,
+  Maintenance,
+  MaintenanceType
 };
 
 Object.values(models).forEach((model) => {

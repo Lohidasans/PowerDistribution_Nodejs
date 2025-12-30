@@ -16,7 +16,7 @@ module.exports = (sequelize, DataTypes) => {
                 type: DataTypes.DATEONLY,
                 allowNull: false,
             },
-            bill_type_id: {
+            bill_type_id: {  // comes from bill_types table
                 type: DataTypes.INTEGER,
                 allowNull: false,
             },

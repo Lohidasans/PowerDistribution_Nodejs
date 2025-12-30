@@ -53,6 +53,7 @@ const PurityRoute = require("./purityRoute");
 const OfferRoute = require("./offerRoute");
 const OfferPlanRoute = require("./offerPlanRoute");
 const OfferApplicableTypeRoute = require("./offerApplicableTypeRoute");
+const MaintenanceRoute = require("./maintenanceRoute");
 
 module.exports = (app) => {
   app.use("/api/v1", RoleRouter);
@@ -111,4 +112,5 @@ module.exports = (app) => {
   app.use("/api/v1", OfferRoute);
   app.use("/api/v1", OfferPlanRoute);
   app.use("/api/v1", OfferApplicableTypeRoute);
+  app.use("/api/v1", MaintenanceRoute);
 };
