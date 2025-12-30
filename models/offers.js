@@ -12,7 +12,6 @@ module.exports = (sequelize, DataTypes) => {
             offer_code: {
                 type: DataTypes.STRING, // OFF 01/24-25
                 allowNull: false,
-                unique: true,
             },
 
             offer_plan_id: {

@@ -1,4 +1,4 @@
-const { models } = require("../models/index");
+const { models,  } = require("../models");
 const { Op } = require("sequelize");
 const commonService = require("../services/commonService");
 const enMessage = require("../constants/en.json");
@@ -60,9 +60,6 @@ const createOffer = async (req, res) => {
     
     return commonService.createdResponse(res, { offer: row });
   } catch (err) {
-    if (err.name === "SequelizeUniqueConstraintError") {
-      return commonService.badRequest(res, enMessage.offer.duplication || "Duplicate entry for offer code");
-    }
     return commonService.handleError(res, err);
   }
 };
@@ -181,9 +178,6 @@ const updateOffer = async (req, res) => {
     
     return commonService.okResponse(res, { offer: updatedOffer });
   } catch (err) {
-    if (err.name === "SequelizeUniqueConstraintError") {
-      return commonService.badRequest(res, enMessage.offer.duplication || "Duplicate entry for offer code");
-    }
     return commonService.handleError(res, err);
   }
 };
@@ -200,7 +194,7 @@ const deleteOffer = async (req, res) => {
     
     await entity.destroy();
     
-    return commonService.okResponse(res, { message: enMessage.offer.deleted || "Offer deleted successfully" });
+    return commonService.noContentResponse(res);
   } catch (err) {
     return commonService.handleError(res, err);
   }

@@ -53,5 +53,10 @@
     "invoiceCreationSuccess":"Sales Invoice created successfully",
     "paymentModeRequired":"Payment mode is required for orders above ₹2,00,000",
     "panCardRequired":"Cash payment not allowed for amounts above ₹2,00,000. PanCard is Required"
+  }, 
+  "offer": {
+    "duplication": "Duplicate entry for offer code",
+    "notFound": "Offer not found",
+    "alreadyExists": "Offer with this code already exists"
   }
 }
