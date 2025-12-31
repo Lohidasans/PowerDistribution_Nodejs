@@ -247,6 +247,7 @@ const listCustomerNameMobileDropdown = async (req, res) => {
         c.address,
         c.pin_code,
         c.customer_code,
+        c.pan_no,
         co.country_name,
         s.state_name,
         d.district_name
@@ -271,6 +272,7 @@ const listCustomerNameMobileDropdown = async (req, res) => {
       customer_name: c.customer_name || "",
       mobile_number: c.mobile_number || "",
       customer_code: c.customer_code || null,
+      pan_no: c.pan_no || null,
       address: c.address || "",
       pin_code: c.pin_code || "",
       country_name: c.country_name || "",
