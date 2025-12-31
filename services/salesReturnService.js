@@ -161,6 +161,7 @@ const listSalesReturns = async (req, res) => {
       SELECT 
         sr.*, 
         c.customer_name AS customer_name,
+        c.mobile_number AS customer_mobile,
         e.employee_name AS employee_name,
         b.branch_name
       FROM sales_returns sr
@@ -181,7 +182,7 @@ const listSalesReturns = async (req, res) => {
       const itemsQuery = `
         SELECT *
         FROM sales_return_items
-        WHERE sales_return_id IN (${salesReturnIds.join(",")})
+        WHERE sales_return_id IN (${salesReturnIds.join(",")}) AND deleted_at IS NULL
         ORDER BY sales_return_id;
       `;
 
@@ -225,7 +226,6 @@ const listSalesReturns = async (req, res) => {
     return commonService.handleError(res, err);
   }
 };
-
 
 // Delete sales return (soft delete)
 const deleteSalesReturn = async (req, res) => {
@@ -357,7 +357,7 @@ const updateSalesReturn = async (req, res) => {
     await salesReturn.update(
       {
         sales_return_no:
-          header.sales_return_no ?? salesReturn.sales_return_no,
+        header.sales_return_no ?? salesReturn.sales_return_no,
         return_date: header.return_date || salesReturn.return_date,
         return_time: header.return_time || salesReturn.return_time,
         employee_id: header.employee_id,
