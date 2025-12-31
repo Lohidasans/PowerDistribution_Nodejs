@@ -166,22 +166,22 @@ const updateOffer = async (req, res) => {
       return commonService.notFound(res, enMessage.offer.notFound);
     }
 
-    // Check if offer_code is being updated and if it already exists in another record
-    if (offer_code && offer_code !== entity.offer_code) {
-      const existingOffer = await models.Offer.findOne({
-        where: {
-          offer_code,
-          id: { [Op.ne]: id },
-          deleted_at: null,
-        },
-        paranoid: false,
-      });
+    // Unique offer_code check (case-insensitive, only if changing)
+    if (offer_code !== undefined) {
+      const trimmedNewCode = offer_code.trim();
 
-      if (existingOffer) {
-        return commonService.badRequest(
-          res,
-          enMessage.offer.alreadyExists
-        );
+      if (trimmedNewCode !== (entity.offer_code || '').trim()) {
+        const existingOffer = await models.Offer.findOne({
+          where: {
+            offer_code: { [Op.iLike]: trimmedNewCode },
+            id: { [Op.ne]: id },
+            deleted_at: null,
+          },
+        });
+
+        if (existingOffer) {
+          return commonService.badRequest(res, enMessage.offer.alreadyExists);
+        }
       }
     }
 
