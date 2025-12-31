@@ -223,6 +223,7 @@ const createSalesInvoice = async (req, res) => {
     }
 
     // Create payments if array is provided
+    let savedPayments = [];
     const paymentRows = (payment || [])
       .filter(p => p.payment_mode) // ignore any empty objects
       .map(p => ({
@@ -236,50 +237,51 @@ const createSalesInvoice = async (req, res) => {
       }));
     
     // Reduce stock only the status is invoice
-    if (header.status === "Invoice") {
-      if (paymentRows.length > 0) {
-        await models.Payment.bulkCreate(paymentRows, { transaction: t });
-        // Reduce stock quantities
-        for (const item of items) {
-          if (item.product_item_detail_id && item.quantity > 0) {
-            const productItemDetail = await models.ProductItemDetail.findByPk(
-              item.product_item_detail_id,
-              { transaction: t }
-            );
+    if (paymentRows.length > 0) {
+      savedPayments = await models.Payment.bulkCreate(paymentRows, { transaction: t, returning: true });
+    }
+    // Reduce stock quantities
+    if (header.status === "Invoice" && savedPayments.length > 0) {
+      for (const item of items) {
+        if (item.product_item_detail_id && item.quantity > 0) {
+          const productItemDetail = await models.ProductItemDetail.findByPk(
+            item.product_item_detail_id,
+            { transaction: t }
+          );
 
-            if (!productItemDetail) {
-              await t.rollback();
-              return commonService.badRequest(
-                res,
-                `Product item detail not found for ID: ${item.product_item_detail_id}`
-              );
-            }
-
-            const newQuantity = productItemDetail.quantity - item.quantity;
-
-            if (newQuantity < 0) {
-              await t.rollback();
-              return commonService.badRequest(
-                res,
-                `Insufficient stock for product item detail ID: ${item.product_item_detail_id}`
-              );
-            }
-
-            await productItemDetail.update(
-              { quantity: newQuantity },
-              { transaction: t }
+          if (!productItemDetail) {
+            await t.rollback();
+            return commonService.badRequest(
+              res,
+              `Product item detail not found for ID: ${item.product_item_detail_id}`
             );
           }
+
+          const newQuantity = productItemDetail.quantity - item.quantity;
+
+          if (newQuantity < 0) {
+            await t.rollback();
+            return commonService.badRequest(
+              res,
+              `Insufficient stock for product item detail ID: ${item.product_item_detail_id}`
+            );
+          }
+
+          await productItemDetail.update(
+            { quantity: newQuantity },
+            { transaction: t }
+          );
         }
       }
     }
+    
 
     await t.commit();
     return commonService.createdResponse(res, { 
       message: enMessage.billing.invoiceCreationSuccess,
       invoice: bill,
       items: withFK,
-      payments: paymentRows,
+      payments: savedPayments,
       adjustment: savedAdjustments
     });
   } catch (err) {
