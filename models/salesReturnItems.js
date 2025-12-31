@@ -48,10 +48,6 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.STRING,
         allowNull: true,
       },
-      wastage: {
-        type: DataTypes.STRING,
-        allowNull: true,
-      },
       quantity: {
         type: DataTypes.INTEGER,
         allowNull: false,

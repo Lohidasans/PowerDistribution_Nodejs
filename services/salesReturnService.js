@@ -51,7 +51,6 @@ const createSalesReturn = async (req, res) => {
         product_description: it.product_description || null,
         net_weight: it.net_weight || null,
         gross_weight: it.gross_weight || null,
-        wastage: it.wastage || null,
         quantity: qty,
         rate,
         amount
@@ -336,7 +335,6 @@ const updateSalesReturn = async (req, res) => {
         product_description: it.product_description || null,
         net_weight: it.net_weight || null,
         gross_weight: it.gross_weight || null,
-        wastage: it.wastage || null,
         quantity: qty,
         rate,
         amount
@@ -408,7 +406,6 @@ const updateSalesReturn = async (req, res) => {
             product_description: row.product_description,
             net_weight: row.net_weight,
             gross_weight: row.gross_weight,
-            wastage: row.wastage,
             quantity: row.quantity,
             rate: row.rate,
             amount: row.amount
