@@ -75,11 +75,10 @@ const createSalesInvoice = async (req, res) => {
       };
     });
 
-    // Get tax amounts (assuming these are already calculated as fixed amounts)
+    // Get tax amounts & discounts
     const cgstAmt = Number(header.cgst_amount ?? 0);
     const sgstAmt = Number(header.sgst_amount ?? 0);
 
-    // Apply header-level discount if any
     let headerDiscountAmt = 0;
     if (header.discount_amount && header.discount_amount > 0) {
       if (header.discount_type === "Percentage") {
@@ -121,6 +120,19 @@ const createSalesInvoice = async (req, res) => {
       if (total < 0) total = 0;
     }
 
+    // PAYMENT & REFUND LOGIC
+    const totalPaid = Array.isArray(payment) ? payment.reduce((sum, p) => sum + (Number(p.amount_received) || 0), 0) : 0;
+
+    let refundAmount = 0;
+    let amountDue = total;
+
+    if (totalPaid > total) {
+      refundAmount = totalPaid - total;
+      amountDue = 0;
+    } else {
+      amountDue = total - totalPaid;
+    }
+
     // Validate payment for high-value transactions
     if (total > 200000) {
       if (payment.payment_mode === 'Cash') {
@@ -147,7 +159,8 @@ const createSalesInvoice = async (req, res) => {
         discount_type: header.discount_type || null,
         discount_amount: headerDiscountAmt,
         total_amount: total,
-        amount_due: header.amount_due,
+        amount_due: amountDue,
+        refund_amount: refundAmount,
         total_quantity: totalQty,
         hasBillAdjustment: header.hasBillAdjustment || false,
         status: header.status,
@@ -815,6 +828,25 @@ const updateSalesInvoice = async (req, res) => {
       if (total < 0) total = 0;
     }
 
+    // 5 CALCULATE TOTAL PAID & REFUND
+    const totalPaid = Array.isArray(payment)
+      ? payment.reduce(
+        (sum, p) => sum + (Number(p.amount_received) || 0),
+        0
+      )
+      : 0;
+
+    let refundAmount = 0;
+    let amountDue = total;
+
+    if (totalPaid > total) {
+      refundAmount = totalPaid - total;
+      amountDue = 0;
+    } else {
+      refundAmount = 0;
+      amountDue = total - totalPaid;
+    }
+
     // 6. UPDATE INVOICE HEADER
 
     await invoice.update(
@@ -832,7 +864,8 @@ const updateSalesInvoice = async (req, res) => {
         discount_type: header.discount_type,
         discount_amount: headerDiscountAmt,
         total_amount: total,
-        amount_due: header.amount_due ?? total,
+        amount_due: amountDue,
+        refund_amount: refundAmount,
         total_quantity: totalQty,
         hasBillAdjustment: header.hasBillAdjustment,
         status: status,

@@ -73,6 +73,10 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.DECIMAL(15, 2),
         allowNull: true
       },
+      refund_amount: {
+        type: DataTypes.DECIMAL(15, 2),
+        allowNull: true
+      },
       total_quantity: {
         type: DataTypes.INTEGER,
         allowNull: false,
