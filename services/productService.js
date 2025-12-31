@@ -1346,10 +1346,25 @@ const getProductsForWebsiteList = async (req, res) => {
       });
     }
 
-    // 1. Fetch ALL cart/wishlist entries for this user + all products in the result set
     const productIds = [...new Set(rows.map((r) => r.product_id))];
 
-    // Cart/Wishlist flags
+    // Fetch material prices in bulk (for final_price calculation)
+    const materialPrices = {};
+    const uniqueMaterialIds = [...new Set(rows.map((r) => r.material_type_id))];
+    if (uniqueMaterialIds.length > 0) {
+      const materials = await sequelize.query(
+        `SELECT id, material_price FROM "materialTypes" WHERE id IN (${uniqueMaterialIds.map(() => "?").join(",")})`,
+        {
+          replacements: uniqueMaterialIds,
+          type: sequelize.QueryTypes.SELECT,
+        }
+      );
+      materials.forEach((m) => {
+        materialPrices[m.id] = Number(m.material_price || 0);
+      });
+    }
+
+    // Cart/Wishlist flag
     const userCartWishlistItems = await models.CartWishlistItem.findAll({
       where: {
         user_id: userId,
@@ -1447,10 +1462,20 @@ const getProductsForWebsiteList = async (req, res) => {
       const sellingPrice = priceResult.selling_price;
 
       if (!sellingPrice || sellingPrice <= 0) continue;
+
       if (min_price && sellingPrice < parseFloat(min_price)) continue;
       if (max_price && sellingPrice > parseFloat(max_price)) continue;
 
-      const finalPrice = Number(sellingPrice.toFixed(2));
+      const basePriceDisplay = Number(sellingPrice.toFixed(2));
+
+      // === NEW: Calculate final_price (with GST) as extra field ===
+      const materialPrice = materialPrices[row.material_type_id] || 0;
+      const finalCalc = calculateFinalPriceRate(
+        product,
+        { ...item, price_details: priceResult },
+        materialPrice
+      );
+      const finalPriceDisplay = Number(finalCalc.final_price_rate.toFixed(2));
 
       const key = `${product.id}-${item.id}`;
       const cartState = cartWishlistMap[key] || {
@@ -1461,6 +1486,7 @@ const getProductsForWebsiteList = async (req, res) => {
 
       const productEntry = {
         id: product.id,
+        product_item_id: item.id,
         product_code: product.product_code,
         product_name: product.product_name,
         image_urls: product.image_urls,
@@ -1470,18 +1496,18 @@ const getProductsForWebsiteList = async (req, res) => {
         subcategory_id: product.subcategory_id,
         subcategory_name: product.subcategory_name,
         product_type: product.product_type,
-        product_item_id: item.id,
-        selling_price: finalPrice,
+        selling_price: basePriceDisplay,
+        final_price: finalPriceDisplay,
         order_item_type: cartState.order_item_type,
         is_wishlisted: cartState.is_wishlisted,
         is_in_cart: cartState.is_in_cart,
         variants: variantMap[product.id] || [],
       };
 
-      // Keep highest priced item
+      // Still use base selling_price to pick highest per product
       if (
         !productMap.has(product.id) ||
-        productMap.get(product.id).selling_price < finalPrice
+        productMap.get(product.id).selling_price < basePriceDisplay
       ) {
         productMap.set(product.id, productEntry);
       }
@@ -1489,15 +1515,12 @@ const getProductsForWebsiteList = async (req, res) => {
 
     let result = Array.from(productMap.values());
 
-    // Price sorting
+    // Sorting based on base selling_price
     if (sort_by === "price_low_to_high") {
       result.sort((a, b) => a.selling_price - b.selling_price);
     } else if (sort_by === "price_high_to_low") {
       result.sort((a, b) => b.selling_price - a.selling_price);
     }
-
-    // Remove internal fields
-    result = result.map(({ created_at, ...rest }) => rest);
 
     return res.status(200).json({
       statusCode: 200,
