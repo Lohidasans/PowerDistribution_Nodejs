@@ -71,7 +71,7 @@ const createOldJewel = async (req, res) => {
 
 const getAllOldJewels = async (req, res) => {
   try {
-    const { old_jewel_code } = req.query;
+    const { old_jewel_code, status } = req.query;
 
     const replacements = {};
     let whereSql = `oj.deleted_at IS NULL`;
@@ -79,6 +79,11 @@ const getAllOldJewels = async (req, res) => {
     if (old_jewel_code) {
       whereSql += ` AND oj.old_jewel_code = :old_jewel_code`;
       replacements.old_jewel_code = old_jewel_code;
+    }
+
+    if (status) {
+      whereSql += ` AND oj.status = :status`;
+      replacements.status = status;
     }
 
     // 1️. Fetch old jewels with employee & customer info
