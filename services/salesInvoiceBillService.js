@@ -388,6 +388,7 @@ const listSalesInvoices = async (req, res) => {
       SELECT
         i.*,
         e.employee_name as sales_person_name,
+        e.employee_no as sales_person_code,
 
         -- Customer details
         c.customer_name,
@@ -606,7 +607,6 @@ const listSalesInvoices = async (req, res) => {
     return commonService.handleError(res, err);
   }
 };
-
 
 // Delete (soft)
 const deleteSalesInvoice = async (req, res) => {
