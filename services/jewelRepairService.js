@@ -195,6 +195,7 @@ const getAllJewelRepairs = async (req, res) => {
       `SELECT
         jr.*,
         e.employee_name AS employee_name,
+        e.employee_no AS employee_code,
 
         -- Customer details
         c.customer_name AS customer_name,
