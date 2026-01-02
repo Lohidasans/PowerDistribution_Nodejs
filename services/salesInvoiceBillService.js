@@ -216,7 +216,7 @@ const createSalesInvoice = async (req, res) => {
 
     // Create invoice items
     const withFK = itemRows.map(row => ({ ...row, invoice_bill_id: bill.id }));
-    await models.SalesInvoiceBillItem.bulkCreate(withFK, { transaction: t });
+    const savedItems = await models.SalesInvoiceBillItem.bulkCreate(withFK, { transaction: t, returning: true });
 
     // Update customer PAN
     if (req.body.customer?.pan_no && header.customer_id) {
@@ -256,7 +256,7 @@ const createSalesInvoice = async (req, res) => {
     return commonService.createdResponse(res, {
       message: enMessage.billing.invoiceCreationSuccess,
       invoice: bill,
-      items: withFK,
+      items: savedItems,
       payments: savedPayments,
       adjustment: savedAdjustments,
     });
@@ -708,7 +708,6 @@ const updateSalesInvoice = async (req, res) => {
     const { header = {}, items = [], payment = [], adjustments = [] } = req.body || {};
 
     // 1. FETCH & VALIDATE INVOICE
-
     const invoice = await models.SalesInvoiceBill.findByPk(invoiceId, {
       transaction: t,
     });
@@ -803,13 +802,33 @@ const updateSalesInvoice = async (req, res) => {
       if (total < 0) total = 0;
     }
 
-    // 5 CALCULATE TOTAL PAID & REFUND
-    const totalPaid = Array.isArray(payment)
-      ? payment.reduce(
-        (sum, p) => sum + (Number(p.amount_received) || 0),
-        0
-      )
-      : 0;
+    // 5. PAYMENT PROCESSING & CASH VALIDATION
+    const incomingPayments = Array.isArray(payment) ? payment : [];
+
+    // Fetch existing payments
+    const existingPayments = await models.Payment.findAll({
+      where: { invoice_bill_id: invoice.id },
+      attributes: ['id', 'payment_mode', 'amount_received'],
+      transaction: t,
+    });
+
+    // Combine existing + incoming (excluding deleted ones)
+    const allPayments = [
+      ...existingPayments.map(p => ({
+        id: p.id,
+        payment_mode: p.payment_mode,
+        amount_received: Number(p.amount_received),
+      })),
+      ...incomingPayments
+        .filter(p => p.payment_mode)
+        .map(p => ({
+          id: p.id || null,
+          payment_mode: p.payment_mode,
+          amount_received: Number(p.amount_received || 0),
+        })),
+    ];
+
+    const totalPaid = allPayments.reduce((sum, p) => sum + p.amount_received, 0);
 
     let refundAmount = 0;
     let amountDue = total;
@@ -818,9 +837,19 @@ const updateSalesInvoice = async (req, res) => {
       refundAmount = totalPaid - total;
       amountDue = 0;
     } else {
-      refundAmount = 0;
       amountDue = total - totalPaid;
     }
+
+    // === PAN CARD VALIDATION: Total CASH ≥ ₹2 Lakh ===
+    const totalCashReceived = allPayments
+      .filter(p => p.payment_mode?.toLowerCase() === 'cash')
+      .reduce((sum, p) => sum + p.amount_received, 0);
+
+    if (totalCashReceived >= 200000) {
+      await t.rollback();
+      return commonService.badRequest(res, enMessage.billing.panCardRequired);
+    }
+    // === END VALIDATION ===
 
     // 6. UPDATE INVOICE HEADER
     await invoice.update(
@@ -848,25 +877,16 @@ const updateSalesInvoice = async (req, res) => {
     );
 
     // 7. UPSERT INVOICE ITEM DETAILS
-    const existingItems = await models.SalesInvoiceBillItem.findAll({
-      where: { invoice_bill_id: invoice.id },
-      transaction: t,
-    });
+    const payloadItemIds = itemRows.filter(i => i.id).map(i => i.id);
 
-    const payloadItemIds = itemRows
-      .filter(i => i.id)
-      .map(i => i.id);
-
-    // DELETE omitted items
     await models.SalesInvoiceBillItem.destroy({
       where: {
         invoice_bill_id: invoice.id,
-        id: { [Op.notIn]: payloadItemIds },
+        id: { [Op.notIn]: payloadItemIds.length > 0 ? payloadItemIds : [0] },
       },
       transaction: t,
     });
 
-    // UPSERT
     for (const row of itemRows) {
       if (row.id) {
         await models.SalesInvoiceBillItem.update(row, {
@@ -882,29 +902,20 @@ const updateSalesInvoice = async (req, res) => {
     }
 
     // 8. UPSERT PAYMENTS
-    const existingPayments = await models.Payment.findAll({
-      where: { invoice_bill_id: invoice.id },
-      transaction: t,
-    });
+    const payloadPaymentIds = incomingPayments.filter(p => p.id).map(p => p.id);
 
-    const payloadPaymentIds = payment
-      .filter(p => p.id)
-      .map(p => p.id);
-
-    // delete omitted payments
     await models.Payment.destroy({
       where: {
         invoice_bill_id: invoice.id,
-        id: { [Op.notIn]: payloadPaymentIds },
+        id: { [Op.notIn]: payloadPaymentIds.length > 0 ? payloadPaymentIds : [0] },
       },
       transaction: t,
     });
 
-    // upsert
-    for (const p of payment) {
+    for (const p of incomingPayments) {
       const data = {
         payment_mode: p.payment_mode,
-        amount_received: p.amount_received,
+        amount_received: Number(p.amount_received || 0),
         payment_date: p.payment_date || new Date(),
         transaction_id: p.transaction_id || null,
         status: "Completed",
@@ -924,26 +935,16 @@ const updateSalesInvoice = async (req, res) => {
     }
 
     // 9. UPSERT ADJUSTMENTS
-    const existingAdjustments =
-      await models.SalesInvoiceAdjustment.findAll({
-        where: { sales_invoice_id: invoice.id },
-        transaction: t,
-      });
+    const payloadAdjIds = adjustments.filter(a => a.id).map(a => a.id);
 
-    const payloadAdjIds = adjustments
-      .filter(a => a.id)
-      .map(a => a.id);
-
-    // delete
     await models.SalesInvoiceAdjustment.destroy({
       where: {
         sales_invoice_id: invoice.id,
-        id: { [Op.notIn]: payloadAdjIds },
+        id: { [Op.notIn]: payloadAdjIds.length > 0 ? payloadAdjIds : [0] },
       },
       transaction: t,
     });
 
-    // upsert
     for (const adj of adjustments) {
       const data = {
         adjustment_type_id: adj.adjustment_type_id,
@@ -965,17 +966,15 @@ const updateSalesInvoice = async (req, res) => {
       }
     }
 
-    // FINALIZE SIDE EFFECTS (ONLY IF INVOICE)
+    // FINALIZE SIDE EFFECTS (ONLY IF STATUS = "Invoice")
     if (status === "Invoice") {
-
       // Reduce stock
       for (const item of items) {
         if (item.product_item_detail_id && item.quantity > 0) {
-          const productItemDetail =
-            await models.ProductItemDetail.findByPk(
-              item.product_item_detail_id,
-              { transaction: t }
-            );
+          const productItemDetail = await models.ProductItemDetail.findByPk(
+            item.product_item_detail_id,
+            { transaction: t }
+          );
 
           if (!productItemDetail) {
             await t.rollback();
@@ -985,8 +984,7 @@ const updateSalesInvoice = async (req, res) => {
             );
           }
 
-          const newQty =
-            productItemDetail.quantity - Number(item.quantity);
+          const newQty = productItemDetail.quantity - Number(item.quantity);
 
           if (newQty < 0) {
             await t.rollback();
@@ -1005,16 +1003,18 @@ const updateSalesInvoice = async (req, res) => {
 
       // Lock adjustments
       for (const adj of adjustments) {
-        if (adj.adjustment_type_id === 1) {
-          await models.SalesReturn.update(
-            { is_bill_adjusted: true },
-            { where: { id: adj.reference_id }, transaction: t }
-          );
-        } else if (adj.adjustment_type_id === 2) {
-          await models.OldJewel.update(
-            { is_bill_adjusted: true },
-            { where: { id: adj.reference_id }, transaction: t }
-          );
+        if (adj.reference_id) {
+          if (adj.adjustment_type_id === 1) {
+            await models.SalesReturn.update(
+              { is_bill_adjusted: true },
+              { where: { id: adj.reference_id }, transaction: t }
+            );
+          } else if (adj.adjustment_type_id === 2) {
+            await models.OldJewel.update(
+              { is_bill_adjusted: true },
+              { where: { id: adj.reference_id }, transaction: t }
+            );
+          }
         }
       }
     }
