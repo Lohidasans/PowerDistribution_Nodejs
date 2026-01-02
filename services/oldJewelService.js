@@ -109,12 +109,12 @@ const getAllOldJewels = async (req, res) => {
     // 2️. Fetch all items for these jewels
     const jewelIds = jewels.map(j => j.id);
     const items = await sequelize.query(
-      `
-      SELECT *
-      FROM old_jewel_items
-      WHERE deleted_at IS NULL
-        AND old_jewel_id IN (:jewelIds)
-      ORDER BY old_jewel_id ASC, id ASC
+    `SELECT oji.*, mt.material_type
+      FROM old_jewel_items oji
+      LEFT JOIN "materialTypes" mt ON mt.id = oji.material_type_id AND mt.deleted_at IS NULL
+      WHERE oji.deleted_at IS NULL
+        AND oji.old_jewel_id IN (:jewelIds)
+      ORDER BY oji.old_jewel_id ASC, oji.id ASC
       `,
       {
         replacements: { jewelIds },

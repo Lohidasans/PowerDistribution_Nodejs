@@ -279,10 +279,11 @@ const getAllJewelRepairs = async (req, res) => {
       // Fetch repair items
       sequelize.query(
         `SELECT
-          jri.*,
+          jri.*, material_type,
           p.product_name
         FROM jewel_repair_items jri
         LEFT JOIN products p ON p.id = jri.product_id
+        LEFT JOIN "materialTypes" mt ON mt.id = jri.material_type_id AND mt.deleted_at IS NULL
         WHERE jri.repair_id IN (:repairIds)`,
         {
           replacements: { repairIds },
