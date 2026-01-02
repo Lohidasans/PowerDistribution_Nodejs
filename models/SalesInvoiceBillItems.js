@@ -60,6 +60,11 @@ module.exports = (sequelize, DataTypes) => {
                 allowNull: false,
                 defaultValue: 0,
             },
+            is_returned: {
+                type: DataTypes.BOOLEAN,
+                allowNull: false,
+                defaultValue: false,
+            },
         },
         {
             timestamps: true,

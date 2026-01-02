@@ -624,7 +624,6 @@ const searchInvoices = async (req, res) => {
       });
       customerIds = customers.map(c => c.id);
 
-      // If no customers found with this mobile number
       if (customerIds.length === 0) {
         return commonService.okResponse(res, {
           count: 0,
@@ -642,7 +641,6 @@ const searchInvoices = async (req, res) => {
       };
     }
 
-    // Add customer IDs to where condition if mobile number was provided
     if (customerIds.length > 0) {
       whereCondition.customer_id = {
         [Op.in]: customerIds
@@ -676,8 +674,12 @@ const searchInvoices = async (req, res) => {
           where: { invoice_bill_id: invoice.id },
           raw: true
         }),
+        // ← ONLY NON-RETURNED ITEMS
         models.SalesInvoiceBillItem.findAll({
-          where: { invoice_bill_id: invoice.id },
+          where: {
+            invoice_bill_id: invoice.id,
+            is_returned: false  // ← This filters out returned items
+          },
           raw: true
         })
       ]);
@@ -691,10 +693,14 @@ const searchInvoices = async (req, res) => {
       };
     }));
 
+    // Optional: filter out invoices that have no items after excluding returned ones
+    const filteredResult = result.filter(r => r.items.length > 0);
+
     return commonService.okResponse(res, {
-      count: result.length,
-      invoices: result
+      count: filteredResult.length,
+      invoices: filteredResult
     });
+
   } catch (error) {
     console.error('Error searching invoices:', error);
     return commonService.handleError(res, error);

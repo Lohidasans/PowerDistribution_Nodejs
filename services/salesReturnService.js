@@ -26,7 +26,7 @@ const createSalesReturn = async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const { header = {}, items = [] } = req.body || {};
-    
+
     if (!Array.isArray(items) || items.length === 0) {
       await t.rollback();
       return commonService.badRequest(res, "At least one item is required");
@@ -35,14 +35,15 @@ const createSalesReturn = async (req, res) => {
     // Calculate totals
     let subtotal = 0;
     let totalQty = 0;
-    
+
     const itemRows = items.map((it) => {
       const qty = Number(it.quantity || 0);
       const rate = Number(it.rate || 0);
       const amount = Number(it.amount != null ? it.amount : qty * rate);
+
       subtotal += amount;
       totalQty += qty;
-      
+
       return {
         product_id: it.product_id,
         product_item_detail_id: it.product_item_detail_id || null,
@@ -53,7 +54,9 @@ const createSalesReturn = async (req, res) => {
         gross_weight: it.gross_weight || null,
         quantity: qty,
         rate,
-        amount
+        amount,
+        invoice_date: it.invoice_date || null,
+        invoice_no: it.invoice_no || null,
       };
     });
 
@@ -83,16 +86,50 @@ const createSalesReturn = async (req, res) => {
     );
 
     // Create sales return items
-    const withFK = itemRows.map((row) => ({ ...row, sales_return_id: salesReturn.id }));
-    const createdItems = await models.SalesReturnItem.bulkCreate(withFK, { 
-      transaction: t, 
-      returning: true 
+    const withFK = itemRows.map((row) => ({
+      ...row,
+      sales_return_id: salesReturn.id,
+    }));
+
+    const createdItems = await models.SalesReturnItem.bulkCreate(withFK, {
+      transaction: t,
+      returning: true,
     });
 
+    // === UPDATE ORIGINAL INVOICE ITEMS: is_returned = true (per item) ===
+    for (const item of createdItems) {
+      const originalInvoiceNo = items.find(
+        orig => orig.product_item_detail_id === item.product_item_detail_id
+      )?.invoice_no;
+
+      if (originalInvoiceNo && item.product_item_detail_id) {
+        // Find the original invoice by invoice_no
+        const originalInvoice = await models.SalesInvoiceBill.findOne({
+          where: { invoice_no: originalInvoiceNo },
+          transaction: t,
+        });
+
+        if (originalInvoice) {
+          await models.SalesInvoiceBillItem.update(
+            { is_returned: true },
+            {
+              where: {
+                invoice_bill_id: originalInvoice.id,
+                product_item_detail_id: item.product_item_detail_id,
+              },
+              transaction: t,
+            }
+          );
+        }
+      }
+    }
+    // === END UPDATE ===
+
     await t.commit();
-    return commonService.createdResponse(res, { 
-      sales_return: salesReturn, 
-      items: createdItems 
+
+    return commonService.createdResponse(res, {
+      sales_return: salesReturn,
+      items: createdItems,
     });
   } catch (err) {
     await t.rollback();
