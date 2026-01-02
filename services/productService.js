@@ -632,17 +632,6 @@ const deleteProduct = async (req, res) => {
       transaction: t,
     });
 
-    // Block delete if ANY quantity > 0
-    // const hasStock = itemDetails.some((i) => Number(i.quantity) > 0);
-
-    // if (hasStock) {
-    //   await t.rollback();
-    //   return commonService.badRequest(
-    //     res,
-    //     "Cannot delete product. Quantity is not zero for all item details."
-    //   );
-    // }
-
     // Delete Additional Details (soft)
     await models.ProductAdditionalDetail.destroy({
       where: { product_id: productId },
@@ -1725,6 +1714,91 @@ const calculateFinalPriceRate = (product, item, materialPrice) => {
   };
 };
 
+const getDeletedProducts = async (req, res) => {
+  try {
+    // 1. Get deleted products
+    const deletedProducts = await models.Product.findAll({
+      paranoid: false,
+      where: {
+        deleted_at: { [Op.ne]: null }
+      },
+      order: [['deleted_at', 'DESC']]
+    });
+
+    if (!deletedProducts.length) {
+      return commonService.okResponse(res, { products: [] });
+    }
+
+    const productIds = deletedProducts.map(p => p.id);
+    const grnIds = deletedProducts
+      .map(p => p.grn_id)
+      .filter(id => id);
+
+    const refNoIds = deletedProducts
+      .map(p => p.ref_no_id)
+      .filter(id => id);
+
+    // 2. Get deleted product item details
+    const deletedItemDetails = await models.ProductItemDetail.findAll({
+      paranoid: false,
+      where: {
+        product_id: productIds,
+        deleted_at: { [Op.ne]: null }
+      }
+    });
+
+    // 3. Get GRN numbers
+    const grns = grnIds.length
+      ? await models.Grn.findAll({
+        where: { id: grnIds },
+        attributes: ['id', 'grn_no']
+      })
+      : [];
+
+    // 4. Get REF numbers from GRN Items
+    const grnItems = refNoIds.length
+      ? await models.GrnItem.findAll({
+        where: { id: refNoIds },
+        attributes: ['id', 'ref_no']
+      })
+      : [];
+
+    // 5. Create lookup maps
+    const itemDetailsMap = {};
+    deletedItemDetails.forEach(item => {
+      if (!itemDetailsMap[item.product_id]) {
+        itemDetailsMap[item.product_id] = [];
+      }
+      itemDetailsMap[item.product_id].push(item.toJSON());
+    });
+
+    const grnMap = {};
+    grns.forEach(grn => {
+      grnMap[grn.id] = grn.grn_no;
+    });
+
+    const refNoMap = {};
+    grnItems.forEach(item => {
+      refNoMap[item.id] = item.ref_no;
+    });
+
+    // 6. Final response mapping
+    const response = deletedProducts.map(product => ({
+      ...product.toJSON(),
+      grn_no: grnMap[product.grn_id] || null,
+      ref_no: refNoMap[product.ref_no_id] || null,
+      item_details: itemDetailsMap[product.id] || []
+    }));
+
+    return commonService.okResponse(res, {
+      products: response
+    });
+
+  } catch (err) {
+    console.error('getDeletedProducts error:', err);
+    return commonService.handleError(res, err);
+  }
+};
 
 module.exports = {
   createProductSKUCode,
@@ -1742,5 +1816,6 @@ module.exports = {
   calculateSellingPrice,
   getProductsForWebsiteList,
   getProductIdBySku,
-  calculateFinalPriceRate
+  calculateFinalPriceRate,
+  getDeletedProducts
 };
