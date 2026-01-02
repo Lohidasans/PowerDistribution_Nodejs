@@ -66,6 +66,10 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.TEXT,
         allowNull: true,
       },
+      amount_in_words: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
       status_id: {
         type: DataTypes.INTEGER,
         allowNull: false,

@@ -262,13 +262,13 @@ const getAllPurchaseReturns = async (req, res) => {
         COALESCE(SUM(pri.quantity), 0) AS quantity,
         COALESCE(SUM(pri.weight), 0) AS weight,
         COALESCE(SUM(pri.amount), 0) AS total_amount,
-        u.email as created_by
+        u.email_id as created_by
       FROM purchase_returns pr
       ${joinVendors}
       LEFT JOIN purchase_return_items pri ON pri.pr_id = pr.id AND pri.deleted_at IS NULL
-      LEFT JOIN users u ON u.id = pr.order_by_user_id
+      LEFT JOIN superadmin_profiles u ON u.id = pr.order_by_user_id
       ${whereSql}
-      GROUP BY pr.id, v.vendor_name, v.id, v.vendor_image_url, u.email
+      GROUP BY pr.id, v.vendor_name, v.id, v.vendor_image_url, u.email_id
       ORDER BY pr.pr_date DESC, pr.id DESC
       LIMIT :limit OFFSET :offset;
     `;
