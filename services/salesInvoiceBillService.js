@@ -533,15 +533,43 @@ const listSalesInvoices = async (req, res) => {
       type: sequelize.QueryTypes.SELECT
     });
 
+    // Remaining quantity logic - Extract all product_item_detail_ids
+    const productItemDetailIds = invoices
+      .flatMap(inv =>
+        (typeof inv.invoice_items === "string"
+          ? JSON.parse(inv.invoice_items)
+          : inv.invoice_items || [])
+          .map(item => item.product_item_detail_id)
+      )
+      .filter(Boolean);
+
+    // Fetch current stock from ProductItemDetails
+    const productItems = productItemDetailIds.length ? await sequelize.query(`SELECT id, sku_id, quantity FROM "productItemDetails" WHERE id IN (:ids)`,
+    {
+      replacements: { ids: productItemDetailIds },
+      type: sequelize.QueryTypes.SELECT
+    }) : [];
+
+    // Create lookup map
+    const productItemMap = productItems.reduce((acc, row) => {
+      acc[row.id] = {
+        sku_id: row.sku_id,
+        quantity: row.quantity
+      };
+      return acc;
+    }, {});
+
     // Format the response
     const formattedInvoices = invoices.map(invoice => {
       const totalPaid = parseFloat(invoice.total_paid_amount || 0);
       const totalAfterAdjustment = parseFloat(invoice.total_amount || 0);
       const totalAdjustment = parseFloat(invoice.total_adjustment_amount || 0);
-
       const totalBeforeAdjustment = totalAfterAdjustment + totalAdjustment;
-
       const amountDue = totalAfterAdjustment - totalPaid;
+      const invoiceItems =
+        typeof invoice.invoice_items === "string"
+          ? JSON.parse(invoice.invoice_items)
+          : invoice.invoice_items || [];
 
       return {
         ...invoice,
@@ -551,10 +579,11 @@ const listSalesInvoices = async (req, res) => {
         total_paid_amount: totalPaid.toFixed(2),
         amount_due: amountDue.toFixed(2),
 
-        invoice_items:
-          typeof invoice.invoice_items === "string"
-            ? JSON.parse(invoice.invoice_items)
-            : invoice.invoice_items || [],
+        invoice_items: invoiceItems.map(item => ({
+          ...item,
+          remaining_quantity: productItemMap[item.product_item_detail_id]?.quantity ?? 0,
+          product_item_sku_id: productItemMap[item.product_item_detail_id]?.sku_id ?? null
+        })),
 
         bill_adjustments:
           typeof invoice.bill_adjustments === "string"
