@@ -677,6 +677,7 @@ const getAllProductDetails = async (req, res) => {
       grn_id,
       ref_no_id,
       search,
+      branch_id,
       variant_type_ids,
       stock, // NEW PARAM
       page,
@@ -705,6 +706,11 @@ const getAllProductDetails = async (req, res) => {
     if (category_id) {
       whereClause += ` AND p.category_id = :category_id`;
       replacements.category_id = +category_id;
+    }
+
+    if (branch_id) {
+      whereClause += ` AND p.branch_id = :branch_id`;
+      replacements.branch_id = +branch_id;
     }
 
     if (subcategory_id) {
@@ -749,6 +755,7 @@ const getAllProductDetails = async (req, res) => {
           p.product_type::text ILIKE :like OR
           p.variation_type::text ILIKE :like OR
           mt.material_type ILIKE :like OR
+          b.branch_name ILIKE :like OR
           g.grn_no ILIKE :like OR
           gi.ref_no ILIKE :like
         )
@@ -823,6 +830,7 @@ const getAllProductDetails = async (req, res) => {
         COALESCE(SUM(COALESCE(pid.quantity, 0) * COALESCE(pid.net_weight, 0)), 0) AS total_weight,
         COUNT(DISTINCT pid.id) AS variation_count,
         p.branch_id,
+        b.branch_name,
         p.sku_id,
         p.hsn_code,
         p.purity,
@@ -842,13 +850,14 @@ const getAllProductDetails = async (req, res) => {
       LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
       LEFT JOIN categories ct ON ct.id = p.category_id
       LEFT JOIN subcategories sc ON sc.id = p.subcategory_id
+      LEFT JOIN branches b ON b.id = p.branch_id
       ${whereClause}
       GROUP BY
         p.id, mt.material_type, mt.material_price,
         ct.category_name, ct.category_image_url,
         sc.subcategory_name,
         g.grn_no, g.grn_date, g.total_gross_wt_in_g, g.total_amount,
-        gi.ref_no, gi.gross_wt_in_g, gi.net_wt_in_g, gi.quantity, gi.type
+        gi.ref_no, gi.gross_wt_in_g, b.branch_name, gi.net_wt_in_g, gi.quantity, gi.type
       ORDER BY p.id DESC
     `;
 
