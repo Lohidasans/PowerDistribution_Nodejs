@@ -1716,82 +1716,150 @@ const calculateFinalPriceRate = (product, item, materialPrice) => {
 
 const getDeletedProducts = async (req, res) => {
   try {
-    // 1. Get deleted products
-    const deletedProducts = await models.Product.findAll({
-      paranoid: false,
-      where: {
-        deleted_at: { [Op.ne]: null }
-      },
-      order: [['deleted_at', 'DESC']]
-    });
+    const {
+      search,
+      branch_id,
+      grn_id,
+      category_id,
+      subcategory_id,
+      material_type_id,
+      ref_no_id,
+      page = 1,
+      limit = 10,
+    } = req.query;
 
-    if (!deletedProducts.length) {
-      return commonService.okResponse(res, { products: [] });
+    const parsedPage = parseInt(page, 10);
+    const parsedLimit = parseInt(limit, 10);
+    const offset = (parsedPage - 1) * parsedLimit;
+
+    // Parameters for bindings
+    let bindings = [];
+    let paramIndex = 1;
+
+    // Build WHERE clauses
+    const whereClauses = ['p.deleted_at IS NOT NULL'];
+
+    if (branch_id) whereClauses.push(`p.branch_id = $${paramIndex++}`);
+    if (grn_id) whereClauses.push(`p.grn_id = $${paramIndex++}`);
+    if (category_id) whereClauses.push(`p.category_id = $${paramIndex++}`);
+    if (subcategory_id) whereClauses.push(`p.subcategory_id = $${paramIndex++}`);
+    if (material_type_id) whereClauses.push(`p.material_type_id = $${paramIndex++}`);
+    if (ref_no_id) whereClauses.push(`p.ref_no_id = $${paramIndex++}`);
+
+    // Add bindings for filters
+    if (branch_id) bindings.push(branch_id);
+    if (grn_id) bindings.push(grn_id);
+    if (category_id) bindings.push(category_id);
+    if (subcategory_id) bindings.push(subcategory_id);
+    if (material_type_id) bindings.push(material_type_id);
+    if (ref_no_id) bindings.push(ref_no_id);
+
+    // Search handling with single parameter reused
+    let searchClause = '';
+    if (search) {
+      const searchParam = `%${search.trim()}%`;
+      bindings.push(searchParam); // This will be $n where n = current paramIndex
+      const searchPlaceholder = `$${paramIndex++}`;
+
+      searchClause = `
+        (
+          p.product_name ILIKE ${searchPlaceholder} OR
+          p.description ILIKE ${searchPlaceholder} OR
+          CAST(p.sku_id AS TEXT) ILIKE ${searchPlaceholder} OR
+          CAST(p.hsn_code AS TEXT) ILIKE ${searchPlaceholder} OR
+          CAST(p.purity AS TEXT) ILIKE ${searchPlaceholder} OR
+          CAST(g.grn_no AS TEXT) ILIKE ${searchPlaceholder} OR
+          CAST(gi.ref_no AS TEXT) ILIKE ${searchPlaceholder} OR
+          b.branch_name ILIKE ${searchPlaceholder}
+        )
+      `;
+      whereClauses.push(searchClause);
     }
 
-    const productIds = deletedProducts.map(p => p.id);
-    const grnIds = deletedProducts
-      .map(p => p.grn_id)
-      .filter(id => id);
+    const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
 
-    const refNoIds = deletedProducts
-      .map(p => p.ref_no_id)
-      .filter(id => id);
+    // Queries
+    const countQuery = `
+      SELECT COUNT(*) AS total
+      FROM products p
+      LEFT JOIN grns g ON p.grn_id = g.id
+      LEFT JOIN "grnItems" gi ON p.ref_no_id = gi.id
+      LEFT JOIN branches b ON p.branch_id = b.id
+      ${whereSql}
+    `;
 
-    // 2. Get deleted product item details
+    const dataQuery = `
+      SELECT 
+        p.*,
+        g.grn_no,
+        gi.ref_no,
+        b.branch_name
+      FROM products p
+      LEFT JOIN grns g ON p.grn_id = g.id
+      LEFT JOIN "grnItems" gi ON p.ref_no_id = gi.id
+      LEFT JOIN branches b ON p.branch_id = b.id
+      ${whereSql}
+      ORDER BY p.deleted_at DESC
+      LIMIT $${paramIndex++} OFFSET $${paramIndex++}
+    `;
+
+    // Add limit and offset to bindings
+    bindings.push(parsedLimit, offset);
+
+    // Execute queries with proper bindings
+    const [[{ total }], productsResult] = await Promise.all([
+      sequelize.query(countQuery, {
+        bind: bindings.slice(0, -2), // exclude limit/offset from count query
+        type: sequelize.QueryTypes.SELECT,
+      }),
+      sequelize.query(dataQuery, {
+        bind: bindings,
+        type: sequelize.QueryTypes.SELECT,
+      }),
+    ]);
+
+    if (!productsResult.length) {
+      return commonService.okResponse(res, {
+        products: [],
+        pagination: {
+          total: 0,
+          page: parsedPage,
+          limit: parsedLimit,
+          total_pages: 0,
+        },
+      });
+    }
+
+    const productIds = productsResult.map(p => p.id);
+
     const deletedItemDetails = await models.ProductItemDetail.findAll({
       paranoid: false,
       where: {
         product_id: productIds,
-        deleted_at: { [Op.ne]: null }
-      }
+        deleted_at: { [Op.ne]: null },
+      },
+      raw: true,
     });
 
-    // 3. Get GRN numbers
-    const grns = grnIds.length
-      ? await models.Grn.findAll({
-        where: { id: grnIds },
-        attributes: ['id', 'grn_no']
-      })
-      : [];
+    const itemDetailsMap = deletedItemDetails.reduce((map, item) => {
+      if (!map[item.product_id]) map[item.product_id] = [];
+      map[item.product_id].push(item);
+      return map;
+    }, {});
 
-    // 4. Get REF numbers from GRN Items
-    const grnItems = refNoIds.length
-      ? await models.GrnItem.findAll({
-        where: { id: refNoIds },
-        attributes: ['id', 'ref_no']
-      })
-      : [];
-
-    // 5. Create lookup maps
-    const itemDetailsMap = {};
-    deletedItemDetails.forEach(item => {
-      if (!itemDetailsMap[item.product_id]) {
-        itemDetailsMap[item.product_id] = [];
-      }
-      itemDetailsMap[item.product_id].push(item.toJSON());
-    });
-
-    const grnMap = {};
-    grns.forEach(grn => {
-      grnMap[grn.id] = grn.grn_no;
-    });
-
-    const refNoMap = {};
-    grnItems.forEach(item => {
-      refNoMap[item.id] = item.ref_no;
-    });
-
-    // 6. Final response mapping
-    const response = deletedProducts.map(product => ({
-      ...product.toJSON(),
-      grn_no: grnMap[product.grn_id] || null,
-      ref_no: refNoMap[product.ref_no_id] || null,
-      item_details: itemDetailsMap[product.id] || []
+    const response = productsResult.map(product => ({
+      ...product,
+      item_details: itemDetailsMap[product.id] || [],
     }));
 
     return commonService.okResponse(res, {
-      products: response
+      products: response,
+      pagination: {
+        total: parseInt(total),
+        page: parsedPage,
+        limit: parsedLimit,
+        total_pages: Math.ceil(total / parsedLimit),
+      },
     });
 
   } catch (err) {
