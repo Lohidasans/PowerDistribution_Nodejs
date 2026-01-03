@@ -4,9 +4,9 @@ const deleteExpiredOnHoldInvoices = require('./onHoldInvoiceCleanup.job');
 
 console.log("🕒 Scheduler loaded at", new Date());
 
-// Runs every 5 minutes
-cron.schedule('*/5 * * * *', async () => {
-    console.log("🔄 Cron job started at", new Date());
+// Runs once every day at 12:00 AM UTC
+cron.schedule('0 0 * * *', async () => {
+    console.log("🔄 Daily cron job started at", new Date());
     await deleteExpiredOnHoldInvoices();
-    console.log("✅ Cron job finished at", new Date());
+    console.log("✅ Daily cron job finished at", new Date());
 });
