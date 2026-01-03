@@ -678,6 +678,7 @@ const getAllProductDetails = async (req, res) => {
       ref_no_id,
       search,
       variant_type_ids,
+      stock, // NEW PARAM
       page,
       limit
     } = req.query;
@@ -867,11 +868,22 @@ const getAllProductDetails = async (req, res) => {
       variants: row.variants || []
     }));
 
+    // Stock filtering
     if (products.length) {
       const productIds = products.map(p => p.id);
 
+      const itemWhere = { product_id: productIds };
+
+      if (stock === "stock_in_hand") {
+        itemWhere.quantity = { [Op.gt]: 0 };
+      }
+
+      if (stock === "out_of_stock") {
+        itemWhere.quantity = 0;
+      }
+
       const itemDetails = await models.ProductItemDetail.findAll({
-        where: { product_id: productIds },
+        where: itemWhere,
         order: [["id", "ASC"]],
       });
 
@@ -884,16 +896,18 @@ const getAllProductDetails = async (req, res) => {
         : [];
 
       const addsByItem = additionalDetails.reduce((acc, add) => {
-        const key = String(add.item_detail_id);
-        (acc[key] = acc[key] || []).push(add);
+        (acc[add.item_detail_id] ??= []).push(add);
+        return acc;
+      }, {});
+
+      const itemsByProduct = itemDetails.reduce((acc, item) => {
+        (acc[item.product_id] ??= []).push(item);
         return acc;
       }, {});
 
       const itemsWithPrices = await Promise.all(
         products.map(async product => {
-          const productItems = itemDetails.filter(
-            item => item.product_id === product.id
-          );
+          const productItems = itemsByProduct[product.id] || [];
 
           const enrichedItems = await Promise.all(
             productItems.map(async item => {
@@ -906,7 +920,7 @@ const getAllProductDetails = async (req, res) => {
 
               return {
                 ...itemData,
-                additional_details: addsByItem[String(item.id)] || [],
+                additional_details: addsByItem[item.id] || [],
                 price_details: priceDetails,
               };
             })
@@ -919,7 +933,8 @@ const getAllProductDetails = async (req, res) => {
         })
       );
 
-      products = itemsWithPrices;
+      // remove products with no matching items
+      products = itemsWithPrices.filter(p => p.itemDetails.length > 0);
     }
 
     const response = { products };
