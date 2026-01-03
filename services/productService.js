@@ -1868,6 +1868,63 @@ const getDeletedProducts = async (req, res) => {
   }
 };
 
+const getProductStockCounts = async (req, res) => {
+  try {
+    // Get count of products with at least one item in stock (quantity > 0) and total quantity
+    const [stockInHandResult] = await sequelize.query(`
+      SELECT 
+        COUNT(DISTINCT p.id) as product_count,
+        COALESCE(SUM(pid.quantity), 0) as total_quantity
+      FROM "products" p
+      INNER JOIN "productItemDetails" pid ON p.id = pid.product_id
+      WHERE p.deleted_at IS NULL
+      AND pid.quantity > 0
+      AND pid.deleted_at IS NULL
+    `, { type: sequelize.QueryTypes.SELECT });
+
+    // Get count of soft-deleted products
+    const [deletedResult] = await sequelize.query(`
+      SELECT COUNT(*) as count
+      FROM "products" p
+      WHERE p.deleted_at IS NOT NULL
+    `, { type: sequelize.QueryTypes.SELECT });
+
+    // Get count of products where all items are out of stock (quantity = 0)
+    const [soldOutResult] = await sequelize.query(`
+      SELECT COUNT(DISTINCT p.id) as count
+      FROM "products" p
+      WHERE p.deleted_at IS NULL
+      AND NOT EXISTS (
+        SELECT 1 
+        FROM "productItemDetails" pid 
+        WHERE pid.product_id = p.id 
+        AND pid.quantity > 0
+        AND pid.deleted_at IS NULL
+      )
+      AND EXISTS (
+        SELECT 1 
+        FROM "productItemDetails" pid 
+        WHERE pid.product_id = p.id 
+        AND pid.quantity = 0
+        AND pid.deleted_at IS NULL
+      )
+    `, { type: sequelize.QueryTypes.SELECT });
+
+    return commonService.okResponse(res, {
+      stockInHand: {
+        productCount: parseInt(stockInHandResult?.product_count || 0),
+        totalQuantity: parseInt(stockInHandResult?.total_quantity || 0)
+      },
+      deleted: parseInt(deletedResult?.count || 0),
+      soldOut: parseInt(soldOutResult?.count || 0)
+    });
+
+  } catch (error) {
+    console.error('Error in getProductStockCounts:', error);
+    return commonService.handleError(res, error);
+  }
+};
+
 module.exports = {
   createProductSKUCode,
   createProduct,
@@ -1885,5 +1942,6 @@ module.exports = {
   getProductsForWebsiteList,
   getProductIdBySku,
   calculateFinalPriceRate,
-  getDeletedProducts
+  getDeletedProducts,
+  getProductStockCounts
 };
