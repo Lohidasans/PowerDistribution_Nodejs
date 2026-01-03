@@ -30,10 +30,32 @@ module.exports = {
         created_at: new Date(),
         updated_at: new Date(),
       },
+      {
+        entity_type: "branch",
+        entity_id: 1,
+        doc_type: "PAN Card",
+        doc_number: "ABCDE1234F",
+        file_url: "uploads/kyc/branch_pan.pdf",
+        created_at: new Date(),
+        updated_at: new Date(),
+      },
+      {
+        entity_type: "branch",
+        entity_id: 1,
+        doc_type: "GST",
+        doc_number: "33ABCDE1234F1ZP",
+        file_url: "uploads/kyc/branch_gst.pdf",
+        created_at: new Date(),
+        updated_at: new Date(),
+      },
     ]);
   },
 
   async down(queryInterface, Sequelize) {
-    await queryInterface.bulkDelete("kycDocuments", { entity_type: "superadmin" });
+    await queryInterface.bulkDelete("kycDocuments", {
+      entity_type: {
+        [Sequelize.Op.in]: ["superadmin", "branch"],
+      },
+    });
   },
 };
