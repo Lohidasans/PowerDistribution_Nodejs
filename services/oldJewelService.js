@@ -242,6 +242,7 @@ const updateOldJewel = async (req, res) => {
 
       return {
         id: item.id || null,
+        material_type_id: item.material_type_id || null,
         hsn_code: item.hsn_code || null,
         jewel_description: item.jewel_description || null,
         grs_weight: grsWeight,
@@ -292,6 +293,7 @@ const updateOldJewel = async (req, res) => {
       if (row.id) {
         await models.OldJewelItem.update(
           {
+            material_type_id: row.material_type_id,
             hsn_code: row.hsn_code,
             jewel_description: row.jewel_description,
             grs_weight: row.grs_weight,
