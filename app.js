@@ -1,4 +1,6 @@
 require("dotenv").config();
+require('./scheduler/scheduler'); // STARTS THE CRON JOB
+
 const express = require("express");
 const cors = require("cors");
 const bodyParser = require("body-parser");
@@ -27,7 +29,7 @@ sequelize
     return sequelize.sync({ alter: false }); // Sync based on the models
   })
   .then(() => {
-    console.log('Database synchronized succesfully!.');
+    console.log('Database synchronized successfully!');
   })
   .catch((error) => {
     console.error('Unable to connect to the database:', error);
