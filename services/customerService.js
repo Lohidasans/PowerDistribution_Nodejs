@@ -149,6 +149,24 @@ const updateCustomer = async (req, res) => {
         });
       }
     }
+
+    // Validate mobile number uniqueness (NEW — same as create)
+    if (req.body.mobile_number && req.body.mobile_number !== entity.mobile_number) {
+      const existingMobile = await models.Customer.findOne({
+        where: {
+          mobile_number: req.body.mobile_number,
+          deleted_at: null,
+          id: { [Op.ne]: entity.id }, // exclude current customer
+        },
+      });
+
+      if (existingMobile) {
+        return commonService.badRequest(res, {
+          message: "Mobile number already exists",
+        });
+      }
+    }
+
     const up = {
       customer_code: req.body.customer_code ?? entity.customer_code,
       customer_name: req.body.customer_name ?? entity.customer_name,
