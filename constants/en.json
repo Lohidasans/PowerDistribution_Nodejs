@@ -69,5 +69,22 @@
     "alreadyExists": "Applicable type with this name already exists",
     "duplication": "Duplicate entry for offer applicable type",
     "notFound": "Offer applicable type not found"
+  }, 
+  "auth": {
+    "invalidCredentials": "Invalid email or password.",
+    "userNotActive": "User account is not active.",
+    "emailPasswordRequired": "Email and password are required.",
+    "loginSuccess": "Login successful.",
+    "emailRequired": "Email is required.",
+    "passwordRequired": "Password is required.",
+    "emailNotFound": "Email not found.",
+    "passwordResetLinkSent": "Password reset link has been sent to your email.",
+    "invalidResetToken": "Invalid or expired password reset token.",
+    "allFieldsRequired": "All fields are required.",
+    "passwordResetSuccess": "Password has been reset successfully.",
+    "passwordsDontMatch": "New password and confirm password do not match.",
+    "invalidOrExpiredToken": "Invalid or expired token.",
+    "passwordResetSuccessful": "Password has been reset successfully."
   }
+
 }

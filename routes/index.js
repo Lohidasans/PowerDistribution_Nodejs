@@ -54,6 +54,7 @@ const OfferRoute = require("./offerRoute");
 const OfferPlanRoute = require("./offerPlanRoute");
 const OfferApplicableTypeRoute = require("./offerApplicableTypeRoute");
 const MaintenanceRoute = require("./maintenanceRoute");
+const AuthRoute = require("./authRoute");
 
 module.exports = (app) => {
   app.use("/api/v1", RoleRouter);
@@ -113,4 +114,5 @@ module.exports = (app) => {
   app.use("/api/v1", OfferPlanRoute);
   app.use("/api/v1", OfferApplicableTypeRoute);
   app.use("/api/v1", MaintenanceRoute);
+  app.use("/api/v1", AuthRoute);
 };

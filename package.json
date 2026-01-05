@@ -13,10 +13,12 @@
   "license": "ISC",
   "dependencies": {
     "aws-sdk": "^2.1692.0",
+    "bcrypt": "^6.0.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.6.1",
     "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.3",
     "multer": "^2.0.2",
     "node-cron": "^4.2.1",
     "pg": "^8.13.3",
