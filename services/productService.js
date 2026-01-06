@@ -913,8 +913,27 @@ const getAllProductDetails = async (req, res) => {
     if (products.length) {
       const productIds = products.map((p) => p.id);
 
+      // Fetch item details with correct stock behavior
+      const itemWhere = {
+        product_id: productIds,
+      };
+
+      // DEFAULT behavior (no stock param → hide quantity = 0)
+      if (!stock) {
+        itemWhere.quantity = { [Op.gt]: 0 };
+      }
+
+      // EXISTING behavior (unchanged)
+      if (stock === "stock_in_hand") {
+        itemWhere.quantity = { [Op.gt]: 0 };
+      }
+
+      if (stock === "out_of_stock") {
+        itemWhere.quantity = 0;
+      }
+
       const itemDetails = await models.ProductItemDetail.findAll({
-        where: { product_id: productIds },
+        where: itemWhere,   // USE THE FILTER YOU BUILT
         order: [["id", "ASC"]],
       });
 
