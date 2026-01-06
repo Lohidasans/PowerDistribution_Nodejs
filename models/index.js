@@ -134,8 +134,12 @@ const Leave = require("./leave")(sequelize, Sequelize.DataTypes);
 const SuperAdminProfile = require("./superAdminProfiles")(sequelize, Sequelize.DataTypes);
 const InvoiceSettingEnum = require("./invoiceSettingEnum")(sequelize, Sequelize.DataTypes);
 
+
+// Stock Management related models
 const StockTransfer = require("./stockTransfers")(sequelize, Sequelize.DataTypes);
 const StockTransferItem = require("./stockTransferItems")(sequelize, Sequelize.DataTypes);
+const StockTransferTrackings = require("./stockTransferTrackings")(sequelize, Sequelize.DataTypes);
+const StockTransferStatusHistories = require("./stockTransferStatusHistories")(sequelize, Sequelize.DataTypes);
 
 // Vendor Payment models
 const BillType = require("./billTypes")(sequelize, Sequelize.DataTypes);
@@ -231,6 +235,8 @@ const models = {
   JewelRepairItem,
   StockTransfer,
   StockTransferItem,
+  StockTransferTrackings,
+  StockTransferStatusHistories,
   BillType,
   PaymentMode,
   VendorPayment,

@@ -49,7 +49,7 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: true,
       },
       status_id: {
-        type: DataTypes.INTEGER, // 1- pending, 2 - completed
+        type: DataTypes.INTEGER, // 1- New, 2 - In Progress, 3- Delivered
         allowNull: false,
         defaultValue: 1,
       },
