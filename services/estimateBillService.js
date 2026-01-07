@@ -1,6 +1,7 @@
 const { models, sequelize } = require("../models");
 const commonService = require("./commonService");
 const enMessage = require("../constants/en.json");
+const { Op } = require("sequelize");
 const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
 
 // Generate estimate number (series)
@@ -20,24 +21,95 @@ const generateEstimateNo = async (req, res) => {
   }
 };
 
-// Create estimate (header + items)
 const createEstimate = async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const { header = {}, items = [] } = req.body || {};
+
     if (!Array.isArray(items) || items.length === 0) {
       await t.rollback();
       return commonService.badRequest(res, "At least one item is required");
     }
-    // Totals
+
+    // VALIDATION: product_id & product_item_detail_id
+    const productIds = [
+      ...new Set(items.map((i) => i.product_id).filter(Boolean)),
+    ];
+
+    const itemPairs = items
+      .filter(i => i.product_item_detail_id && i.product_id)
+      .map(i => ({
+        id: i.product_item_detail_id,
+        product_id: i.product_id,
+      }));
+
+    // Validate products
+    if (productIds.length > 0) {
+      const existingProducts = await models.Product.findAll({
+        where: {
+          id: { [Op.in]: productIds },
+          deleted_at: null,
+        },
+        attributes: ["id"],
+        transaction: t,
+      });
+
+      const existingProductIds = existingProducts.map((p) => p.id);
+      const invalidProductIds = productIds.filter(
+        (id) => !existingProductIds.includes(id)
+      );
+
+      if (invalidProductIds.length > 0) {
+        await t.rollback();
+        return commonService.badRequest(
+          res,
+          `Invalid product_id(s): ${invalidProductIds.join(", ")}`
+        );
+      }
+    }
+
+    // Validate product item details
+    if (itemPairs.length > 0) {
+      const existingItems = await models.ProductItemDetail.findAll({
+        where: {
+          deleted_at: null,
+          [Op.or]: itemPairs,
+        },
+        attributes: ["id", "product_id"],
+        transaction: t,
+      });
+
+      const existingPairs = existingItems.map(i =>
+        `${i.id}-${i.product_id}`
+      );
+
+      const invalidPairs = itemPairs.filter(
+        p => !existingPairs.includes(`${p.id}-${p.product_id}`)
+      );
+
+      if (invalidPairs.length > 0) {
+        await t.rollback();
+        return commonService.badRequest(
+          res,
+          `Invalid product_item_detail_id for product_id: ${invalidPairs
+            .map(p => `(product_id: ${p.product_id}, detail_id: ${p.id})`)
+            .join(", ")}`
+        );
+      }
+    }
+
+
     let subtotal = 0;
     let totalQty = 0;
+
     const itemRows = items.map((it) => {
       const qty = Number(it.quantity || 0);
       const rate = Number(it.rate || 0);
       const amount = Number(it.amount != null ? it.amount : qty * rate);
+
       subtotal += amount;
       totalQty += qty;
+
       return {
         product_id: it.product_id,
         product_item_detail_id: it.product_item_detail_id ?? null,
@@ -71,18 +143,18 @@ const createEstimate = async (req, res) => {
         sgst_percent: header.sgst_percent || null,
         cgst_amount: cgstAmt,
         sgst_amount: sgstAmt,
-        total_amount: total, // addition of subtotal + cgst + sgst
+        total_amount: total,
         total_quantity: totalQty,
         status: header.status || "Printed",
       },
       { transaction: t }
     );
 
-    const withFK = itemRows.map((row) => ({ ...row, estimate_bill_id: bill.id }));
-    const createdItems = await models.EstimateBillItem.bulkCreate(withFK, { transaction: t, returning: true });
+    const withFK = itemRows.map((row) => ({ ...row, estimate_bill_id: bill.id,}));
+    const createdItems = await models.EstimateBillItem.bulkCreate(withFK, { transaction: t, returning: true, });
 
     await t.commit();
-    return commonService.createdResponse(res, { estimate: bill, items: createdItems });
+    return commonService.createdResponse(res, { estimate: bill, items: createdItems,});
   } catch (err) {
     await t.rollback();
     return commonService.handleError(res, err);
