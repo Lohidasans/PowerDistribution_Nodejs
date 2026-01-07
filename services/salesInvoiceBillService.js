@@ -633,11 +633,7 @@ const deleteSalesInvoice = async (req, res) => {
 // light search for  - Sales Return Search box
 const searchInvoices = async (req, res) => {
   try {
-    const { invoice_no, mobile_number } = req.query;
-
-    if (!invoice_no && !mobile_number) {
-      return commonService.badRequest(res, 'Either invoice number or mobile number is required');
-    }
+    const { invoice_no, mobile_number, status } = req.query;
 
     // First, find customer IDs if mobile number is provided
     let customerIds = [];
@@ -674,6 +670,10 @@ const searchInvoices = async (req, res) => {
       whereCondition.customer_id = {
         [Op.in]: customerIds
       };
+    }
+
+    if (status) {
+      whereCondition.status = status; 
     }
 
     // Find all matching invoices
