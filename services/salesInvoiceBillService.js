@@ -112,6 +112,8 @@ const createSalesInvoice = async (req, res) => {
       total -= totalAdjustment;
       if (total < 0) total = 0;
     }
+    // Round off total_amount to nearest integer when adjustments exist
+    total = Math.round(total);
 
     // PAYMENT PROCESSING
     const paymentInput = Array.isArray(payment) ? payment : [];
@@ -849,8 +851,10 @@ const updateSalesInvoice = async (req, res) => {
       }
 
       total -= totalAdjustment;
-      if (total < 0) total = 0;
+      if (total < 0) total = 0; 
     }
+    // Round off total_amount to nearest integer when adjustments exist
+    total = Math.round(total);
 
     // 5. PAYMENT PROCESSING & CASH VALIDATION
     const incomingPayments = Array.isArray(payment) ? payment : [];
