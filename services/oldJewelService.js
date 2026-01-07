@@ -381,7 +381,7 @@ const generateOldJewelCode = async (req, res) => {
 const listOldJewelDropdown = async (req, res) => {
   try {
     const { customer_id } = req.query;
-    const where = { is_bill_adjusted: false, };
+    const where = { is_bill_adjusted: false, status: "Printed",};
 
     if (customer_id) {
       where.customer_id = customer_id; // apply filter only if passed
