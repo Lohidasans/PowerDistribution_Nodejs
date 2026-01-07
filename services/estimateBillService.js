@@ -3,6 +3,7 @@ const commonService = require("./commonService");
 const enMessage = require("../constants/en.json");
 const { Op } = require("sequelize");
 const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
+const { validateProductItemDetails, validateProducts } = require('../helpers/billingValidations');
 
 // Generate estimate number (series)
 const generateEstimateNo = async (req, res) => {
@@ -230,72 +231,6 @@ const deleteEstimate = async (req, res) => {
   }
 };
 
-const validateProductItemDetails = async (items, transaction) => {
-  const pairs = items
-      .filter(i => i.product_id && i.product_item_detail_id)
-      .map(i => ({
-          id: i.product_item_detail_id,
-          product_id: i.product_id,
-      }));
-
-  if (pairs.length === 0) return;
-
-  const existing = await models.ProductItemDetail.findAll({
-      where: {
-          deleted_at: null,
-          [Op.or]: pairs,
-      },
-      attributes: ["id", "product_id"],
-      transaction,
-  });
-
-  const existingSet = new Set(
-      existing.map(i => `${i.id}-${i.product_id}`)
-  );
-
-  const invalidPairs = pairs.filter(
-      p => !existingSet.has(`${p.id}-${p.product_id}`)
-  );
-
-  if (invalidPairs.length > 0) {
-    throw new Error(
-      `Invalid product_item_detail_id for product_id: ${invalidPairs
-        .map(p => `(product_id: ${p.product_id}, detail_id: ${p.id})`)
-        .join(", ")}`
-    );
-  }
-};
-
-// Validate the product_id
-const validateProducts = async (items, transaction) => {
-  const productIds = [
-      ...new Set(
-          items
-              .map(i => i.product_id)
-              .filter(id => id !== null && id !== undefined)
-      ),
-  ];
-
-  if (productIds.length === 0) return;
-
-  const existingProducts = await models.Product.findAll({
-      where: {
-          id: { [Op.in]: productIds },
-          deleted_at: null,
-      },
-      attributes: ["id"],
-      transaction,
-  });
-
-  const existingIds = new Set(existingProducts.map(p => p.id));
-
-  const invalidProductIds = productIds.filter(id => !existingIds.has(id));
-
-  if (invalidProductIds.length > 0) {
-    throw new Error(`Invalid product_id(s): ${invalidProductIds.join(", ")}`);
-  }
-};
-
 
 module.exports = {
   generateEstimateNo,
@@ -303,6 +238,4 @@ module.exports = {
   getEstimateById,
   listEstimates,
   deleteEstimate,
-  validateProducts,
-  validateProductItemDetails
 };

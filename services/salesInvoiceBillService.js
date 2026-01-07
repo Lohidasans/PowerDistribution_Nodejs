@@ -2,6 +2,7 @@ const { models, sequelize } = require("../models");
 const commonService = require("./commonService");
 const enMessage = require("../constants/en.json");
 const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
+const { validateProductItemDetails, validateProducts} = require('../helpers/billingValidations');
 const { Op } = require("sequelize");
 
 // Generate invoice number (series)
@@ -46,6 +47,10 @@ const createSalesInvoice = async (req, res) => {
         return commonService.badRequest(res, { message: "Invoice no already exists" });
       }
     }
+
+    // Validate products and stock
+    await validateProducts(items, t);
+    await validateProductItemDetails(items, t);
 
     // Calculate totals
     let subtotal = 0;
@@ -261,7 +266,13 @@ const createSalesInvoice = async (req, res) => {
       adjustment: savedAdjustments,
     });
   } catch (err) {
-    await t.rollback();
+    if (!t.finished) {
+      await t.rollback();
+    }
+    if (err.message.includes('Invalid product_id') ||
+      err.message.includes('Invalid product_item_detail_id')) {
+      return commonService.badRequest(res, err.message);
+    }
     return commonService.handleError(res, err);
   }
 };
@@ -771,6 +782,10 @@ const updateSalesInvoice = async (req, res) => {
       );
     }
 
+    // Validate products and stock
+    await validateProducts(items, t);
+    await validateProductItemDetails(items, t);
+
     // RECALCULATE TOTALS
     let subtotal = 0;
     let totalQty = 0;
@@ -1060,7 +1075,13 @@ const updateSalesInvoice = async (req, res) => {
     });
 
   } catch (err) {
-    await t.rollback();
+    if (!t.finished) {
+      await t.rollback();
+    }
+    if (err.message.includes('Invalid product_id') ||
+      err.message.includes('Invalid product_item_detail_id')) {
+      return commonService.badRequest(res, err.message);
+    }
     return commonService.handleError(res, err);
   }
 };
