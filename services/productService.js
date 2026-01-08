@@ -1005,7 +1005,7 @@ const getAllProductDetails = async (req, res) => {
 
 const searchProductBySkuNew = async (req, res) => {
   try {
-    const { sku, product_name } = req.query;
+    const { sku, product_name, branch_id } = req.query;
 
     const [categories, subcategories, materialTypes] = await Promise.all([
       models.Category.findAll({ raw: true }),
@@ -1026,6 +1026,7 @@ const searchProductBySkuNew = async (req, res) => {
         product_name: product.product_name,
         product_description: product.description,
         product_type: product.product_type,
+        branch_id: product.branch_id,
         category_id: product.category_id,
         category_name: categoryMap.get(product.category_id) || null,
         subcategory_id: product.subcategory_id,
@@ -1035,7 +1036,6 @@ const searchProductBySkuNew = async (req, res) => {
         variation_type: product.variation_type,
         product_variations: product.product_variations,
         purity: product.purity,
-        branch_id: product.branch_id,
         product_id: product.id,
         product_item_details_id: item.id,
         quantity: item.quantity,
@@ -1048,10 +1048,25 @@ const searchProductBySkuNew = async (req, res) => {
       };
     };
 
-    // CASE 1 → No query params
-    if ((!sku || sku.trim() === "") &&
-      (!product_name || product_name.trim() === "")
-    ) {
+    // Build product search condition
+    const productWhere = {};
+
+    if (sku && sku.trim() !== "") {
+      productWhere.sku_id = sku.trim();
+    }
+
+    if (product_name && product_name.trim() !== "") {
+      productWhere.product_name = {
+        [Op.iLike]: `%${product_name.trim()}%`,
+      };
+    }
+
+    if (branch_id && branch_id.trim() !== "") {
+      productWhere.branch_id = Number(branch_id.trim());
+    }
+
+    // CASE 1 → No filters → get all in-stock items
+    if (Object.keys(productWhere).length === 0) {
       const [allProducts, allItems] = await Promise.all([
         models.Product.findAll({ raw: true }),
         models.ProductItemDetail.findAll({
@@ -1073,20 +1088,7 @@ const searchProductBySkuNew = async (req, res) => {
       return commonService.okResponse(res, output.filter(Boolean));
     }
 
-    
-    // Build product search condition
-    const productWhere = {};
-    if (sku && sku.trim() !== "") {
-      productWhere.sku_id = sku;
-    }
-
-    if (product_name && product_name.trim() !== "") {
-      productWhere.product_name = {
-        [Op.iLike]: `%${product_name}%`,
-      };
-    }   
-    
-    // Fetch matching products    
+    // Fetch matching products
     const products = await models.Product.findAll({
       where: productWhere,
       raw: true,
@@ -1100,18 +1102,19 @@ const searchProductBySkuNew = async (req, res) => {
       items = await models.ProductItemDetail.findAll({
         where: {
           product_id: { [Op.in]: productIds },
-          ...(sku ? { sku_id: sku } : {}),
+          ...(sku ? { sku_id: sku.trim() } : {}),
           quantity: { [Op.gt]: 0 },
           is_visible: true,
         },
         raw: true,
       });
     }
-    // Item SKU only (fallback)    
+
+    // Item SKU only (fallback)
     if (items.length === 0 && sku) {
       const itemDetail = await models.ProductItemDetail.findOne({
         where: {
-          sku_id: sku,
+          sku_id: sku.trim(),
           quantity: { [Op.gt]: 0 },
           is_visible: true,
         },
@@ -1119,7 +1122,6 @@ const searchProductBySkuNew = async (req, res) => {
       });
 
       if (itemDetail) {
-      // If item SKU matched, fetch its parent product
         const product = await models.Product.findOne({
           where: { id: itemDetail.product_id },
           raw: true,
@@ -1137,9 +1139,7 @@ const searchProductBySkuNew = async (req, res) => {
       );
     }
 
-    
     // Flatten response
-    
     const flatResponse = await Promise.all(
       items.map(async (item) => {
         const product = products.find((p) => p.id === item.product_id);
