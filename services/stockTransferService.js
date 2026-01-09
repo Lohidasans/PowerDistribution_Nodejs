@@ -25,43 +25,103 @@ const createStockTransfer = async (req, res) => {
   const transaction = await sequelize.transaction();
 
   try {
-    const { items = [], ...transferData } = req.body;
+    const { items = [], remarks, created_by, ...transferData } = req.body;
 
-    // Required validation
-    const requiredFields = ["transfer_no", "date", "branch_from", "branch_to", "reference_no", "created_by"];
+    /* -------------------- VALIDATION -------------------- */
+    const requiredFields = [
+      "transfer_no",
+      "date",
+      "branch_from",
+      "branch_to",
+      "reference_no",
+      "created_by",
+    ];
+
     for (const field of requiredFields) {
-      if (!transferData[field]) {
+      if (!req.body[field]) {
         await transaction.rollback();
         return commonService.badRequest(res, `${field} is required`);
       }
     }
 
-    if (transferData.transfer_no)
-    {
-      const existing = await models.StockTransfer.findOne({
-        where: {
-          transfer_no: transferData.transfer_no,
-          deleted_at: null,     // only check active (non-deleted) records
-        }
+    /* --------- UNIQUE TRANSFER NO CHECK --------- */
+    const existing = await models.StockTransfer.findOne({
+      where: {
+        transfer_no: req.body.transfer_no,
+        deleted_at: null,
+      },
+    });
+
+    if (existing) {
+      await transaction.rollback();
+      return commonService.badRequest(res, {
+        message: "Stock Transfer code already exists",
       });
-      if (existing) {
-        return commonService.badRequest(res, { message: "Stock Transfer code already exists" });
-      }
-    }
-    
-    // Create Stock Transfer
-    const stockTransfer = await models.StockTransfer.create(transferData, { transaction });
-
-    // Insert items
-    const processedItems = items.map((item) => ({
-      ...item,
-      stock_transfer_id: stockTransfer.id,
-    }));
-
-    if (processedItems.length > 0) {
-      await models.StockTransferItem.bulkCreate(processedItems, { transaction });
     }
 
+    // Branch Validation
+    if (branch_from === branch_to) {
+      await transaction.rollback();
+      return commonService.badRequest(res, "Source and destination branch cannot be same");
+    }
+
+    const branchIds = [branch_from, branch_to];
+    const branches = await models.Branch.findAll({
+      where: {
+        id: { [Op.in]: branchIds },
+      },
+      raw: true,
+      transaction,
+    });
+
+    const foundBranchIds = branches.map(b => b.id);
+
+    if (!foundBranchIds.includes(branch_from)) {
+      await transaction.rollback();
+      return commonService.badRequest(res, "Invalid branch_from Id");
+    }
+
+    if (!foundBranchIds.includes(branch_to)) {
+      await transaction.rollback();
+      return commonService.badRequest(res, "Invalid branch_to Id");
+    }
+
+
+    /* ---------------- CREATE STOCK TRANSFER ---------------- */
+    const stockTransfer = await models.StockTransfer.create(
+      {
+        ...transferData,
+        created_by,
+        remarks,
+        status_id: 1, // New
+      },
+      { transaction }
+    );
+
+    /* ---------------- INSERT ITEMS ---------------- */
+    if (items.length > 0) {
+      const stockItems = items.map((item) => ({
+        ...item,
+        stock_transfer_id: stockTransfer.id,
+      }));
+
+      await models.StockTransferItem.bulkCreate(stockItems, {
+        transaction,
+      });
+    }
+
+    /* ---------------- INSERT STATUS HISTORY ---------------- */
+    await models.StockTransferStatusHistories.create(
+      {
+        stock_transfer_id: stockTransfer.id,
+        status_id: 1, // New
+        updated_by: created_by,
+        remarks: remarks || "Stock Transfer Created",
+      },
+      { transaction }
+    );
+
+    /* ---------------- COMMIT ---------------- */
     await transaction.commit();
 
     const result = await getStockTransferWithItems(stockTransfer.id);
