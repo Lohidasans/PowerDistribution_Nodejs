@@ -20,116 +20,203 @@ const generateStockCode = async (req, res) => {
   }
 };
 
+//BASIC REQUEST VALIDATION
+const validateRequiredFields = async (req, transaction) => {
+  const requiredFields = [
+    "transfer_no",
+    "date",
+    "branch_from",
+    "branch_to",
+    "reference_no",
+    "created_by",
+  ];
+
+  for (const field of requiredFields) {
+    if (!req.body[field]) {
+      throw new Error(`${field} is required`);
+    }
+  }
+};
+
+//UNIQUE TRANSFER NO
+const validateUniqueTransferNo = async (transfer_no, transaction) => {
+  const existing = await models.StockTransfer.findOne({
+    where: { transfer_no, deleted_at: null },
+    transaction,
+  });
+
+  if (existing) {
+    throw new Error("Stock Transfer code already exists");
+  }
+};
+
+//BRANCH VALIDATION
+const validateBranches = async (branch_from, branch_to, transaction) => {
+  if (branch_from === branch_to) {
+    throw new Error("Source and destination branch cannot be the same");
+  }
+
+  const branches = await models.Branch.findAll({
+    where: {
+      id: { [Op.in]: [branch_from, branch_to] },
+      deleted_at: null,
+    },
+    attributes: ["id"],
+    raw: true,
+    transaction,
+  });
+
+  const ids = branches.map(b => b.id);
+
+  if (!ids.includes(branch_from)) {
+    throw new Error("Invalid branch_from Id");
+  }
+
+  if (!ids.includes(branch_to)) {
+    throw new Error("Invalid branch_to Id");
+  }
+};
+
+// PRODUCT & ITEM DETAIL VALIDATION
+const validateProductsAndItemDetails = async (
+  items,
+  productIds,
+  itemDetailIds,
+  transaction
+) => {
+  // Products
+  const products = await models.Product.findAll({
+    where: { id: { [Op.in]: productIds }, deleted_at: null },
+    attributes: ["id"],
+    raw: true,
+    transaction,
+  });
+
+  const validProductIds = products.map(p => p.id);
+  const invalidProduct = items.find(i => !validProductIds.includes(i.product_id));
+
+  if (invalidProduct) {
+    await transaction.rollback();
+    throw new Error(`Invalid product_id: ${invalidProduct.product_id}`);
+  }
+
+  // Item details
+  const itemDetails = await models.ProductItemDetail.findAll({
+    where: { id: { [Op.in]: itemDetailIds }, deleted_at: null },
+    attributes: ["id", "product_id"],
+    raw: true,
+    transaction,
+  });
+
+  const itemDetailMap = Object.fromEntries(
+    itemDetails.map(d => [d.id, d.product_id])
+  );
+
+  const invalidDetail = items.find(
+    i => !itemDetailMap[i.product_item_detail_id ]
+  );
+
+  if (invalidDetail) {
+    await transaction.rollback();
+    throw new Error(
+      `Invalid product_item_detail_id : ${invalidDetail.product_item_detail_id }`
+    );
+  }
+
+  const mismatch = items.find(
+    i => itemDetailMap[i.product_item_detail_id ] !== i.product_id
+  );
+
+  if (mismatch) {
+    await transaction.rollback();
+    throw new Error(
+      `Product item detail ID ${mismatch.product_item_detail_id } does not belong to product_id ${mismatch.product_id}`
+    );
+  }
+};
+
+//ITEM STRUCTURE VALIDATION
+const validateItemsPayload = async (items, transaction) => {
+  if (!items.length) {
+    throw new Error("At least one item is required");
+  }
+
+  const productIds = [...new Set(items.map(i => i.product_id).filter(Boolean))];
+  const itemDetailIds = [...new Set(items.map(i => i.product_item_detail_id).filter(Boolean))];
+
+  if (!productIds.length || !itemDetailIds.length) {
+    throw new Error("product_id and product_item_detail_id are required in items");
+  }
+
+  return { productIds, itemDetailIds };
+};
+
+
 // Create Stock Transfer with items
 const createStockTransfer = async (req, res) => {
   const transaction = await sequelize.transaction();
 
   try {
     const { items = [], remarks, created_by, ...transferData } = req.body;
+    const { transfer_no, branch_from, branch_to } = transferData;
 
-    /* -------------------- VALIDATION -------------------- */
-    const requiredFields = [
-      "transfer_no",
-      "date",
-      "branch_from",
-      "branch_to",
-      "reference_no",
-      "created_by",
-    ];
+    // VALIDATIONS
+    await validateRequiredFields(req, transaction);
+    await validateUniqueTransferNo(transfer_no, transaction);
+    await validateBranches(branch_from, branch_to, transaction);
 
-    for (const field of requiredFields) {
-      if (!req.body[field]) {
-        await transaction.rollback();
-        return commonService.badRequest(res, `${field} is required`);
-      }
-    }
+    const { productIds, itemDetailIds } =
+      await validateItemsPayload(items, transaction);
 
-    /* --------- UNIQUE TRANSFER NO CHECK --------- */
-    const existing = await models.StockTransfer.findOne({
-      where: {
-        transfer_no: req.body.transfer_no,
-        deleted_at: null,
-      },
-    });
+    await validateProductsAndItemDetails(
+      items,
+      productIds,
+      itemDetailIds,
+      transaction
+    );
 
-    if (existing) {
-      await transaction.rollback();
-      return commonService.badRequest(res, {
-        message: "Stock Transfer code already exists",
-      });
-    }
-
-    // Branch Validation
-    if (branch_from === branch_to) {
-      await transaction.rollback();
-      return commonService.badRequest(res, "Source and destination branch cannot be same");
-    }
-
-    const branchIds = [branch_from, branch_to];
-    const branches = await models.Branch.findAll({
-      where: {
-        id: { [Op.in]: branchIds },
-      },
-      raw: true,
-      transaction,
-    });
-
-    const foundBranchIds = branches.map(b => b.id);
-
-    if (!foundBranchIds.includes(branch_from)) {
-      await transaction.rollback();
-      return commonService.badRequest(res, "Invalid branch_from Id");
-    }
-
-    if (!foundBranchIds.includes(branch_to)) {
-      await transaction.rollback();
-      return commonService.badRequest(res, "Invalid branch_to Id");
-    }
-
-
-    /* ---------------- CREATE STOCK TRANSFER ---------------- */
+    // CREATE MASTER
     const stockTransfer = await models.StockTransfer.create(
       {
         ...transferData,
         created_by,
         remarks,
-        status_id: 1, // New
+        status_id: 1,
       },
       { transaction }
     );
 
-    /* ---------------- INSERT ITEMS ---------------- */
-    if (items.length > 0) {
-      const stockItems = items.map((item) => ({
-        ...item,
-        stock_transfer_id: stockTransfer.id,
-      }));
+    // INSERT ITEMS
+    const stockItems = items.map(item => ({
+      ...item,
+      stock_transfer_id: stockTransfer.id,
+    }));
 
-      await models.StockTransferItem.bulkCreate(stockItems, {
-        transaction,
-      });
-    }
+    await models.StockTransferItem.bulkCreate(stockItems, { transaction });
 
-    /* ---------------- INSERT STATUS HISTORY ---------------- */
+    // STATUS HISTORY
     await models.StockTransferStatusHistories.create(
       {
         stock_transfer_id: stockTransfer.id,
-        status_id: 1, // New
+        status_id: 1,
         updated_by: created_by,
         remarks: remarks || "Stock Transfer Created",
       },
       { transaction }
     );
 
-    /* ---------------- COMMIT ---------------- */
     await transaction.commit();
 
     const result = await getStockTransferWithItems(stockTransfer.id);
     return commonService.createdResponse(res, result);
+
   } catch (error) {
-    await transaction.rollback();
+    if (!transaction.finished) {
+      await transaction.rollback();
+    }
+
     console.error("Stock Transfer Create Error =>", error);
-    return commonService.handleError(res, error);
+    return commonService.badRequest(res, error.message);
   }
 };
 
@@ -344,4 +431,9 @@ module.exports = {
   updateStockTransfer,
   deleteStockTransfer,
   listStockTransfers,
+  validateRequiredFields,
+  validateUniqueTransferNo,
+  validateBranches,
+  validateItemsPayload,
+  validateProductsAndItemDetails,
 };
