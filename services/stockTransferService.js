@@ -195,7 +195,7 @@ const createStockTransfer = async (req, res) => {
     await models.StockTransferItem.bulkCreate(stockItems, { transaction });
 
     // STATUS HISTORY
-    await models.StockTransferStatusHistories.create(
+    await models.StockTransferStatusHistory.create(
       {
         stock_transfer_id: stockTransfer.id,
         status_id: 1,
@@ -368,61 +368,195 @@ const deleteStockTransfer = async (req, res) => {
 // List all Stock Transfers with pagination and search
 const listStockTransfers = async (req, res) => {
   try {
-    const { page = 1, limit = 10, search = '' } = req.query;
+    const {
+      page = 1,
+      limit = 10,
+      search = "",
+      status_id,
+      branch_from,
+      branch_to,
+      date,
+    } = req.query;
+
     const offset = (page - 1) * limit;
 
-    const whereCondition = {
-      [Op.or]: [
+    const where = { deleted_at: null };
+
+    if (status_id) { where.status_id = status_id;}
+    if (branch_from) { where.branch_from = branch_from;}
+    if (branch_to) { where.branch_to = branch_to; }
+    if (date) { where.date = date; }
+
+    if (search) {
+      where[Op.or] = [
         { transfer_no: { [Op.iLike]: `%${search}%` } },
         { reference_no: { [Op.iLike]: `%${search}%` } },
-      ],
-    };
+      ];
+    }
 
+    // COUNTS (for cards) 
+    const [newCount, inProgressCount, deliveredCount] = await Promise.all([
+      models.StockTransfer.count({ where: { ...where, status_id: 1 } }),
+      models.StockTransfer.count({ where: { ...where, status_id: 2 } }),
+      models.StockTransfer.count({ where: { ...where, status_id: 3 } }),
+    ]);
+
+    // LIST DATA 
     const { count, rows } = await models.StockTransfer.findAndCountAll({
-      where: whereCondition,
-      order: [['created_at', 'DESC']],
+      where,
+      order: [["created_at", "DESC"]],
       limit: parseInt(limit),
       offset: parseInt(offset),
     });
 
-    // Get branch and staff details for each transfer
+    // JOIN BRANCH & STAFF 
     const transfers = await Promise.all(
-      rows.map(async (transfer) => {
-        const [branchFrom, branchTo, staff] = await Promise.all([
-          models.Branch.findByPk(transfer.branch_from, {
-            attributes: ['branch_name'],
+      rows.map(async (t) => {
+        const [fromBranch, toBranch] = await Promise.all([
+          models.Branch.findByPk(t.branch_from, {
+            attributes: ["branch_name"],
             raw: true,
           }),
-          models.Branch.findByPk(transfer.branch_to, {
-            attributes: ['branch_name'],
-            raw: true,
-          }),
-          models.Employee.findByPk(transfer.staff_name_id, {
-            attributes: ['employee_name'],
+          models.Branch.findByPk(t.branch_to, {
+            attributes: ["branch_name"],
             raw: true,
           }),
         ]);
 
         return {
-          ...transfer.get({ plain: true }),
-          branch_from_name: branchFrom?.branch_name || null,
-          branch_to_name: branchTo?.branch_name || null,
-          staff_name: staff?.staff_name || null,
+          ...t.get({ plain: true }),
+          branch_from_name: fromBranch?.branch_name || null,
+          branch_to_name: toBranch?.branch_name || null,
         };
       })
     );
 
     return commonService.okResponse(res, {
+      summary: {
+        new: newCount,
+        in_progress: inProgressCount,
+        delivered: deliveredCount,
+      },
       total: count,
       page: parseInt(page),
       limit: parseInt(limit),
       data: transfers,
     });
   } catch (error) {
-    console.error('Error listing stock transfers:', error);
+    console.error("Stock transfer list error:", error);
     return commonService.handleError(res, error);
   }
 };
+
+const updateStockTransferStatus = async (req, res) => {
+  const transaction = await sequelize.transaction();
+
+  try {
+    const { id } = req.params;
+    const {
+      status_id,
+      // Dispatch
+      total_packages,
+      total_weight,
+      dispatch_date,
+      transporter_name,
+      vehicle_no,
+      tracking_number,
+      attach_bill_url,
+      tracking_remarks,
+
+      // Delivery
+      delivered_date,
+      received_by,
+      received_weight,
+      received_packages,
+      delivery_remarks,
+    } = req.body;
+
+    if (!status_id ) {
+      throw new Error("status_id is required");
+    }
+
+    // FETCH STOCK TRANSFER
+    const stockTransfer = await models.StockTransfer.findOne({
+      where: {
+        id: id,
+        deleted_at: null,
+      },
+      transaction,
+    });
+
+    if (!stockTransfer) {
+      throw new Error("Stock Transfer not found");
+    }
+
+    // STATUS VALIDATION
+    if (stockTransfer.status_id === 3) {
+      throw new Error("Delivered stock transfer cannot be updated");
+    }
+
+    if (status_id !== stockTransfer.status_id + 1) {
+      throw new Error("Invalid status transition");
+    }
+
+    // STATUS-SPECIFIC VALIDATION
+    if (status_id === 2 && !dispatch_date) {
+      throw new Error("Dispatch date is required");
+    }
+
+    if (status_id === 3 && !delivered_date) {
+      throw new Error("Delivered date is required");
+    }
+
+    // UPDATE STOCK TRANSFER
+    await stockTransfer.update(
+      {
+        status_id,
+      },
+      { transaction }
+    );
+
+    // INSERT TRACKING RECORD
+    await models.StockTransferTracking.create(
+      {
+        stock_transfer_id: id,
+
+        // Dispatch
+        total_packages,
+        total_weight,
+        dispatch_date,
+        transporter_name,
+        vehicle_no,
+        tracking_number,
+        attach_bill_url,
+        tracking_remarks,
+
+        // Delivery
+        delivered_date,
+        received_by,
+        received_weight,
+        received_packages,
+        delivery_remarks,
+      },
+      { transaction }
+    );
+
+    await transaction.commit();
+
+    return commonService.okResponse(res, {
+      message: "Stock transfer status updated successfully",
+    });
+
+  } catch (error) {
+    if (!transaction.finished) {
+      await transaction.rollback();
+    }
+
+    console.error("Update Stock Transfer Status Error =>", error);
+    return commonService.badRequest(res, error.message);
+  }
+};
+
 
 module.exports = {
   generateStockCode,
@@ -436,4 +570,5 @@ module.exports = {
   validateBranches,
   validateItemsPayload,
   validateProductsAndItemDetails,
+  updateStockTransferStatus,
 };
