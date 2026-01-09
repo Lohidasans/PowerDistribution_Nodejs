@@ -267,6 +267,16 @@ const getStockTransferWithItems = async (stockTransferId) => {
       }
     );
 
+    // TRACKING TIMELINE
+    const tracking = await models.StockTransferTracking.findAll({
+      where: {
+        stock_transfer_id: stockTransferId,
+        deleted_at: null,
+      },
+      order: [["created_at", "ASC"]],
+      raw: true,
+    })
+
     // Get branch details
     const [branchFrom, branchTo] = await Promise.all([
       models.Branch.findByPk(stockTransfer.branch_from, {
@@ -284,6 +294,7 @@ const getStockTransferWithItems = async (stockTransferId) => {
       branch_from_detail: branchFrom || { id: stockTransfer.branch_from, branch_name: "Branch Not Found" },
       branch_to_detail: branchTo || { id: stockTransfer.branch_to, branch_name: "Branch Not Found" },
       items,
+      tracking_: tracking,
     };
   } catch (error) {
     console.error("Error in getStockTransferWithItems:", error);
@@ -379,7 +390,7 @@ const listStockTransfers = async (req, res) => {
       to_date,
     } = req.query;
 
-    /* ---------------- GLOBAL COUNTS (UNFILTERED) ---------------- */
+    // GLOBAL COUNTS (UNFILTERED)
     const baseWhere = { deleted_at: null };
 
     const [newCount, inProgressCount, deliveredCount] = await Promise.all([
@@ -388,7 +399,7 @@ const listStockTransfers = async (req, res) => {
       models.StockTransfer.count({ where: { ...baseWhere, status_id: 3 } }),
     ]);
 
-    /* ---------------- FILTERED WHERE ---------------- */
+    // FILTERED WHERE
     const where = { deleted_at: null };
 
     if (status_id) where.status_id = status_id;
@@ -412,7 +423,7 @@ const listStockTransfers = async (req, res) => {
       ];
     }
 
-    /* ---------------- QUERY OPTIONS ---------------- */
+    // QUERY OPTIONS
     const queryOptions = {
       where,
       order: [["created_at", "DESC"]],
@@ -425,12 +436,12 @@ const listStockTransfers = async (req, res) => {
       queryOptions.offset = (parseInt(page || 1) - 1) * queryOptions.limit;
     }
 
-    /* ---------------- FETCH DATA ---------------- */
+    // FETCH DATA
     const { rows, count } = isPaginated
       ? await models.StockTransfer.findAndCountAll(queryOptions)
       : { rows: await models.StockTransfer.findAll(queryOptions), count: null };
 
-    /* ---------------- BRANCH NAMES ---------------- */
+    // BRANCH NAMES
     const transfers = await Promise.all(
       rows.map(async (t) => {
         const [fromBranch, toBranch] = await Promise.all([
