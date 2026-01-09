@@ -369,24 +369,42 @@ const deleteStockTransfer = async (req, res) => {
 const listStockTransfers = async (req, res) => {
   try {
     const {
-      page = 1,
-      limit = 10,
+      page,
+      limit,
       search = "",
       status_id,
       branch_from,
       branch_to,
-      date,
+      from_date,
+      to_date,
     } = req.query;
 
-    const offset = (page - 1) * limit;
+    /* ---------------- GLOBAL COUNTS (UNFILTERED) ---------------- */
+    const baseWhere = { deleted_at: null };
 
+    const [newCount, inProgressCount, deliveredCount] = await Promise.all([
+      models.StockTransfer.count({ where: { ...baseWhere, status_id: 1 } }),
+      models.StockTransfer.count({ where: { ...baseWhere, status_id: 2 } }),
+      models.StockTransfer.count({ where: { ...baseWhere, status_id: 3 } }),
+    ]);
+
+    /* ---------------- FILTERED WHERE ---------------- */
     const where = { deleted_at: null };
 
-    if (status_id) { where.status_id = status_id;}
-    if (branch_from) { where.branch_from = branch_from;}
-    if (branch_to) { where.branch_to = branch_to; }
-    if (date) { where.date = date; }
+    if (status_id) where.status_id = status_id;
+    if (branch_from) where.branch_from = branch_from;
+    if (branch_to) where.branch_to = branch_to;
 
+    // Date logic
+    if (from_date && to_date) {
+      where.date = { [Op.between]: [from_date, to_date] };
+    } else if (from_date) {
+      where.date = from_date;
+    } else if (to_date) {
+      where.date = to_date;
+    }
+
+    // Search
     if (search) {
       where[Op.or] = [
         { transfer_no: { [Op.iLike]: `%${search}%` } },
@@ -394,22 +412,25 @@ const listStockTransfers = async (req, res) => {
       ];
     }
 
-    // COUNTS (for cards) 
-    const [newCount, inProgressCount, deliveredCount] = await Promise.all([
-      models.StockTransfer.count({ where: { ...where, status_id: 1 } }),
-      models.StockTransfer.count({ where: { ...where, status_id: 2 } }),
-      models.StockTransfer.count({ where: { ...where, status_id: 3 } }),
-    ]);
-
-    // LIST DATA 
-    const { count, rows } = await models.StockTransfer.findAndCountAll({
+    /* ---------------- QUERY OPTIONS ---------------- */
+    const queryOptions = {
       where,
       order: [["created_at", "DESC"]],
-      limit: parseInt(limit),
-      offset: parseInt(offset),
-    });
+    };
 
-    // JOIN BRANCH & STAFF 
+    const isPaginated = page || limit;
+
+    if (isPaginated) {
+      queryOptions.limit = parseInt(limit || 10);
+      queryOptions.offset = (parseInt(page || 1) - 1) * queryOptions.limit;
+    }
+
+    /* ---------------- FETCH DATA ---------------- */
+    const { rows, count } = isPaginated
+      ? await models.StockTransfer.findAndCountAll(queryOptions)
+      : { rows: await models.StockTransfer.findAll(queryOptions), count: null };
+
+    /* ---------------- BRANCH NAMES ---------------- */
     const transfers = await Promise.all(
       rows.map(async (t) => {
         const [fromBranch, toBranch] = await Promise.all([
@@ -437,16 +458,18 @@ const listStockTransfers = async (req, res) => {
         in_progress: inProgressCount,
         delivered: deliveredCount,
       },
-      total: count,
-      page: parseInt(page),
-      limit: parseInt(limit),
+      total: isPaginated ? count : transfers.length,
+      page: isPaginated ? parseInt(page || 1) : null,
+      limit: isPaginated ? parseInt(limit || 10) : null,
       data: transfers,
     });
+
   } catch (error) {
     console.error("Stock transfer list error:", error);
     return commonService.handleError(res, error);
   }
 };
+
 
 const updateStockTransferStatus = async (req, res) => {
   const transaction = await sequelize.transaction();
