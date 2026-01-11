@@ -1,9 +1,15 @@
-const AWS = require("aws-sdk");
+const { S3Client, DeleteObjectCommand } = require("@aws-sdk/client-s3");
 const { s3Upload, fileUpload } = require("../utils/s3ImageUpload");
 const commonService = require("../services/commonService");
 
-// AWS is configured globally in utils/s3ImageUpload.js
-const s3 = new AWS.S3();
+// S3 Client (AWS SDK v3)
+const s3 = new S3Client({
+  region: process.env.AWS_REGION,
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  },
+});
 
 // Upload Image
 const uploadImage = async (req, res) => {
@@ -28,12 +34,12 @@ const deleteImage = async (req, res) => {
       return commonService.badRequest(res, "Filename is required.");
     }
 
-    await s3
-      .deleteObject({
-        Bucket: process.env.AWS_BUCKET_NAME,
-        Key: filename,
-      })
-      .promise();
+    const command = new DeleteObjectCommand({
+      Bucket: process.env.AWS_BUCKET_NAME,
+      Key: filename,
+    });
+
+    await s3.send(command);
 
     return commonService.noContentResponse(res);
   } catch (err) {
