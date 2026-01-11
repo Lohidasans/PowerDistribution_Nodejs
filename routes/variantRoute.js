@@ -2,6 +2,8 @@ var express = require("express");
 var variantRouter = express.Router();
 const variantService = require("../services/variantService");
 
+/* ===================== ROUTES ===================== */
+
 variantRouter.post("/variant", variantService.createVariant);
 variantRouter.get("/variants", variantService.listVariantWithValues);
 variantRouter.get("/variants/detailed", variantService.listVariantsDetailed);
@@ -10,6 +12,8 @@ variantRouter.put("/variant/:id", variantService.updateVariant);
 variantRouter.delete("/variant/:id", variantService.deleteVariant);
 
 module.exports = variantRouter;
+
+/* ===================== SWAGGER ===================== */
 
 /**
  * @openapi
@@ -20,40 +24,14 @@ module.exports = variantRouter;
  *     parameters:
  *       - in: query
  *         name: variant_type
- *         schema: { type: string }
+ *         schema:
+ *           type: string
  *         required: false
  *         description: Filter by variant type (ILIKE)
  *     responses:
  *       200:
  *         description: OK
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 statusCode:
- *                   type: integer
- *                 message:
- *                   type: string
- *                 data:
- *                   type: object
- *                   properties:
- *                     variants:
- *                       type: array
- *                       items:
- *                         type: object
- *                         properties:
- *                           id: { type: integer }
- *                           Variant Type: { type: string }
- *                           Values:
- *                             type: array
- *                             items:
- *                               type: object
- *                               properties:
- *                                 id: { type: integer }
- *                                 value: { type: string }
  */
-
 
 /**
  * @openapi
@@ -76,66 +54,16 @@ module.exports = variantRouter;
  *       - in: path
  *         name: id
  *         required: true
- *         schema: { type: integer }
- *         description: The variant ID
+ *         schema:
+ *           type: integer
  *     responses:
  *       200:
  *         description: Variant retrieved successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 status:
- *                   type: boolean
- *                   example: true
- *                 message:
- *                   type: string
- *                   example: "Success"
- *                 data:
- *                   type: object
- *                   properties:
- *                     variant:
- *                       type: object
- *                       properties:
- *                         id:
- *                           type: integer
- *                           example: 1
- *                         variant_type:
- *                           type: string
- *                           example: "Size"
- *                         status:
- *                           type: string
- *                           example: "Active"
- *                         variant_values:
- *                           type: array
- *                           items:
- *                             type: object
- *                             properties:
- *                               id:
- *                                 type: integer
- *                                 example: 1
- *                               value:
- *                                 type: string
- *                                 example: "Small"
- *                               sort_order:
- *                                 type: integer
- *                                 example: 1
- *                               status:
- *                                 type: string
- *                                 example: "Active"
  *       404:
  *         description: Variant not found
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ApiResponse'
  *       500:
  *         description: Internal server error
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ApiResponse'
+ */
 
 /**
  * @openapi
@@ -147,20 +75,14 @@ module.exports = variantRouter;
  *       required: true
  *       content:
  *         application/json:
- *           schema:
- *             $ref: '#/components/schemas/VariantCreateInput'
  *           example:
  *             variant_type: "Size"
  *             values: ["Small", "Medium", "Large"]
  *     responses:
  *       201:
- *         description: Variant created successfully with its values
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ApiResponse'
+ *         description: Variant created successfully
  *       400:
- *         description: Missing required fields or invalid input
+ *         description: Invalid input
  *       500:
  *         description: Internal server error
  */
@@ -175,27 +97,12 @@ module.exports = variantRouter;
  *       - in: path
  *         name: id
  *         required: true
- *         schema: { type: integer }
- *         description: The variant ID
+ *         schema:
+ *           type: integer
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               variant_type:
- *                 type: string
- *                 description: The type of variant (e.g., "Size", "Color")
- *               status:
- *                 type: string
- *                 enum: ["Active", "Inactive"]
- *                 description: The status of the variant
- *               values:
- *                 type: array
- *                 items:
- *                   type: string
- *                 description: Array of variant values (will replace existing values)
  *           example:
  *             variant_type: "Size"
  *             status: "Active"
@@ -203,16 +110,15 @@ module.exports = variantRouter;
  *     responses:
  *       200:
  *         description: Variant updated successfully
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ApiResponse'
- *       400:
- *         description: Invalid input or missing required fields
  *       404:
  *         description: Variant not found
  *       500:
  *         description: Internal server error
+ */
+
+/**
+ * @openapi
+ * /api/v1/variant/{id}:
  *   delete:
  *     summary: Delete a variant (and its values)
  *     tags: [Variant]
@@ -220,8 +126,9 @@ module.exports = variantRouter;
  *       - in: path
  *         name: id
  *         required: true
- *         schema: { type: integer }
+ *         schema:
+ *           type: integer
  *     responses:
  *       204:
- *         description: Variant and its values deleted successfully
+ *         description: Variant deleted successfully
  */

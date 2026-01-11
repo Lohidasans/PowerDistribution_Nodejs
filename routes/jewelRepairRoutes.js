@@ -384,7 +384,7 @@ module.exports = router;
  *         name: prefix
  *         schema:
  *           type: string
- *         description: Prefix for the repair code (default: REP)
+ *         description: Prefix for the repair code (default REP)
  *     responses:
  *       200:
  *         description: Generated repair code

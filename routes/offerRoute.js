@@ -192,7 +192,7 @@ module.exports = offerRouter;
  *         schema:
  *           type: string
  *           enum: ["Active", "Inactive"]
- *         description: Filter offers by status (default: Active)
+ *         description: Filter offers by status (default Active)
  *     responses:
  *       200:
  *         description: List of offers for dropdown
