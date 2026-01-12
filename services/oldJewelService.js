@@ -17,6 +17,7 @@ const createOldJewel = async (req, res) => {
     // Create the main jewel record with calculated values
     const jewel = await models.OldJewel.create({
       ...jewelData,
+      branch_id: branchId,  
       total_amount: totalAmount,
       date: jewelData.date || new Date().toISOString().split('T')[0],
       time: jewelData.time || null,
@@ -260,6 +261,7 @@ const updateOldJewel = async (req, res) => {
         old_jewel_code: jewelData.old_jewel_code ?? oldJewel.old_jewel_code,
         employee_id: jewelData.employee_id,
         customer_id: jewelData.customer_id,
+        branch_id: jewelData.branch_id,
         date: jewelData.date || oldJewel.date,
         time: jewelData.time || oldJewel.time,
         status: jewelData.status || oldJewel.status,
