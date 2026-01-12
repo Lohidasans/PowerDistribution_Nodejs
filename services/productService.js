@@ -1996,18 +1996,67 @@ const createProductInternal = async (payload, transaction) => {
 
   const product = await models.Product.create(productData, { transaction });
 
-  await createItemDetails(product.id, item_details, transaction);
+  for (const d of item_details) {
+    const { additional_details = [], _source_item_id, ...fields } = d;
+
+    const item = await models.ProductItemDetail.create(
+      { ...fields, product_id: product.id },
+      { transaction }
+    );
+
+    if (additional_details.length) {
+      await models.ProductAdditionalDetail.bulkCreate(
+        additional_details.map(a => ({
+          ...a,
+          product_id: product.id,
+          item_detail_id: item.id
+        })),
+        { transaction }
+      );
+    }
+  }
 
   const items = await models.ProductItemDetail.findAll({
     where: { product_id: product.id },
-    transaction,
+    transaction
   });
 
   const summary = computeSummaries(items, product.product_type);
   await product.update(summary, { transaction });
 
   return product;
+}
+
+const cloneProductAddOns = async (sourceProductId, destinationProductId, transaction) => {
+  const addons = await models.ProductAddOn.findAll({
+    where: { product_id: sourceProductId, deleted_at: null },
+    transaction,
+  });
+
+  if (!addons.length) return;
+
+  // Mark destination product as addon enabled
+  await models.Product.update(
+    { is_addOn: true },
+    { where: { id: destinationProductId }, transaction }
+  );
+
+  // Remove old add-ons to prevent duplicates
+  await models.ProductAddOn.destroy({
+    where: { product_id: destinationProductId },
+    force: true,
+    transaction,
+  });
+
+  await models.ProductAddOn.bulkCreate(
+    addons.map(a => ({
+      product_id: destinationProductId,
+      addon_product_id: a.addon_product_id,
+    })),
+    { transaction }
+  );
 };
+
 
 module.exports = {
   createProductSKUCode,
@@ -2028,4 +2077,5 @@ module.exports = {
   getDeletedProducts,
   getProductStockCounts,
   createProductInternal,
+  cloneProductAddOns,
 };
