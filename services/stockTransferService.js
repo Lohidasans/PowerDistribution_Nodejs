@@ -232,15 +232,29 @@ const createStockTransfer = async (req, res) => {
             item_id: existingItem.id
           };
         } else {
-          newItemPayloads.push({
-            _source_item_id: sourceItem.id,
-            sku_id: sourceItem.sku_id,
-            quantity: transfer_quantity,
-            net_weight: sourceItem.net_weight,
-            gross_weight: sourceItem.gross_weight,
-            rate_per_gram: sourceItem.rate_per_gram,
-            base_price: sourceItem.base_price,
-            is_stock_transferred: true,
+            newItemPayloads.push({
+              _source_item_id: sourceItem.id,
+              sku_id: sourceItem.sku_id,
+              variation: sourceItem.variation,
+              quantity: transfer_quantity,
+              net_weight: sourceItem.net_weight,
+              gross_weight: sourceItem.gross_weight,
+              actual_stone_weight: sourceItem.actual_stone_weight,
+              stone_weight: sourceItem.stone_weight,
+              stone_value: sourceItem.stone_value,
+              rate_per_gram: sourceItem.rate_per_gram,
+              base_price: sourceItem.base_price,
+              item_price: sourceItem.item_price,
+              making_charge_type: sourceItem.making_charge_type,
+              making_charge: sourceItem.making_charge,
+              wastage_type: sourceItem.wastage_type,
+              wastage: sourceItem.wastage,
+              is_visible: sourceItem.is_visible,
+              website_price_type: sourceItem.website_price_type,
+              website_price: sourceItem.website_price,
+              measurement_details: sourceItem.measurement_details,
+              is_stock_transferred: true,
+
             additional_details: additionals
               .filter(a => a.item_detail_id === sourceItem.id)
               .map(a => ({
@@ -257,6 +271,7 @@ const createStockTransfer = async (req, res) => {
       if (newItemPayloads.length) {
         const newProduct = await ProductService.createProductInternal({
           product_name: sourceProduct.product_name,
+          product_code: sourceProduct.product_code,
           description: sourceProduct.description,
           vendor_id: sourceProduct.vendor_id,
           material_type_id: sourceProduct.material_type_id,
@@ -267,6 +282,12 @@ const createStockTransfer = async (req, res) => {
           purity: sourceProduct.purity,
           product_type: sourceProduct.product_type,
           variation_type: sourceProduct.variation_type,
+          sku_id: sourceProduct.sku_id,
+          product_variations: sourceProduct.product_variations,
+          ref_no_id: sourceProduct.ref_no_id,
+          image_urls: sourceProduct.image_urls,
+          qr_image_url: sourceProduct.qr_image_url,
+          is_published: sourceProduct.is_published,
           branch_id: branch_to,
           item_details: newItemPayloads
         }, transaction);
