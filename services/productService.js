@@ -1991,6 +1991,24 @@ const getProductStockCounts = async (req, res) => {
   }
 };
 
+const createProductInternal = async (payload, transaction) => {
+  const { item_details, ...productData } = payload;
+
+  const product = await models.Product.create(productData, { transaction });
+
+  await createItemDetails(product.id, item_details, transaction);
+
+  const items = await models.ProductItemDetail.findAll({
+    where: { product_id: product.id },
+    transaction,
+  });
+
+  const summary = computeSummaries(items, product.product_type);
+  await product.update(summary, { transaction });
+
+  return product;
+};
+
 module.exports = {
   createProductSKUCode,
   createProduct,
@@ -2009,4 +2027,5 @@ module.exports = {
   calculateFinalPriceRate,
   getDeletedProducts,
   getProductStockCounts,
+  createProductInternal,
 };

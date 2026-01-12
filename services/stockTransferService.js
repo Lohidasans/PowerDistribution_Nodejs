@@ -2,6 +2,7 @@ const { models, sequelize } = require("../models");
 const commonService = require("./commonService");
 const { Op } = require("sequelize");
 const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
+const ProductService = require("../services/productService");
 
 // Generate auto code: TRA001
 const generateStockCode = async (req, res) => {
@@ -151,7 +152,6 @@ const validateItemsPayload = async (items, transaction) => {
   return { productIds, itemDetailIds };
 };
 
-
 // Create Stock Transfer with items
 const createStockTransfer = async (req, res) => {
   const transaction = await sequelize.transaction();
@@ -161,49 +161,186 @@ const createStockTransfer = async (req, res) => {
     const { transfer_no, branch_from, branch_to } = transferData;
 
     // VALIDATIONS
-    await validateRequiredFields(req, transaction);
+    await validateRequiredFields(req);
     await validateUniqueTransferNo(transfer_no, transaction);
     await validateBranches(branch_from, branch_to, transaction);
+    const { productIds, itemDetailIds } = await validateItemsPayload(items);
+    await validateProductsAndItemDetails(items, productIds, itemDetailIds, transaction);
 
-    const { productIds, itemDetailIds } =
-      await validateItemsPayload(items, transaction);
-
-    await validateProductsAndItemDetails(
-      items,
-      productIds,
-      itemDetailIds,
-      transaction
-    );
+    // Group items by product_id
+    const grouped = {};
+    for (const row of items) {
+      (grouped[row.product_id] = grouped[row.product_id] || []).push(row);
+    }
 
     // CREATE MASTER
     const stockTransfer = await models.StockTransfer.create(
-      {
-        ...transferData,
-        created_by,
-        remarks,
-        status_id: 1,
-      },
+      { ...transferData, created_by, remarks, status_id: 1 },
       { transaction }
     );
 
-    // INSERT ITEMS
-    const stockItems = items.map(item => ({
-      ...item,
-      stock_transfer_id: stockTransfer.id,
-    }));
+    // Map source_item_detail_id -> transferred destination ids
+    const transferMap = {};
 
-    await models.StockTransferItem.bulkCreate(stockItems, { transaction });
+    for (const productId in grouped) {
+      const rows = grouped[productId];
+
+      const sourceProduct = await models.Product.findByPk(productId, { transaction });
+      const additional = await models.ProductAdditionalDetail.findAll({ where: { product_id: productId }, transaction });
+      const variants = await models.ProductVariant.findAll({ where: { product_id: productId }, transaction });
+
+      const newItemPayloads = [];
+      let destinationProduct = null;
+
+      for (const row of rows) {
+        const { product_item_detail_id, transfer_quantity } = row;
+
+        // Fetch source item
+        const sourceItem = await models.ProductItemDetail.findOne({
+          where: {
+            id: product_item_detail_id,
+            product_id: productId,
+            quantity: { [Op.gte]: transfer_quantity },
+          },
+          transaction,
+        });
+
+        if (!sourceItem) throw new Error("Insufficient stock for item " + product_item_detail_id);
+
+        // Deduct source stock
+        await sourceItem.update(
+          { quantity: sourceItem.quantity - transfer_quantity },
+          { transaction }
+        );
+
+        // Find existing transferred SKU in destination (NO ASSOCIATIONS)
+        const existingItem = await models.ProductItemDetail.findOne({
+          where: {
+            sku_id: sourceItem.sku_id,
+            is_stock_transferred: true,
+          },
+          transaction,
+        });
+
+        let existing = null;
+
+        if (existingItem) {
+          const existingProduct = await models.Product.findOne({
+            where: {
+              id: existingItem.product_id,
+              branch_id: branch_to,
+              deleted_at: null,
+            },
+            transaction,
+          });
+
+          if (existingProduct) {
+            existing = { item: existingItem, product: existingProduct };
+          }
+        }
+
+        if (existing) {
+          // MERGE into existing transferred stock
+          await existing.item.update(
+            {
+              quantity: Number(existing.item.quantity) + Number(transfer_quantity),
+            },
+            { transaction }
+          );
+
+          destinationProduct = existing.product;
+
+          transferMap[sourceItem.id] = {
+            product_id: existing.product.id,
+            item_id: existing.item.id,
+          };
+        } else {
+          // New transferred item
+          newItemPayloads.push({
+            sku_id: sourceItem.sku_id,
+            quantity: transfer_quantity,
+            net_weight: sourceItem.net_weight,
+            gross_weight: sourceItem.gross_weight,
+            rate_per_gram: sourceItem.rate_per_gram,
+            base_price: sourceItem.base_price,
+            is_stock_transferred: true,
+            additional_details: additional
+              .filter(a => a.item_detail_id === sourceItem.id)
+              .map(a => ({
+                ...a.get({ plain: true }),
+                id: undefined,
+                product_id: undefined,
+                item_detail_id: undefined,
+              })),
+          });
+        }
+      }
+
+      // Create new product if needed
+      if (newItemPayloads.length > 0) {
+        const payload = {
+          product_name: sourceProduct.product_name,
+          description: sourceProduct.description,
+          vendor_id: sourceProduct.vendor_id,
+          material_type_id: sourceProduct.material_type_id,
+          category_id: sourceProduct.category_id,
+          subcategory_id: sourceProduct.subcategory_id,
+          grn_id: sourceProduct.grn_id,
+          hsn_code: sourceProduct.hsn_code,
+          purity: sourceProduct.purity,
+          product_type: sourceProduct.product_type,
+          variation_type: sourceProduct.variation_type,
+          branch_id: branch_to,
+          item_details: newItemPayloads,
+        };
+
+        const newProduct = await ProductService.createProductInternal(payload, transaction);
+        destinationProduct = newProduct;
+
+        const newItems = await models.ProductItemDetail.findAll({
+          where: { product_id: newProduct.id },
+          transaction,
+        });
+
+        for (const it of newItems) {
+          transferMap[it.sku_id] = {
+            product_id: newProduct.id,
+            item_id: it.id,
+          };
+        }
+
+        // Copy variants once
+        if (variants.length) {
+          await models.ProductVariant.bulkCreate(
+            variants.map(v => ({
+              product_id: newProduct.id,
+              variant_id: v.variant_id,
+              variant_type_ids: v.variant_type_ids,
+            })),
+            { transaction }
+          );
+        }
+      }
+    }
+
+    // CREATE TRANSFER ITEMS
+    await models.StockTransferItem.bulkCreate(
+      items.map(i => ({
+        ...i,
+        stock_transfer_id: stockTransfer.id,
+        transferred_product_id: transferMap[i.product_item_detail_id].product_id,
+        transferred_product_item_id: transferMap[i.product_item_detail_id].item_id,
+      })),
+      { transaction }
+    );
 
     // STATUS HISTORY
-    await models.StockTransferStatusHistory.create(
-      {
-        stock_transfer_id: stockTransfer.id,
-        status_id: 1,
-        updated_by: created_by,
-        remarks: remarks || "Stock Transfer Created",
-      },
-      { transaction }
-    );
+    await models.StockTransferStatusHistory.create({
+      stock_transfer_id: stockTransfer.id,
+      status_id: 1,
+      updated_by: created_by,
+      remarks: "Stock Transfer Created",
+    }, { transaction });
 
     await transaction.commit();
 
@@ -211,11 +348,7 @@ const createStockTransfer = async (req, res) => {
     return commonService.createdResponse(res, result);
 
   } catch (error) {
-    if (!transaction.finished) {
-      await transaction.rollback();
-    }
-
-    console.error("Stock Transfer Create Error =>", error);
+    if (!transaction.finished) await transaction.rollback();
     return commonService.badRequest(res, error.message);
   }
 };
@@ -294,7 +427,7 @@ const getStockTransferWithItems = async (stockTransferId) => {
       branch_from_detail: branchFrom || { id: stockTransfer.branch_from, branch_name: "Branch Not Found" },
       branch_to_detail: branchTo || { id: stockTransfer.branch_to, branch_name: "Branch Not Found" },
       items,
-      tracking_: tracking,
+      tracking_timeline: tracking,
     };
   } catch (error) {
     console.error("Error in getStockTransferWithItems:", error);
