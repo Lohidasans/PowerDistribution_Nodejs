@@ -69,10 +69,27 @@
       "name": "Login",
       "id": "8ba89431-3d91-43b8-9baf-3f000eebee64",
       "request": {
-        "method": "GET",
+        "method": "POST",
         "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n    \"email\":\"KASIRAJAN\",\r\n    \"password\":\"12345\"\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
         "url": {
-          "raw": ""
+          "raw": "{{host}}/api/v1/login",
+          "host": [
+            "{{host}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "login"
+          ]
         }
       },
       "response": []
