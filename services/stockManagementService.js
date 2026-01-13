@@ -430,8 +430,205 @@ const getStockAgeingReport = async (req, res) => {
     }
 };
 
+const getAllStockDetails = async (req, res) => {
+    try {
+        const {
+            material_type_id,
+            category_id,
+            subcategory_id,
+            grn_id,
+            ref_no_id,
+            search,
+            branch_id,
+            page,
+            limit,
+        } = req.query;
+
+        const usePagination = page !== undefined || limit !== undefined;
+        const pageNum = usePagination ? parseInt(page || 1, 10) : null;
+        const limitNum = usePagination ? parseInt(limit || 10, 10) : null;
+        const offset = usePagination ? (pageNum - 1) * limitNum : null;
+
+        let whereClause = `WHERE p.status = 'Active' AND p.deleted_at IS NULL`;
+
+        const replacements = {};
+
+        if (material_type_id) {
+            whereClause += ` AND p.material_type_id = :material_type_id`;
+            replacements.material_type_id = +material_type_id;
+        }
+
+        if (category_id) {
+            whereClause += ` AND p.category_id = :category_id`;
+            replacements.category_id = +category_id;
+        }
+
+        if (branch_id) {
+            whereClause += ` AND p.branch_id = :branch_id`;
+            replacements.branch_id = +branch_id;
+        }
+
+        if (subcategory_id) {
+            whereClause += ` AND p.subcategory_id = :subcategory_id`;
+            replacements.subcategory_id = +subcategory_id;
+        }
+
+        if (grn_id) {
+            whereClause += ` AND p.grn_id = :grn_id`;
+            replacements.grn_id = +grn_id;
+        }
+
+        if (ref_no_id) {
+            whereClause += ` AND p.ref_no_id = :ref_no_id`;
+            replacements.ref_no_id = +ref_no_id;
+        }
+        // Stock filter (only quantity > 0)
+        whereClause += ` AND EXISTS ( SELECT 1 FROM "productItemDetails" pid_stock WHERE pid_stock.product_id = p.id
+        AND pid_stock.quantity > 0 AND pid_stock.deleted_at IS NULL )`;
+
+        if (search) {
+            const like = `%${search}%`;
+            whereClause += `AND (
+          p.product_name ILIKE :like OR
+          p.product_code ILIKE :like OR
+          p.sku_id ILIKE :like OR
+          p.description ILIKE :like OR
+          p.hsn_code ILIKE :like OR
+          mt.material_type ILIKE :like OR
+          b.branch_name ILIKE :like OR
+          g.grn_no ILIKE :like OR
+          gi.ref_no ILIKE :like)`;
+            replacements.like = like;
+        }
+
+        // -------- COUNT --------
+        let total = null;
+        if (usePagination) {
+            const countQuery = `
+        SELECT COUNT(DISTINCT p.id) AS total
+        FROM products p
+        LEFT JOIN "productItemDetails" pid ON pid.product_id = p.id
+        LEFT JOIN grns g ON g.id = p.grn_id AND g.deleted_at IS NULL
+        LEFT JOIN "grnItems" gi ON gi.grn_id = g.id AND gi.id = p.ref_no_id AND gi.deleted_at IS NULL
+        LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
+        LEFT JOIN categories ct ON ct.id = p.category_id
+        LEFT JOIN subcategories sc ON sc.id = p.subcategory_id
+        LEFT JOIN branches b ON b.id = p.branch_id
+        ${whereClause}`;
+
+            const [countResult] = await sequelize.query(countQuery, { replacements });
+            total = Number(countResult[0]?.total || 0);
+        }
+
+        // -------- MAIN QUERY --------
+        let query = `
+        SELECT
+            p.id,
+            p.product_code,
+            p.product_name,
+            p.description,
+            p.is_published,
+            p.image_urls,
+            p.qr_image_url,
+            p.vendor_id,
+            p.material_type_id,
+            p.category_id,
+            ct.category_name,
+            ct.category_image_url,
+            p.subcategory_id,
+            sc.subcategory_name,
+            p.ref_no_id,
+            p.grn_id,
+            g.grn_no,
+            gi.ref_no AS grn_ref_no,
+            mt.material_type,
+            mt.material_price,
+            COALESCE(SUM(COALESCE(pid.quantity, 0)), 0) AS total_quantity,
+            COALESCE(SUM(COALESCE(pid.quantity, 0) * COALESCE(pid.net_weight, 0)), 0) AS total_weight,
+            COUNT(DISTINCT pid.id) AS variation_count,
+            p.branch_id,
+            b.branch_name,
+            p.sku_id,
+            p.hsn_code,
+            p.purity,
+            p.product_type,
+            p.variation_type,
+            p.product_variations,
+            p.created_at,
+            p.updated_at
+        FROM products p
+        LEFT JOIN "productItemDetails" pid ON pid.product_id = p.id
+        LEFT JOIN grns g ON g.id = p.grn_id AND g.deleted_at IS NULL
+        LEFT JOIN "grnItems" gi ON gi.grn_id = g.id AND gi.id = p.ref_no_id AND gi.deleted_at IS NULL
+        LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
+        LEFT JOIN categories ct ON ct.id = p.category_id
+        LEFT JOIN subcategories sc ON sc.id = p.subcategory_id
+        LEFT JOIN branches b ON b.id = p.branch_id
+        ${whereClause}
+        GROUP BY
+            p.id, mt.material_type, mt.material_price,
+            ct.category_name, ct.category_image_url,
+            sc.subcategory_name, g.grn_no, gi.ref_no, b.branch_name
+        ORDER BY p.id DESC`;
+
+        if (usePagination) {
+            query += ` LIMIT :limit OFFSET :offset`;
+        }
+
+        const [rows] = await sequelize.query(query, {
+            replacements: {
+                ...replacements,
+                ...(usePagination ? { limit: limitNum, offset } : {}),
+            },
+        });
+
+        let products = rows;
+
+        // -------- ITEM DETAILS --------
+        if (products.length) {
+            const productIds = products.map(p => p.id);
+
+            const itemDetails = await models.ProductItemDetail.findAll({
+                where: {
+                    product_id: productIds,
+                    quantity: { [Op.gt]: 0 },
+                },
+                order: [["id", "ASC"]],
+            });
+
+            const itemsByProduct = itemDetails.reduce((acc, item) => {
+                (acc[item.product_id] ??= []).push(item);
+                return acc;
+            }, {});
+
+            products = products.map(product => ({
+                ...product,
+                item_details: itemsByProduct[product.id] || [],
+            }));
+        }
+
+        const response = { products };
+
+        if (usePagination) {
+            response.pagination = {
+                total,
+                page: pageNum,
+                limit: limitNum,
+                totalPages: Math.ceil(total / limitNum),
+            };
+        }
+
+        return commonService.okResponse(res, response);
+
+    } catch (err) {
+        return commonService.handleError(res, err);
+    }
+};
+
+
 
 module.exports = {
     getOldJewelReport,
-    getStockAgeingReport
+    getStockAgeingReport,
+    getAllStockDetails,
 };
