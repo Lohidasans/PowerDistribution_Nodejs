@@ -213,7 +213,15 @@ const generateCustomerCode = async (req, res) => {
       return commonService.handleError(res, err);
     }
 };
-
+const generateOnlineCustomerCode = async () => {
+  const code = await generateFiscalSeriesCode(
+    models.Customer,
+    "customer_code",
+    "COD",
+    { pad: 3 }
+  );
+  return code;
+};
 // Dropdown: distinct customer mobile numbers
 const listCustomerMobilesDropdown = async (req, res) => {
   try {
@@ -448,5 +456,6 @@ module.exports = {
   generateCustomerCode,
   listCustomerMobilesDropdown,
   listCustomerNameMobileDropdown,
-  listCustomers
+  listCustomers,
+  generateOnlineCustomerCode
 };

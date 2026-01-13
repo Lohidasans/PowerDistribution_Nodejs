@@ -1,0 +1,69 @@
+{
+  "info": {
+    "_postman_id": "2dbc3136-06fe-436a-90d7-a9c0451b4219",
+    "name": "Online Customer",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Customer Send OTP",
+      "id": "0d266cdf-df02-48ca-993d-c306f7046174",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n    \"mobile\": \"9943350937\"\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{host}}/api/v1/customer/send-otp",
+          "host": [
+            "{{host}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "customer",
+            "send-otp"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "CUSTOMER VERIFY OTP",
+      "id": "62260a2b-a294-4f70-8784-2050872c577e",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n    \"mobile\": \"9943350937\",\r\n    \"otp\": \"979834\"\r\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{host}}/api/v1/customer/verify-otp",
+          "host": [
+            "{{host}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "customer",
+            "verify-otp"
+          ]
+        }
+      },
+      "response": []
+    }
+  ]
+}

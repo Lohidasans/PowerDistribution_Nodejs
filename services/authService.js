@@ -6,7 +6,8 @@ const { Op } = require('sequelize');
 const commonService = require('./commonService');
 const enMessage = require('../constants/en.json');
 const { JWT_SECRET, JWT_EXPIRES_IN } = process.env;
-
+const otpCache = require('../utils/otpCache');
+const { generateOnlineCustomerCode } = require('./customerService');
 const login = async (req, res) => {
     const t = await sequelize.transaction();
     try {
@@ -199,9 +200,96 @@ const resetPassword = async (req, res) => {
         return commonService.handleError(res, error);
     }
 };
+const customerSendOTP = async (req, res) => {
+    try {
+        const { mobile } = req.body;
+
+        if (!mobile) {
+            return commonService.badRequest(res, "Mobile number is required");
+        }
+
+        // generate 6 digit otp
+        const otp = Math.floor(100000 + Math.random() * 900000);
+
+        // store in memory cache
+        otpCache.setOTP(mobile, otp);
+
+        return commonService.okResponse(res, {
+            message: "OTP sent successfully",
+            otp: process.env.NODE_ENV === "development" ? otp : undefined
+        });
+
+    } catch (error) {
+        console.error("Send OTP error:", error);
+        return commonService.handleError(res, error);
+    }
+};
+const verifyOTP = async (req, res) => {
+    const t = await sequelize.transaction();
+    try {
+        const { mobile, otp } = req.body;
+
+        if (!mobile || !otp) {
+            return commonService.badRequest(res, "Mobile number and OTP are required");
+        }
+
+        const cachedOtp = otpCache.getOTP(mobile);
+
+        if (!cachedOtp || cachedOtp !== otp.toString()) {
+            return commonService.unauthorized(res, "Invalid or expired OTP");
+        }
+
+        // remove otp after success
+        otpCache.deleteOTP(mobile);
+
+        // check customer table
+        let customer = await models.Customer.findOne({
+            where: { mobile_number: mobile },
+            transaction: t
+        });
+
+        let statusCode = 200;
+
+        if (!customer) {
+
+            // ✅ generate customer code before create
+            const customerCode = await generateOnlineCustomerCode(
+                models.Customer,
+                "customer_code",
+                "COD",          // hardcoded prefix
+                { pad: 3 }
+            );
+
+            customer = await models.Customer.create({
+                customer_code: customerCode,
+                mobile_number: mobile,
+                is_active: true
+            }, { transaction: t });
+
+            statusCode = 201;
+        }
+
+        await t.commit();
+
+        return res.status(statusCode).json({
+            status: true,
+            message: "OTP verified successfully",
+            customer,
+            isNewCustomer: statusCode === 201
+        });
+
+    } catch (error) {
+        await t.rollback();
+        console.error("Verify OTP error:", error);
+        return commonService.handleError(res, error);
+    }
+};
+
 
 module.exports = {
     login,
     forgotPassword,
-    resetPassword
+    resetPassword,
+    customerSendOTP,
+    verifyOTP
 };

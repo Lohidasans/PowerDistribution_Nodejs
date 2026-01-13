@@ -7,5 +7,6 @@ const svc = require('../services/authService');
 router.post('/login',  svc.login);
 router.post('/forgot-password', svc.forgotPassword);
 router.post('/reset-password', svc.resetPassword);
-
+router.post('/customer/send-otp',svc.customerSendOTP);
+router.post('/customer/verify-otp',svc.verifyOTP)
 module.exports = router;
