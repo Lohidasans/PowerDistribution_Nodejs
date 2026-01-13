@@ -1,13 +1,17 @@
 const { models } = require("../models/index");
 const commonService = require("../services/commonService");
 const enMessage = require("../constants/en.json");
+const bcrypt = require("bcrypt");
 
 const createUser = async (req, res) => {
   try {
-    const { email, password_hash, entity_type, entity_id, role_id } = req.body;
-    if (!entity_type || entity_id === undefined || !password_hash) {
+    const { email, password, entity_type, entity_id, role_id } = req.body;
+    if (!entity_type || entity_id === undefined || !password) {
       return commonService.badRequest(res, enMessage.failure.requiredFields);
     }
+
+    // Hash password before storing
+    const password_hash = await bcrypt.hash(password, 10);
 
     const user = await models.User.create({
       email,
@@ -86,14 +90,20 @@ module.exports = {
     if (!data || typeof data !== "object")
       return { error: enMessage.user.invalidPayload };
     // Allow multiple users per entity; no uniqueness check on (entity_type, entity_id)
-    if (!data.password_hash)
+    if (!data.password && !data.password_hash)
       return { error: enMessage.user.passwordRequired };
 
     try {
+      // Hash password if plain password is provided
+      let password_hash = data.password_hash;
+      if (data.password) {
+        password_hash = await bcrypt.hash(data.password, 10);
+      }
+
       const created = await models.User.create(
         {
           email: data.email || null,
-          password_hash: data.password_hash,
+          password_hash: password_hash,
           role_id: data.role_id || null,
           entity_type,
           entity_id,
@@ -129,10 +139,19 @@ module.exports = {
       transaction,
     });
     if (!existing) return null; // no create on update-only path
+    
+    // Hash password if provided
+    let password_hash = existing.password_hash;
+    if (data.password) {
+      password_hash = await bcrypt.hash(data.password, 10);
+    } else if (data.password_hash) {
+      password_hash = data.password_hash;
+    }
+    
     await existing.update(
       {
         email: data.email ?? existing.email,
-        password_hash: data.password_hash ?? existing.password_hash,
+        password_hash: password_hash,
         role_id: data.role_id ?? existing.role_id,
       },
       { transaction }
@@ -143,16 +162,26 @@ module.exports = {
   createUsersByEntity: async (transaction, entity_type, entity_id, users) => {
     if (!Array.isArray(users) || users.length === 0) return [];
 
-    // Filter only valid objects with password_hash
-    const rows = users
-      .filter((u) => u && typeof u === "object" && u.password_hash)
-      .map((u) => ({
+    // Filter only valid objects with password or password_hash and hash passwords
+    const rows = [];
+    for (const u of users) {
+      if (!u || typeof u !== "object") continue;
+      if (!u.password && !u.password_hash) continue;
+      
+      // Hash password if plain password is provided
+      let password_hash = u.password_hash;
+      if (u.password) {
+        password_hash = await bcrypt.hash(u.password, 10);
+      }
+      
+      rows.push({
         email: u.email || null,
-        password_hash: u.password_hash,
+        password_hash: password_hash,
         role_id: u.role_id || null,
         entity_type,
         entity_id,
-      }));
+      });
+    }
 
     if (!rows.length) {
       return { error: enMessage.user.passwordRequired || enMessage.failure.requiredFields};
@@ -199,10 +228,19 @@ module.exports = {
         transaction,
       });
       if (!row) continue;
+      
+      // Hash password if provided
+      let password_hash = row.password_hash;
+      if (u.password) {
+        password_hash = await bcrypt.hash(u.password, 10);
+      } else if (u.password_hash) {
+        password_hash = u.password_hash;
+      }
+      
       await row.update(
         {
           email: u.email ?? row.email,
-          password_hash: u.password_hash ?? row.password_hash,
+          password_hash: password_hash,
           role_id: u.role_id ?? row.role_id,
         },
         { transaction }

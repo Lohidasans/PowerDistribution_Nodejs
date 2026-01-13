@@ -66,6 +66,14 @@ const notFound = (res, message) => {
   });
 };
 
+// Standardized Unauthorized Response
+const unauthorized = (res, message) => {
+  return res.status(status.REST_API_STATUSCODE.unauthorized).send({
+    statusCode: status.REST_API_STATUSCODE.unauthorized,
+    message,
+  });
+};
+
 module.exports = {
   findById,
   okResponse,
@@ -73,5 +81,6 @@ module.exports = {
   badRequest,
   noContentResponse,
   handleError,
-  notFound
+  notFound,
+  unauthorized
 };

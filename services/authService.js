@@ -17,38 +17,74 @@ const login = async (req, res) => {
             return commonService.badRequest(res, enMessage.auth.emailPasswordRequired);
         }
 
-        // Try to find user in both superadmin and user tables
-        const [superadmin, user] = await Promise.all([
-            models.SuperAdminProfile.findOne({
-                where: { email, is_active: true, deleted_at: null },
-                transaction: t
-            }),
-            models.User.findOne({
-                where: { email, is_active: true, deleted_at: null },
-                transaction: t
-            })
-        ]);
+        // Find user in users table
+        const user = await models.User.findOne({
+            where: { email,  deleted_at: null },
+            transaction: t
+        });
 
-        const account = superadmin || user;
+        if (!user) {
+            await t.rollback();
+            return commonService.unauthorized(res, enMessage.auth.invalidCredentials);
+        }
 
-        if (!account) {
+        // Check if user has a password set
+        if (!user.password_hash) {
             await t.rollback();
             return commonService.unauthorized(res, enMessage.auth.invalidCredentials);
         }
 
         // Check password
-        const isPasswordValid = await bcrypt.compare(password, account.password);
+        const isPasswordValid = await bcrypt.compare(password, user.password_hash);
         if (!isPasswordValid) {
             await t.rollback();
             return commonService.unauthorized(res, enMessage.auth.invalidCredentials);
         }
 
+        // Fetch entity details based on entity_type
+        let entityDetails = null;
+        const entityType = user.entity_type;
+        const entityId = user.entity_id;
+
+        if (entityId && entityType) {
+            switch (entityType) {
+                case 'branch':
+                    entityDetails = await models.Branch.findOne({
+                        where: { id: entityId, deleted_at: null },
+                        transaction: t
+                    });
+                    break;
+                case 'employee':
+                    entityDetails = await models.Employee.findOne({
+                        where: { id: entityId, deleted_at: null },
+                        transaction: t
+                    });
+                    break;
+                case 'vendor':
+                    entityDetails = await models.Vendor.findOne({
+                        where: { id: entityId, deleted_at: null },
+                        transaction: t
+                    });
+                    break;
+                case 'superadmin':
+                    entityDetails = await models.SuperAdminProfile.findOne({
+                        where: { id: entityId, deleted_at: null },
+                        transaction: t
+                    });
+                    break;
+                default:
+                    // No entity details for unknown types
+                    break;
+            }
+        }
+
         // Generate JWT token
         const token = jwt.sign(
             {
-                id: account.id,
-                email: account.email,
-                role: superadmin ? 'superadmin' : 'user',
+                id: user.id,
+                email: user.email,
+                entity_type: entityType,
+                entity_id: entityId,
                 // Add any other relevant user data
             },
             JWT_SECRET,
@@ -56,25 +92,27 @@ const login = async (req, res) => {
         );
 
         // Update last login
-        const updateField = superadmin ? 'last_login' : 'last_login_at';
-        await account.update({ [updateField]: new Date() }, { transaction: t });
+        await user.update({ last_login_at: new Date() }, { transaction: t });
 
         await t.commit();
 
         // Return user data without password
-        const { password: _, ...userData } = account.get({ plain: true });
+        const { password: _, ...userData } = user.get({ plain: true });
 
         return commonService.okResponse(res, {
             message: enMessage.auth.loginSuccess,
             token,
             user: {
                 ...userData,
-                role: superadmin ? 'superadmin' : 'user'
+                entity_details: entityDetails ? entityDetails.get({ plain: true }) : null
             }
         });
 
     } catch (error) {
-        await t.rollback();
+        // Only rollback if transaction is still active
+        if (t && !t.finished) {
+            await t.rollback();
+        }
         console.error('Login error:', error);
         return commonService.handleError(res, error);
     }
@@ -135,7 +173,10 @@ const forgotPassword = async (req, res) => {
         });
 
     } catch (error) {
-        await t.rollback();
+        // Only rollback if transaction is still active
+        if (t && !t.finished) {
+            await t.rollback();
+        }
         console.error('Forgot password error:', error);
         return commonService.handleError(res, error);
     }
@@ -195,7 +236,10 @@ const resetPassword = async (req, res) => {
         });
 
     } catch (error) {
-        await t.rollback();
+        // Only rollback if transaction is still active
+        if (t && !t.finished) {
+            await t.rollback();
+        }
         console.error('Reset password error:', error);
         return commonService.handleError(res, error);
     }
@@ -279,7 +323,10 @@ const verifyOTP = async (req, res) => {
         });
 
     } catch (error) {
-        await t.rollback();
+        // Only rollback if transaction is still active
+        if (t && !t.finished) {
+            await t.rollback();
+        }
         console.error("Verify OTP error:", error);
         return commonService.handleError(res, error);
     }
