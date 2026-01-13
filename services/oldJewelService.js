@@ -17,7 +17,7 @@ const createOldJewel = async (req, res) => {
     // Create the main jewel record with calculated values
     const jewel = await models.OldJewel.create({
       ...jewelData,
-      branch_id: branchId,  
+      branch_id: jewelData.branch_id || null,  
       total_amount: totalAmount,
       date: jewelData.date || new Date().toISOString().split('T')[0],
       time: jewelData.time || null,
@@ -72,33 +72,84 @@ const createOldJewel = async (req, res) => {
 
 const getAllOldJewels = async (req, res) => {
   try {
-    const { old_jewel_code, status } = req.query;
+    const {
+      old_jewel_code,
+      status,
+      branch_id,
+      material_type_id,
+      from_date,
+      to_date,
+      search
+    } = req.query;
 
     const replacements = {};
     let whereSql = `oj.deleted_at IS NULL`;
 
+    // Old Jewel No
     if (old_jewel_code) {
       whereSql += ` AND oj.old_jewel_code = :old_jewel_code`;
       replacements.old_jewel_code = old_jewel_code;
     }
 
+    // Status
     if (status) {
       whereSql += ` AND oj.status = :status`;
       replacements.status = status;
     }
 
-    // 1️. Fetch old jewels with employee & customer info
+    // Branch (Figma Branch filter)
+    if (branch_id) {
+      whereSql += ` AND oj.branch_id = :branch_id`;
+      replacements.branch_id = branch_id;
+    }
+
+    // Date filter (Today / Range)
+    if (from_date && to_date) {
+      whereSql += ` AND oj.date BETWEEN :from_date AND :to_date`;
+      replacements.from_date = from_date;
+      replacements.to_date = to_date;
+    }
+
+    // Search (Old Jewel No, Customer, Mobile)
+    if (search) {
+      whereSql += `
+        AND (
+          oj.old_jewel_code ILIKE :search
+          OR c.customer_name ILIKE :search
+          OR c.mobile_number ILIKE :search
+        )
+      `;
+      replacements.search = `%${search}%`;
+    }
+
+    // Material Type (from items table)
+    if (material_type_id) {
+      whereSql += `
+        AND EXISTS (
+          SELECT 1
+          FROM old_jewel_items oji
+          WHERE oji.old_jewel_id = oj.id
+            AND oji.material_type_id = :material_type_id
+            AND oji.deleted_at IS NULL
+        )
+      `;
+      replacements.material_type_id = material_type_id;
+    }
+
+    // Fetch Old Jewels
     const jewels = await sequelize.query(
       `
       SELECT
         oj.*,
         emp.employee_no,
         emp.employee_name,
+        b.branch_name,
         c.customer_name,
         c.mobile_number AS customer_mobile
       FROM old_jewels oj
       LEFT JOIN employees emp ON emp.id = oj.employee_id AND emp.deleted_at IS NULL
       LEFT JOIN customers c ON c.id = oj.customer_id AND c.deleted_at IS NULL
+      LEFT JOIN branches b ON b.id = oj.branch_id AND b.deleted_at IS NULL
       WHERE ${whereSql}
       ORDER BY oj.id DESC
       `,
@@ -112,8 +163,9 @@ const getAllOldJewels = async (req, res) => {
       return commonService.okResponse(res, { data: [] });
     }
 
-    // 2️. Fetch all items for these jewels
+    // Fetch Items
     const jewelIds = jewels.map(j => j.id);
+
     const items = await sequelize.query(
     `SELECT oji.*, mt.material_type
       FROM old_jewel_items oji
@@ -143,12 +195,11 @@ const getAllOldJewels = async (req, res) => {
         (sum, it) => sum + (parseFloat(it.net_weight) || 0),
         0
       );
-      const quantityCount = jewelItems.length;
 
       return {
         ...jewel,
         total_net_weight: totalNetWeight.toFixed(3),
-        quantity_count: quantityCount,
+        quantity_count: jewelItems.length,
         items: jewelItems,
       };
     });
@@ -159,6 +210,7 @@ const getAllOldJewels = async (req, res) => {
     return commonService.handleError(res, error);
   }
 };
+
 
 // Get a single old jewel record by ID
 const getOldJewelById = async (req, res) => {
