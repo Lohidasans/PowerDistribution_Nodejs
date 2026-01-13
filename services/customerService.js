@@ -16,7 +16,7 @@ const createCustomer = async (req, res) => {
 
     const payload = {
       customer_code: req.body.customer_code,
-      customer_name: req.body.customer_name,
+      customer_name: req.body.customer_name || null,
       mobile_number: req.body.mobile_number,
       // Optional fields
       email_id: req.body.email_id || null,
