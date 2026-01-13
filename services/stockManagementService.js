@@ -231,4 +231,202 @@ const getOldJewelReport = async (req, res) => {
     }
 };
 
-module.exports = { getOldJewelReport };
+const getStockAgeingReport = async (req, res) => {
+    try {
+        const {
+            material_type_id,
+            category_id,
+            subcategory_id,
+            grn_id,
+            ref_no_id,
+            search,
+            branch_id,
+            ageing,    // 0_30 | 31_60 | 61_90 | 91_plus
+            page,
+            limit
+        } = req.query;
+
+        const usePagination = page && limit;
+        const offset = usePagination ? (page - 1) * limit : null;
+
+        const replacements = {};
+        let whereSql = `
+      WHERE p.status = 'Active'
+      AND p.deleted_at IS NULL
+      AND pid.quantity > 0
+      AND pid.deleted_at IS NULL
+    `;
+
+        if (material_type_id) {
+            whereSql += ` AND p.material_type_id = :material_type_id`;
+            replacements.material_type_id = material_type_id;
+        }
+
+        if (category_id) {
+            whereSql += ` AND p.category_id = :category_id`;
+            replacements.category_id = category_id;
+        }
+
+        if (subcategory_id) {
+            whereSql += ` AND p.subcategory_id = :subcategory_id`;
+            replacements.subcategory_id = subcategory_id;
+        }
+
+        if (grn_id) {
+            whereSql += ` AND p.grn_id = :grn_id`;
+            replacements.grn_id = grn_id;
+        }
+
+        if (ref_no_id) {
+            whereSql += ` AND p.ref_no_id = :ref_no_id`;
+            replacements.ref_no_id = ref_no_id;
+        }
+
+        if (branch_id) {
+            whereSql += ` AND p.branch_id = :branch_id`;
+            replacements.branch_id = branch_id;
+        }
+
+        if (search) {
+            replacements.search = `%${search}%`;
+            whereSql += `
+        AND (
+          p.product_name ILIKE :search
+          OR p.sku_id ILIKE :search
+          OR mt.material_type ILIKE :search
+          OR b.branch_name ILIKE :search
+        )
+      `;
+        }
+
+        // ---------------- AGEING FILTER ----------------
+        let ageingSql = ``;
+
+        if (ageing === "0_30") ageingSql = ` AND (CURRENT_DATE - p.created_at::date) <= 30`;
+        if (ageing === "31_60") ageingSql = ` AND (CURRENT_DATE - p.created_at::date) BETWEEN 31 AND 60`;
+        if (ageing === "61_90") ageingSql = ` AND (CURRENT_DATE - p.created_at::date) BETWEEN 61 AND 90`;
+        if (ageing === "91_plus") ageingSql = ` AND (CURRENT_DATE - p.created_at::date) >= 91`;
+
+        // ---------------- SCORE CARDS ----------------
+        const scoreRows = await sequelize.query(
+            `
+      SELECT
+        CASE
+          WHEN (CURRENT_DATE - p.created_at::date) <= 30 THEN '0_30'
+          WHEN (CURRENT_DATE - p.created_at::date) BETWEEN 31 AND 60 THEN '31_60'
+          WHEN (CURRENT_DATE - p.created_at::date) BETWEEN 61 AND 90 THEN '61_90'
+          ELSE '91_plus'
+        END AS bucket,
+        SUM(pid.quantity * pid.net_weight) AS total_weight,
+        SUM(pid.quantity) AS total_quantity
+      FROM products p
+      JOIN "productItemDetails" pid ON pid.product_id = p.id
+      LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
+      LEFT JOIN branches b ON b.id = p.branch_id
+      ${whereSql}
+      GROUP BY bucket
+      `,
+            { replacements, type: sequelize.QueryTypes.SELECT }
+        );
+
+        const cards = {
+            "0_30": { weight: 0, qty: 0 },
+            "31_60": { weight: 0, qty: 0 },
+            "61_90": { weight: 0, qty: 0 },
+            "91_plus": { weight: 0, qty: 0 }
+        };
+
+        scoreRows.forEach(r => {
+            cards[r.bucket].weight = parseFloat(r.total_weight || 0).toFixed(3);
+            cards[r.bucket].qty = Number(r.total_quantity || 0);
+        });
+
+        // ---------------- GRID ----------------
+        let gridSql = `
+        SELECT
+        p.id,
+        p.product_name,
+        p.sku_id,
+        p.material_type_id,
+        p.category_id,
+        p.subcategory_id,
+        p.branch_id,
+        p.vendor_id,
+        p.purity,
+        p.created_at,
+        p.ref_no_id,
+
+        p.grn_id,
+        g.grn_no,
+
+        gi.ref_no AS grn_ref_no,
+
+        mt.material_type,
+        ct.category_name,
+        sc.subcategory_name,
+        b.branch_name,
+
+        SUM(pid.quantity) AS quantity,
+        SUM(pid.quantity * pid.net_weight) AS total_weight,
+        (CURRENT_DATE - p.created_at::date) AS age_days,
+
+        JSON_AGG(
+            JSON_BUILD_OBJECT(
+            'id', pid.id,
+            'product_id', pid.product_id,
+            'sku_id', p.sku_id,
+            'quantity', pid.quantity,
+            'net_weight', pid.net_weight
+            ) ORDER BY pid.id
+        ) AS itemDetails
+
+        FROM products p
+        JOIN "productItemDetails" pid ON pid.product_id = p.id
+        LEFT JOIN grns g ON g.id = p.grn_id AND g.deleted_at IS NULL
+        LEFT JOIN "grnItems" gi ON gi.grn_id = g.id AND gi.id = p.ref_no_id AND gi.deleted_at IS NULL
+        LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
+        LEFT JOIN categories ct ON ct.id = p.category_id
+        LEFT JOIN subcategories sc ON sc.id = p.subcategory_id
+        LEFT JOIN branches b ON b.id = p.branch_id
+
+        ${whereSql}
+        ${ageingSql}
+
+        GROUP BY
+        p.id, g.grn_no,
+        gi.ref_no,
+        mt.material_type,
+        ct.category_name,
+        sc.subcategory_name,
+        b.branch_name
+        ORDER BY p.id DESC
+        `;
+
+
+        if (usePagination) {
+            gridSql += ` LIMIT :limit OFFSET :offset`;
+            replacements.limit = Number(limit);
+            replacements.offset = offset;
+        }
+
+        const data = await sequelize.query(gridSql, {
+            replacements,
+            type: sequelize.QueryTypes.SELECT
+        });
+
+        return commonService.okResponse(res, {
+            cards,
+            data
+        });
+
+    } catch (error) {
+        console.error("Stock Ageing Error:", error);
+        return commonService.handleError(res, error);
+    }
+};
+
+
+module.exports = {
+    getOldJewelReport,
+    getStockAgeingReport
+};
