@@ -20,7 +20,6 @@ const getOldJewelReport = async (req, res) => {
 
         const finalPageSize = pageSize || limit;
         const hasPagination = page && finalPageSize;
-
         const perPage = hasPagination ? Number(finalPageSize) : null;
         const offset = hasPagination ? (page - 1) * perPage : null;
 
@@ -43,33 +42,72 @@ const getOldJewelReport = async (req, res) => {
             replacements.to_date = to_date;
         }
 
-        const codeField = type === "jewel_repair" ? "repair_code" : "old_jewel_code";
+        const searchSql = search
+            ? ` AND (
+            t.code ILIKE :search
+            OR c.customer_name ILIKE :search
+            OR c.mobile_number ILIKE :search
+         )`
+            : ``;
 
-        if (search) {
-            whereSql += `
-        AND (
-          t.${codeField} ILIKE :search
-          OR c.customer_name ILIKE :search
-          OR c.mobile_number ILIKE :search
-        )
-      `;
-            replacements.search = `%${search}%`;
-        }
+        if (search) replacements.search = `%${search}%`;
 
+        // ------------------------------------------------
+        // OLD JEWEL SCORECARD (always)
+        // ------------------------------------------------
+        const [oldJewelCard] = await sequelize.query(
+            `
+      SELECT
+        COALESCE(SUM(oi.net_weight),0) AS total_weight,
+        COUNT(oi.id) AS total_quantity
+      FROM old_jewels t
+      JOIN old_jewel_items oi ON oi.old_jewel_id = t.id AND oi.deleted_at IS NULL
+      LEFT JOIN customers c ON c.id = t.customer_id
+      WHERE ${whereSql.replace(/t\./g, "t.")}
+      ${search ? searchSql.replace(/t\.code/g, "t.old_jewel_code") : ""}
+      `,
+            { replacements, type: sequelize.QueryTypes.SELECT }
+        );
+
+        // ------------------------------------------------
+        // JEWEL REPAIR SCORECARD (always)
+        // ------------------------------------------------
+        const [repairCard] = await sequelize.query(
+            `
+      SELECT
+        COALESCE(SUM(ri.weight),0) AS total_weight,
+        COUNT(ri.id) AS total_quantity
+      FROM jewel_repairs t
+      JOIN jewel_repair_items ri ON ri.repair_id = t.id AND ri.deleted_at IS NULL
+      LEFT JOIN customers c ON c.id = t.customer_id
+      WHERE ${whereSql.replace(/t\./g, "t.")}
+      ${search ? searchSql.replace(/t\.code/g, "t.repair_code") : ""}
+      `,
+            { replacements, type: sequelize.QueryTypes.SELECT }
+        );
+
+        // ------------------------------------------------
+        // GRID CONFIG (tab switch)
+        // ------------------------------------------------
         const config = type === "jewel_repair"
             ? {
                 table: "jewel_repairs",
                 itemTable: "jewel_repair_items",
                 itemFk: "repair_id",
-                weight: "net_weight"
+                weight: "weight",
+                code: "repair_code"
             }
             : {
                 table: "old_jewels",
                 itemTable: "old_jewel_items",
                 itemFk: "old_jewel_id",
-                weight: "net_weight"
+                weight: "net_weight",
+                code: "old_jewel_code"
             };
 
+        // ------------------------------------------------
+        // MATERIAL FILTER
+        // ------------------------------------------------
         if (material_type_id) {
             whereSql += `
         AND EXISTS (
@@ -83,22 +121,9 @@ const getOldJewelReport = async (req, res) => {
             replacements.material_type_id = material_type_id;
         }
 
-        // ---------------- SCORECARD (FULL DATASET) ----------------
-        const [scorecard] = await sequelize.query(
-            `
-      SELECT
-        COALESCE(SUM(i.${config.weight}),0) AS total_weight,
-        COUNT(i.id) AS total_quantity
-      FROM ${config.table} t
-      JOIN ${config.itemTable} i
-        ON i.${config.itemFk} = t.id AND i.deleted_at IS NULL
-      LEFT JOIN customers c ON c.id = t.customer_id
-      WHERE ${whereSql}
-      `,
-            { replacements, type: sequelize.QueryTypes.SELECT }
-        );
-
-        // ---------------- GRID DATA ----------------
+        // ------------------------------------------------
+        // GRID QUERY
+        // ------------------------------------------------
         let gridSql = `
       SELECT
         t.*,
@@ -106,16 +131,16 @@ const getOldJewelReport = async (req, res) => {
         c.customer_name,
         c.mobile_number,
 
-        COALESCE(items.total_net_weight, 0) AS total_net_weight,
-        COALESCE(items.quantity, 0) AS quantity
+        COALESCE(items.total_weight,0) AS total_net_weight,
+        COALESCE(items.qty,0) AS quantity
 
       FROM ${config.table} t
 
       LEFT JOIN (
         SELECT
           ${config.itemFk} AS parent_id,
-          SUM(${config.weight}) AS total_net_weight,
-          COUNT(id) AS quantity
+          SUM(${config.weight}) AS total_weight,
+          COUNT(id) AS qty
         FROM ${config.itemTable}
         WHERE deleted_at IS NULL
         GROUP BY ${config.itemFk}
@@ -125,6 +150,11 @@ const getOldJewelReport = async (req, res) => {
       LEFT JOIN branches b ON b.id = t.branch_id
 
       WHERE ${whereSql}
+      ${search ? ` AND (
+            t.${config.code} ILIKE :search
+            OR c.customer_name ILIKE :search
+            OR c.mobile_number ILIKE :search
+          )` : ""}
       ORDER BY t.id DESC
     `;
 
@@ -139,9 +169,10 @@ const getOldJewelReport = async (req, res) => {
             type: sequelize.QueryTypes.SELECT
         });
 
-        // ---------------- PAGINATION META ----------------
+        // ------------------------------------------------
+        // PAGINATION
+        // ------------------------------------------------
         let pagination = null;
-
         if (hasPagination) {
             const [{ total }] = await sequelize.query(
                 `
@@ -163,8 +194,14 @@ const getOldJewelReport = async (req, res) => {
 
         return commonService.okResponse(res, {
             scorecard: {
-                total_weight: parseFloat(scorecard.total_weight).toFixed(3),
-                total_quantity: Number(scorecard.total_quantity)
+                old_jewel: {
+                    total_weight: parseFloat(oldJewelCard.total_weight).toFixed(3),
+                    total_quantity: Number(oldJewelCard.total_quantity)
+                },
+                jewel_repair: {
+                    total_weight: parseFloat(repairCard.total_weight).toFixed(3),
+                    total_quantity: Number(repairCard.total_quantity)
+                }
             },
             data,
             pagination
@@ -175,8 +212,6 @@ const getOldJewelReport = async (req, res) => {
         return commonService.handleError(res, error);
     }
 };
-
-
 
 
 module.exports = { getOldJewelReport };
