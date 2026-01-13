@@ -153,19 +153,24 @@ const getOldJewelReport = async (req, res) => {
             c.mobile_number,
 
             COALESCE(items.total_weight,0) AS total_net_weight,
-            COALESCE(items.qty,0) AS quantity
+            COALESCE(items.qty,0) AS quantity,
+            items.material_type_id,
+            items.material_type
 
         FROM ${config.table} t
 
         LEFT JOIN (
             SELECT
-            ${config.itemFk} AS parent_id,
-            SUM(${config.weight}) AS total_weight,
-            COUNT(id) AS qty
-            FROM ${config.itemTable}
-            WHERE deleted_at IS NULL
-            GROUP BY ${config.itemFk}
-        ) items ON items.parent_id = t.id
+                i.${config.itemFk} AS parent_id,
+                SUM(i.${config.weight}) AS total_weight,
+                COUNT(i.id) AS qty,
+                MAX(i.material_type_id) AS material_type_id,
+                MAX(mt.material_type) AS material_type
+            FROM ${config.itemTable} i
+            LEFT JOIN "materialTypes" mt ON mt.id = i.material_type_id AND mt.deleted_at IS NULL
+            WHERE i.deleted_at IS NULL
+            GROUP BY i.${config.itemFk}
+            ) items ON items.parent_id = t.id
 
         LEFT JOIN customers c ON c.id = t.customer_id
         LEFT JOIN branches b ON b.id = t.branch_id
