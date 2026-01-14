@@ -347,7 +347,6 @@ const createStockTransfer = async (req, res) => {
   }
 };
 
-
 // Get Stock Transfer by ID with items
 const getStockTransferById = async (req, res) => {
   try {
@@ -617,6 +616,7 @@ const updateStockTransferStatus = async (req, res) => {
     const { id } = req.params;
     const {
       status_id,
+
       // Dispatch
       total_packages,
       total_weight,
@@ -635,14 +635,14 @@ const updateStockTransferStatus = async (req, res) => {
       delivery_remarks,
     } = req.body;
 
-    if (!status_id ) {
+    if (!status_id) {
       throw new Error("status_id is required");
     }
-
-    // FETCH STOCK TRANSFER
+    
+    // FETCH STOCK TRANSFER  
     const stockTransfer = await models.StockTransfer.findOne({
       where: {
-        id: id,
+        id,
         deleted_at: null,
       },
       transaction,
@@ -651,8 +651,8 @@ const updateStockTransferStatus = async (req, res) => {
     if (!stockTransfer) {
       throw new Error("Stock Transfer not found");
     }
-
-    // STATUS VALIDATION
+    
+    // STATUS VALIDATION   
     if (stockTransfer.status_id === 3) {
       throw new Error("Delivered stock transfer cannot be updated");
     }
@@ -661,7 +661,6 @@ const updateStockTransferStatus = async (req, res) => {
       throw new Error("Invalid status transition");
     }
 
-    // STATUS-SPECIFIC VALIDATION
     if (status_id === 2 && !dispatch_date) {
       throw new Error("Dispatch date is required");
     }
@@ -669,21 +668,19 @@ const updateStockTransferStatus = async (req, res) => {
     if (status_id === 3 && !delivered_date) {
       throw new Error("Delivered date is required");
     }
-
-    // UPDATE STOCK TRANSFER
+   
+    // UPDATE STOCK TRANSFER STATUS    
     await stockTransfer.update(
-      {
-        status_id,
-      },
+      { status_id },
       { transaction }
     );
+    
+    // PREPARE TRACKING DATA (SAFE)    
+    const trackingData = {};
 
-    // INSERT TRACKING RECORD
-    await models.StockTransferTracking.create(
-      {
-        stock_transfer_id: id,
-
-        // Dispatch
+    if (status_id === 2) {
+      // DISPATCH DATA ONLY
+      Object.assign(trackingData, {
         total_packages,
         total_weight,
         dispatch_date,
@@ -692,16 +689,39 @@ const updateStockTransferStatus = async (req, res) => {
         tracking_number,
         attach_bill_url,
         tracking_remarks,
+      });
+    }
 
-        // Delivery
+    if (status_id === 3) {
+      // DELIVERY DATA ONLY
+      Object.assign(trackingData, {
         delivered_date,
         received_by,
         received_weight,
         received_packages,
         delivery_remarks,
-      },
-      { transaction }
-    );
+      });
+    }
+    
+    // UPSERT TRACKING RECORD    
+    const existingTracking = await models.StockTransferTracking.findOne({
+      where: { stock_transfer_id: id },
+      transaction,
+    });
+
+    if (existingTracking) {
+      // UPDATE EXISTING ROW
+      await existingTracking.update(trackingData, { transaction });
+    } else {
+      // CREATE FIRST ROW (DISPATCH ONLY)
+      await models.StockTransferTracking.create(
+        {
+          stock_transfer_id: id,
+          ...trackingData,
+        },
+        { transaction }
+      );
+    }
 
     await transaction.commit();
 
@@ -718,7 +738,6 @@ const updateStockTransferStatus = async (req, res) => {
     return commonService.badRequest(res, error.message);
   }
 };
-
 
 module.exports = {
   generateStockCode,
