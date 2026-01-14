@@ -10,7 +10,7 @@ const getOldJewelReport = async (req, res) => {
             material_type_id,
             from_date,
             to_date,
-            date_filter, // today | week | month | year
+            date_filter,
             search,
             status,
             page,
@@ -18,7 +18,12 @@ const getOldJewelReport = async (req, res) => {
             limit
         } = req.query;
 
-        // Pagination
+        // VALIDATION
+        if (!["old_jewel", "jewel_repair"].includes(type)) {
+            return commonService.badRequest(res, "Invalid report type");
+        }
+
+        // PAGINATION
         const finalPageSize = pageSize || limit;
         const hasPagination = page && finalPageSize;
         const perPage = hasPagination ? Number(finalPageSize) : null;
@@ -27,7 +32,7 @@ const getOldJewelReport = async (req, res) => {
         const replacements = {};
         let whereSql = `1=1`;
 
-        // Auto Date Range (Dropdown)
+        // DATE FILTER
         const today = new Date();
         const yyyy = today.getFullYear();
         const mm = String(today.getMonth() + 1).padStart(2, "0");
@@ -38,21 +43,14 @@ const getOldJewelReport = async (req, res) => {
         let autoToDate = todayStr;
 
         if (date_filter) {
-            if (date_filter === "today") {
-                autoFromDate = todayStr;
-            }
+            if (date_filter === "today") autoFromDate = todayStr;
             if (date_filter === "week") {
                 const day = today.getDay();
                 const diff = today.getDate() - day + (day === 0 ? -6 : 1);
-                const monday = new Date(today.setDate(diff));
-                autoFromDate = monday.toISOString().split("T")[0];
+                autoFromDate = new Date(today.setDate(diff)).toISOString().split("T")[0];
             }
-            if (date_filter === "month") {
-                autoFromDate = `${yyyy}-${mm}-01`;
-            }
-            if (date_filter === "year") {
-                autoFromDate = `${yyyy}-01-01`;
-            }
+            if (date_filter === "month") autoFromDate = `${yyyy}-${mm}-01`;
+            if (date_filter === "year") autoFromDate = `${yyyy}-01-01`;
         }
 
         const finalFromDate = from_date || autoFromDate;
@@ -64,7 +62,6 @@ const getOldJewelReport = async (req, res) => {
             replacements.to_date = finalToDate;
         }
 
-        // Other Filters
         if (status) {
             whereSql += ` AND t.status = :status`;
             replacements.status = status;
@@ -75,9 +72,18 @@ const getOldJewelReport = async (req, res) => {
             replacements.branch_id = branch_id;
         }
 
-        const searchSql = search
+        // SEARCH SQL (SPLIT SAFELY)
+        const oldJewelSearchSql = search
             ? ` AND (
-          t.${type === "jewel_repair" ? "repair_code" : "old_jewel_code"} ILIKE :search
+          t.old_jewel_code ILIKE :search
+          OR c.customer_name ILIKE :search
+          OR c.mobile_number ILIKE :search
+        )`
+            : ``;
+
+        const repairSearchSql = search
+            ? ` AND (
+          t.repair_code ILIKE :search
           OR c.customer_name ILIKE :search
           OR c.mobile_number ILIKE :search
         )`
@@ -85,35 +91,36 @@ const getOldJewelReport = async (req, res) => {
 
         if (search) replacements.search = `%${search}%`;
 
-        // Scorecards
-
+        // SCORECARDS
         const [oldJewelCard] = await sequelize.query(
-            `SELECT
-            COALESCE(SUM(oi.net_weight),0) AS total_weight,
-            COUNT(oi.id) AS total_quantity
-        FROM old_jewels t
-        JOIN old_jewel_items oi ON oi.old_jewel_id = t.id AND oi.deleted_at IS NULL
-        LEFT JOIN customers c ON c.id = t.customer_id
-        WHERE ${whereSql.replace(/t\./g, "t.")}
-        ${search ? searchSql.replace(/t\.old_jewel_code/g, "t.old_jewel_code") : ""}
-        `,
+            `
+      SELECT
+        COALESCE(SUM(oi.net_weight),0) AS total_weight,
+        COUNT(oi.id) AS total_quantity
+      FROM old_jewels t
+      JOIN old_jewel_items oi ON oi.old_jewel_id = t.id AND oi.deleted_at IS NULL
+      LEFT JOIN customers c ON c.id = t.customer_id
+      WHERE ${whereSql}
+      ${oldJewelSearchSql}
+      `,
             { replacements, type: sequelize.QueryTypes.SELECT }
         );
 
         const [repairCard] = await sequelize.query(
-            `SELECT
-            COALESCE(SUM(ri.weight),0) AS total_weight,
-            COUNT(ri.id) AS total_quantity
-        FROM jewel_repairs t
-        JOIN jewel_repair_items ri ON ri.repair_id = t.id AND ri.deleted_at IS NULL
-        LEFT JOIN customers c ON c.id = t.customer_id
-        WHERE ${whereSql.replace(/t\./g, "t.")}
-        ${search ? searchSql.replace(/t\.old_jewel_code/g, "t.repair_code") : ""}
-        `,
+            `
+      SELECT
+        COALESCE(SUM(ri.weight),0) AS total_weight,
+        COUNT(ri.id) AS total_quantity
+      FROM jewel_repairs t
+      JOIN jewel_repair_items ri ON ri.repair_id = t.id AND ri.deleted_at IS NULL
+      LEFT JOIN customers c ON c.id = t.customer_id
+      WHERE ${whereSql}
+      ${repairSearchSql}
+      `,
             { replacements, type: sequelize.QueryTypes.SELECT }
         );
 
-        // Grid Config
+        // CONFIG BY TYPE
         const config = type === "jewel_repair"
             ? {
                 table: "jewel_repairs",
@@ -130,7 +137,7 @@ const getOldJewelReport = async (req, res) => {
                 code: "old_jewel_code"
             };
 
-        // Material Filter
+        // MATERIAL FILTER
         if (material_type_id) {
             whereSql += `
         AND EXISTS (
@@ -144,45 +151,40 @@ const getOldJewelReport = async (req, res) => {
             replacements.material_type_id = material_type_id;
         }
 
-        // Grid Query
+        // GRID QUERY
         let gridSql = `
+      SELECT
+        t.*,
+        b.branch_name,
+        c.customer_name,
+        c.mobile_number,
+        COALESCE(items.total_weight,0) AS total_net_weight,
+        COALESCE(items.qty,0) AS quantity,
+        items.material_type_id,
+        items.material_type
+      FROM ${config.table} t
+      LEFT JOIN (
         SELECT
-            t.*,
-            b.branch_name,
-            c.customer_name,
-            c.mobile_number,
-
-            COALESCE(items.total_weight,0) AS total_net_weight,
-            COALESCE(items.qty,0) AS quantity,
-            items.material_type_id,
-            items.material_type
-
-        FROM ${config.table} t
-
-        LEFT JOIN (
-            SELECT
-                i.${config.itemFk} AS parent_id,
-                SUM(i.${config.weight}) AS total_weight,
-                COUNT(i.id) AS qty,
-                MAX(i.material_type_id) AS material_type_id,
-                MAX(mt.material_type) AS material_type
-            FROM ${config.itemTable} i
-            LEFT JOIN "materialTypes" mt ON mt.id = i.material_type_id AND mt.deleted_at IS NULL
-            WHERE i.deleted_at IS NULL
-            GROUP BY i.${config.itemFk}
-            ) items ON items.parent_id = t.id
-
-        LEFT JOIN customers c ON c.id = t.customer_id
-        LEFT JOIN branches b ON b.id = t.branch_id
-
-        WHERE ${whereSql}
-        ${search ? ` AND (
-            t.${config.code} ILIKE :search
-            OR c.customer_name ILIKE :search
-            OR c.mobile_number ILIKE :search
-        )` : ""}
-        ORDER BY t.id DESC
-        `;
+          i.${config.itemFk} AS parent_id,
+          SUM(i.${config.weight}) AS total_weight,
+          COUNT(i.id) AS qty,
+          MAX(i.material_type_id) AS material_type_id,
+          MAX(mt.material_type) AS material_type
+        FROM ${config.itemTable} i
+        LEFT JOIN "materialTypes" mt ON mt.id = i.material_type_id AND mt.deleted_at IS NULL
+        WHERE i.deleted_at IS NULL
+        GROUP BY i.${config.itemFk}
+      ) items ON items.parent_id = t.id
+      LEFT JOIN customers c ON c.id = t.customer_id
+      LEFT JOIN branches b ON b.id = t.branch_id
+      WHERE ${whereSql}
+      ${search ? ` AND (
+        t.${config.code} ILIKE :search
+        OR c.customer_name ILIKE :search
+        OR c.mobile_number ILIKE :search
+      )` : ""}
+      ORDER BY t.id DESC
+    `;
 
         if (hasPagination) {
             gridSql += ` LIMIT :limit OFFSET :offset`;
@@ -195,15 +197,16 @@ const getOldJewelReport = async (req, res) => {
             type: sequelize.QueryTypes.SELECT
         });
 
-        // Pagination
+        // PAGINATION COUNT
         let pagination = null;
         if (hasPagination) {
             const [{ total }] = await sequelize.query(
-                `SELECT COUNT(*)::int AS total
-            FROM ${config.table} t
-            LEFT JOIN customers c ON c.id = t.customer_id
-            WHERE ${whereSql}
-            `,
+                `
+        SELECT COUNT(*)::int AS total
+        FROM ${config.table} t
+        LEFT JOIN customers c ON c.id = t.customer_id
+        WHERE ${whereSql}
+        `,
                 { replacements, type: sequelize.QueryTypes.SELECT }
             );
 
@@ -218,11 +221,11 @@ const getOldJewelReport = async (req, res) => {
         return commonService.okResponse(res, {
             scorecard: {
                 old_jewel: {
-                    total_weight: parseFloat(oldJewelCard.total_weight).toFixed(3),
+                    total_weight: Number(oldJewelCard.total_weight).toFixed(3),
                     total_quantity: Number(oldJewelCard.total_quantity)
                 },
                 jewel_repair: {
-                    total_weight: parseFloat(repairCard.total_weight).toFixed(3),
+                    total_weight: Number(repairCard.total_weight).toFixed(3),
                     total_quantity: Number(repairCard.total_quantity)
                 }
             },
@@ -235,6 +238,7 @@ const getOldJewelReport = async (req, res) => {
         return commonService.handleError(res, error);
     }
 };
+
 
 const getStockAgeingReport = async (req, res) => {
     try {
@@ -304,7 +308,7 @@ const getStockAgeingReport = async (req, res) => {
       `;
         }
 
-        // ---------------- AGEING FILTER ----------------
+        // AGEING FILTER
         let ageingSql = ``;
 
         if (ageing === "0_30") ageingSql = ` AND (CURRENT_DATE - p.created_at::date) <= 30`;
@@ -312,7 +316,7 @@ const getStockAgeingReport = async (req, res) => {
         if (ageing === "61_90") ageingSql = ` AND (CURRENT_DATE - p.created_at::date) BETWEEN 61 AND 90`;
         if (ageing === "91_plus") ageingSql = ` AND (CURRENT_DATE - p.created_at::date) >= 91`;
 
-        // ---------------- SCORE CARDS ----------------
+        // SCORE CARDS
         const scoreRows = await sequelize.query(
             `
       SELECT
@@ -346,7 +350,7 @@ const getStockAgeingReport = async (req, res) => {
             cards[r.bucket].qty = Number(r.total_quantity || 0);
         });
 
-        // ---------------- GRID ----------------
+        // GRID
         let gridSql = `
         SELECT
         p.id,
