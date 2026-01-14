@@ -25,8 +25,8 @@ module.exports = (sequelize, DataTypes) => {
                 allowNull: false,
             },
             account_name_id: {
-                type: DataTypes.STRING,  // vendor bank account name
-                allowNull: false,
+                type: DataTypes.INTEGER,  // vendor bank account name
+                allowNull: true,
             },
             amount: {
                 type: DataTypes.DECIMAL(15, 2),
