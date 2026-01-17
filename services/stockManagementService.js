@@ -1,6 +1,7 @@
 const { Op } = require('sequelize');
 const commonService = require('./commonService');
 const { models, sequelize } = require('../models/index');
+const { dateFilter } = require("../helpers/dateHelper");
 
 const getOldJewelReport = async (req, res) => {
     try {
@@ -31,37 +32,12 @@ const getOldJewelReport = async (req, res) => {
 
         const replacements = {};
         let whereSql = `1=1`;
-
-        // DATE FILTER
-        const today = new Date();
-        const yyyy = today.getFullYear();
-        const mm = String(today.getMonth() + 1).padStart(2, "0");
-        const dd = String(today.getDate()).padStart(2, "0");
-        const todayStr = `${yyyy}-${mm}-${dd}`;
-
-        let autoFromDate = null;
-        let autoToDate = todayStr;
-
-        if (date_filter) {
-            if (date_filter === "today") autoFromDate = todayStr;
-            if (date_filter === "week") {
-                const day = today.getDay();
-                const diff = today.getDate() - day + (day === 0 ? -6 : 1);
-                autoFromDate = new Date(today.setDate(diff)).toISOString().split("T")[0];
-            }
-            if (date_filter === "month") autoFromDate = `${yyyy}-${mm}-01`;
-            if (date_filter === "year") autoFromDate = `${yyyy}-01-01`;
-        }
-
-        const finalFromDate = from_date || autoFromDate;
-        const finalToDate = to_date || autoToDate;
-
-        if (finalFromDate && finalToDate) {
-            whereSql += ` AND t.date BETWEEN :from_date AND :to_date`;
-            replacements.from_date = finalFromDate;
-            replacements.to_date = finalToDate;
-        }
-
+        whereSql += dateFilter(
+            { from_date, to_date, date_filter },
+            "t.date",
+            replacements
+        );
+    
         if (status) {
             whereSql += ` AND t.status = :status`;
             replacements.status = status;
