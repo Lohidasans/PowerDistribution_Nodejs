@@ -760,42 +760,44 @@ const getOutOfStockSummary = async (req, res) => {
           p.subcategory_id,
           SUM(pid.quantity) AS total_qty
         FROM products p
-        JOIN "productItemDetails" pid 
-          ON pid.product_id = p.id 
+        JOIN "productItemDetails" pid
+          ON pid.product_id = p.id
           AND pid.deleted_at IS NULL
         WHERE p.deleted_at IS NULL
         GROUP BY p.id, p.subcategory_id
       )
       SELECT
-        b.branch_name,
         p.branch_id,
+        b.branch_name,
         p.material_type_id,
         mt.material_type,
         p.category_id,
         c.category_name,
         sc.id AS subcategory_id,
         sc.subcategory_name,
-        sc.reorder_level,
-        COUNT(ps.product_id) AS product_count,
-        MAX(ps.total_qty) AS max_product_qty
+        COUNT(p.id) AS product_count,
+        MAX(ps.total_qty) AS quantity
       FROM subcategories sc
-      JOIN products p ON p.subcategory_id = sc.id
-      JOIN product_stock ps ON ps.product_id = p.id
+      JOIN products p 
+        ON p.subcategory_id = sc.id
+        AND p.deleted_at IS NULL
+      JOIN product_stock ps 
+        ON ps.product_id = p.id
       LEFT JOIN branches b ON b.id = p.branch_id
       LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
       LEFT JOIN categories c ON c.id = p.category_id
       ${filterSql}
       GROUP BY
+        p.branch_id,
+        p.category_id,
+        p.material_type_id,
         b.branch_name,
         mt.material_type,
-        p.category_id,
-        p.branch_id,
-        p.material_type_id,
         c.category_name,
         sc.id,
-        sc.subcategory_name,
-        sc.reorder_level
-      HAVING MAX(ps.total_qty) < sc.reorder_level
+        sc.subcategory_name
+      HAVING COUNT(p.id) > 0
+      AND MAX(ps.total_qty) = 0
       ORDER BY sc.subcategory_name
       `,
             { replacements, type: sequelize.QueryTypes.SELECT }
@@ -803,11 +805,10 @@ const getOutOfStockSummary = async (req, res) => {
 
         return commonService.okResponse(res, { data: rows });
     } catch (error) {
-        console.error("Out of Stock Error", error);
+        console.error("Out of Stock Error:", error);
         return commonService.handleError(res, error);
     }
 };
-
 
 module.exports = {
     getOldJewelReport,
