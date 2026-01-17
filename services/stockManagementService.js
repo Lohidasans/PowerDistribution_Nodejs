@@ -951,10 +951,23 @@ const buildSubcategoryFilters = (query, replacements) => {
         replacements.category_id = query.category_id;
     }
 
+    if (query.subcategory_id) {
+        where += ` AND sc.id = :subcategory_id`;
+        replacements.subcategory_id = query.subcategory_id;
+    }
+
+    if (query.branch_id) {
+        where += ` AND b.id = :branch_id`;
+        replacements.branch_id = query.branch_id;
+    }
+
     if (query.search) {
         where += `
       AND (
         sc.subcategory_name ILIKE :search
+        OR c.category_name ILIKE :search
+        OR mt.material_type ILIKE :search
+        OR b.branch_name ILIKE :search
       )
     `;
         replacements.search = `%${query.search}%`;
@@ -986,7 +999,6 @@ const getStockInHandSummary = async (where, replacements) => {
         product_count: Number(rows[0]?.product_count || 0),
     };
 };
-
 
 const getLowStockSummaryInternal = async (where, replacements) => {
     const [rows] = await sequelize.query(
@@ -1244,18 +1256,31 @@ const getOutOfStockList = async (query, usePagination, limit, offset) => {
 
     let sql = `
     SELECT
+      b.id AS branch_id,
+      b.branch_name,
       sc.id AS subcategory_id,
       sc.subcategory_name,
       mt.material_type,
-      c.category_name
+      sc.materialtype_id,
+      c.category_name,
+      sc.category_id,
+      0 AS quantity
     FROM subcategories sc
-    LEFT JOIN products p
-      ON p.subcategory_id = sc.id
-      AND p.deleted_at IS NULL
+    LEFT JOIN products p ON p.subcategory_id = sc.id AND p.deleted_at IS NULL
+    LEFT JOIN branches b ON b.id = 81  ---Fixed branch for out of stock
     LEFT JOIN "materialTypes" mt ON mt.id = sc.materialtype_id
     LEFT JOIN categories c ON c.id = sc.category_id
     ${where}
-    GROUP BY sc.id, mt.material_type, c.category_name
+    GROUP BY 
+        b.id,
+        b.branch_name,
+        mt.material_type,
+        c.category_name,  
+        sc.materialtype_id,
+        sc.category_id,
+        sc.id, 
+        mt.material_type, 
+        sc.subcategory_name
     HAVING COUNT(p.id) = 0
     ORDER BY sc.subcategory_name
   `;
@@ -1287,27 +1312,29 @@ const getStockDashboard = async (req, res) => {
         const limitNum = parseInt(limit || 10, 10);
         const offset = (pageNum - 1) * limitNum;
 
-        const replacements = {};
-        const baseWhere = buildBaseFilters(req.query, replacements);
+        const scoreReplacements = {};
+        const baseWhere = buildBaseFilters(req.query, scoreReplacements);
 
-        // SCORE CARDS (NO PAGINATION)
         const [
             stockInHand,
             lowStock,
             outOfStock,
         ] = await Promise.all([
-            getStockInHandSummary(baseWhere, replacements),
-            getLowStockSummaryInternal(baseWhere, replacements),
-            getOutOfStockSummaryInternal(baseWhere, replacements),
+            getStockInHandSummary(baseWhere, scoreReplacements),
+            getLowStockSummaryInternal(baseWhere, scoreReplacements),
+            getOutOfStockSummaryInternal(req.query), 
         ]);
 
         // LIST DATA (BASED ON TYPE)
         let listResult;
+        const listReplacements = {};
+        const listWhere = buildBaseFilters(req.query, listReplacements);
+
         switch (type) {
             case "low_stock":
                 listResult = await getLowStockList(
-                    baseWhere,
-                    replacements,
+                    listWhere,
+                    listReplacements,
                     usePagination,
                     limitNum,
                     offset
@@ -1316,8 +1343,7 @@ const getStockDashboard = async (req, res) => {
 
             case "out_of_stock":
                 listResult = await getOutOfStockList(
-                    baseWhere,
-                    replacements,
+                    req.query,
                     usePagination,
                     limitNum,
                     offset
@@ -1326,8 +1352,8 @@ const getStockDashboard = async (req, res) => {
 
             default:
                 listResult = await getStockInHandList(
-                    baseWhere,
-                    replacements,
+                    listWhere,
+                    listReplacements,
                     usePagination,
                     limitNum,
                     offset
@@ -1346,6 +1372,7 @@ const getStockDashboard = async (req, res) => {
         return commonService.handleError(res, err);
     }
 };
+
 
 
 module.exports = {
