@@ -1005,7 +1005,8 @@ const getLowStockSummaryInternal = async (where, replacements) => {
     low_stock_rows AS (
       SELECT
         b.id AS branch_id,
-        sc.id AS subcategory_id
+        sc.id AS subcategory_id,
+        SUM(ps.total_weight) AS row_weight
       FROM subcategories sc
       JOIN products p ON p.subcategory_id = sc.id
       JOIN product_stock ps ON ps.product_id = p.id
@@ -1014,16 +1015,14 @@ const getLowStockSummaryInternal = async (where, replacements) => {
       LEFT JOIN categories c ON c.id = p.category_id
       ${where}
       AND ps.total_qty < sc.reorder_level
-      GROUP BY b.id, sc.id
+      GROUP BY
+        b.id,
+        sc.id
     )
     SELECT
       COUNT(*) AS subcategory_count,
-      COALESCE(SUM(ps.total_weight), 0) AS total_weight
-    FROM product_stock ps
-    JOIN products p ON p.id = ps.product_id
-    JOIN subcategories sc ON sc.id = p.subcategory_id
-    ${where}
-    AND ps.total_qty < sc.reorder_level
+      COALESCE(SUM(row_weight), 0) AS total_weight
+    FROM low_stock_rows
     `,
         { replacements }
     );
@@ -1033,6 +1032,7 @@ const getLowStockSummaryInternal = async (where, replacements) => {
         total_weight: Number(rows[0]?.total_weight || 0),
     };
 };
+
 
 const getOutOfStockSummaryInternal = async (query) => {
     const replacements = {};
