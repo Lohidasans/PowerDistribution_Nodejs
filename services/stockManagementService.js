@@ -718,7 +718,8 @@ const getLowStockSummary = async (req, res) => {
     }
 };
 
-const getOutOfStockSummary = async (req, res) => {
+// Out of Stock Summary - based on All products qty = 0
+const getOutOfStockOldSummary = async (req, res) => {
     try {
         const { branch_id, material_type_id, category_id, subcategory_id, search } = req.query;
 
@@ -815,10 +816,85 @@ const getOutOfStockSummary = async (req, res) => {
     }
 };
 
+// Out of Stock Summary - based on Subcategory has no products
+const getOutOfStockSummary = async (req, res) => {
+    try {
+        const { branch_id, material_type_id, category_id, search } = req.query;
+
+        const replacements = {};
+        let filterSql = `WHERE sc.deleted_at IS NULL`;
+
+        if (branch_id) {
+            filterSql += ` AND p.branch_id = :branch_id`;
+            replacements.branch_id = branch_id;
+        }
+
+        if (material_type_id) {
+            filterSql += ` AND p.material_type_id = :material_type_id`;
+            replacements.material_type_id = material_type_id;
+        }
+
+        if (category_id) {
+            filterSql += ` AND p.category_id = :category_id`;
+            replacements.category_id = category_id;
+        }
+
+        if (search) {
+            filterSql += `
+        AND (
+          sc.subcategory_name ILIKE :search
+          OR c.category_name ILIKE :search
+          OR mt.material_type ILIKE :search
+          OR b.branch_name ILIKE :search
+        )
+      `;
+            replacements.search = `%${search}%`;
+        }
+
+        const data = await sequelize.query(
+            `
+      SELECT
+        b.branch_name,
+        mt.material_type,
+        c.category_name,
+        sc.materialtype_id,
+        sc.category_id,
+        sc.id AS subcategory_id,
+        sc.subcategory_name,
+        0 AS quantity
+      FROM subcategories sc
+      LEFT JOIN products p ON p.subcategory_id = sc.id AND p.deleted_at IS NULL
+      LEFT JOIN branches b ON b.id = 81  ---Fixed branch for out of stock
+      LEFT JOIN "materialTypes" mt ON mt.id = sc.materialtype_id
+      LEFT JOIN categories c ON c.id = sc.category_id
+      ${filterSql}
+      GROUP BY
+        b.branch_name,
+        mt.material_type,
+        c.category_name,        
+        sc.materialtype_id,
+        sc.category_id,
+        sc.id,
+        sc.subcategory_name
+      HAVING COUNT(p.id) = 0
+      ORDER BY sc.subcategory_name
+      `,
+            { replacements, type: sequelize.QueryTypes.SELECT }
+        );
+
+        return commonService.okResponse(res, { data });
+    } catch (error) {
+        console.error("Out of Stock Error:", error);
+        return commonService.handleError(res, error);
+    }
+};
+
+
 module.exports = {
     getOldJewelReport,
     getStockAgeingReport,
     getAllStockDetails,
     getLowStockSummary,
-    getOutOfStockSummary,
+    getOutOfStockOldSummary,
+    getOutOfStockSummary
 };
