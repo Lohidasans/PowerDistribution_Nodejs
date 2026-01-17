@@ -825,7 +825,7 @@ const getOutOfStockSummary = async (req, res) => {
         let filterSql = `WHERE sc.deleted_at IS NULL`;
 
         if (branch_id) {
-            filterSql += ` AND p.branch_id = :branch_id`;
+            filterSql += ` AND b.id = :branch_id`;
             replacements.branch_id = branch_id;
         }
 
@@ -854,6 +854,7 @@ const getOutOfStockSummary = async (req, res) => {
         const data = await sequelize.query(
             `
       SELECT
+        b.id AS branch_id,
         b.branch_name,
         mt.material_type,
         c.category_name,
@@ -869,6 +870,7 @@ const getOutOfStockSummary = async (req, res) => {
       LEFT JOIN categories c ON c.id = sc.category_id
       ${filterSql}
       GROUP BY
+        b.id,
         b.branch_name,
         mt.material_type,
         c.category_name,        
