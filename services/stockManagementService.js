@@ -968,6 +968,7 @@ const getStockInHandSummary = async (where, replacements) => {
         `
     SELECT
       COALESCE(SUM(pid.quantity), 0) AS total_quantity,
+      COALESCE(SUM(pid.quantity * pid.net_weight), 0) AS total_weight,
       COUNT(DISTINCT p.id) AS product_count
     FROM products p
     JOIN "productItemDetails" pid
@@ -980,10 +981,12 @@ const getStockInHandSummary = async (where, replacements) => {
     );
 
     return {
-        total_quantity: Number(rows[0].total_quantity || 0),
-        product_count: Number(rows[0].product_count || 0),
+        total_quantity: Number(rows[0]?.total_quantity || 0),
+        total_weight: Number(rows[0]?.total_weight || 0),
+        product_count: Number(rows[0]?.product_count || 0),
     };
 };
+
 
 const getLowStockSummaryInternal = async (where, replacements) => {
     const [rows] = await sequelize.query(
@@ -1032,7 +1035,6 @@ const getLowStockSummaryInternal = async (where, replacements) => {
         total_weight: Number(rows[0]?.total_weight || 0),
     };
 };
-
 
 const getOutOfStockSummaryInternal = async (query) => {
     const replacements = {};
