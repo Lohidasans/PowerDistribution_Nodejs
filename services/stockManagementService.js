@@ -891,6 +891,426 @@ const getOutOfStockSummary = async (req, res) => {
     }
 };
 
+// New
+const buildBaseFilters = (query, replacements) => {
+    let where = `WHERE p.deleted_at IS NULL AND p.status = 'Active'`;
+
+    if (query.branch_id) {
+        where += ` AND p.branch_id = :branch_id`;
+        replacements.branch_id = query.branch_id;
+    }
+
+    if (query.material_type_id) {
+        where += ` AND p.material_type_id = :material_type_id`;
+        replacements.material_type_id = query.material_type_id;
+    }
+
+    if (query.category_id) {
+        where += ` AND p.category_id = :category_id`;
+        replacements.category_id = query.category_id;
+    }
+
+    if (query.subcategory_id) {
+        where += ` AND p.subcategory_id = :subcategory_id`;
+        replacements.subcategory_id = query.subcategory_id;
+    }
+
+    if (query.grn_id) {
+        where += ` AND p.grn_id = :grn_id`;
+        replacements.grn_id = query.grn_id;
+    }
+
+    if (query.ref_no_id) {
+        where += ` AND p.ref_no_id = :ref_no_id`;
+        replacements.ref_no_id = query.ref_no_id;
+    }
+
+    if (query.search) {
+        where += `
+      AND (
+        p.product_name ILIKE :search OR
+        p.product_code ILIKE :search OR
+        p.sku_id ILIKE :search
+      )
+    `;
+        replacements.search = `%${query.search}%`;
+    }
+
+    return where;
+};
+
+const buildSubcategoryFilters = (query, replacements) => {
+    let where = `WHERE sc.deleted_at IS NULL`;
+
+    if (query.material_type_id) {
+        where += ` AND sc.materialtype_id = :material_type_id`;
+        replacements.material_type_id = query.material_type_id;
+    }
+
+    if (query.category_id) {
+        where += ` AND sc.category_id = :category_id`;
+        replacements.category_id = query.category_id;
+    }
+
+    if (query.search) {
+        where += `
+      AND (
+        sc.subcategory_name ILIKE :search
+      )
+    `;
+        replacements.search = `%${query.search}%`;
+    }
+
+    return where;
+};
+
+const getStockInHandSummary = async (where, replacements) => {
+    const [rows] = await sequelize.query(
+        `
+    SELECT
+      COALESCE(SUM(pid.quantity), 0) AS total_quantity,
+      COUNT(DISTINCT p.id) AS product_count
+    FROM products p
+    JOIN "productItemDetails" pid
+      ON pid.product_id = p.id
+      AND pid.quantity > 0
+      AND pid.deleted_at IS NULL
+    ${where}
+    `,
+        { replacements }
+    );
+
+    return {
+        total_quantity: Number(rows[0].total_quantity || 0),
+        product_count: Number(rows[0].product_count || 0),
+    };
+};
+
+const getLowStockSummaryInternal = async (where, replacements) => {
+    const [rows] = await sequelize.query(
+        `
+    WITH product_stock AS (
+      SELECT
+        p.id,
+        p.subcategory_id,
+        SUM(pid.quantity) AS total_qty
+      FROM products p
+      JOIN "productItemDetails" pid
+        ON pid.product_id = p.id
+        AND pid.deleted_at IS NULL
+      GROUP BY p.id, p.subcategory_id
+    )
+    SELECT COUNT(DISTINCT sc.id) AS low_stock_count
+    FROM subcategories sc
+    JOIN products p ON p.subcategory_id = sc.id
+    JOIN product_stock ps ON ps.id = p.id
+    ${where}
+    AND ps.total_qty < sc.reorder_level
+    `,
+        { replacements }
+    );
+
+    return {
+        subcategory_count: Number(rows[0]?.low_stock_count || 0),
+    };
+};
+
+const getOutOfStockSummaryInternal = async (query) => {
+    const replacements = {};
+    const where = buildSubcategoryFilters(query, replacements);
+
+    const rows = await sequelize.query(
+        `
+    SELECT sc.id
+    FROM subcategories sc
+    LEFT JOIN products p
+      ON p.subcategory_id = sc.id
+      AND p.deleted_at IS NULL
+    ${where}
+    GROUP BY sc.id
+    HAVING COUNT(p.id) = 0
+    `,
+        { replacements, type: sequelize.QueryTypes.SELECT }
+    );
+
+    return {
+        subcategory_count: rows.length,
+    };
+};
+
+const getStockInHandList = async (
+    whereClause,
+    replacements,
+    usePagination,
+    limit,
+    offset
+) => {
+    let query = `
+    SELECT
+      p.id,
+      p.product_code,
+      p.product_name,
+      p.description,
+      p.is_published,
+      p.image_urls,
+      p.qr_image_url,
+      p.vendor_id,
+      p.material_type_id,
+      p.category_id,
+      ct.category_name,
+      ct.category_image_url,
+      p.subcategory_id,
+      sc.subcategory_name,
+      p.ref_no_id,
+      p.grn_id,
+      g.grn_no,
+      gi.ref_no AS grn_ref_no,
+      mt.material_type,
+      mt.material_price,
+      COALESCE(SUM(COALESCE(pid.quantity, 0)), 0) AS total_quantity,
+      COALESCE(SUM(COALESCE(pid.quantity, 0) * COALESCE(pid.net_weight, 0)), 0) AS total_weight,
+      COUNT(DISTINCT pid.id) AS variation_count,
+      p.branch_id,
+      b.branch_name,
+      p.sku_id,
+      p.hsn_code,
+      p.purity,
+      p.product_type,
+      p.variation_type,
+      p.product_variations,
+      p.created_at,
+      p.updated_at
+    FROM products p
+    LEFT JOIN "productItemDetails" pid ON pid.product_id = p.id
+    LEFT JOIN grns g ON g.id = p.grn_id AND g.deleted_at IS NULL
+    LEFT JOIN "grnItems" gi ON gi.grn_id = g.id AND gi.id = p.ref_no_id AND gi.deleted_at IS NULL
+    LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
+    LEFT JOIN categories ct ON ct.id = p.category_id
+    LEFT JOIN subcategories sc ON sc.id = p.subcategory_id
+    LEFT JOIN branches b ON b.id = p.branch_id
+    ${whereClause}
+    GROUP BY
+    p.id,
+    mt.material_type,
+    mt.material_price,
+    ct.category_name,
+    ct.category_image_url,
+    sc.subcategory_name,
+    g.grn_no,
+    gi.ref_no,
+    b.branch_name
+
+    HAVING COALESCE(SUM(pid.quantity), 0) > 0
+
+    ORDER BY p.id DESC
+    `;
+
+    if (usePagination) {
+        query += ` LIMIT :limit OFFSET :offset`;
+        replacements.limit = limit;
+        replacements.offset = offset;
+    }
+
+    const [rows] = await sequelize.query(query, { replacements });
+
+    // Attach item details here
+    const enrichedRows = await attachItemDetails(rows);
+
+    return { rows: enrichedRows };
+};
+
+const attachItemDetails = async (products) => {
+    if (!products.length) return products;
+
+    const productIds = products.map(p => p.id);
+
+    const itemDetails = await models.ProductItemDetail.findAll({
+        where: {
+            product_id: productIds,
+            quantity: { [Op.gt]: 0 },
+            deleted_at: null,
+        },
+        order: [["id", "ASC"]],
+    });
+
+    const itemsByProduct = itemDetails.reduce((acc, item) => {
+        (acc[item.product_id] ??= []).push(item);
+        return acc;
+    }, {});
+
+    return products.map(product => {
+        const items = itemsByProduct[product.id];
+
+        // Only attach when items exist
+        if (items && items.length > 0) {
+            return {
+                ...product,
+                item_details: items,
+            };
+        }
+
+        // No empty array
+        return product;
+    });
+};
+
+const getLowStockList = async (
+    where,
+    replacements,
+    usePagination,
+    limit,
+    offset
+) => {
+    let query = `
+    WITH product_stock AS (
+      SELECT p.id, p.subcategory_id, SUM(pid.quantity) AS total_qty
+      FROM products p
+      JOIN "productItemDetails" pid
+        ON pid.product_id = p.id
+        AND pid.deleted_at IS NULL
+      GROUP BY p.id, p.subcategory_id
+    )
+    SELECT
+      b.branch_name,
+      mt.material_type,
+      c.category_name,
+      sc.subcategory_name,
+      sc.reorder_level,
+      ps.total_qty
+    FROM subcategories sc
+    JOIN products p ON p.subcategory_id = sc.id
+    JOIN product_stock ps ON ps.id = p.id
+    LEFT JOIN branches b ON b.id = p.branch_id
+    LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
+    LEFT JOIN categories c ON c.id = p.category_id
+    ${where}
+    AND ps.total_qty < sc.reorder_level
+    ORDER BY ps.total_qty ASC
+  `;
+
+    if (usePagination) {
+        query += ` LIMIT :limit OFFSET :offset`;
+        replacements.limit = limit;
+        replacements.offset = offset;
+    }
+
+    const rows = await sequelize.query(query, {
+        replacements,
+        type: sequelize.QueryTypes.SELECT,
+    });
+
+    return { rows };
+};
+
+const getOutOfStockList = async (query, usePagination, limit, offset) => {
+    const replacements = {};
+    const where = buildSubcategoryFilters(query, replacements);
+
+    let sql = `
+    SELECT
+      sc.id AS subcategory_id,
+      sc.subcategory_name,
+      mt.material_type,
+      c.category_name
+    FROM subcategories sc
+    LEFT JOIN products p
+      ON p.subcategory_id = sc.id
+      AND p.deleted_at IS NULL
+    LEFT JOIN "materialTypes" mt ON mt.id = sc.materialtype_id
+    LEFT JOIN categories c ON c.id = sc.category_id
+    ${where}
+    GROUP BY sc.id, mt.material_type, c.category_name
+    HAVING COUNT(p.id) = 0
+    ORDER BY sc.subcategory_name
+  `;
+
+    if (usePagination) {
+        sql += ` LIMIT :limit OFFSET :offset`;
+        replacements.limit = limit;
+        replacements.offset = offset;
+    }
+
+    const rows = await sequelize.query(sql, {
+        replacements,
+        type: sequelize.QueryTypes.SELECT,
+    });
+
+    return { rows };
+};
+
+const getStockDashboard = async (req, res) => {
+    try {
+        const {
+            type = "stock_in_hand", // stock_in_hand | low_stock | out_of_stock
+            page,
+            limit,
+        } = req.query;
+
+        const usePagination = page || limit;
+        const pageNum = parseInt(page || 1, 10);
+        const limitNum = parseInt(limit || 10, 10);
+        const offset = (pageNum - 1) * limitNum;
+
+        const replacements = {};
+        const baseWhere = buildBaseFilters(req.query, replacements);
+
+        // SCORE CARDS (NO PAGINATION)
+        const [
+            stockInHand,
+            lowStock,
+            outOfStock,
+        ] = await Promise.all([
+            getStockInHandSummary(baseWhere, replacements),
+            getLowStockSummaryInternal(baseWhere, replacements),
+            getOutOfStockSummaryInternal(baseWhere, replacements),
+        ]);
+
+        // LIST DATA (BASED ON TYPE)
+        let listResult;
+        switch (type) {
+            case "low_stock":
+                listResult = await getLowStockList(
+                    baseWhere,
+                    replacements,
+                    usePagination,
+                    limitNum,
+                    offset
+                );
+                break;
+
+            case "out_of_stock":
+                listResult = await getOutOfStockList(
+                    baseWhere,
+                    replacements,
+                    usePagination,
+                    limitNum,
+                    offset
+                );
+                break;
+
+            default:
+                listResult = await getStockInHandList(
+                    baseWhere,
+                    replacements,
+                    usePagination,
+                    limitNum,
+                    offset
+                );
+        }
+
+        return commonService.okResponse(res, {
+            score_cards: {
+                stock_in_hand: stockInHand,
+                low_stock: lowStock,
+                out_of_stock: outOfStock,
+            },
+            data: listResult,
+        });
+    } catch (err) {
+        return commonService.handleError(res, err);
+    }
+};
+
 
 module.exports = {
     getOldJewelReport,
@@ -898,5 +1318,14 @@ module.exports = {
     getAllStockDetails,
     getLowStockSummary,
     getOutOfStockOldSummary,
-    getOutOfStockSummary
+    getOutOfStockSummary,
+    buildBaseFilters,
+    buildSubcategoryFilters,
+    getStockInHandSummary,
+    getLowStockSummaryInternal,
+    getOutOfStockSummaryInternal,
+    getStockInHandList,
+    getLowStockList,
+    getOutOfStockList,
+    getStockDashboard    
 };
