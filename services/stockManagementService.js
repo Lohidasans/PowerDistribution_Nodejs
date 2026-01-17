@@ -720,7 +720,7 @@ const getLowStockSummary = async (req, res) => {
 
 const getOutOfStockSummary = async (req, res) => {
     try {
-        const { branch_id, material_type_id, category_id, search } = req.query;
+        const { branch_id, material_type_id, category_id, subcategory_id, search } = req.query;
 
         const replacements = {};
         let filterSql = `WHERE sc.deleted_at IS NULL`;
@@ -738,6 +738,11 @@ const getOutOfStockSummary = async (req, res) => {
         if (category_id) {
             filterSql += ` AND p.category_id = :category_id`;
             replacements.category_id = category_id;
+        }
+        
+        if (subcategory_id) {
+            filterSql += ` AND p.subcategory_id = :subcategory_id`;
+            replacements.subcategory_id = subcategory_id;
         }
 
         if (search) {
