@@ -9,18 +9,28 @@ const { dateFilter } = require("../helpers/dateHelper");
 const getScorecardByType = async ({ config, whereSql, replacements }) => {
     const sql = `
         SELECT
-            ${config.weightColumn
-        ? `COALESCE(SUM(${config.weightColumn}), 0)`
+            COALESCE(weight.total_weight, 0) AS total_weight,
+            COALESCE(weight.total_quantity, 0) AS total_quantity,
+            COALESCE(amount.total_amount, 0) AS total_amount
+        FROM (
+            SELECT
+                ${config.weightColumn
+            ? `SUM(${config.weightColumn})`
             : `0`
         } AS total_weight,
-            COALESCE(${config.quantityExpr}, 0) AS total_quantity,
-            COALESCE(SUM(i.amount), 0) AS total_amount
-        FROM ${config.table} t
-        LEFT JOIN ${config.itemTable} i
-            ON i.${config.itemFk} = t.id
-            AND i.deleted_at IS NULL
-        LEFT JOIN customers c ON c.id = t.customer_id
-        WHERE ${whereSql}
+                ${config.quantityExpr} AS total_quantity
+            FROM ${config.table} t
+            LEFT JOIN ${config.itemTable} i
+                ON i.${config.itemFk} = t.id
+                AND i.deleted_at IS NULL
+            WHERE ${whereSql}
+        ) weight
+        CROSS JOIN (
+            SELECT
+                SUM(t.total_amount) AS total_amount
+            FROM ${config.table} t
+            WHERE ${whereSql}
+        ) amount
     `;
 
     const [row] = await sequelize.query(sql, {
@@ -30,6 +40,20 @@ const getScorecardByType = async ({ config, whereSql, replacements }) => {
 
     return row;
 };
+
+
+const resolveWeightExpr = (weightColumn) => {
+    if (!weightColumn) return "0";
+
+    // if SQL expression like CAST(...)
+    if (weightColumn.includes("(")) {
+        return weightColumn;
+    }
+
+    // normal column
+    return `i.${weightColumn}`;
+};
+
 
 
 /* ---------------------------------------------------
@@ -87,7 +111,7 @@ const getSalesReport = async (req, res) => {
         AND (
           t.${gridConfig.codeColumn} ILIKE :search
           OR c.customer_name ILIKE :search
-          OR c.mobile_number ILIKE :search
+          OR e.employee_name ILIKE :search
         )
       `;
             replacements.search = `%${search}%`;
@@ -106,34 +130,38 @@ const getSalesReport = async (req, res) => {
 
         /* ---------------- GRID QUERY (SELECTED TYPE) ---------------- */
         let gridSql = `
-      SELECT
-        t.*,
-        b.branch_name,
-        c.customer_name,
-        c.mobile_number,
-        ${gridConfig.weightColumn
-                ? `COALESCE(items.total_weight,0)`
-                : `0`
-            } AS total_weight,
-        COALESCE(items.quantity,0) AS quantity
-      FROM ${gridConfig.table} t
-      LEFT JOIN (
         SELECT
-            i.${gridConfig.itemFk} AS parent_id,
+            t.*,
+            b.branch_name,
+            c.customer_name,
+            e.employee_name,
+            c.mobile_number,
             ${gridConfig.weightColumn
-                    ? `SUM(i.${gridConfig.weightColumn})`
-                    : `0`
-                } AS total_weight,
-            ${gridConfig.quantityExpr} AS quantity
-        FROM ${gridConfig.itemTable} i
-        WHERE i.deleted_at IS NULL
-        GROUP BY i.${gridConfig.itemFk}
-    ) items ON items.parent_id = t.id
-      LEFT JOIN customers c ON c.id = t.customer_id
-      LEFT JOIN branches b ON b.id = t.branch_id
-      WHERE ${whereSql}
-      ORDER BY t.id DESC
-    `;
+                        ? `COALESCE(items.total_weight, 0)`
+                        : `0`
+                    } AS total_weight,
+            COALESCE(items.quantity, 0) AS quantity,
+            COALESCE(t.total_amount, 0) AS total_amount
+        FROM ${gridConfig.table} t
+        LEFT JOIN (
+            SELECT
+                i.${gridConfig.itemFk} AS parent_id,
+                ${gridConfig.weightColumn
+                        ? `SUM(${resolveWeightExpr(gridConfig.weightColumn)})`
+                        : `0`
+                    } AS total_weight,
+                ${gridConfig.quantityExpr} AS quantity
+            FROM ${gridConfig.itemTable} i
+            WHERE i.deleted_at IS NULL
+            GROUP BY i.${gridConfig.itemFk}
+        ) items ON items.parent_id = t.id
+        LEFT JOIN customers c ON c.id = t.customer_id
+        LEFT JOIN employees e ON e.id = t.employee_id
+        LEFT JOIN branches b ON b.id = t.branch_id
+        WHERE ${whereSql}
+        ORDER BY t.id DESC
+        `;
+
 
         if (hasPagination) {
             gridSql += ` LIMIT :limit OFFSET :offset`;
