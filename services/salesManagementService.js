@@ -3,10 +3,43 @@ const commonService = require("./commonService");
 const REPORT_CONFIG = require("../helpers/configs/reportConfig");
 const { dateFilter } = require("../helpers/dateHelper");
 
+/* ---------------------------------------------------
+   SCORECARD HELPER
+--------------------------------------------------- */
+const getScorecardByType = async ({ config, whereSql, replacements }) => {
+    const sql = `
+        SELECT
+            ${config.weightColumn
+            ? `COALESCE(SUM(i.${config.weightColumn}), 0)`
+            : `0`
+        } AS total_weight,
+            COALESCE(${config.quantityExpr}, 0) AS total_quantity
+        FROM ${config.table} t
+        LEFT JOIN ${config.itemTable} i
+            ON i.${config.itemFk} = t.id
+            AND i.deleted_at IS NULL
+        LEFT JOIN customers c ON c.id = t.customer_id
+        WHERE ${whereSql}
+    `;
+
+    const [row] = await sequelize.query(sql, {
+        replacements,
+        type: sequelize.QueryTypes.SELECT
+    });
+
+    return {
+        total_weight: Number(row.total_weight).toFixed(3),
+        total_quantity: Number(row.total_quantity)
+    };
+};
+
+/* ---------------------------------------------------
+   MAIN API
+--------------------------------------------------- */
 const getSalesReport = async (req, res) => {
     try {
         const {
-            type ="estimate",
+            type = "estimate",
             branch_id,
             from_date,
             to_date,
@@ -18,26 +51,25 @@ const getSalesReport = async (req, res) => {
             limit
         } = req.query;
 
-        // 🔒 Validate report type
-        const config = REPORT_CONFIG[type];
-        if (!config) {
+        // Validate grid report typeq
+        const gridConfig = REPORT_CONFIG[type];
+        if (!gridConfig) {
             return commonService.badRequest(res, "Invalid report type");
         }
 
-        /* ------------------ PAGINATION ------------------ */
+        /* ---------------- PAGINATION ---------------- */
         const finalPageSize = pageSize || limit;
         const hasPagination = page && finalPageSize;
         const perPage = hasPagination ? Number(finalPageSize) : null;
         const offset = hasPagination ? (page - 1) * perPage : null;
 
-        /* ------------------ WHERE SQL ------------------ */
+        /* ---------------- WHERE SQL ---------------- */
         const replacements = {};
         let whereSql = `1=1`;
 
-        // Date filter
         whereSql += dateFilter(
             { from_date, to_date, date_filter },
-            config.dateColumn,
+            gridConfig.dateColumn,
             replacements
         );
 
@@ -54,7 +86,7 @@ const getSalesReport = async (req, res) => {
         if (search) {
             whereSql += `
         AND (
-          t.${config.codeColumn} ILIKE :search
+          t.${gridConfig.codeColumn} ILIKE :search
           OR c.customer_name ILIKE :search
           OR c.mobile_number ILIKE :search
         )
@@ -62,52 +94,42 @@ const getSalesReport = async (req, res) => {
             replacements.search = `%${search}%`;
         }
 
-        /* ------------------ SCORECARD ------------------ */
-        const scorecardSql = `
-      SELECT
-        ${config.weightColumn
-                ? `COALESCE(SUM(i.${config.weightColumn}),0)`
-                : `0`
-            } AS total_weight,
-        ${config.quantityExpr} AS total_quantity
-      FROM ${config.table} t
-      LEFT JOIN ${config.itemTable} i
-        ON i.${config.itemFk} = t.id
-        AND i.deleted_at IS NULL
-      LEFT JOIN customers c ON c.id = t.customer_id
-      WHERE ${whereSql}
-    `;
+        /* ---------------- SCORECARDS (ALL TYPES) ---------------- */
+        const scorecard = {};
 
-        const [scorecard] = await sequelize.query(scorecardSql, {
-            replacements,
-            type: sequelize.QueryTypes.SELECT
-        });
+        for (const reportType of Object.keys(REPORT_CONFIG)) {
+            scorecard[reportType] = await getScorecardByType({
+                config: REPORT_CONFIG[reportType],
+                whereSql,
+                replacements
+            });
+        }
 
-        /* ------------------ GRID QUERY ------------------ */
+        /* ---------------- GRID QUERY (SELECTED TYPE) ---------------- */
         let gridSql = `
       SELECT
         t.*,
         b.branch_name,
         c.customer_name,
         c.mobile_number,
-        ${config.weightColumn
+        ${gridConfig.weightColumn
                 ? `COALESCE(items.total_weight,0)`
                 : `0`
             } AS total_weight,
         COALESCE(items.quantity,0) AS quantity
-      FROM ${config.table} t
+      FROM ${gridConfig.table} t
       LEFT JOIN (
         SELECT
-          ${config.itemFk} AS parent_id,
-          ${config.weightColumn
-                ? `SUM(${config.weightColumn})`
-                : `0`
-            } AS total_weight,
-          ${config.quantityExpr} AS quantity
-        FROM ${config.itemTable}
-        WHERE deleted_at IS NULL
-        GROUP BY ${config.itemFk}
-      ) items ON items.parent_id = t.id
+            i.${gridConfig.itemFk} AS parent_id,
+            ${gridConfig.weightColumn
+                    ? `SUM(i.${gridConfig.weightColumn})`
+                    : `0`
+                } AS total_weight,
+            ${gridConfig.quantityExpr} AS quantity
+        FROM ${gridConfig.itemTable} i
+        WHERE i.deleted_at IS NULL
+        GROUP BY i.${gridConfig.itemFk}
+    ) items ON items.parent_id = t.id
       LEFT JOIN customers c ON c.id = t.customer_id
       LEFT JOIN branches b ON b.id = t.branch_id
       WHERE ${whereSql}
@@ -125,13 +147,13 @@ const getSalesReport = async (req, res) => {
             type: sequelize.QueryTypes.SELECT
         });
 
-        /* ------------------ PAGINATION COUNT ------------------ */
+        /* ---------------- PAGINATION ---------------- */
         let pagination = null;
 
         if (hasPagination) {
             const countSql = `
         SELECT COUNT(*)::int AS total
-        FROM ${config.table} t
+        FROM ${gridConfig.table} t
         LEFT JOIN customers c ON c.id = t.customer_id
         WHERE ${whereSql}
       `;
@@ -149,18 +171,15 @@ const getSalesReport = async (req, res) => {
             };
         }
 
-        /* ------------------ RESPONSE ------------------ */
+        /* ---------------- RESPONSE ---------------- */
         return commonService.okResponse(res, {
-            scorecard: {
-                total_weight: Number(scorecard.total_weight).toFixed(3),
-                total_quantity: Number(scorecard.total_quantity)
-            },
+            scorecard,
             data,
             pagination
         });
 
     } catch (error) {
-        console.error("Report API Error:", error);
+        console.error("Sales Report Error:", error);
         return commonService.handleError(res, error);
     }
 };

@@ -4,9 +4,9 @@ const REPORT_CONFIG = {
         itemTable: "old_jewel_items",
         itemFk: "old_jewel_id",
         dateColumn: "t.date",
-        weightColumn: "net_weight",
         codeColumn: "old_jewel_code",
-        quantityExpr: "COUNT(id)"
+        weightColumn: "net_weight",
+        quantityExpr: "COUNT(i.id)"
     },
 
     jewel_repair: {
@@ -14,9 +14,9 @@ const REPORT_CONFIG = {
         itemTable: "jewel_repair_items",
         itemFk: "repair_id",
         dateColumn: "t.date",
-        weightColumn: "weight",
         codeColumn: "repair_code",
-        quantityExpr: "COUNT(id)"
+        weightColumn: "weight",
+        quantityExpr: "COUNT(i.id)"
     },
 
     estimate: {
@@ -24,9 +24,9 @@ const REPORT_CONFIG = {
         itemTable: "estimate_bill_items",
         itemFk: "estimate_bill_id",
         dateColumn: "t.estimate_date",
-        weightColumn: null,
         codeColumn: "estimate_no",
-        quantityExpr: "SUM(quantity)"
+        weightColumn: null,
+        quantityExpr: "SUM(i.quantity)"   // ✅ FIXED
     },
 
     sales_invoice: {
@@ -34,9 +34,9 @@ const REPORT_CONFIG = {
         itemTable: "sales_invoice_bill_items",
         itemFk: "invoice_bill_id",
         dateColumn: "t.invoice_date",
-        weightColumn: "net_weight",
         codeColumn: "invoice_no",
-        quantityExpr: "SUM(quantity)"
+        weightColumn: "net_weight",
+        quantityExpr: "SUM(i.quantity)"   // ✅ FIXED
     },
 
     sales_return: {
@@ -44,9 +44,9 @@ const REPORT_CONFIG = {
         itemTable: "sales_return_items",
         itemFk: "sales_return_id",
         dateColumn: "t.return_date",
-        weightColumn: "net_weight",
         codeColumn: "sales_return_no",
-        quantityExpr: "SUM(quantity)"
+        weightColumn: "CAST(i.net_weight AS NUMERIC)",
+        quantityExpr: "SUM(i.quantity)"   // ✅ FIXED
     }
 };
 
