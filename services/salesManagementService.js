@@ -10,7 +10,7 @@ const getScorecardByType = async ({ config, whereSql, replacements }) => {
     const sql = `
         SELECT
             ${config.weightColumn
-            ? `COALESCE(SUM(i.${config.weightColumn}), 0)`
+        ? `COALESCE(SUM(${config.weightColumn}), 0)`
             : `0`
         } AS total_weight,
             COALESCE(${config.quantityExpr}, 0) AS total_quantity
@@ -27,11 +27,9 @@ const getScorecardByType = async ({ config, whereSql, replacements }) => {
         type: sequelize.QueryTypes.SELECT
     });
 
-    return {
-        total_weight: Number(row.total_weight).toFixed(3),
-        total_quantity: Number(row.total_quantity)
-    };
+    return row;
 };
+
 
 /* ---------------------------------------------------
    MAIN API
