@@ -1003,7 +1003,7 @@ const getAllProductDetails = async (req, res) => {
   }
 };
 
-const searchProductBySkuNew = async (req, res) => {
+const searchProductBySkuNewForStockTransfer = async (req, res) => {
   try {
     const { sku, product_name, branch_id } = req.query;
 
@@ -1150,6 +1150,116 @@ const searchProductBySkuNew = async (req, res) => {
     return commonService.okResponse(res, flatResponse.filter(Boolean));
   } catch (error) {
     console.error("Error searching products:", error);
+    return commonService.handleError(res, error);
+  }
+};
+
+const searchProductBySkuNew = async (req, res) => {
+  try {
+    const { sku } = req.query;
+
+    // Helper: convert product + item → flat response object
+    const formatItem = async (product, item) => {
+    
+      // Add await here
+      const priceDetails = await calculateSellingPrice(product, item, models);
+
+      return {
+        sku_id: item.sku_id || product.sku_id, // Use item.sku_id if available
+        product_name: product.product_name,
+        product_variations: product.product_variations,
+        purity: product.purity,
+        branch_id: product.branch_id,
+        product_id: product.id,
+        product_item_details_id: item.id,
+        quantity: item.quantity,
+        hsn_code: product.hsn_code,
+        base_price: item.base_price,
+        gross_weight: item.gross_weight,
+        net_weight: item.net_weight,
+        product_item_wastage: item.wastage,
+        ...priceDetails,
+      };
+    };
+
+    // CASE 1 → No SKU supplied
+    if (!sku || sku.trim() === "") {
+      const [allProducts, allItems] = await Promise.all([
+        models.Product.findAll({ raw: true }),
+        models.ProductItemDetail.findAll({
+          where: {
+            quantity: { [Op.gt]: 0 },
+            is_visible: true,
+          },
+          raw: true,
+        }),
+      ]);
+
+      // Process items in parallel
+      const output = await Promise.all(
+        allItems.map(async (item) => {
+          const product = allProducts.find((p) => p.id === item.product_id);
+          return product ? formatItem(product, item) : null;
+        })
+      );
+
+      // Filter out any null items (in case product wasn't found)
+      return commonService.okResponse(res, output.filter(Boolean));
+    }
+
+    // CASE 2 → SKU provided
+    const [directProduct, itemDetail] = await Promise.all([
+      models.Product.findOne({ where: { sku_id: sku }, raw: true, }),
+      models.ProductItemDetail.findOne({
+        where: {
+          sku_id: sku,
+          quantity: { [Op.gt]: 0 },
+          is_visible: true,
+        },
+        raw: true,
+      }),
+    ]);
+
+    let product = null;
+    let items = [];
+
+    if (directProduct) {
+      // If product SKU matched, return all its item variations
+      product = directProduct;
+      items = await models.ProductItemDetail.findAll({
+        where: {
+          product_id: directProduct.id,
+          quantity: { [Op.gt]: 0 },
+          is_visible: true,
+        },
+        raw: true,
+      });
+    }
+    else if (itemDetail) {
+      // If item SKU matched, fetch its parent product
+      product = await models.Product.findOne({
+        where: { id: itemDetail.product_id },
+        raw: true,
+      });
+      items = [itemDetail];
+    }
+
+    // Nothing found or all items out of stock
+    if (!product || items.length === 0) {
+      return commonService.notFound(res, "No in-stock product found for given SKU");
+    }
+
+    // Convert to flat response with price calculations
+    const flatResponse = await Promise.all(
+      items
+        .filter((item) => item.quantity > 0)
+        .map((item) => formatItem(product, item))
+
+    );
+
+    return commonService.okResponse(res, flatResponse);
+  } catch (error) {
+    console.error("Error searching products by SKU:", error);
     return commonService.handleError(res, error);
   }
 };
@@ -2078,4 +2188,5 @@ module.exports = {
   getProductStockCounts,
   createProductInternal,
   cloneProductAddOns,
+  searchProductBySkuNewForStockTransfer
 };
