@@ -205,12 +205,13 @@ const getSalesReport = async (req, res) => {
     }
 };
 
+// get the sold out product based on its subcategory
 const getFastMovingSubCategories = async (req, res) => {
     try {
         const { branch_id, material_type_id, category_id, search } = req.query;
 
         const replacements = {};
-        let filterSql = `WHERE sc.deleted_at IS NULL`;
+        let filterSql = `WHERE sc.deleted_at IS NULL AND p.deleted_at IS NULL`;
 
         if (branch_id) {
             filterSql += ` AND p.branch_id = :branch_id`;
@@ -240,60 +241,56 @@ const getFastMovingSubCategories = async (req, res) => {
         }
 
         const rows = await sequelize.query(
-            `WITH product_stock AS (
+            `WITH sold_products AS (
                 SELECT
-                p.id AS product_id,
-                p.subcategory_id,
-                p.branch_id,
-                p.material_type_id,
-                p.category_id,
-                SUM(pid.quantity) AS total_qty
-                FROM products p
-                JOIN "productItemDetails" pid
-                ON pid.product_id = p.id
-                AND pid.deleted_at IS NULL
-                WHERE p.deleted_at IS NULL
-                GROUP BY
-                p.id,
-                p.subcategory_id,
-                p.branch_id,
-                p.material_type_id,
-                p.category_id
+                    sii.product_id,
+                    SUM(sii.quantity) AS sold_qty
+                FROM sales_invoice_bills sib
+                JOIN sales_invoice_bill_items sii
+                    ON sii.invoice_bill_id = sib.id
+                    AND sii.deleted_at IS NULL
+                WHERE sib.deleted_at IS NULL AND sib.status = 'Invoice'
+                GROUP BY sii.product_id
             )
             SELECT
                 b.branch_name,
                 b.id AS branch_id,
                 mt.material_type,
-                ps.material_type_id,
+                p.material_type_id,
                 c.id AS category_id,
                 c.category_name,
                 sc.id AS subcategory_id,
                 sc.subcategory_name,
-                
-                -- total quantity for subcategory
-                SUM(ps.total_qty) AS total_quantity,
 
-                -- total products
-                COUNT(ps.product_id) AS product_count
+                -- total sold quantity
+                SUM(sp.sold_qty) AS sold_quantity,
 
-            FROM subcategories sc
-            JOIN products p ON p.subcategory_id = sc.id
-            JOIN product_stock ps ON ps.product_id = p.id
-            LEFT JOIN branches b ON b.id = ps.branch_id
-            LEFT JOIN "materialTypes" mt ON mt.id = ps.material_type_id
-            LEFT JOIN categories c ON c.id = ps.category_id
+                -- how many products sold
+                COUNT(DISTINCT sp.product_id) AS sold_product_count
+
+            FROM sold_products sp
+            JOIN products p ON p.id = sp.product_id
+            JOIN subcategories sc ON sc.id = p.subcategory_id
+            LEFT JOIN branches b ON b.id = p.branch_id
+            LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
+            LEFT JOIN categories c ON c.id = p.category_id
             ${filterSql}
+            
+            -- optional filters
+            -- AND p.branch_id = :branch_id
+            -- AND p.material_type_id = :material_type_id
+            -- AND p.category_id = :category_id
+
             GROUP BY
-                b.branch_name,
-                b.id,
-                mt.material_type,
-                ps.material_type_id,
-                c.id,
-                c.category_name,
-                sc.id,
-                sc.subcategory_name,
-                sc.reorder_level
-            ORDER BY total_quantity DESC
+            b.branch_name,
+            b.id,
+            mt.material_type,
+            p.material_type_id,
+            c.id,
+            c.category_name,
+            sc.id,
+            sc.subcategory_name
+            ORDER BY sold_quantity DESC
             `,
             { replacements, type: sequelize.QueryTypes.SELECT }
         );
