@@ -13,7 +13,8 @@ const getScorecardByType = async ({ config, whereSql, replacements }) => {
         ? `COALESCE(SUM(${config.weightColumn}), 0)`
             : `0`
         } AS total_weight,
-            COALESCE(${config.quantityExpr}, 0) AS total_quantity
+            COALESCE(${config.quantityExpr}, 0) AS total_quantity,
+            COALESCE(SUM(i.amount), 0) AS total_amount
         FROM ${config.table} t
         LEFT JOIN ${config.itemTable} i
             ON i.${config.itemFk} = t.id

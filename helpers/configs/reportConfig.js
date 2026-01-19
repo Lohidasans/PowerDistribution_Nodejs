@@ -26,7 +26,7 @@ const REPORT_CONFIG = {
         dateColumn: "t.estimate_date",
         codeColumn: "estimate_no",
         weightColumn: null,
-        quantityExpr: "SUM(i.quantity)"   // ✅ FIXED
+        quantityExpr: "SUM(i.quantity)" 
     },
 
     sales_invoice: {
@@ -36,7 +36,7 @@ const REPORT_CONFIG = {
         dateColumn: "t.invoice_date",
         codeColumn: "invoice_no",
         weightColumn: "net_weight",
-        quantityExpr: "SUM(i.quantity)"   // ✅ FIXED
+        quantityExpr: "SUM(i.quantity)" 
     },
 
     sales_return: {
@@ -46,7 +46,7 @@ const REPORT_CONFIG = {
         dateColumn: "t.return_date",
         codeColumn: "sales_return_no",
         weightColumn: "CAST(i.net_weight AS NUMERIC)",
-        quantityExpr: "SUM(i.quantity)"   // ✅ FIXED
+        quantityExpr: "SUM(i.quantity)"
     }
 };
 
