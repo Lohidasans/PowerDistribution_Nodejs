@@ -3,9 +3,7 @@ const commonService = require("./commonService");
 const REPORT_CONFIG = require("../helpers/configs/reportConfig");
 const { dateFilter } = require("../helpers/dateHelper");
 
-/* ---------------------------------------------------
-   SCORECARD HELPER
---------------------------------------------------- */
+// SCORECARD HELPER
 const getScorecardByType = async ({ config, whereSql, replacements }) => {
     const sql = `
         SELECT
@@ -54,11 +52,7 @@ const resolveWeightExpr = (weightColumn) => {
     return `i.${weightColumn}`;
 };
 
-
-
-/* ---------------------------------------------------
-   MAIN API
---------------------------------------------------- */
+// MAIN API
 const getSalesReport = async (req, res) => {
     try {
         const {
@@ -211,4 +205,108 @@ const getSalesReport = async (req, res) => {
     }
 };
 
-module.exports = { getSalesReport };
+const getFastMovingSubCategories = async (req, res) => {
+    try {
+        const { branch_id, material_type_id, category_id, search } = req.query;
+
+        const replacements = {};
+        let filterSql = `WHERE sc.deleted_at IS NULL`;
+
+        if (branch_id) {
+            filterSql += ` AND p.branch_id = :branch_id`;
+            replacements.branch_id = branch_id;
+        }
+
+        if (material_type_id) {
+            filterSql += ` AND p.material_type_id = :material_type_id`;
+            replacements.material_type_id = material_type_id;
+        }
+
+        if (category_id) {
+            filterSql += ` AND p.category_id = :category_id`;
+            replacements.category_id = category_id;
+        }
+
+        if (search) {
+            filterSql += `
+        AND (
+          sc.subcategory_name ILIKE :search
+          OR c.category_name ILIKE :search
+          OR mt.material_type ILIKE :search
+          OR b.branch_name ILIKE :search
+        )
+      `;
+            replacements.search = `%${search}%`;
+        }
+
+        const rows = await sequelize.query(
+            `WITH product_stock AS (
+                SELECT
+                p.id AS product_id,
+                p.subcategory_id,
+                p.branch_id,
+                p.material_type_id,
+                p.category_id,
+                SUM(pid.quantity) AS total_qty
+                FROM products p
+                JOIN "productItemDetails" pid
+                ON pid.product_id = p.id
+                AND pid.deleted_at IS NULL
+                WHERE p.deleted_at IS NULL
+                GROUP BY
+                p.id,
+                p.subcategory_id,
+                p.branch_id,
+                p.material_type_id,
+                p.category_id
+            )
+            SELECT
+                b.branch_name,
+                b.id AS branch_id,
+                mt.material_type,
+                ps.material_type_id,
+                c.id AS category_id,
+                c.category_name,
+                sc.id AS subcategory_id,
+                sc.subcategory_name,
+                
+                -- total quantity for subcategory
+                SUM(ps.total_qty) AS total_quantity,
+
+                -- total products
+                COUNT(ps.product_id) AS product_count
+
+            FROM subcategories sc
+            JOIN products p ON p.subcategory_id = sc.id
+            JOIN product_stock ps ON ps.product_id = p.id
+            LEFT JOIN branches b ON b.id = ps.branch_id
+            LEFT JOIN "materialTypes" mt ON mt.id = ps.material_type_id
+            LEFT JOIN categories c ON c.id = ps.category_id
+            ${filterSql}
+            GROUP BY
+                b.branch_name,
+                b.id,
+                mt.material_type,
+                ps.material_type_id,
+                c.id,
+                c.category_name,
+                sc.id,
+                sc.subcategory_name,
+                sc.reorder_level
+            ORDER BY total_quantity DESC
+            `,
+            { replacements, type: sequelize.QueryTypes.SELECT }
+        );
+
+
+        return commonService.okResponse(res, { data: rows });
+    } catch (error) {
+        console.error("Low Stock Error", error);
+        return commonService.handleError(res, error);
+    }
+};
+
+module.exports = {
+    getSalesReport,
+    getFastMovingSubCategories
+};
