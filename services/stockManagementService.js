@@ -971,7 +971,7 @@ const getStockInHandSummary = async (where, replacements) => {
         `
     SELECT
       COALESCE(SUM(pid.quantity), 0) AS total_quantity,
-      COALESCE(SUM(pid.quantity * pid.net_weight), 0) AS total_weight,
+      COALESCE(SUM(pid.quantity * pid.gross_weight), 0) AS total_weight,
       COUNT(DISTINCT p.id) AS product_count
     FROM products p
     JOIN "productItemDetails" pid
@@ -999,7 +999,7 @@ const getLowStockSummaryInternal = async (where, replacements) => {
         p.subcategory_id,
         p.branch_id,
         SUM(pid.quantity) AS total_qty,
-        SUM(pid.quantity * pid.net_weight) AS total_weight
+        SUM(pid.quantity * pid.gross_weight) AS total_weight
       FROM products p
       JOIN "productItemDetails" pid
         ON pid.product_id = p.id
@@ -1091,7 +1091,7 @@ const getStockInHandList = async (
       mt.material_type,
       mt.material_price,
       COALESCE(SUM(COALESCE(pid.quantity, 0)), 0) AS total_quantity,
-      COALESCE(SUM(COALESCE(pid.quantity, 0) * COALESCE(pid.net_weight, 0)), 0) AS total_weight,
+      COALESCE(SUM(COALESCE(pid.quantity, 0) * COALESCE(pid.gross_weight, 0)), 0) AS total_weight,
       COUNT(DISTINCT pid.id) AS variation_count,
       p.branch_id,
       b.branch_name,
