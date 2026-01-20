@@ -29,7 +29,7 @@ const createLeave = async (req, res) => {
 
 const getAllLeaves = async (req, res) => {
   try {
-    const { start_date, end_date, search, leave_type_id } = req.query;
+    const { start_date, end_date, search, leave_type_id, branch_id, department_id } = req.query;
 
     // Base query with all necessary joins
     let query = `
@@ -117,6 +117,18 @@ const getAllLeaves = async (req, res) => {
     if (leave_type_id) {
       query += ` AND l.leave_type_id = :leave_type_id`;
       replacements.leave_type_id = leave_type_id;
+    }
+
+    // 🏢 Branch filter
+    if (branch_id) {
+      query += ` AND l.branch_id = :branch_id`;
+      replacements.branch_id = branch_id;
+    }
+
+    // 🏛️ Department filter
+    if (department_id) {
+      query += ` AND e.department_id = :department_id`;
+      replacements.department_id = department_id;
     }
 
     // 🔍 Universal search (in reason, leave_type_name, employee_name, employee_no)
