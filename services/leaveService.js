@@ -185,7 +185,17 @@ const getAllLeaves = async (req, res) => {
       } : null,
     }));
 
-    return commonService.okResponse(res, leaves);
+    // Calculate counts by status
+    const pending_count = leaves.filter(leave => leave.status_id === 1).length;
+    const rejected_count = leaves.filter(leave => leave.status_id === 2).length;
+    const approved_count = leaves.filter(leave => leave.status_id === 3).length;
+
+    return commonService.okResponse(res, {
+      leaves,
+      pending_count,
+      rejected_count,
+      approved_count
+    });
   } catch (error) {
     return commonService.handleError(res, error);
   }
