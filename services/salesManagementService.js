@@ -210,21 +210,17 @@ const getFastMovingSubCategories = async (req, res) => {
     try {
         const {
             branch_id,
-            vendor_id,
             material_type_id,
             category_id,
             subcategory_id,
-            purity,
             search,
         } = req.query;
 
         const replacements = {
             branch_id: branch_id || null,
-            vendor_id: vendor_id || null,
             material_type_id: material_type_id || null,
             category_id: category_id || null,
             subcategory_id: subcategory_id || null,
-            purity: purity || null,
             search: search ? `%${search}%` : null,
         };
 
@@ -234,19 +230,15 @@ const getFastMovingSubCategories = async (req, res) => {
         SELECT
           p.id AS product_id,
           p.branch_id,
-          p.vendor_id,
           p.material_type_id,
-          p.purity,
           p.category_id,
           p.subcategory_id
         FROM products p
         WHERE p.deleted_at IS NULL
           AND (:branch_id IS NULL OR p.branch_id = :branch_id)
-          AND (:vendor_id IS NULL OR p.vendor_id = :vendor_id)
           AND (:material_type_id IS NULL OR p.material_type_id = :material_type_id)
           AND (:category_id IS NULL OR p.category_id = :category_id)
           AND (:subcategory_id IS NULL OR p.subcategory_id = :subcategory_id)
-          AND (:purity IS NULL OR p.purity = :purity)
       ),
       sold_products AS (
         SELECT
@@ -272,9 +264,6 @@ const getFastMovingSubCategories = async (req, res) => {
         b.branch_name,
         mt.material_type,
         p.material_type_id,
-        p.purity,
-        p.vendor_id,
-        v.vendor_name,
         c.id AS category_id,
         c.category_name,
         sc.id AS subcategory_id,
@@ -289,7 +278,6 @@ const getFastMovingSubCategories = async (req, res) => {
       JOIN subcategories sc ON sc.id = p.subcategory_id
       LEFT JOIN branches b ON b.id = p.branch_id
       LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
-      LEFT JOIN vendors v ON v.id = p.vendor_id
       LEFT JOIN categories c ON c.id = p.category_id
 
       WHERE sc.deleted_at IS NULL
@@ -311,9 +299,6 @@ const getFastMovingSubCategories = async (req, res) => {
         b.branch_name,
         mt.material_type,
         p.material_type_id,
-        p.purity,
-        p.vendor_id,
-        v.vendor_name,
         c.id,
         c.category_name,
         sc.id,
