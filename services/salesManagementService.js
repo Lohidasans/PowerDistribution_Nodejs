@@ -1,4 +1,5 @@
 const { sequelize } = require("../models");
+const { QueryTypes } = require("sequelize");
 const commonService = require("./commonService");
 const REPORT_CONFIG = require("../helpers/configs/reportConfig");
 const { dateFilter } = require("../helpers/dateHelper");
@@ -210,19 +211,31 @@ const getFastMovingSubCategories = async (req, res) => {
     try {
         const {
             branch_id,
+            vendor_id,
             material_type_id,
             category_id,
             subcategory_id,
             search,
+            from_date,
+            to_date,
+            date_filter,
         } = req.query;
 
         const replacements = {
             branch_id: branch_id || null,
+            vendor_id: vendor_id || null,
             material_type_id: material_type_id || null,
             category_id: category_id || null,
             subcategory_id: subcategory_id || null,
             search: search ? `%${search}%` : null,
         };
+
+        // Date filter must be applied on SALES (invoice date)
+        const dateCondition = dateFilter(
+            { from_date, to_date, date_filter },
+            "sib.created_at", // <-- THIS IS THE CORRECT DATE
+            replacements
+        );
 
         const rows = await sequelize.query(
             `
@@ -236,6 +249,7 @@ const getFastMovingSubCategories = async (req, res) => {
         FROM products p
         WHERE p.deleted_at IS NULL
           AND (:branch_id IS NULL OR p.branch_id = :branch_id)
+          AND (:vendor_id IS NULL OR p.vendor_id = :vendor_id)
           AND (:material_type_id IS NULL OR p.material_type_id = :material_type_id)
           AND (:category_id IS NULL OR p.category_id = :category_id)
           AND (:subcategory_id IS NULL OR p.subcategory_id = :subcategory_id)
@@ -254,6 +268,7 @@ const getFastMovingSubCategories = async (req, res) => {
           ON sib.id = sii.invoice_bill_id
           AND sib.deleted_at IS NULL
           AND sib.status = 'Invoice'
+          ${dateCondition}   -- DATE FILTER APPLIED HERE
         GROUP BY
           fp.product_id,
           fp.branch_id,
@@ -269,7 +284,7 @@ const getFastMovingSubCategories = async (req, res) => {
         sc.id AS subcategory_id,
         sc.subcategory_name,
 
-        -- ✅ per branch + subcategory
+        -- ✅ Final aggregation per BRANCH + SUBCATEGORY
         SUM(sp.sold_qty) AS sold_quantity,
         COUNT(DISTINCT sp.product_id) AS sold_product_count
 
@@ -308,7 +323,7 @@ const getFastMovingSubCategories = async (req, res) => {
       `,
             {
                 replacements,
-                type: sequelize.QueryTypes.SELECT,
+                type: QueryTypes.SELECT,
             }
         );
 
@@ -318,8 +333,6 @@ const getFastMovingSubCategories = async (req, res) => {
         return commonService.handleError(res, error);
     }
 };
-
-
 
 module.exports = {
     getSalesReport,
