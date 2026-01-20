@@ -924,7 +924,7 @@ const buildBaseFilters = (query, replacements) => {
     `;
         replacements.search = `%${query.search}%`;
     }
-    
+
     const dateCondition = dateFilter(
         query,
         "p.created_at::date",
@@ -1379,6 +1379,45 @@ const getStockDashboard = async (req, res) => {
     }
 };
 
+// Dashboard related api's
+
+const getBranchStockSummary = async (req, res) => {
+    try {
+        const rows = await sequelize.query(
+            `
+            SELECT
+              b.id AS branch_id,
+              b.branch_name,
+              COALESCE(SUM(pid.quantity), 0) AS total_quantity,
+              COALESCE(SUM(pid.quantity * pid.gross_weight), 0) AS total_weight
+            FROM branches b
+            LEFT JOIN products p
+              ON p.branch_id = b.id
+              AND p.deleted_at IS NULL
+              AND p.status = 'Active'
+            LEFT JOIN "productItemDetails" pid
+              ON pid.product_id = p.id
+              AND pid.deleted_at IS NULL
+              AND pid.quantity > 0
+            WHERE b.deleted_at IS NULL
+            GROUP BY b.id, b.branch_name
+            ORDER BY b.branch_name
+            `,
+            {
+                type: sequelize.QueryTypes.SELECT,
+            }
+        );
+
+        return commonService.okResponse(res, {
+            data: rows,
+        });
+    } catch (error) {
+        console.error("Branch Stock Error:", error);
+        return commonService.handleError(res, error);
+    }
+};
+
+
 
 
 module.exports = {
@@ -1396,5 +1435,6 @@ module.exports = {
     getStockInHandList,
     getLowStockList,
     getOutOfStockList,
-    getStockDashboard    
+    getStockDashboard,
+    getBranchStockSummary
 };
