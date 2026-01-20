@@ -1380,7 +1380,6 @@ const getStockDashboard = async (req, res) => {
 };
 
 // Dashboard related api's
-
 const getBranchStockSummary = async (req, res) => {
     try {
         const rows = await sequelize.query(
@@ -1417,6 +1416,45 @@ const getBranchStockSummary = async (req, res) => {
     }
 };
 
+const getBranchCategoryStock = async (req, res) => {
+    try {
+        const { branch_id } = req.query;
+
+        if (!branch_id) {
+            return commonService.badRequest(
+                res,
+                "branch_id is required"
+            );
+        }
+
+        const rows = await sequelize.query(
+            `
+            SELECT
+              c.id AS category_id,
+              c.category_name,
+              COALESCE(SUM(pid.quantity), 0) AS total_quantity,
+              COALESCE(SUM(pid.quantity * pid.gross_weight), 0) AS total_weight
+            FROM products p
+            JOIN categories c ON c.id = p.category_id AND c.deleted_at IS NULL
+            JOIN "productItemDetails" pid ON pid.product_id = p.id AND pid.deleted_at IS NULL AND pid.quantity > 0
+            WHERE p.deleted_at IS NULL AND p.status = 'Active' AND p.branch_id = :branch_id
+            GROUP BY c.id, c.category_name
+            ORDER BY c.category_name
+            `,
+            {
+                replacements: { branch_id },
+                type: sequelize.QueryTypes.SELECT,
+            }
+        );
+
+        return commonService.okResponse(res, {
+            data: rows,
+        });
+    } catch (error) {
+        console.error("Branch Category Stock Error:", error);
+        return commonService.handleError(res, error);
+    }
+};
 
 
 
@@ -1436,5 +1474,6 @@ module.exports = {
     getLowStockList,
     getOutOfStockList,
     getStockDashboard,
-    getBranchStockSummary
+    getBranchStockSummary,
+    getBranchCategoryStock
 };
