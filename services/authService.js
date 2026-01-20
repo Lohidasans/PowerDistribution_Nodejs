@@ -1,5 +1,4 @@
 // services/authService.js
-const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { models, sequelize } = require('../models');
 const { Op } = require('sequelize');
@@ -25,20 +24,20 @@ const login = async (req, res) => {
 
         if (!user) {
             await t.rollback();
-            return commonService.unauthorized(res, enMessage.auth.invalidCredentials);
+            return commonService.notFound(res, enMessage.auth.invalidCredentials);
         }
 
         // Check if user has a password set
         if (!user.password_hash) {
             await t.rollback();
-            return commonService.unauthorized(res, enMessage.auth.invalidCredentials);
+            return commonService.notFound(res, enMessage.auth.invalidCredentials);
         }
 
         // Check password
-        const isPasswordValid = await bcrypt.compare(password, user.password_hash);
+        const isPasswordValid = password === user.password_hash;
         if (!isPasswordValid) {
             await t.rollback();
-            return commonService.unauthorized(res, enMessage.auth.invalidCredentials);
+            return commonService.notFound(res, enMessage.auth.invalidCredentials);
         }
 
         // Fetch entity details based on entity_type
@@ -219,12 +218,9 @@ const resetPassword = async (req, res) => {
             return commonService.unauthorized(res, enMessage.auth.invalidOrExpiredToken);
         }
 
-        // Hash new password
-        const hashedPassword = await bcrypt.hash(newPassword, 10);
-
         // Update password and clear reset token
         await account.update({
-            password: hashedPassword,
+            password: newPassword,
             reset_password_token: null,
             reset_token_expires_at: null
         }, { transaction: t });

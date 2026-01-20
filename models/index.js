@@ -161,6 +161,9 @@ const Offer = require("./offers")(sequelize, Sequelize.DataTypes);
 const Maintenance = require("./maintenances")(sequelize, Sequelize.DataTypes);
 const MaintenanceType = require("./maintenanceTypes")(sequelize, Sequelize.DataTypes);
 
+// Payroll related models
+const PayrollMaster = require("./payrollMasters")(sequelize, Sequelize.DataTypes);
+
 const models = {
   Permission,
   Role,
@@ -250,7 +253,8 @@ const models = {
   OfferApplicableType,
   Offer,
   Maintenance,
-  MaintenanceType
+  MaintenanceType,
+  PayrollMaster
 };
 
 Object.values(models).forEach((model) => {

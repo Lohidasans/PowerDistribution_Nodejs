@@ -52,7 +52,7 @@ const createBranch = async (req, res) => {
     const { bank_account, kyc_documents, login, ...branchInput } =
       req.body || {};
 
-    const {  branch_name } = branchInput;
+    const { branch_name } = branchInput;
 
     // Validate required fields
     if (!branch_name) {
@@ -167,7 +167,7 @@ const listBranches = async (req, res) => {
     // Build where conditions
     const whereConditions = ["b.deleted_at IS NULL"];
     const replacements = {};
-    
+
     // Add search condition
     if (searchKey) {
       whereConditions.push(`(
@@ -196,8 +196,8 @@ const listBranches = async (req, res) => {
       replacements.district_id = district_id;
     }
 
-    const whereClause = whereConditions.length > 0 
-      ? `WHERE ${whereConditions.join(' AND ')}` 
+    const whereClause = whereConditions.length > 0
+      ? `WHERE ${whereConditions.join(' AND ')}`
       : '';
 
     // Main query with joins
@@ -419,7 +419,7 @@ const generateBranchCode = async (req, res) => {
 
     // Validate query params
     if (!company_code || !location_code) {
-      return commonService.badRequest(res, message.branch.requiredCodes );
+      return commonService.badRequest(res, message.branch.requiredCodes);
     }
 
     const branchCode = await generateUniqueCode(
