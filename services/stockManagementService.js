@@ -933,7 +933,7 @@ const buildSubcategoryFilters = (query, replacements) => {
     }
 
     if (query.branch_id) {
-        where += ` AND b.id = :branch_id`;
+        where += ` AND p.branch_id = :branch_id`;
         replacements.branch_id = query.branch_id;
     }
 
