@@ -924,6 +924,14 @@ const buildBaseFilters = (query, replacements) => {
     `;
         replacements.search = `%${query.search}%`;
     }
+    
+    const dateCondition = dateFilter(
+        query,
+        "p.created_at::date",
+        replacements
+    );
+
+    where += dateCondition;
 
     return where;
 };
@@ -962,6 +970,14 @@ const buildSubcategoryFilters = (query, replacements) => {
     `;
         replacements.search = `%${query.search}%`;
     }
+
+    const dateCondition = dateFilter(
+        query,
+        "p.created_at::date",
+        replacements
+    );
+
+    where += dateCondition;
 
     return where;
 };
