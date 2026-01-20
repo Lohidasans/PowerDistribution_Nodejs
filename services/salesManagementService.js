@@ -259,7 +259,9 @@ const getFastMovingSubCategories = async (req, res) => {
           fp.product_id,
           fp.branch_id,
           fp.subcategory_id,
-          SUM(sii.quantity) AS sold_qty
+          SUM(sii.quantity) AS sold_qty,
+          SUM(COALESCE(sii.gross_weight, 0)) AS total_gross_weight
+
         FROM filtered_products fp
         JOIN sales_invoice_bill_items sii
           ON sii.product_id = fp.product_id
@@ -268,7 +270,7 @@ const getFastMovingSubCategories = async (req, res) => {
           ON sib.id = sii.invoice_bill_id
           AND sib.deleted_at IS NULL
           AND sib.status = 'Invoice'
-          ${dateCondition}   -- DATE FILTER APPLIED HERE
+          ${dateCondition}
         GROUP BY
           fp.product_id,
           fp.branch_id,
@@ -284,8 +286,9 @@ const getFastMovingSubCategories = async (req, res) => {
         sc.id AS subcategory_id,
         sc.subcategory_name,
 
-        -- ✅ Final aggregation per BRANCH + SUBCATEGORY
+        --  Final aggregation per BRANCH + SUBCATEGORY
         SUM(sp.sold_qty) AS sold_quantity,
+        SUM(sp.total_gross_weight) AS total_gross_weight,
         COUNT(DISTINCT sp.product_id) AS sold_product_count
 
       FROM sold_products sp
@@ -304,10 +307,7 @@ const getFastMovingSubCategories = async (req, res) => {
             OR c.category_name ILIKE :search
             OR mt.material_type ILIKE :search
             OR b.branch_name ILIKE :search
-          )
-        `
-                : ""
-            }
+          )` : "" }
 
       GROUP BY
         b.id,
