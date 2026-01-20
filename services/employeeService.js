@@ -200,7 +200,7 @@ const updateEmployeeExperiences = async (transaction, employee_id, experiences) 
 // List employees with optional simple filters
 const listEmployees = async (req, res) => {
   try {
-    const { branch_id, department_id, role_id, search } = req.query;
+    const { branch_id, department_id, role_id, status, search } = req.query;
 
     let query = `
       SELECT
@@ -246,6 +246,10 @@ const listEmployees = async (req, res) => {
       query += ` AND e.role_id = :role_id`;
       replacements.role_id = role_id;
     }
+    if (status) {
+      query += ` AND e.status = :status`;
+      replacements.status = status;
+    }
     if (search) {
       query += ` AND (e.employee_name ILIKE :search OR e.employee_no ILIKE :search)`;
       replacements.search = `%${search}%`;
@@ -256,6 +260,44 @@ const listEmployees = async (req, res) => {
     // Sequelize query
     const rows = await sequelize.query(query, {
       replacements,
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    // Get employee counts
+    let countQuery = `
+      SELECT 
+        COUNT(*) as total_employee_count,
+        COUNT(CASE WHEN e.status = 'Active' THEN 1 END) as active_employee_count,
+        COUNT(CASE WHEN e.status = 'Inactive' THEN 1 END) as inactive_employee_count
+      FROM employees e
+      WHERE e.deleted_at IS NULL
+    `;
+
+    const countReplacements = {};
+
+    if (branch_id) {
+      countQuery += ` AND e.branch_id = :branch_id`;
+      countReplacements.branch_id = branch_id;
+    }
+    if (department_id) {
+      countQuery += ` AND e.department_id = :department_id`;
+      countReplacements.department_id = department_id;
+    }
+    if (role_id) {
+      countQuery += ` AND e.role_id = :role_id`;
+      countReplacements.role_id = role_id;
+    }
+    if (status) {
+      countQuery += ` AND e.status = :status`;
+      countReplacements.status = status;
+    }
+    if (search) {
+      countQuery += ` AND (e.employee_name ILIKE :search OR e.employee_no ILIKE :search)`;
+      countReplacements.search = `%${search}%`;
+    }
+
+    const [countResult] = await sequelize.query(countQuery, {
+      replacements: countReplacements,
       type: sequelize.QueryTypes.SELECT,
     });
 
@@ -279,7 +321,12 @@ const listEmployees = async (req, res) => {
       },
     }));
 
-    return commonService.okResponse(res, { employees });
+    return commonService.okResponse(res, {
+      employees,
+      total_employee_count: parseInt(countResult.total_employee_count) || 0,
+      active_employee_count: parseInt(countResult.active_employee_count) || 0,
+      inactive_employee_count: parseInt(countResult.inactive_employee_count) || 0,
+    });
   } catch (err) {
     return commonService.handleError(res, err);
   }

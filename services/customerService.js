@@ -177,6 +177,7 @@ const updateCustomer = async (req, res) => {
       district_id: req.body.district_id !== undefined ? +req.body.district_id : entity.district_id,
       pin_code: req.body.pin_code ?? entity.pin_code,
       pan_no: req.body.pan_no ?? entity.pan_no,
+      email_id: req.body.email_id ?? (entity.email_id || null)
     };
     await entity.update(up);
     return commonService.okResponse(res, { customer: entity });
