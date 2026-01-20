@@ -334,7 +334,170 @@ const getFastMovingSubCategories = async (req, res) => {
     }
 };
 
+const getFastMovingSoldProducts = async (req, res) => {
+    try {
+        const {
+            branch_id,
+            subcategory_id,
+            search,
+            from_date,
+            to_date,
+            date_filter,
+        } = req.query;
+
+        if (!branch_id || !subcategory_id) {
+            return commonService.badRequest(
+                res,
+                "branch_id and subcategory_id are required"
+            );
+        }
+
+        const replacements = {
+            branch_id,
+            subcategory_id,
+            search: search ? `%${search}%` : null,
+        };
+
+        // Date filter is STILL on sales (correct)
+        const dateCondition = dateFilter(
+            { from_date, to_date, date_filter },
+            "sib.created_at",
+            replacements
+        );
+
+        const rows = await sequelize.query(
+            `
+      SELECT
+        v.vendor_name,
+        v.vendor_code,
+        v.vendor_image_url,
+
+        p.sku_id AS product_sku_id,
+
+        mt.material_type,
+        c.category_name,
+        sc.subcategory_name,
+        p.product_name,
+        p.purity,
+        p.id as product_id,
+        p.hsn_code,
+        p.image_urls as product_images,
+
+        pid.variation,
+        pid.id as product_item_detail_id,
+        pid.sku_id AS sku_id,
+        sii.quantity,
+        sii.net_weight,
+        sii.gross_weight,
+        sib.invoice_date,
+        sib.invoice_no
+
+      FROM sales_invoice_bill_items sii
+      JOIN sales_invoice_bills sib
+        ON sib.id = sii.invoice_bill_id
+        AND sib.deleted_at IS NULL
+        AND sib.status = 'Invoice'
+        ${dateCondition}
+
+      -- BRANCH FILTER COMES FROM PRODUCTS
+      JOIN products p
+        ON p.id = sii.product_id
+        AND p.deleted_at IS NULL
+        AND p.subcategory_id = :subcategory_id
+        AND p.branch_id = :branch_id
+
+      -- optional item-level data
+      LEFT JOIN "productItemDetails" pid
+        ON pid.id = sii.product_item_detail_id
+        AND pid.deleted_at IS NULL
+
+      LEFT JOIN vendors v ON v.id = p.vendor_id
+      LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
+      LEFT JOIN categories c ON c.id = p.category_id
+      LEFT JOIN subcategories sc ON sc.id = p.subcategory_id
+
+      WHERE sii.deleted_at IS NULL
+        ${search
+                ? `
+          AND (
+            p.product_name ILIKE :search
+            OR pid.sku_id ILIKE :search
+            OR p.sku_id ILIKE :search
+            OR v.vendor_name ILIKE :search
+          )` : ""
+            }
+
+      ORDER BY sib.invoice_date DESC, p.product_name`,
+            {
+                replacements,
+                type: QueryTypes.SELECT,
+            });
+
+        // Group by product_id
+        const groupedMap = new Map();
+
+        for (const row of rows) {
+            const key = row.product_id;
+
+            if (!groupedMap.has(key)) {
+                groupedMap.set(key, {
+                    vendor_image: row.vendor_image_url,
+                    vendor_code: row.vendor_code,
+                    vendor_name: row.vendor_name,
+
+                    product_sku_id: row.product_sku_id,
+                    branch_id: branch_id,
+                    hsn_code: row.hsn_code,
+                    product_name: row.product_name,
+                    product_images: row.product_images,
+                    purity: row.purity,
+
+                    material_type: row.material_type,
+                    category_name: row.category_name,
+                    subcategory_name: row.subcategory_name,
+
+                    sku_id: row.sku_id,
+                    purity: row.purity,
+                    product_id: row.product_id,
+
+                    variation_count: 0,
+                    itemDetails: [],
+                });
+            }
+
+            const product = groupedMap.get(key);
+
+            // ALWAYS item-level
+            product.itemDetails.push({
+                id: row.product_item_detail_id,
+                product_id: row.product_id,
+                sku_id: row.sku_id,
+                variation: row.variation || "{}",
+                gross_weight: row.gross_weight,
+                net_weight: row.net_weight,
+                quantity: row.quantity,
+                invoice_date: row.invoice_date,
+                invoice_no: row.invoice_no,
+            });
+        }
+
+        // calculate variation count
+        const finalData = Array.from(groupedMap.values()).map(product => ({
+            ...product,
+            variation_count: product.itemDetails.length,
+        }));
+
+        return commonService.okResponse(res, {
+            data: finalData,
+        });
+    } catch (error) {
+        console.error("Fast Moving Sold Products Error", error);
+        return commonService.handleError(res, error);
+    }
+};
+
 module.exports = {
     getSalesReport,
-    getFastMovingSubCategories
+    getFastMovingSubCategories,
+    getFastMovingSoldProducts
 };
