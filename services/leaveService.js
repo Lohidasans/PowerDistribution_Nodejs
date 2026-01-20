@@ -6,13 +6,15 @@ const { Op } = require('sequelize');
 const createLeave = async (req, res) => {
   const transaction = await sequelize.transaction();
   try {
-    const { leave_date, leave_type_id, reason } = req.body;
+    const { leave_date, leave_type_id, reason,employee_id,branch_id } = req.body;
     
     const leave = await models.Leave.create(
       { 
         leave_date, 
         leave_type_id, 
         reason,
+        employee_id,
+        branch_id
       },
       { transaction }
     );
@@ -29,18 +31,70 @@ const getAllLeaves = async (req, res) => {
   try {
     const { start_date, end_date, search, leave_type_id } = req.query;
 
-    // Base query
+    // Base query with all necessary joins
     let query = `
       SELECT 
         l.id,
         l.leave_date,
         l.leave_type_id,
+        l.employee_id,
+        l.branch_id,
         l.reason,
+        l.status_id,
+        l.approved_by_id,
+        l.entity_type_name,
         l.created_at,
         l.updated_at,
-        lt.leave_type_name
+        lt.leave_type_name,
+        e.employee_no,
+        e.employee_name,
+        e.profile_image_url,
+        e.department_id,
+        e.role_id,
+        e.joining_date,
+        e.employment_type,
+        e.gender,
+        e.date_of_birth,
+        e.status,
+        r.role_name,
+        d.department_name,
+        b.branch_name,
+        b.address as branch_address,
+        b.mobile as branch_mobile,
+        b.email as branch_email,
+        b.status as branch_status,
+        CASE 
+          WHEN l.entity_type_name = 'superadmin' THEN sa.proprietor
+          WHEN l.entity_type_name = 'vendors' THEN v.vendor_name
+          WHEN l.entity_type_name = 'employees' THEN ae.employee_name
+          WHEN l.entity_type_name = 'branches' THEN ab.branch_name
+          ELSE NULL
+        END as approved_by_name,
+        CASE 
+          WHEN l.entity_type_name = 'superadmin' THEN sa.email_id
+          WHEN l.entity_type_name = 'vendors' THEN v.email
+          WHEN l.entity_type_name = 'employees' THEN aec.email_id
+          WHEN l.entity_type_name = 'branches' THEN ab.email
+          ELSE NULL
+        END as approved_by_email,
+        CASE 
+          WHEN l.entity_type_name = 'superadmin' THEN sa.mobile_number
+          WHEN l.entity_type_name = 'vendors' THEN v.mobile
+          WHEN l.entity_type_name = 'employees' THEN aec.mobile_number
+          WHEN l.entity_type_name = 'branches' THEN ab.mobile
+          ELSE NULL
+        END as approved_by_mobile
       FROM leaves AS l
       LEFT JOIN leave_types AS lt ON lt.id = l.leave_type_id
+      LEFT JOIN employees AS e ON e.id = l.employee_id
+      LEFT JOIN roles AS r ON r.id = e.role_id
+      LEFT JOIN employee_departments AS d ON d.id = e.department_id
+      LEFT JOIN branches AS b ON b.id = l.branch_id
+      LEFT JOIN superadmin_profiles AS sa ON l.entity_type_name = 'superadmin' AND sa.id = l.approved_by_id
+      LEFT JOIN vendors AS v ON l.entity_type_name = 'vendors' AND v.id = l.approved_by_id
+      LEFT JOIN employees AS ae ON l.entity_type_name = 'employees' AND ae.id = l.approved_by_id
+      LEFT JOIN employee_contacts AS aec ON aec.employee_id = ae.id
+      LEFT JOIN branches AS ab ON l.entity_type_name = 'branches' AND ab.id = l.approved_by_id
       WHERE 1 = 1
     `;
 
@@ -65,12 +119,14 @@ const getAllLeaves = async (req, res) => {
       replacements.leave_type_id = leave_type_id;
     }
 
-    // 🔍 Universal search (in both reason and leave_type_name)
+    // 🔍 Universal search (in reason, leave_type_name, employee_name, employee_no)
     if (search && search.trim() !== "") {
       query += `
         AND (
           LOWER(l.reason) LIKE :search OR
-          LOWER(lt.leave_type_name) LIKE :search
+          LOWER(lt.leave_type_name) LIKE :search OR
+          LOWER(e.employee_name) LIKE :search OR
+          LOWER(e.employee_no) LIKE :search
         )
       `;
       replacements.search = `%${search.trim().toLowerCase()}%`;
@@ -80,10 +136,54 @@ const getAllLeaves = async (req, res) => {
     query += ` ORDER BY l.leave_date DESC`;
 
     // Execute raw query
-    const leaves = await sequelize.query(query, {
+    const rows = await sequelize.query(query, {
       replacements,
       type: sequelize.QueryTypes.SELECT
     });
+
+    // Structure the response with nested objects
+    const leaves = rows.map((row) => ({
+      id: row.id,
+      leave_date: row.leave_date,
+      leave_type_id: row.leave_type_id,
+      employee_id: row.employee_id,
+      branch_id: row.branch_id,
+      reason: row.reason,
+      status_id: row.status_id,
+      approved_by_id: row.approved_by_id,
+      entity_type_name: row.entity_type_name,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      leave_type_name: row.leave_type_name,
+      employee: row.employee_id ? {
+        employee_no: row.employee_no,
+        employee_name: row.employee_name,
+        profile_image_url: row.profile_image_url,
+        department_id: row.department_id,
+        role_id: row.role_id,
+        joining_date: row.joining_date,
+        employment_type: row.employment_type,
+        gender: row.gender,
+        date_of_birth: row.date_of_birth,
+        status: row.status,
+        role_name: row.role_name,
+        department_name: row.department_name,
+      } : null,
+      branch: row.branch_id ? {
+        branch_name: row.branch_name,
+        address: row.branch_address,
+        mobile: row.branch_mobile,
+        email: row.branch_email,
+        status: row.branch_status,
+      } : null,
+      approved_by: row.approved_by_id ? {
+        id: row.approved_by_id,
+        entity_type: row.entity_type_name,
+        name: row.approved_by_name,
+        email: row.approved_by_email,
+        mobile: row.approved_by_mobile,
+      } : null,
+    }));
 
     return commonService.okResponse(res, leaves);
   } catch (error) {
@@ -116,7 +216,7 @@ const updateLeave = async (req, res) => {
   const transaction = await sequelize.transaction();
   try {
     const { id } = req.params;
-    const { leave_date, leave_type_id, reason } = req.body;
+    const { leave_date, leave_type_id, reason ,employee_id,branch_id} = req.body;
 
     const leave = await models.Leave.findByPk(id, { transaction });
     if (!leave) {
@@ -128,7 +228,9 @@ const updateLeave = async (req, res) => {
     const updateData = {
       leave_date: leave_date || leave.leave_date,
       leave_type_id: leave_type_id || leave.leave_type_id,
-      reason: reason !== undefined ? reason : leave.reason
+      reason: reason !== undefined ? reason : leave.reason,
+      employee_id: employee_id || leave.employee_id,
+      branch_id: branch_id || leave.branch_id
     };
 
     // Update record
@@ -145,7 +247,43 @@ const updateLeave = async (req, res) => {
   }
 };
 
+const updateLeaveStatus = async (req, res) => {
+  const transaction = await sequelize.transaction();
+  try {
+    const { id } = req.params;
+    const { leave_date, leave_type_id, reason ,employee_id,branch_id,status_id,approved_by_id,entity_type_name  } = req.body;
 
+    const leave = await models.Leave.findByPk(id, { transaction });
+    if (!leave) {
+      await transaction.rollback();
+      return commonService.notFound(res, 'Leave request not found');
+    }
+
+    // Prepare updated data
+    const updateData = {
+      leave_date: leave_date || leave.leave_date,
+      leave_type_id: leave_type_id || leave.leave_type_id,
+      reason: reason !== undefined ? reason : leave.reason,
+      employee_id: employee_id || leave.employee_id,
+      branch_id: branch_id || leave.branch_id,
+      status_id: status_id || leave.status_id,
+      approved_by_id: approved_by_id || leave.approved_by_id,
+      entity_type_name: entity_type_name || leave.entity_type_name
+    };
+
+    // Update record
+    await leave.update(updateData, { transaction });
+    await transaction.commit();
+
+    // Fetch updated record (without associations)
+    const updatedLeave = await models.Leave.findByPk(id);
+
+    return commonService.okResponse(res, updatedLeave);
+  } catch (error) {
+    await transaction.rollback();
+    return commonService.handleError(res, error);
+  }
+};
 // Delete leave request (soft delete)
 const deleteLeave = async (req, res) => {
   const transaction = await sequelize.transaction();
@@ -174,4 +312,5 @@ module.exports = {
   getLeaveById,
   updateLeave,
   deleteLeave,
+  updateLeaveStatus
 };

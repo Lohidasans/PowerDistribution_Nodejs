@@ -400,8 +400,45 @@ const getEmployeeById = async (req, res) => {
   try {
     const id = req.params.id;
 
-    const employee = await commonService.findById(models.Employee, id, res);
-    if (!employee) return;
+    const query = `
+      SELECT
+        e.*,
+        b.branch_name,
+        d.department_name,
+        r.role_name,
+        c.id as contact_id,
+        c.mobile_number,
+        c.email_id,
+        c.address,
+        c.country_id,
+        c.state_id,
+        c.district_id,
+        c.pin_code,
+        c.emergency_contact_person,
+        c.relationship,
+        c.emergency_contact_number,
+        coun.country_name,
+        s.state_name,
+        dist.district_name
+      FROM employees e
+      LEFT JOIN branches b ON b.id = e.branch_id
+      LEFT JOIN "employee_departments" d ON d.id = e.department_id
+      LEFT JOIN "roles" r ON r.id = e.role_id
+      LEFT JOIN employee_contacts c ON c.employee_id = e.id
+      LEFT JOIN countries coun ON coun.country_name = c.country_id
+      LEFT JOIN states s ON s.state_name = c.state_id
+      LEFT JOIN districts dist ON dist.district_name = c.district_id
+      WHERE e.id = :id AND e.deleted_at IS NULL
+    `;
+
+    const [employeeRows] = await sequelize.query(query, {
+      replacements: { id },
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    if (!employeeRows) {
+      return commonService.notFound(res, enMessage.failure.notFound);
+    }
 
     const [bank_account, kyc_documents, login, experiences] = await Promise.all([
       models.BankAccount.findOne({
@@ -417,6 +454,43 @@ const getEmployeeById = async (req, res) => {
         where: { employee_id: id },
       }),
     ]);
+
+    // Structure the employee data with nested contacts
+    const employee = {
+      ...employeeRows,
+      contacts: employeeRows.contact_id ? {
+        id: employeeRows.contact_id,
+        mobile_number: employeeRows.mobile_number,
+        email_id: employeeRows.email_id,
+        address: employeeRows.address,
+        country_id: employeeRows.country_id,
+        state_id: employeeRows.state_id,
+        district_id: employeeRows.district_id,
+        pin_code: employeeRows.pin_code,
+        emergency_contact_person: employeeRows.emergency_contact_person,
+        relationship: employeeRows.relationship,
+        emergency_contact_number: employeeRows.emergency_contact_number,
+        country_name: employeeRows.country_name,
+        state_name: employeeRows.state_name,
+        district_name: employeeRows.district_name,
+      } : null,
+    };
+
+    // Remove contact fields from the main employee object
+    delete employee.contact_id;
+    delete employee.mobile_number;
+    delete employee.email_id;
+    delete employee.address;
+    delete employee.country_id;
+    delete employee.state_id;
+    delete employee.district_id;
+    delete employee.pin_code;
+    delete employee.emergency_contact_person;
+    delete employee.relationship;
+    delete employee.emergency_contact_number;
+    delete employee.country_name;
+    delete employee.state_name;
+    delete employee.district_name;
 
     return commonService.okResponse(res, {
       employee,

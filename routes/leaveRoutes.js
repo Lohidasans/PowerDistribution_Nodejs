@@ -6,6 +6,7 @@ router.post("/leaves", svc.createLeave);
 router.get("/leaves", svc.getAllLeaves);
 router.get("/leaves/:id", svc.getLeaveById);
 router.put("/leaves/:id", svc.updateLeave);
+router.put("/leaves/:id/status", svc.updateLeaveStatus);
 router.delete("/leaves/:id", svc.deleteLeave);
 
 module.exports = router;

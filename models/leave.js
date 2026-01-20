@@ -21,6 +21,27 @@ module.exports = (sequelize) => {
         type: DataTypes.TEXT,
         allowNull: true,
       },
+      employee_id:{
+        type: DataTypes.INTEGER,
+        allowNull: true,
+      },
+      branch_id:{
+        type: DataTypes.INTEGER,
+        allowNull: true,
+      },
+      status_id:{
+        type: DataTypes.INTEGER,
+        allowNull: true,
+      },
+      approved_by_id:{
+        type: DataTypes.INTEGER,
+        allowNull: true,
+      },
+      entity_type_name:{
+        type: DataTypes.STRING,
+        allowNull: true,
+      }
+
     },
     {
       timestamps: true,
