@@ -225,13 +225,18 @@ const getStockAgeingReport = async (req, res) => {
             ref_no_id,
             search,
             branch_id,
-            ageing,    // 0_30 | 31_60 | 61_90 | 91_plus
+
+            ageing,        // 0_30 | 31_60 | 61_90 | 91_plus
+            date_filter,   // today | week | month | year
+            from_date,
+            to_date,
+
             page,
             limit
         } = req.query;
 
         const usePagination = page && limit;
-        const offset = usePagination ? (page - 1) * limit : null;
+        const offset = usePagination ? (Number(page) - 1) * Number(limit) : null;
 
         const replacements = {};
         let whereSql = `
@@ -283,7 +288,12 @@ const getStockAgeingReport = async (req, res) => {
       `;
         }
 
-        // AGEING FILTER
+        const stockDateCondition = dateFilter(
+            { from_date, to_date, date_filter },
+            "p.created_at::date",
+            replacements
+        );
+
         let ageingSql = ``;
 
         if (ageing === "0_30") ageingSql = ` AND (CURRENT_DATE - p.created_at::date) <= 30`;
@@ -291,7 +301,6 @@ const getStockAgeingReport = async (req, res) => {
         if (ageing === "61_90") ageingSql = ` AND (CURRENT_DATE - p.created_at::date) BETWEEN 61 AND 90`;
         if (ageing === "91_plus") ageingSql = ` AND (CURRENT_DATE - p.created_at::date) >= 91`;
 
-        // SCORE CARDS
         const scoreRows = await sequelize.query(
             `
       SELECT
@@ -308,20 +317,21 @@ const getStockAgeingReport = async (req, res) => {
       LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
       LEFT JOIN branches b ON b.id = p.branch_id
       ${whereSql}
+      ${stockDateCondition}
       GROUP BY bucket
       `,
             { replacements, type: sequelize.QueryTypes.SELECT }
         );
 
         const cards = {
-            "0_30": { weight: 0, qty: 0 },
-            "31_60": { weight: 0, qty: 0 },
-            "61_90": { weight: 0, qty: 0 },
-            "91_plus": { weight: 0, qty: 0 }
+            "0_30": { weight: "0.000", qty: 0 },
+            "31_60": { weight: "0.000", qty: 0 },
+            "61_90": { weight: "0.000", qty: 0 },
+            "91_plus": { weight: "0.000", qty: 0 },
         };
 
         scoreRows.forEach(r => {
-            cards[r.bucket].weight = parseFloat(r.total_weight || 0).toFixed(3);
+            cards[r.bucket].weight = Number(r.total_weight || 0).toFixed(3);
             cards[r.bucket].qty = Number(r.total_quantity || 0);
         });
 
@@ -373,11 +383,13 @@ const getStockAgeingReport = async (req, res) => {
         LEFT JOIN subcategories sc ON sc.id = p.subcategory_id
         LEFT JOIN branches b ON b.id = p.branch_id
 
-        ${whereSql}
-        ${ageingSql}
+      ${whereSql}
+      ${stockDateCondition}
+      ${ageingSql}
 
-        GROUP BY
-        p.id, g.grn_no,
+      GROUP BY
+        p.id,
+        g.grn_no,
         gi.ref_no,
         mt.material_type,
         ct.category_name,
@@ -409,6 +421,7 @@ const getStockAgeingReport = async (req, res) => {
     }
 };
 
+// Old one - Future reference
 const getAllStockDetails = async (req, res) => {
     try {
         const {
@@ -604,6 +617,7 @@ const getAllStockDetails = async (req, res) => {
     }
 };
 
+// Old one - Future reference
 const getLowStockSummary = async (req, res) => {
     try {
         const { branch_id, material_type_id, category_id, search } = req.query;
