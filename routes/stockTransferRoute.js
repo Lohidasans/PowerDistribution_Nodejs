@@ -6,6 +6,7 @@ const svc = require("../services/stockTransferService");
 router.post("/stock-transfers", svc.createStockTransfer);
 router.post("/stock-transfers/code", svc.generateStockCode);
 router.get("/stock-transfers", svc.listStockTransfers);
+router.get("/stock-transfers/search", svc.searchProductBySku);
 router.get("/stock-transfers/:id", svc.getStockTransferById);
 router.put("/stock-transfers/:id", svc.updateStockTransfer);
 router.put("/stock-transfers/:id/status", svc.updateStockTransferStatus);

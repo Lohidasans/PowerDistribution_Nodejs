@@ -739,6 +739,157 @@ const updateStockTransferStatus = async (req, res) => {
   }
 };
 
+
+const searchProductBySku = async (req, res) => {
+  try {
+    const { sku, product_name, branch_id } = req.query;
+
+    const [categories, subcategories, materialTypes] = await Promise.all([
+      models.Category.findAll({ raw: true }),
+      models.Subcategory.findAll({ raw: true }),
+      models.MaterialType.findAll({ raw: true }),
+    ]);
+
+    const categoryMap = new Map(categories.map(c => [c.id, c.category_name]));
+    const subcategoryMap = new Map(subcategories.map(sc => [sc.id, sc.subcategory_name]));
+    const materialTypeMap = new Map(materialTypes.map(m => [m.id, m.material_type]));
+
+    // Helper: convert product + item → flat response object
+    const formatItem = async (product, item) => {
+      const priceDetails = await ProductService.calculateSellingPrice(product, item, models);
+
+      return {
+        sku_id: item.sku_id || product.sku_id,
+        product_name: product.product_name,
+        product_description: product.description,
+        product_type: product.product_type,
+        branch_id: product.branch_id,
+        category_id: product.category_id,
+        category_name: categoryMap.get(product.category_id) || null,
+        subcategory_id: product.subcategory_id,
+        subcategory_name: subcategoryMap.get(product.subcategory_id) || null,
+        material_type_id: product.material_type_id,
+        material_type: materialTypeMap.get(product.material_type_id) || null,
+        variation_type: product.variation_type,
+        product_variations: product.product_variations,
+        purity: product.purity,
+        product_id: product.id,
+        product_item_details_id: item.id,
+        quantity: item.quantity,
+        hsn_code: product.hsn_code,
+        base_price: item.base_price,
+        gross_weight: item.gross_weight,
+        net_weight: item.net_weight,
+        product_item_wastage: item.wastage,
+        ...priceDetails,
+      };
+    };
+
+    // Build product search condition
+    const productWhere = {};
+
+    if (sku && sku.trim() !== "") {
+      productWhere.sku_id = sku.trim();
+    }
+
+    if (product_name && product_name.trim() !== "") {
+      productWhere.product_name = {
+        [Op.iLike]: `%${product_name.trim()}%`,
+      };
+    }
+
+    if (branch_id && branch_id.trim() !== "") {
+      productWhere.branch_id = Number(branch_id.trim());
+    }
+
+    // CASE 1 → No filters → get all in-stock items
+    if (Object.keys(productWhere).length === 0) {
+      const [allProducts, allItems] = await Promise.all([
+        models.Product.findAll({ raw: true }),
+        models.ProductItemDetail.findAll({
+          where: {
+            quantity: { [Op.gt]: 0 },
+            is_visible: true,
+          },
+          raw: true,
+        }),
+      ]);
+
+      const output = await Promise.all(
+        allItems.map(async (item) => {
+          const product = allProducts.find((p) => p.id === item.product_id);
+          return product ? formatItem(product, item) : null;
+        })
+      );
+
+      return commonService.okResponse(res, output.filter(Boolean));
+    }
+
+    // Fetch matching products
+    const products = await models.Product.findAll({
+      where: productWhere,
+      raw: true,
+    });
+
+    let items = [];
+
+    if (products.length > 0) {
+      const productIds = products.map((p) => p.id);
+
+      items = await models.ProductItemDetail.findAll({
+        where: {
+          product_id: { [Op.in]: productIds },
+          ...(sku ? { sku_id: sku.trim() } : {}),
+          quantity: { [Op.gt]: 0 },
+          is_visible: true,
+        },
+        raw: true,
+      });
+    }
+
+    // Item SKU only (fallback)
+    if (items.length === 0 && sku) {
+      const itemDetail = await models.ProductItemDetail.findOne({
+        where: {
+          sku_id: sku.trim(),
+          quantity: { [Op.gt]: 0 },
+          is_visible: true,
+        },
+        raw: true,
+      });
+
+      if (itemDetail) {
+        const product = await models.Product.findOne({
+          where: { id: itemDetail.product_id },
+          raw: true,
+        });
+
+        const response = await formatItem(product, itemDetail);
+        return commonService.okResponse(res, [response]);
+      }
+    }
+
+    if (items.length === 0) {
+      return commonService.notFound(
+        res,
+        "No in-stock product found for given search criteria"
+      );
+    }
+
+    // Flatten response
+    const flatResponse = await Promise.all(
+      items.map(async (item) => {
+        const product = products.find((p) => p.id === item.product_id);
+        return product ? formatItem(product, item) : null;
+      })
+    );
+
+    return commonService.okResponse(res, flatResponse.filter(Boolean));
+  } catch (error) {
+    console.error("Error searching products:", error);
+    return commonService.handleError(res, error);
+  }
+};
 module.exports = {
   generateStockCode,
   createStockTransfer,
@@ -752,4 +903,5 @@ module.exports = {
   validateItemsPayload,
   validateProductsAndItemDetails,
   updateStockTransferStatus,
+  searchProductBySku
 };
