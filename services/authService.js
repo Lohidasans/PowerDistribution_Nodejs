@@ -248,8 +248,9 @@ const customerSendOTP = async (req, res) => {
             return commonService.badRequest(res, "Mobile number is required");
         }
 
-        // generate 6 digit otp
-        const otp = Math.floor(100000 + Math.random() * 900000);
+        // generate 4 digit otp
+    //   const otp = Math.floor(1000 + Math.random() * 9000);
+const otp = '1234'; // for testing purpose, use a fixed OTP
 
         // store in memory cache
         otpCache.setOTP(mobile, otp);
