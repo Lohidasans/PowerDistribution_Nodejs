@@ -208,100 +208,133 @@ const getSalesReport = async (req, res) => {
 // get the sold out product based on its subcategory
 const getFastMovingSubCategories = async (req, res) => {
     try {
-        const { branch_id, material_type_id, category_id, search } = req.query;
+        const {
+            branch_id,
+            vendor_id,
+            material_type_id,
+            category_id,
+            subcategory_id,
+            purity,
+            search,
+        } = req.query;
 
-        const replacements = {};
-        let filterSql = `WHERE sc.deleted_at IS NULL AND p.deleted_at IS NULL`;
-
-        if (branch_id) {
-            filterSql += ` AND p.branch_id = :branch_id`;
-            replacements.branch_id = branch_id;
-        }
-
-        if (material_type_id) {
-            filterSql += ` AND p.material_type_id = :material_type_id`;
-            replacements.material_type_id = material_type_id;
-        }
-
-        if (category_id) {
-            filterSql += ` AND p.category_id = :category_id`;
-            replacements.category_id = category_id;
-        }
-
-        if (search) {
-            filterSql += `
-        AND (
-          sc.subcategory_name ILIKE :search
-          OR c.category_name ILIKE :search
-          OR mt.material_type ILIKE :search
-          OR b.branch_name ILIKE :search
-        )
-      `;
-            replacements.search = `%${search}%`;
-        }
+        const replacements = {
+            branch_id: branch_id || null,
+            vendor_id: vendor_id || null,
+            material_type_id: material_type_id || null,
+            category_id: category_id || null,
+            subcategory_id: subcategory_id || null,
+            purity: purity || null,
+            search: search ? `%${search}%` : null,
+        };
 
         const rows = await sequelize.query(
-            `WITH sold_products AS (
-                SELECT
-                    sii.product_id,
-                    SUM(sii.quantity) AS sold_qty
-                FROM sales_invoice_bills sib
-                JOIN sales_invoice_bill_items sii
-                    ON sii.invoice_bill_id = sib.id
-                    AND sii.deleted_at IS NULL
-                WHERE sib.deleted_at IS NULL AND sib.status = 'Invoice'
-                GROUP BY sii.product_id
-            )
-            SELECT
-                b.branch_name,
-                b.id AS branch_id,
-                mt.material_type,
-                p.material_type_id,
-                c.id AS category_id,
-                c.category_name,
-                sc.id AS subcategory_id,
-                sc.subcategory_name,
+            `
+      WITH filtered_products AS (
+        SELECT
+          p.id AS product_id,
+          p.branch_id,
+          p.vendor_id,
+          p.material_type_id,
+          p.purity,
+          p.category_id,
+          p.subcategory_id
+        FROM products p
+        WHERE p.deleted_at IS NULL
+          AND (:branch_id IS NULL OR p.branch_id = :branch_id)
+          AND (:vendor_id IS NULL OR p.vendor_id = :vendor_id)
+          AND (:material_type_id IS NULL OR p.material_type_id = :material_type_id)
+          AND (:category_id IS NULL OR p.category_id = :category_id)
+          AND (:subcategory_id IS NULL OR p.subcategory_id = :subcategory_id)
+          AND (:purity IS NULL OR p.purity = :purity)
+      ),
+      sold_products AS (
+        SELECT
+          fp.product_id,
+          fp.branch_id,
+          fp.subcategory_id,
+          SUM(sii.quantity) AS sold_qty
+        FROM filtered_products fp
+        JOIN sales_invoice_bill_items sii
+          ON sii.product_id = fp.product_id
+          AND sii.deleted_at IS NULL
+        JOIN sales_invoice_bills sib
+          ON sib.id = sii.invoice_bill_id
+          AND sib.deleted_at IS NULL
+          AND sib.status = 'Invoice'
+        GROUP BY
+          fp.product_id,
+          fp.branch_id,
+          fp.subcategory_id
+      )
+      SELECT
+        b.id AS branch_id,
+        b.branch_name,
+        mt.material_type,
+        p.material_type_id,
+        p.purity,
+        p.vendor_id,
+        v.vendor_name,
+        c.id AS category_id,
+        c.category_name,
+        sc.id AS subcategory_id,
+        sc.subcategory_name,
 
-                -- total sold quantity
-                SUM(sp.sold_qty) AS sold_quantity,
+        -- ✅ per branch + subcategory
+        SUM(sp.sold_qty) AS sold_quantity,
+        COUNT(DISTINCT sp.product_id) AS sold_product_count
 
-                -- how many products sold
-                COUNT(DISTINCT sp.product_id) AS sold_product_count
+      FROM sold_products sp
+      JOIN products p ON p.id = sp.product_id
+      JOIN subcategories sc ON sc.id = p.subcategory_id
+      LEFT JOIN branches b ON b.id = p.branch_id
+      LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
+      LEFT JOIN vendors v ON v.id = p.vendor_id
+      LEFT JOIN categories c ON c.id = p.category_id
 
-            FROM sold_products sp
-            JOIN products p ON p.id = sp.product_id
-            JOIN subcategories sc ON sc.id = p.subcategory_id
-            LEFT JOIN branches b ON b.id = p.branch_id
-            LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
-            LEFT JOIN categories c ON c.id = p.category_id
-            ${filterSql}
-            
-            -- optional filters
-            -- AND p.branch_id = :branch_id
-            -- AND p.material_type_id = :material_type_id
-            -- AND p.category_id = :category_id
+      WHERE sc.deleted_at IS NULL
+        AND p.deleted_at IS NULL
+        ${search
+                ? `
+          AND (
+            sc.subcategory_name ILIKE :search
+            OR c.category_name ILIKE :search
+            OR mt.material_type ILIKE :search
+            OR b.branch_name ILIKE :search
+          )
+        `
+                : ""
+            }
 
-            GROUP BY
-            b.branch_name,
-            b.id,
-            mt.material_type,
-            p.material_type_id,
-            c.id,
-            c.category_name,
-            sc.id,
-            sc.subcategory_name
-            ORDER BY sold_quantity DESC
-            `,
-            { replacements, type: sequelize.QueryTypes.SELECT }
+      GROUP BY
+        b.id,
+        b.branch_name,
+        mt.material_type,
+        p.material_type_id,
+        p.purity,
+        p.vendor_id,
+        v.vendor_name,
+        c.id,
+        c.category_name,
+        sc.id,
+        sc.subcategory_name
+
+      ORDER BY sold_quantity DESC
+      `,
+            {
+                replacements,
+                type: sequelize.QueryTypes.SELECT,
+            }
         );
-
 
         return commonService.okResponse(res, { data: rows });
     } catch (error) {
-        console.error("Low Stock Error", error);
+        console.error("Fast Moving Error", error);
         return commonService.handleError(res, error);
     }
 };
+
+
 
 module.exports = {
     getSalesReport,
