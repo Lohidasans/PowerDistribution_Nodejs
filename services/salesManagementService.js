@@ -339,6 +339,10 @@ const getFastMovingSoldProducts = async (req, res) => {
         const {
             branch_id,
             subcategory_id,
+            vendor_id,  
+            purity,
+            category_id, 
+            material_type_id,
             search,
             from_date,
             to_date,
@@ -355,6 +359,10 @@ const getFastMovingSoldProducts = async (req, res) => {
         const replacements = {
             branch_id,
             subcategory_id,
+            vendor_id: vendor_id || null,
+            purity: purity || null,
+            category_id: category_id || null,
+            material_type_id: material_type_id || null,
             search: search ? `%${search}%` : null,
         };
 
@@ -371,12 +379,16 @@ const getFastMovingSoldProducts = async (req, res) => {
         v.vendor_name,
         v.vendor_code,
         v.vendor_image_url,
+        v.id AS vendor_id,
 
         p.sku_id AS product_sku_id,
 
         mt.material_type,
+        mt.id as material_type_id,
         c.category_name,
+        c.id as category_id,
         sc.subcategory_name,
+        sc.id as subcategory_id,
         p.product_name,
         p.purity,
         p.id as product_id,
@@ -405,6 +417,10 @@ const getFastMovingSoldProducts = async (req, res) => {
         AND p.deleted_at IS NULL
         AND p.subcategory_id = :subcategory_id
         AND p.branch_id = :branch_id
+        AND (:vendor_id IS NULL OR p.vendor_id = :vendor_id)
+        AND (:purity IS NULL OR p.purity = :purity)
+        AND (:category_id IS NULL OR p.category_id = :category_id)
+        AND (:material_type_id IS NULL OR p.material_type_id = :material_type_id)
 
       -- optional item-level data
       LEFT JOIN "productItemDetails" pid
@@ -444,6 +460,7 @@ const getFastMovingSoldProducts = async (req, res) => {
                     vendor_image: row.vendor_image_url,
                     vendor_code: row.vendor_code,
                     vendor_name: row.vendor_name,
+                    vendor_id: row.vendor_id,
 
                     product_sku_id: row.product_sku_id,
                     branch_id: branch_id,
@@ -453,8 +470,11 @@ const getFastMovingSoldProducts = async (req, res) => {
                     purity: row.purity,
 
                     material_type: row.material_type,
+                    material_type_id: row.material_type_id,
                     category_name: row.category_name,
+                    category_id: row.category_id,
                     subcategory_name: row.subcategory_name,
+                    subcategory_id: row.subcategory_id,
 
                     sku_id: row.sku_id,
                     purity: row.purity,
