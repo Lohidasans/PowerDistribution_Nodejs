@@ -1573,6 +1573,136 @@ const getStockByMaterialTypeReport = async (req, res) => {
     }
 };
 
+const mapByBranch = (rows, key = "branch_id") =>
+    rows.reduce((acc, r) => {
+        acc[r[key]] = r;
+        return acc;
+    }, {});
+
+const getBranchwiseStockCount = async (req, res) => {
+    try {
+        const { branch_id } = req.query;
+
+        const replacements = branch_id ? { branch_id } : {};
+
+        const branches = await sequelize.query(
+            `
+      SELECT id AS branch_id, branch_name
+      FROM branches
+      WHERE deleted_at IS NULL
+      ${branch_id ? "AND id = :branch_id" : ""}
+      ORDER BY branch_name
+      `,
+            { replacements, type: sequelize.QueryTypes.SELECT }
+        );
+
+        const [
+            stockRows,
+            lowStockRows,
+            outStockRows,
+            oldJewelRows,
+            repairRows
+        ] = await Promise.all([
+            sequelize.query(`SELECT
+                p.branch_id,
+                SUM(pid.quantity) AS total_quantity,
+                SUM(pid.quantity * pid.gross_weight) AS total_weight
+                FROM products p
+                JOIN "productItemDetails" pid
+                ON pid.product_id = p.id
+                AND pid.quantity > 0
+                AND pid.deleted_at IS NULL
+                WHERE p.deleted_at IS NULL
+                AND p.status = 'Active'
+                GROUP BY p.branch_id
+                `, { type: sequelize.QueryTypes.SELECT }),
+            sequelize.query(`WITH product_stock AS (
+                SELECT
+                    p.id AS product_id,
+                    p.subcategory_id,
+                    p.branch_id,
+                    SUM(pid.quantity) AS total_qty,
+                    SUM(pid.quantity * pid.gross_weight) AS total_weight
+                FROM products p
+                JOIN "productItemDetails" pid
+                    ON pid.product_id = p.id
+                    AND pid.deleted_at IS NULL
+                WHERE p.deleted_at IS NULL
+                GROUP BY p.id, p.subcategory_id, p.branch_id
+                )
+                SELECT
+                ps.branch_id,
+                SUM(ps.total_weight) AS total_weight
+                FROM product_stock ps
+                JOIN subcategories sc ON sc.id = ps.subcategory_id
+                WHERE ps.total_qty < sc.reorder_level
+                GROUP BY ps.branch_id
+                `, { type: sequelize.QueryTypes.SELECT }),
+            sequelize.query(`SELECT
+                p.branch_id,
+                COUNT(DISTINCT sc.id) AS total_quantity
+                FROM subcategories sc
+                LEFT JOIN products p
+                ON p.subcategory_id = sc.id
+                AND p.deleted_at IS NULL
+                GROUP BY p.branch_id
+                HAVING COUNT(p.id) = 0 `, { type: sequelize.QueryTypes.SELECT }),
+            sequelize.query(`SELECT
+                t.branch_id,
+                SUM(oi.net_weight) AS total_weight,
+                COUNT(oi.id) AS total_quantity
+                FROM old_jewels t
+                JOIN old_jewel_items oi
+                ON oi.old_jewel_id = t.id
+                AND oi.deleted_at IS NULL
+                GROUP BY t.branch_id `, { type: sequelize.QueryTypes.SELECT }),
+            sequelize.query(`SELECT
+                t.branch_id,
+                SUM(ri.weight) AS total_weight,
+                COUNT(ri.id) AS total_quantity
+                FROM jewel_repairs t
+                JOIN jewel_repair_items ri
+                ON ri.repair_id = t.id
+                AND ri.deleted_at IS NULL
+                GROUP BY t.branch_id `, { type: sequelize.QueryTypes.SELECT }),
+                        ]);
+
+        const stockMap = mapByBranch(stockRows);
+        const lowStockMap = mapByBranch(lowStockRows);
+        const outStockMap = mapByBranch(outStockRows);
+        const oldJewelMap = mapByBranch(oldJewelRows);
+        const repairMap = mapByBranch(repairRows);
+
+        const data = branches.map(b => ({
+            branch_id: b.branch_id,
+            branch_name: b.branch_name,
+
+            stock_in_hand: {
+                total_weight: Number(stockMap[b.branch_id]?.total_weight || 0),
+                total_quantity: Number(stockMap[b.branch_id]?.total_quantity || 0),
+            },
+            low_stock: {
+                total_weight: Number(lowStockMap[b.branch_id]?.total_weight || 0),
+            },
+            out_of_stock: {
+                total_quantity: Number(outStockMap[b.branch_id]?.total_quantity || 0),
+            },
+            old_jewel: {
+                total_weight: Number(oldJewelMap[b.branch_id]?.total_weight || 0),
+                total_quantity: Number(oldJewelMap[b.branch_id]?.total_quantity || 0),
+            },
+            jewel_repair: {
+                total_weight: Number(repairMap[b.branch_id]?.total_weight || 0),
+                total_quantity: Number(repairMap[b.branch_id]?.total_quantity || 0),
+            }
+        }));
+
+        return commonService.okResponse(res, data);
+
+    } catch (err) {
+        return commonService.handleError(res, err);
+    }
+};
 
 
 module.exports = {
@@ -1594,5 +1724,6 @@ module.exports = {
     getBranchStockSummary,
     getBranchCategoryStock,
     getVendorContributionReport,
-    getStockByMaterialTypeReport
+    getStockByMaterialTypeReport,
+    getBranchwiseStockCount
 };
