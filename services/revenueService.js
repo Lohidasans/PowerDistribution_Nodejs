@@ -138,7 +138,146 @@ const getBranchwiseRevenue = async (req, res) => {
     }
 };
 
+const getBranchRevenueDetails = async (req, res) => {
+    try {
+        const {
+            branch_id,
+            from_date,
+            to_date,
+            date_filter,
+            search,
+            page,
+            limit
+        } = req.query;
+
+        if (!branch_id) {
+            return commonService.badRequest(res,"branch_id is required");
+        }
+
+        const replacements = { branch_id };
+
+        const paymentDateCondition = dateFilter(
+            { from_date, to_date, date_filter },
+            "p.payment_date::date",
+            replacements
+        );
+
+        let searchCondition = "";
+        if (search) {
+            searchCondition = `
+            AND (
+            sib.invoice_no ILIKE :search
+            OR jr.repair_code ILIKE :search
+            )
+        `;
+            replacements.search = `%${search}%`;
+        }
+
+        const hasPagination = page && limit;
+        const limitNum = hasPagination ? Number(limit) : null;
+        const offset = hasPagination ? (Number(page) - 1) * limitNum : null;
+
+        let query = `
+            SELECT
+                COALESCE(sib.invoice_no, jr.repair_code) AS description,
+
+                SUM(CASE WHEN p.payment_mode = 'Cash' THEN p.amount_received ELSE 0 END) AS cash,
+                SUM(CASE WHEN p.payment_mode = 'UPI' THEN p.amount_received ELSE 0 END) AS upi,
+                SUM(CASE WHEN p.payment_mode = 'Card' THEN p.amount_received ELSE 0 END) AS card,
+
+                SUM(p.amount_received) AS total_amount,
+                p.id as payment_id,
+                p.created_at as payment_date
+
+            FROM payments p
+
+            LEFT JOIN sales_invoice_bills sib
+                ON sib.id = p.invoice_bill_id
+                AND sib.deleted_at IS NULL
+
+            LEFT JOIN jewel_repairs jr
+                ON jr.id = p.jewel_repair_id
+                AND jr.deleted_at IS NULL
+
+            WHERE p.deleted_at IS NULL
+                AND p.status = 'Completed'
+                AND COALESCE(sib.branch_id, jr.branch_id) = :branch_id
+                ${paymentDateCondition}
+                ${searchCondition}
+
+            GROUP BY description, p.id
+            ORDER BY total_amount DESC
+            `;
+
+        if (hasPagination) {
+            query += ` LIMIT :limit OFFSET :offset`;
+            replacements.limit = limitNum;
+            replacements.offset = offset;
+        }
+
+        const rows = await sequelize.query(query, {
+            replacements,
+            type: sequelize.QueryTypes.SELECT
+        });
+
+        const summary = rows.reduce(
+            (acc, r) => {
+                acc.total_collection += Number(r.total_amount);
+                acc.cash += Number(r.cash);
+                acc.upi += Number(r.upi);
+                acc.card += Number(r.card);
+                return acc;
+            },
+            {
+                total_collection: 0,
+                cash: 0,
+                upi: 0,
+                card: 0
+            }
+        );
+
+        let totalItems = rows.length;
+
+        if (hasPagination) {
+            const [{ count }] = await sequelize.query(
+                `
+                SELECT COUNT(DISTINCT COALESCE(sib.invoice_no, jr.repair_code))::int AS count
+                FROM payments p
+                LEFT JOIN sales_invoice_bills sib
+                ON sib.id = p.invoice_bill_id
+                AND sib.deleted_at IS NULL
+                LEFT JOIN jewel_repairs jr
+                ON jr.id = p.jewel_repair_id
+                AND jr.deleted_at IS NULL
+                WHERE p.deleted_at IS NULL
+                AND p.status = 'Completed'
+                AND COALESCE(sib.branch_id, jr.branch_id) = :branch_id
+                ${paymentDateCondition}
+                ${searchCondition}
+                `,
+                {
+                    replacements,
+                    type: sequelize.QueryTypes.SELECT
+                }
+            );
+            totalItems = count;
+        }
+
+        return commonService.okResponse(res, {
+            data: {
+                summary,
+                totalItems,
+                rows
+            }
+        });
+
+    } catch (error) {
+        console.error("Branch Revenue Details Error:", error);
+        return commonService.handleError(res, error);
+    }
+};
 
 module.exports = {
-    getBranchwiseRevenue
+    getBranchwiseRevenue,
+    getBranchRevenueDetails
 };
