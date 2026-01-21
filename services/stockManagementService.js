@@ -1456,6 +1456,67 @@ const getBranchCategoryStock = async (req, res) => {
     }
 };
 
+const getVendorContributionReport = async (req, res) => {
+    try {
+        const query = `
+     SELECT
+        v.id AS vendor_id,
+        v.vendor_name,
+        
+        gi.material_type_id,
+        mt.material_type,
+
+        COALESCE(SUM(gi.quantity), 0) AS quantity,
+        COALESCE(SUM(gi.gross_wt_in_g), 0) AS weight,
+        COALESCE(SUM(gi.total_amount), 0) AS value
+
+      FROM vendors v
+      JOIN grns g ON g.vendor_id = v.id AND g.deleted_at IS NULL
+      JOIN "grnItems" gi ON gi.grn_id = g.id AND gi.deleted_at IS NULL AND gi.material_type_id = ANY(v.material_type_ids)
+      JOIN "materialTypes" mt ON mt.id = gi.material_type_id AND mt.deleted_at IS NULL
+
+      WHERE v.deleted_at IS NULL
+      GROUP BY v.id, v.vendor_name, mt.material_type, gi.material_type_id
+      ORDER BY v.vendor_name;
+    `;
+
+        const rows = await sequelize.query(query, {
+            type: sequelize.QueryTypes.SELECT
+        });
+
+        // GROUP BY VENDOR
+        const grouped = {};
+
+        for (const row of rows) {
+            if (!grouped[row.vendor_id]) {
+                grouped[row.vendor_id] = {
+                    vendor_id: row.vendor_id,
+                    vendor_name: row.vendor_name,
+                    materials: {}
+                };
+            }
+
+            grouped[row.vendor_id].materials[row.material_type] = {
+                quantity: Number(row.quantity),
+                weight: Number(row.weight),
+                value: Number(row.value)
+            };
+        }
+
+        return res.status(200).json({
+            success: true,
+            data: Object.values(grouped)
+        });
+
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to fetch vendor contribution"
+        });
+    }
+};
+
 
 
 module.exports = {
@@ -1475,5 +1536,6 @@ module.exports = {
     getOutOfStockList,
     getStockDashboard,
     getBranchStockSummary,
-    getBranchCategoryStock
+    getBranchCategoryStock,
+    getVendorContributionReport
 };
