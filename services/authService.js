@@ -73,6 +73,10 @@ const login = async (req, res) => {
                     break;
                 default:
                     // No entity details for unknown types
+                       entityDetails = await models.Employee.findOne({
+                        where: { id: entityId, deleted_at: null },
+                        transaction: t
+                    });
                     break;
             }
         }
