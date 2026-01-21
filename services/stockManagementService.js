@@ -1629,15 +1629,23 @@ const getBranchwiseStockCount = async (req, res) => {
                     AND pid.deleted_at IS NULL
                 WHERE p.deleted_at IS NULL
                 GROUP BY p.id, p.subcategory_id, p.branch_id
-                )
+                ),
+                low_stock_rows AS (
                 SELECT
-                ps.branch_id,
-                SUM(ps.total_weight) AS total_weight
+                    ps.branch_id,
+                    ps.subcategory_id,
+                    SUM(ps.total_weight) AS row_weight
                 FROM product_stock ps
                 JOIN subcategories sc ON sc.id = ps.subcategory_id
                 WHERE ps.total_qty < sc.reorder_level
-                GROUP BY ps.branch_id
-                `, { type: sequelize.QueryTypes.SELECT }),
+                GROUP BY ps.branch_id, ps.subcategory_id
+                )
+                SELECT
+                branch_id,
+                COUNT(*) AS subcategory_count,
+                COALESCE(SUM(row_weight),0) AS total_weight
+                FROM low_stock_rows
+                GROUP BY branch_id `, { type: sequelize.QueryTypes.SELECT }),
             sequelize.query(`SELECT
                 p.branch_id,
                 COUNT(DISTINCT sc.id) AS total_quantity
@@ -1683,6 +1691,7 @@ const getBranchwiseStockCount = async (req, res) => {
             },
             low_stock: {
                 total_weight: Number(lowStockMap[b.branch_id]?.total_weight || 0),
+                subcategory_count: Number(lowStockMap[b.branch_id]?.subcategory_count || 0),
             },
             out_of_stock: {
                 total_quantity: Number(outStockMap[b.branch_id]?.total_quantity || 0),
