@@ -86,79 +86,181 @@ module.exports = {
   getUserById,
   updateUser,
   deleteUser,
-  createUserByEntity: async (transaction, entity_type, entity_id, data) => {
-    if (!data || typeof data !== "object")
-      return { error: enMessage.user.invalidPayload };
-    // Allow multiple users per entity; no uniqueness check on (entity_type, entity_id)
-    if (!data.password && !data.password_hash)
-      return { error: enMessage.user.passwordRequired };
+  // createUserByEntity: async (transaction, entity_type, entity_id, data) => {
+  //   if (!data || typeof data !== "object")
+  //     return { error: enMessage.user.invalidPayload };
+  //   // Allow multiple users per entity; no uniqueness check on (entity_type, entity_id)
+  //   if (!data.password && !data.password_hash)
+  //     return { error: enMessage.user.passwordRequired };
 
-    try {
-      // Hash password if plain password is provided
-      let password_hash = data.password_hash;
-      if (data.password) {
-        password_hash = await bcrypt.hash(data.password, 10);
-      }
+  //   try {
+  //     // Hash password if plain password is provided
+  //     let password_hash = data.password_hash;
+  //     if (data.password) {
+  //       password_hash = await bcrypt.hash(data.password, 10);
+  //     }
 
-      const created = await models.User.create(
-        {
-          email: data.email || null,
-          password_hash: password_hash,
-          role_id: data.role_id || null,
-          entity_type,
-          entity_id,
-        },
-        { transaction }
-      );
+  //     const created = await models.User.create(
+  //       {
+  //         email: data.email || null,
+  //         password_hash: password_hash,
+  //         role_id: data.role_id || null,
+  //         entity_type,
+  //         entity_id,
+  //       },
+  //       { transaction }
+  //     );
 
-      return { user: created };
-    }
-    catch (err) {
-      // Handle Sequelize unique constraint errors
-      if (err.name === "SequelizeUniqueConstraintError") {
-        const field = Object.keys(err.fields || {})[0] || "email";
-        console.log("******Duplicate email found******");
-        return {
-          error: `${field} already exists`,
-          details: err.fields,
-        };
-      }
+  //     return { user: created };
+  //   }
+  //   catch (err) {
+  //     // Handle Sequelize unique constraint errors
+  //     if (err.name === "SequelizeUniqueConstraintError") {
+  //       const field = Object.keys(err.fields || {})[0] || "email";
+  //       console.log("******Duplicate email found******");
+  //       return {
+  //         error: `${field} already exists`,
+  //         details: err.fields,
+  //       };
+  //     }
 
-      // Other Sequelize / DB errors
-      return {
-        error: "Failed to create user",
-        details: err.message,
-      };
-    }
-  },
-  updateUserByEntity: async (transaction, entity_type, entity_id, data) => {
-    if (!data || typeof data !== "object")
-      return { error: enMessage.user.invalidPayload };
-    const existing = await models.User.findOne({
-      where: { entity_type, entity_id },
-      transaction,
-    });
-    if (!existing) return null; // no create on update-only path
+  //     // Other Sequelize / DB errors
+  //     return {
+  //       error: "Failed to create user",
+  //       details: err.message,
+  //     };
+  //   }
+  // },
+  // updateUserByEntity: async (transaction, entity_type, entity_id, data) => {
+  //   if (!data || typeof data !== "object")
+  //     return { error: enMessage.user.invalidPayload };
+  //   const existing = await models.User.findOne({
+  //     where: { entity_type, entity_id },
+  //     transaction,
+  //   });
+  //   if (!existing) return null; // no create on update-only path
     
-    // Hash password if provided
-    let password_hash = existing.password_hash;
+  //   // Hash password if provided
+  //   let password_hash = existing.password_hash;
+  //   if (data.password) {
+  //     password_hash = await bcrypt.hash(data.password, 10);
+  //   } else if (data.password_hash) {
+  //     password_hash = data.password_hash;
+  //   }
+    
+  //   await existing.update(
+  //     {
+  //       email: data.email ?? existing.email,
+  //       password_hash: password_hash,
+  //       role_id: data.role_id ?? existing.role_id,
+  //     },
+  //     { transaction }
+  //   );
+  //   return existing;
+  // },
+  // Multiple logins per entity: create-only helper
+  createUserByEntity: async (transaction, entity_type, entity_id, data) => {
+  if (!data || typeof data !== "object") {
+    return { error: enMessage.user.invalidPayload };
+  }
+
+  if (!entity_type || !entity_id) {
+    return { error: "Invalid entity reference" };
+  }
+
+  if (!data.password && !data.password_hash) {
+    return { error: enMessage.user.passwordRequired };
+  }
+
+  try {
+    // Hash password if plain password is provided
+    let password_hash = data.password_hash;
     if (data.password) {
       password_hash = await bcrypt.hash(data.password, 10);
-    } else if (data.password_hash) {
-      password_hash = data.password_hash;
     }
-    
-    await existing.update(
+
+    const createdUser = await models.User.create(
       {
-        email: data.email ?? existing.email,
-        password_hash: password_hash,
-        role_id: data.role_id ?? existing.role_id,
+        email: data.email ?? null,
+        password_hash,
+        role_id: data.role_id ?? null,
+        entity_type,
+        entity_id,
+        status: "Active",
       },
       { transaction }
     );
-    return existing;
-  },
-  // Multiple logins per entity: create-only helper
+
+    return createdUser;
+
+  } catch (err) {
+    if (err.name === "SequelizeUniqueConstraintError") {
+      const field = Object.keys(err.fields || {})[0] || "email";
+      console.log("****** Duplicate email found ******");
+      return {
+        error: `${field} already exists`,
+        details: err.fields,
+      };
+    }
+
+    return {
+      error: "Failed to create user",
+      details: err.message,
+    };
+  }
+},
+
+  updateUserByEntity: async (transaction, entity_type, entity_id, data) => {
+  if (!data || typeof data !== "object") {
+    return { error: enMessage.user.invalidPayload };
+  }
+
+  if (!entity_type || !entity_id) {
+    return { error: "Invalid entity reference" };
+  }
+
+  let user = await models.User.findOne({
+    where: { entity_type, entity_id },
+    transaction,
+  });
+
+  // Hash password if provided
+  let password_hash = user?.password_hash || null;
+
+  if (data.password) {
+    password_hash = await bcrypt.hash(data.password, 10);
+  } else if (data.password_hash) {
+    password_hash = data.password_hash;
+  }
+
+  if (user) {
+    /* -------- UPDATE -------- */
+    await user.update(
+      {
+        email: data.email ?? user.email,
+        password_hash,
+        role_id: data.role_id ?? user.role_id,
+      },
+      { transaction }
+    );
+  } else {
+    /* -------- CREATE -------- */
+    user = await models.User.create(
+      {
+        entity_type,        // "employee" or "billing"
+        entity_id,          // employee.id (you provide)
+        email: data.email,
+        password_hash,
+        role_id: data.role_id,
+        status: "Active",
+      },
+      { transaction }
+    );
+  }
+
+  return user;
+},
+
   createUsersByEntity: async (transaction, entity_type, entity_id, users) => {
     if (!Array.isArray(users) || users.length === 0) return [];
 

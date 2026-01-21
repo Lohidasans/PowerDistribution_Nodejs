@@ -27,6 +27,7 @@ const createEmployee = async (req, res) => {
       kyc_documents,
       login,
       experiences,
+      billing_login
     } = req.body;
 
     // List and list required fields
@@ -97,6 +98,7 @@ const createEmployee = async (req, res) => {
 
     // Optional: Login via helper
     let createdUser = null;
+    let createdBillingUser = null;
 
     if (login && typeof login === "object") {
       const result = await userSvc.createUserByEntity(transaction, "employee", employee.id, login);
@@ -105,10 +107,18 @@ const createEmployee = async (req, res) => {
         return commonService.badRequest(res, result.error);
       }
 
-      createdUser = result.user;
+      createdUser = result;
     }
 
+    if (billing_login && typeof billing_login === "object") {
+      const result = await userSvc.createUserByEntity(transaction, "billing", employee.id, billing_login);
+      if (result.error) {
+        await transaction.rollback();
+        return commonService.badRequest(res, result.error);
+      }
 
+      createdBillingUser = result;
+    }
     // Optional: Experiences
     let createdExperiences = [];
     if (Array.isArray(experiences) && experiences.length > 0) {
@@ -125,6 +135,7 @@ const createEmployee = async (req, res) => {
       bank_account: createdBankAccount,
       kyc_documents: createdKycDocs,
       login: createdUser,
+      billing_login: createdBillingUser,
       experiences: createdExperiences,
     };
 
@@ -528,14 +539,22 @@ const listEmployeeDropdown = async (req, res) => {
 
 const updateEmployee = async (req, res) => {
   const transaction = await sequelize.transaction();
+
   try {
     const { id } = req.params;
-    const employee = await models.Employee.findByPk(id);
+
+    /* =======================
+       1. Find Employee
+    ======================== */
+    const employee = await models.Employee.findByPk(id, { transaction });
     if (!employee) {
       await transaction.rollback();
       return commonService.notFound(res, enMessage.failure.notFound);
     }
 
+    /* =======================
+       2. Destructure Payload
+    ======================== */
     const {
       profile_image_url,
       employee_name,
@@ -551,9 +570,13 @@ const updateEmployee = async (req, res) => {
       bank_account,
       kyc_documents,
       login,
-      experiences,
+      billing_login,
+      experiences
     } = req.body;
 
+    /* =======================
+       3. Update Employee
+    ======================== */
     await employee.update(
       {
         profile_image_url,
@@ -565,77 +588,117 @@ const updateEmployee = async (req, res) => {
         gender,
         date_of_birth,
         branch_id,
-        status,
+        status
       },
       { transaction }
     );
-    
 
+    /* =======================
+       4. Contact (Upsert)
+    ======================== */
     let updatedContact = null;
     if (contact && typeof contact === "object") {
       const existingContact = await models.EmployeeContact.findOne({
         where: { employee_id: id },
+        transaction
       });
-      if (existingContact) {
-        updatedContact = await existingContact.update(contact, { transaction });
-      } else {
-        updatedContact = await createEmployeeContact(id, contact, transaction);
-      }
+
+      updatedContact = existingContact
+        ? await existingContact.update(contact, { transaction })
+        : await createEmployeeContact(id, contact, transaction);
     }
 
-    // Bank account upsert via helper
+    /* =======================
+       5. Bank Account (Upsert)
+    ======================== */
     let upsertedBank = null;
     if (bank_account && typeof bank_account === "object") {
-      try {
-        upsertedBank = await bankSvc.updateBankAccountByEntity(transaction, "employee", employee.id, bank_account);
-      } catch (e) {
-        await transaction.rollback();
-        return commonService.badRequest(res, enMessage.failure.requiredFields);
-      }
+      upsertedBank = await bankSvc.updateBankAccountByEntity(
+        transaction,
+        "employee",
+        employee.id,
+        bank_account
+      );
     }
 
-    // KYC via reusable update helper (update-only)
+    /* =======================
+       6. KYC Documents (Update Only)
+    ======================== */
     let updatedKyc = [];
     if (Array.isArray(kyc_documents)) {
-      updatedKyc = await kycSvc.updateKycByEntity(transaction, "employee", employee.id, kyc_documents);
+      updatedKyc = await kycSvc.updateKycByEntity(
+        transaction,
+        "employee",
+        employee.id,
+        kyc_documents
+      );
     }
 
-    // Login upsert via helper
+    /* =======================
+       7. Login (Employee User)
+    ======================== */
     let upsertedUser = null;
     if (login && typeof login === "object") {
-      try {
-        upsertedUser = await userSvc.updateUserByEntity(transaction, "employee", employee.id, login);
-      } catch (e) {
-        await transaction.rollback();
-        return commonService.badRequest(res, enMessage.failure.requiredFields);
-      }
+      upsertedUser = await userSvc.updateUserByEntity(
+        transaction,
+        "employee",
+        employee.id,
+        login
+      );
     }
 
-    // Experiences update-only
+    /* =======================
+       8. Billing Login (Billing User)
+    ======================== */
+    let upsertedBillingUser = null;
+    if (billing_login && typeof billing_login === "object") {
+      upsertedBillingUser = await userSvc.updateUserByEntity(
+        transaction,
+        "billing",
+        employee.id,
+        billing_login
+      );
+    }
+
+    /* =======================
+       9. Experiences (Update Only)
+    ======================== */
     let updatedExperiences = [];
     if (Array.isArray(experiences)) {
-      updatedExperiences = await updateEmployeeExperiences(transaction, employee.id, experiences);
+      updatedExperiences = await updateEmployeeExperiences(
+        transaction,
+        employee.id,
+        experiences
+      );
     }
 
+    /* =======================
+       10. Commit Transaction
+    ======================== */
     await transaction.commit();
 
-    const response = {
+    /* =======================
+       11. Final Response
+    ======================== */
+    return commonService.okResponse(res, {
       employee: {
         ...employee.get({ plain: true }),
-        contacts: updatedContact ? updatedContact.get({ plain: true }) : null,
+        contact: updatedContact ? updatedContact.get({ plain: true }) : null
       },
       bank_account: upsertedBank,
       kyc_documents: updatedKyc,
       login: upsertedUser,
-      experiences: updatedExperiences,
-    };
+      billing_login: upsertedBillingUser,
+      experiences: updatedExperiences
+    });
 
-    return commonService.okResponse(res, response);
-  } catch (err) {
+  } catch (error) {
+    console.error("Update employee error:", error);
     await transaction.rollback();
-    return commonService.handleError(res, err);
+    return commonService.handleError(res, error);
   }
 };
+
 
 const deleteEmployee = async (req, res) => {
   const t = await sequelize.transaction();
