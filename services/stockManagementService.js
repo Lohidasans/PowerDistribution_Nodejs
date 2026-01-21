@@ -1750,47 +1750,12 @@ const getBranchwiseStockCount = async (req, res) => {
 const getGrnDiscrepancyList = async (req, res) => {
     try {
         const {
-            vendor_id,
-            branch_id,
-            from_date,
-            to_date,
-            search,
             page,
             limit
         } = req.query;
 
         const replacements = {};
         const whereConditions = [`g.deleted_at IS NULL`];
-
-        // if (vendor_id) {
-        //     whereConditions.push(`g.vendor_id = :vendor_id`);
-        //     replacements.vendor_id = vendor_id;
-        // }
-
-        // if (branch_id) {
-        //     whereConditions.push(`g.branch_id = :branch_id`);
-        //     replacements.branch_id = branch_id;
-        // }
-
-        // if (from_date) {
-        //     whereConditions.push(`g.grn_date >= :from_date`);
-        //     replacements.from_date = from_date;
-        // }
-
-        // if (to_date) {
-        //     whereConditions.push(`g.grn_date <= :to_date`);
-        //     replacements.to_date = to_date;
-        // }
-
-    //     if (search) {
-    //         whereConditions.push(`
-    //     (
-    //       g.grn_no ILIKE :search
-    //       OR v.vendor_name ILIKE :search
-    //     )
-    //   `);
-    //         replacements.search = `%${search}%`;
-    //     }
 
         const whereSql = `WHERE ${whereConditions.join(" AND ")}`;
 

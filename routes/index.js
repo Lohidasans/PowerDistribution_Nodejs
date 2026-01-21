@@ -58,6 +58,7 @@ const AuthRoute = require("./authRoute");
 const StockManagementRoute = require("./stockManagementRoute");
 const SalesManagementRoute = require("./salesManagementRoute");
 const PayrollMasterRoute = require("./payrollMasterRoute");
+const RevenueRoute = require("./revenueRoute");
 
 module.exports = (app) => {
   app.use("/api/v1", RoleRouter);
@@ -120,5 +121,6 @@ module.exports = (app) => {
   app.use("/api/v1", AuthRoute);
   app.use("/api/v1", StockManagementRoute);
   app.use("/api/v1", SalesManagementRoute);
-   app.use("/api/v1", PayrollMasterRoute);
+  app.use("/api/v1", PayrollMasterRoute);
+  app.use("/api/v1", RevenueRoute);
 };
