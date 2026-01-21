@@ -56,7 +56,7 @@ const getBranchwiseRevenue = async (req, res) => {
         FROM payments p
         LEFT JOIN sales_invoice_bills sib ON sib.id = p.invoice_bill_id AND sib.deleted_at IS NULL
         LEFT JOIN jewel_repairs jr ON jr.id = p.jewel_repair_id AND jr.deleted_at IS NULL
-        LEFT JOIN branches b ON b.id = COALESCE(sib.branch_id, jr.branch_id)
+        INNER JOIN branches b ON b.id = COALESCE(sib.branch_id, jr.branch_id)
 
         WHERE p.deleted_at IS NULL AND p.status = 'Completed'
             ${paymentDateCondition}
