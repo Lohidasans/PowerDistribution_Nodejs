@@ -954,11 +954,6 @@ const buildSubcategoryFilters = (query, replacements) => {
         replacements.subcategory_id = query.subcategory_id;
     }
 
-    if (query.branch_id) {
-        where += ` AND p.branch_id = :branch_id`;
-        replacements.branch_id = query.branch_id;
-    }
-
     if (query.search) {
         where += `
       AND (
@@ -1581,18 +1576,30 @@ const mapByBranch = (rows, key = "branch_id") =>
 
 const getBranchwiseStockCount = async (req, res) => {
     try {
-        const { branch_id } = req.query;
+        const { branch_id, from_date, to_date, date_filter } = req.query;
 
         const replacements = branch_id ? { branch_id } : {};
+        const dateReplacements = { ...replacements };
+        const productDateCondition = dateFilter(
+            { from_date, to_date, date_filter },
+            "p.created_at::date",
+            dateReplacements
+        );
+
+        // date filter
+        const billingDateCondition = dateFilter(
+            { from_date, to_date, date_filter },
+            "t.created_at::date",
+            dateReplacements
+        );
 
         const branches = await sequelize.query(
-            `
-      SELECT id AS branch_id, branch_name
-      FROM branches
-      WHERE deleted_at IS NULL
-      ${branch_id ? "AND id = :branch_id" : ""}
-      ORDER BY branch_name
-      `,
+            `SELECT id AS branch_id, branch_name
+            FROM branches
+            WHERE deleted_at IS NULL
+            ${branch_id ? "AND id = :branch_id" : ""}
+            ORDER BY branch_name
+            `,
             { replacements, type: sequelize.QueryTypes.SELECT }
         );
 
@@ -1614,8 +1621,13 @@ const getBranchwiseStockCount = async (req, res) => {
                 AND pid.deleted_at IS NULL
                 WHERE p.deleted_at IS NULL
                 AND p.status = 'Active'
+                ${branch_id ? "AND p.branch_id = :branch_id" : ""}
+                ${productDateCondition}
                 GROUP BY p.branch_id
-                `, { type: sequelize.QueryTypes.SELECT }),
+                `, {
+                replacements: dateReplacements,
+                type: sequelize.QueryTypes.SELECT
+            }),
             sequelize.query(`WITH product_stock AS (
                 SELECT
                     p.id AS product_id,
@@ -1628,6 +1640,8 @@ const getBranchwiseStockCount = async (req, res) => {
                     ON pid.product_id = p.id
                     AND pid.deleted_at IS NULL
                 WHERE p.deleted_at IS NULL
+                ${branch_id ? "AND p.branch_id = :branch_id" : ""}
+                ${productDateCondition}
                 GROUP BY p.id, p.subcategory_id, p.branch_id
                 ),
                 low_stock_rows AS (
@@ -1645,7 +1659,10 @@ const getBranchwiseStockCount = async (req, res) => {
                 COUNT(*) AS subcategory_count,
                 COALESCE(SUM(row_weight),0) AS total_weight
                 FROM low_stock_rows
-                GROUP BY branch_id `, { type: sequelize.QueryTypes.SELECT }),
+                GROUP BY branch_id `, {
+                replacements: dateReplacements,
+                type: sequelize.QueryTypes.SELECT
+            }),
             sequelize.query(`SELECT
                 p.branch_id,
                 COUNT(DISTINCT sc.id) AS total_quantity
@@ -1653,8 +1670,13 @@ const getBranchwiseStockCount = async (req, res) => {
                 LEFT JOIN products p
                 ON p.subcategory_id = sc.id
                 AND p.deleted_at IS NULL
+                ${branch_id ? "AND p.branch_id = :branch_id" : ""}
+                ${productDateCondition}
                 GROUP BY p.branch_id
-                HAVING COUNT(p.id) = 0 `, { type: sequelize.QueryTypes.SELECT }),
+                HAVING COUNT(p.id) = 0 `, {
+                replacements: dateReplacements,
+                type: sequelize.QueryTypes.SELECT
+            }),
             sequelize.query(`SELECT
                 t.branch_id,
                 SUM(oi.net_weight) AS total_weight,
@@ -1663,7 +1685,13 @@ const getBranchwiseStockCount = async (req, res) => {
                 JOIN old_jewel_items oi
                 ON oi.old_jewel_id = t.id
                 AND oi.deleted_at IS NULL
-                GROUP BY t.branch_id `, { type: sequelize.QueryTypes.SELECT }),
+                WHERE 1=1
+                ${branch_id ? "AND t.branch_id = :branch_id" : ""}
+                ${billingDateCondition}
+                GROUP BY t.branch_id `, {
+                replacements: dateReplacements,
+                type: sequelize.QueryTypes.SELECT
+            }),
             sequelize.query(`SELECT
                 t.branch_id,
                 SUM(ri.weight) AS total_weight,
@@ -1672,8 +1700,14 @@ const getBranchwiseStockCount = async (req, res) => {
                 JOIN jewel_repair_items ri
                 ON ri.repair_id = t.id
                 AND ri.deleted_at IS NULL
-                GROUP BY t.branch_id `, { type: sequelize.QueryTypes.SELECT }),
-                        ]);
+                WHERE 1=1
+                ${branch_id ? "AND t.branch_id = :branch_id" : ""}
+                ${billingDateCondition}
+                GROUP BY t.branch_id `, {
+                replacements: dateReplacements,
+                type: sequelize.QueryTypes.SELECT
+            }),
+        ]);
 
         const stockMap = mapByBranch(stockRows);
         const lowStockMap = mapByBranch(lowStockRows);
