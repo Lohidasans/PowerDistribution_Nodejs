@@ -1747,6 +1747,187 @@ const getBranchwiseStockCount = async (req, res) => {
     }
 };
 
+const getGrnDiscrepancyList = async (req, res) => {
+    try {
+        const {
+            vendor_id,
+            branch_id,
+            from_date,
+            to_date,
+            search,
+            page,
+            limit
+        } = req.query;
+
+        const replacements = {};
+        const whereConditions = [`g.deleted_at IS NULL`];
+
+        // if (vendor_id) {
+        //     whereConditions.push(`g.vendor_id = :vendor_id`);
+        //     replacements.vendor_id = vendor_id;
+        // }
+
+        // if (branch_id) {
+        //     whereConditions.push(`g.branch_id = :branch_id`);
+        //     replacements.branch_id = branch_id;
+        // }
+
+        // if (from_date) {
+        //     whereConditions.push(`g.grn_date >= :from_date`);
+        //     replacements.from_date = from_date;
+        // }
+
+        // if (to_date) {
+        //     whereConditions.push(`g.grn_date <= :to_date`);
+        //     replacements.to_date = to_date;
+        // }
+
+    //     if (search) {
+    //         whereConditions.push(`
+    //     (
+    //       g.grn_no ILIKE :search
+    //       OR v.vendor_name ILIKE :search
+    //     )
+    //   `);
+    //         replacements.search = `%${search}%`;
+    //     }
+
+        const whereSql = `WHERE ${whereConditions.join(" AND ")}`;
+
+        const hasPagination = page && limit;
+        const pageNum = hasPagination ? Number(page) : null;
+        const limitNum = hasPagination ? Number(limit) : null;
+        const offset = hasPagination ? (pageNum - 1) * limitNum : null;
+
+        let query = `
+      SELECT
+        g.id,
+        g.grn_no,
+        g.grn_date AS date,
+        v.vendor_name,
+
+        COALESCE(gi.total_net_weight, 0) AS ordered_weight,
+        COALESCE(gi.total_quantity, 0) AS ordered_qty,
+
+        COALESCE(pi.total_updated_weight, 0) AS updated_weight,
+        COALESCE(pi.total_updated_qty, 0) AS updated_qty
+
+      FROM grns g
+      LEFT JOIN vendors v ON v.id = g.vendor_id
+
+      LEFT JOIN (
+        SELECT
+          grn_id,
+          SUM(net_wt_in_g) AS total_net_weight,
+          SUM(quantity) AS total_quantity
+        FROM "grnItems"
+        WHERE deleted_at IS NULL
+        GROUP BY grn_id
+      ) gi ON gi.grn_id = g.id
+
+      LEFT JOIN (
+        SELECT
+          p.grn_id,
+          SUM(pid.net_weight) AS total_updated_weight,
+          SUM(pid.quantity) AS total_updated_qty
+        FROM products p
+        JOIN "productItemDetails" pid
+          ON pid.product_id = p.id
+          AND pid.deleted_at IS NULL
+        WHERE p.deleted_at IS NULL
+        GROUP BY p.grn_id
+      ) pi ON pi.grn_id = g.id
+
+      ${whereSql}
+      ORDER BY g.grn_date DESC, g.grn_no DESC
+    `;
+
+        if (hasPagination) {
+            query += ` LIMIT :limit OFFSET :offset`;
+            replacements.limit = limitNum;
+            replacements.offset = offset;
+        }
+
+        const rows = await sequelize.query(query, {
+            replacements,
+            type: sequelize.QueryTypes.SELECT
+        });
+
+        let updatedCount = 0;
+        let yetToUpdateCount = 0;
+
+        const data = rows.map(row => {
+            const orderedWt = Number(row.ordered_weight || 0);
+            const updatedWt = Number(row.updated_weight || 0);
+            const diffWt = Number((updatedWt - orderedWt).toFixed(3));
+            const yetToUpdateWt = Number(Math.max(0, orderedWt - updatedWt).toFixed(3));
+
+            const status_id = yetToUpdateWt <= 0.001 ? 2 : 1;
+
+            if (status_id === 2) updatedCount++;
+            else yetToUpdateCount++;
+
+            return {
+                id: row.id,
+                grn_no: row.grn_no,
+                date: row.date,
+                vendor_name: row.vendor_name,
+
+                ordered: {
+                    weight: orderedWt,
+                    quantity: Number(row.ordered_qty || 0)
+                },
+                updated: {
+                    weight: updatedWt,
+                    quantity: Number(row.updated_qty || 0)
+                },
+                yet_to_update: {
+                    weight: yetToUpdateWt,
+                    quantity: 0
+                },
+                difference: {
+                    weight: diffWt,
+                    quantity: 0
+                },
+                status_id
+            };
+        });
+
+        // -----------------------------
+        // TOTAL COUNT (FOR PAGINATION)
+        // -----------------------------
+        let totalItems = data.length;
+
+        if (hasPagination) {
+            const [{ count }] = await sequelize.query(
+                `
+        SELECT COUNT(*)::int AS count
+        FROM grns g
+        LEFT JOIN vendors v ON v.id = g.vendor_id
+        ${whereSql}
+        `,
+                { replacements, type: sequelize.QueryTypes.SELECT }
+            );
+            totalItems = count;
+        }
+
+        return commonService.okResponse(res, {
+            summary: {
+                totalGrns: totalItems,
+                updated: updatedCount,
+                yetToUpdate: yetToUpdateCount
+            },
+            totalItems,
+            data
+        });
+
+    } catch (error) {
+        console.error("getGrnDiscrepancyList Error:", error);
+        return commonService.handleError(res, error);
+    }
+};
+
+
 
 module.exports = {
     getOldJewelReport,
@@ -1768,5 +1949,6 @@ module.exports = {
     getBranchCategoryStock,
     getVendorContributionReport,
     getStockByMaterialTypeReport,
-    getBranchwiseStockCount
+    getBranchwiseStockCount,
+    getGrnDiscrepancyList
 };
