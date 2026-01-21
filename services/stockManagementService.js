@@ -1517,6 +1517,62 @@ const getVendorContributionReport = async (req, res) => {
     }
 };
 
+const getStockByMaterialTypeReport = async (req, res) => {
+    try {
+        const { branch_id, from_date, to_date, date_filter } = req.query;
+
+        const replacements = {};
+        let whereClause = "";
+
+        // Branch filter
+        if (branch_id) {
+            whereClause += " AND p.branch_id = :branch_id";
+            replacements.branch_id = branch_id;
+        }
+
+        // Date filter (using your helper)
+        whereClause += dateFilter(
+            { from_date, to_date, date_filter },
+            "pid.created_at",
+            replacements
+        );
+
+        const query = `
+      SELECT
+        mt.id AS material_type_id,
+        mt.material_type,
+        COALESCE(SUM(pid.quantity), 0) AS total_quantity,
+        COALESCE(SUM(pid.gross_weight * pid.quantity), 0) AS total_gross_weight
+
+      FROM "materialTypes" mt
+      JOIN products p ON p.material_type_id = mt.id AND p.deleted_at IS NULL
+      JOIN "productItemDetails" pid ON pid.product_id = p.id AND pid.deleted_at IS NULL AND pid.quantity > 0
+      WHERE mt.deleted_at IS NULL
+      ${whereClause}
+
+      GROUP BY mt.id, mt.material_type
+      ORDER BY mt.material_type;
+    `;
+
+        const data = await sequelize.query(query, {
+            type: sequelize.QueryTypes.SELECT,
+            replacements
+        });
+
+        return res.status(200).json({
+            success: true,
+            data
+        });
+
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to fetch stock by material type"
+        });
+    }
+};
+
 
 
 module.exports = {
@@ -1537,5 +1593,6 @@ module.exports = {
     getStockDashboard,
     getBranchStockSummary,
     getBranchCategoryStock,
-    getVendorContributionReport
+    getVendorContributionReport,
+    getStockByMaterialTypeReport
 };

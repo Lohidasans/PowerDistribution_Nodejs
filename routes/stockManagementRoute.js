@@ -14,5 +14,6 @@ router.get("/stock-management/stock-dashboard", svc.getStockDashboard);
 router.get("/stock-management/dashboard/branch-stock", svc.getBranchStockSummary);
 router.get("/stock-management/dashboard/branch-category-stock", svc.getBranchCategoryStock);
 router.get("/stock-management/dashboard/vendor-contribution", svc.getVendorContributionReport);
+router.get("/stock-management/dashboard/stock-by-material-type", svc.getStockByMaterialTypeReport);
 
 module.exports = router;
