@@ -138,6 +138,9 @@ const getBranchwiseRevenue = async (req, res) => {
     }
 };
 
+// helper for safe money math
+const money = (v) => Number(Number(v || 0).toFixed(2));
+
 const getBranchRevenueDetails = async (req, res) => {
     try {
         const {
@@ -151,25 +154,27 @@ const getBranchRevenueDetails = async (req, res) => {
         } = req.query;
 
         if (!branch_id) {
-            return commonService.badRequest(res,"branch_id is required");
+            return commonService.badRequest(res, "branch_id is required");
         }
 
         const replacements = { branch_id };
 
+        // DATE FILTER
         const paymentDateCondition = dateFilter(
             { from_date, to_date, date_filter },
             "p.payment_date::date",
             replacements
         );
 
+        // SEARCH FILTER
         let searchCondition = "";
         if (search) {
             searchCondition = `
-            AND (
-            sib.invoice_no ILIKE :search
-            OR jr.repair_code ILIKE :search
-            )
-        `;
+                AND (
+                    sib.invoice_no ILIKE :search
+                    OR jr.repair_code ILIKE :search
+                )
+            `;
             replacements.search = `%${search}%`;
         }
 
@@ -181,13 +186,14 @@ const getBranchRevenueDetails = async (req, res) => {
             SELECT
                 COALESCE(sib.invoice_no, jr.repair_code) AS description,
 
-                SUM(CASE WHEN p.payment_mode = 'Cash' THEN p.amount_received ELSE 0 END) AS cash,
-                SUM(CASE WHEN p.payment_mode = 'UPI' THEN p.amount_received ELSE 0 END) AS upi,
-                SUM(CASE WHEN p.payment_mode = 'Card' THEN p.amount_received ELSE 0 END) AS card,
+                ROUND(SUM(CASE WHEN p.payment_mode = 'Cash' THEN p.amount_received ELSE 0 END), 2) AS cash,
+                ROUND(SUM(CASE WHEN p.payment_mode = 'UPI' THEN p.amount_received ELSE 0 END), 2) AS upi,
+                ROUND(SUM(CASE WHEN p.payment_mode = 'Card' THEN p.amount_received ELSE 0 END), 2) AS card,
 
-                SUM(p.amount_received) AS total_amount,
-                p.id as payment_id,
-                p.created_at as payment_date
+                ROUND(SUM(p.amount_received), 2) AS total_amount,
+
+                p.id AS payment_id,
+                p.created_at AS payment_date
 
             FROM payments p
 
@@ -207,7 +213,7 @@ const getBranchRevenueDetails = async (req, res) => {
 
             GROUP BY description, p.id
             ORDER BY total_amount DESC
-            `;
+        `;
 
         if (hasPagination) {
             query += ` LIMIT :limit OFFSET :offset`;
@@ -222,10 +228,10 @@ const getBranchRevenueDetails = async (req, res) => {
 
         const summary = rows.reduce(
             (acc, r) => {
-                acc.total_collection += Number(r.total_amount);
-                acc.cash += Number(r.cash);
-                acc.upi += Number(r.upi);
-                acc.card += Number(r.card);
+                acc.total_collection = money(acc.total_collection + Number(r.total_amount));
+                acc.cash = money(acc.cash + Number(r.cash));
+                acc.upi = money(acc.upi + Number(r.upi));
+                acc.card = money(acc.card + Number(r.card));
                 return acc;
             },
             {
@@ -244,16 +250,16 @@ const getBranchRevenueDetails = async (req, res) => {
                 SELECT COUNT(DISTINCT COALESCE(sib.invoice_no, jr.repair_code))::int AS count
                 FROM payments p
                 LEFT JOIN sales_invoice_bills sib
-                ON sib.id = p.invoice_bill_id
-                AND sib.deleted_at IS NULL
+                    ON sib.id = p.invoice_bill_id
+                    AND sib.deleted_at IS NULL
                 LEFT JOIN jewel_repairs jr
-                ON jr.id = p.jewel_repair_id
-                AND jr.deleted_at IS NULL
+                    ON jr.id = p.jewel_repair_id
+                    AND jr.deleted_at IS NULL
                 WHERE p.deleted_at IS NULL
-                AND p.status = 'Completed'
-                AND COALESCE(sib.branch_id, jr.branch_id) = :branch_id
-                ${paymentDateCondition}
-                ${searchCondition}
+                    AND p.status = 'Completed'
+                    AND COALESCE(sib.branch_id, jr.branch_id) = :branch_id
+                    ${paymentDateCondition}
+                    ${searchCondition}
                 `,
                 {
                     replacements,
@@ -272,11 +278,10 @@ const getBranchRevenueDetails = async (req, res) => {
         });
 
     } catch (error) {
-        console.error("Branch Revenue Details Error:", error);
+        console.error("getBranchRevenueDetails Error:", error);
         return commonService.handleError(res, error);
     }
-};
-
+}
 module.exports = {
     getBranchwiseRevenue,
     getBranchRevenueDetails
