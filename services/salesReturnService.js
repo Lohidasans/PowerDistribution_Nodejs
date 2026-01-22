@@ -164,42 +164,74 @@ const getSalesReturnById = async (req, res) => {
 const listSalesReturns = async (req, res) => {
   try {
     const {
-      page = 1,
-      limit = 10,
+      page,
+      limit,
       status,
       customer_id,
       start_date,
       end_date,
       branch_id,
-      sales_return_no
+      sales_return_no,
+      search
     } = req.query;
 
-    const offset = (parseInt(page) - 1) * parseInt(limit);
-    let where = "WHERE 1 = 1";
+    const hasPagination = page !== undefined;
+    const offset = hasPagination
+      ? (parseInt(page) - 1) * parseInt(limit)
+      : null;
 
-    if (status) where += ` AND sr.status = '${status}'`;
-    if (customer_id) where += ` AND sr.customer_id = ${customer_id}`;
-    if (branch_id) where += ` AND sr.branch_id = ${branch_id}`;
-    if (start_date) where += ` AND sr.return_date >= '${start_date}'`;
-    if (end_date) where += ` AND sr.return_date <= '${end_date}'`;
-    if (sales_return_no) where += ` AND sr.sales_return_no LIKE '%${sales_return_no}%'`;
+    let where = `WHERE sr.deleted_at IS NULL`;
+
+    if (status) where += ` AND sr.status = :status`;
+    if (customer_id) where += ` AND sr.customer_id = :customer_id`;
+    if (branch_id) where += ` AND sr.branch_id = :branch_id`;
+    if (start_date) where += ` AND sr.return_date >= :start_date`;
+    if (end_date) where += ` AND sr.return_date <= :end_date`;
+    if (sales_return_no)
+      where += ` AND sr.sales_return_no ILIKE :sales_return_no`;
+
+    if (search) {
+      where += `
+        AND (
+          sr.sales_return_no ILIKE :search
+          OR c.customer_name ILIKE :search
+          OR c.mobile_number ILIKE :search
+          OR b.branch_name ILIKE :search
+        )
+      `;
+    }
+
+    const replacements = {
+      status,
+      customer_id,
+      branch_id,
+      start_date,
+      end_date,
+      sales_return_no: sales_return_no ? `%${sales_return_no}%` : undefined,
+      search: search ? `%${search}%` : undefined
+    };
 
     // Count
     const countQuery = `
-      SELECT COUNT(*) AS total
+      SELECT COUNT(*)::int AS total
       FROM sales_returns sr
+      LEFT JOIN customers c ON sr.customer_id = c.id
+      LEFT JOIN branches b ON sr.branch_id = b.id
       ${where};
     `;
-    const countResult = await sequelize.query(countQuery, { type: sequelize.QueryTypes.SELECT });
-    const total = countResult[0].total;
+
+    const [{ total }] = await sequelize.query(countQuery, {
+      replacements,
+      type: sequelize.QueryTypes.SELECT
+    });
 
     // Data
-    const dataQuery = `
+    let dataQuery = `
       SELECT 
-        sr.*, 
-        c.customer_name AS customer_name,
+        sr.*,
+        c.customer_name,
         c.mobile_number AS customer_mobile,
-        e.employee_name AS employee_name,
+        e.employee_name,
         b.branch_name
       FROM sales_returns sr
       LEFT JOIN customers c ON sr.customer_id = c.id
@@ -207,59 +239,69 @@ const listSalesReturns = async (req, res) => {
       LEFT JOIN branches b ON sr.branch_id = b.id
       ${where}
       ORDER BY sr.return_date DESC, sr.id DESC
-      LIMIT ${limit} OFFSET ${offset};
     `;
-    const data = await sequelize.query(dataQuery, { type: sequelize.QueryTypes.SELECT });
 
-    // --- Fetch items for all IDs ---
+    if (hasPagination) {
+      dataQuery += ` LIMIT :limit OFFSET :offset`;
+      replacements.limit = parseInt(limit);
+      replacements.offset = offset;
+    }
+
+    const data = await sequelize.query(dataQuery, {
+      replacements,
+      type: sequelize.QueryTypes.SELECT
+    });
+
+    // ---------- ITEMS ----------
     const salesReturnIds = data.map(d => d.id);
     let itemsMap = {};
 
-    if (salesReturnIds.length > 0) {
+    if (salesReturnIds.length) {
       const itemsQuery = `
-        SELECT *
-        FROM sales_return_items
-        WHERE sales_return_id IN (${salesReturnIds.join(",")}) AND deleted_at IS NULL
-        ORDER BY sales_return_id;
+        SELECT sri.*, p.product_name
+        FROM sales_return_items sri
+        LEFT JOIN products p
+          ON p.id = sri.product_id
+          AND p.deleted_at IS NULL
+        WHERE sri.sales_return_id IN (:ids)
+          AND sri.deleted_at IS NULL
+        ORDER BY sri.sales_return_id;
       `;
 
-      const items = await sequelize.query(itemsQuery, { type: sequelize.QueryTypes.SELECT });
+      const items = await sequelize.query(itemsQuery, {
+        replacements: { ids: salesReturnIds },
+        type: sequelize.QueryTypes.SELECT
+      });
 
       items.forEach(it => {
-        if (!itemsMap[it.sales_return_id]) {
-          itemsMap[it.sales_return_id] = [];
-        }
-        itemsMap[it.sales_return_id].push(it);
+        (itemsMap[it.sales_return_id] ??= []).push(it);
       });
     }
 
     // Attach items to each sales return
     const finalData = data.map(d => {
       const items = itemsMap[d.id] || [];
-
-      // SUM net_weight (convert to number and ignore nulls)
-      const totalNetWeight = items.reduce((sum, it) => {
-        const w = parseFloat(it.net_weight);
-        return sum + (!isNaN(w) ? w : 0);
-      }, 0);
+      const total_net_weight = items.reduce(
+        (sum, it) => sum + (parseFloat(it.net_weight) || 0),
+        0
+      );
 
       return {
         ...d,
-        total_net_weight: totalNetWeight,
-        items,        
+        total_net_weight,
+        items
       };
     });
 
-
     return commonService.okResponse(res, {
       total,
-      page: parseInt(page),
-      total_pages: Math.ceil(total / limit),
+      page: hasPagination ? parseInt(page) : null,
+      total_pages: hasPagination ? Math.ceil(total / limit) : 1,
       data: finalData
     });
 
   } catch (err) {
-    console.error(err);
+    console.error("listSalesReturns error:", err);
     return commonService.handleError(res, err);
   }
 };
