@@ -748,11 +748,76 @@ const getBranchWiseSalesCount = async (req, res) => {
     }
 };
 
+const getBranchwiseSalesAndCustomerStats = async (req, res) => {
+    try {
+        /* ---------- BRANCH WISE SALES ---------- */
+        const branchWiseSalesSql = `
+      SELECT
+        b.id AS branch_id,
+        b.branch_name,
+        COUNT(DISTINCT t.id) AS invoice_count,
+        COALESCE(SUM(t.total_amount), 0) AS total_amount
+      FROM sales_invoice_bills t
+      JOIN branches b ON b.id = t.branch_id
+      WHERE t.status = 'Invoice'
+        AND t.deleted_at IS NULL
+      GROUP BY b.id, b.branch_name
+    `;
+
+        const branchWiseSales = await sequelize.query(branchWiseSalesSql, {
+            type: sequelize.QueryTypes.SELECT
+        });
+
+        /* ---------- CUSTOMER STATS ---------- */
+        const customerStatsSql = `
+      SELECT
+        (
+          SELECT COUNT(DISTINCT customer_id)
+          FROM sales_invoice_bills
+          WHERE status = 'Invoice'
+            AND deleted_at IS NULL
+        ) AS buying_customers,
+
+        (
+          SELECT COUNT(DISTINCT customer_id)
+          FROM sales_returns
+          WHERE status = 'Printed'
+            AND deleted_at IS NULL
+        ) AS returning_customers,
+
+        (
+          SELECT
+            ROUND(
+              COUNT(DISTINCT customer_id)::numeric /
+              NULLIF(COUNT(DISTINCT invoice_date), 0),
+              0
+            )
+          FROM sales_invoice_bills
+          WHERE status = 'Invoice'
+            AND deleted_at IS NULL
+        ) AS avg_customer_per_day
+    `;
+
+        const [customerStats] = await sequelize.query(customerStatsSql, {
+            type: sequelize.QueryTypes.SELECT
+        });
+
+        return commonService.okResponse(res, {
+            branchWiseSales,
+            customerStats
+        });
+
+    } catch (error) {
+        console.error("Dashboard Stats Error:", error);
+        return commonService.handleError(res, error);
+    }
+};
 
 module.exports = {
     getSalesReport,
     getFastMovingSubCategories,
     getFastMovingSoldProducts,
     getTopBuyingCustomers,
-    getBranchWiseSalesCount
+    getBranchWiseSalesCount,
+    getBranchwiseSalesAndCustomerStats
 };

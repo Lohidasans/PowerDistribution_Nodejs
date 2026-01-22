@@ -8,6 +8,7 @@ router.get("/sales-management/fast-moving-sold-products", svc.getFastMovingSoldP
 router.get("/sales-management/top-buying-customers", svc.getTopBuyingCustomers);
 
 // Dashboard: Branch Wise Sales Count
-router.get("/sales-management/branch-wise-sales-count", svc.getBranchWiseSalesCount);
+router.get("/sales-management/dashboard/branch-wise-sales-count", svc.getBranchWiseSalesCount);
+router.get("/sales-management/dashboard/branchwise-sales-and-customer-stats", svc.getBranchwiseSalesAndCustomerStats);
 
 module.exports = router;
