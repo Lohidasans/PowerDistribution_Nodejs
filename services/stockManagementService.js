@@ -1594,11 +1594,19 @@ const getBranchwiseStockCount = async (req, res) => {
         );
 
         const branches = await sequelize.query(
-            `SELECT id AS branch_id, branch_name
+            `SELECT
+                branches.id AS branch_id,
+                branches.branch_name,
+                branches.branch_no,
+                branches.mobile,
+                branches.contact_person,
+                branches.district_id,
+                d.district_name
             FROM branches
-            WHERE deleted_at IS NULL
-            ${branch_id ? "AND id = :branch_id" : ""}
-            ORDER BY branch_name
+            left JOIN districts d ON d.id = branches.district_id AND d.deleted_at IS NULL
+            WHERE branches.deleted_at IS NULL
+            ${branch_id ? "AND branches.id = :branch_id" : ""}
+            ORDER BY branches.branch_name
             `,
             { replacements, type: sequelize.QueryTypes.SELECT }
         );
@@ -1718,6 +1726,11 @@ const getBranchwiseStockCount = async (req, res) => {
         const data = branches.map(b => ({
             branch_id: b.branch_id,
             branch_name: b.branch_name,
+            branch_no: b.branch_no,
+            mobile: b.mobile,
+            contact_person: b.contact_person,
+            district_id: b.district_id,
+            district_name: b.district_name,
 
             stock_in_hand: {
                 total_weight: Number(stockMap[b.branch_id]?.total_weight || 0),
