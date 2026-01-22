@@ -10,6 +10,7 @@ const getScorecardByType = async ({ config, whereSql, replacements }) => {
         SELECT
             COALESCE(weight.total_weight, 0) AS total_weight,
             COALESCE(weight.total_quantity, 0) AS total_quantity,
+            COALESCE(weight.count, 0) AS total_count,
             COALESCE(amount.total_amount, 0) AS total_amount
         FROM (
             SELECT
@@ -17,18 +18,21 @@ const getScorecardByType = async ({ config, whereSql, replacements }) => {
             ? `SUM(${config.weightColumn})`
             : `0`
         } AS total_weight,
-                ${config.quantityExpr} AS total_quantity
+                ${config.quantityExpr} AS total_quantity,
+                COUNT(DISTINCT t.id) AS count
             FROM ${config.table} t
             LEFT JOIN ${config.itemTable} i
                 ON i.${config.itemFk} = t.id
                 AND i.deleted_at IS NULL
             WHERE ${whereSql}
+              AND t.deleted_at IS NULL
         ) weight
         CROSS JOIN (
             SELECT
                 SUM(t.total_amount) AS total_amount
             FROM ${config.table} t
             WHERE ${whereSql}
+              AND t.deleted_at IS NULL
         ) amount
     `;
 
@@ -39,7 +43,6 @@ const getScorecardByType = async ({ config, whereSql, replacements }) => {
 
     return row;
 };
-
 
 const resolveWeightExpr = (weightColumn) => {
     if (!weightColumn) return "0";
@@ -63,13 +66,12 @@ const getSalesReport = async (req, res) => {
             to_date,
             date_filter,
             search,
-            status,
             page,
             pageSize,
             limit
         } = req.query;
 
-        // Validate grid report typeq
+        // Validate grid report type
         const gridConfig = REPORT_CONFIG[type];
         if (!gridConfig) {
             return commonService.badRequest(res, "Invalid report type");
@@ -83,32 +85,27 @@ const getSalesReport = async (req, res) => {
 
         /* ---------------- WHERE SQL ---------------- */
         const replacements = {};
-        let whereSql = `1=1`;
+        let baseWhereSql = "1=1";
 
-        whereSql += dateFilter(
+        baseWhereSql += dateFilter(
             { from_date, to_date, date_filter },
             gridConfig.dateColumn,
             replacements
         );
 
-        if (status) {
-            whereSql += ` AND t.status = :status`;
-            replacements.status = status;
-        }
-
         if (branch_id) {
-            whereSql += ` AND t.branch_id = :branch_id`;
+            baseWhereSql += " AND t.branch_id = :branch_id";
             replacements.branch_id = branch_id;
         }
 
         if (search) {
-            whereSql += `
-        AND (
-          t.${gridConfig.codeColumn} ILIKE :search
-          OR c.customer_name ILIKE :search
-          OR e.employee_name ILIKE :search
-        )
-      `;
+            baseWhereSql += `
+            AND (
+                t.${gridConfig.codeColumn} ILIKE :search
+                OR c.customer_name ILIKE :search
+                OR e.employee_name ILIKE :search
+            )
+        `;
             replacements.search = `%${search}%`;
         }
 
@@ -116,14 +113,27 @@ const getSalesReport = async (req, res) => {
         const scorecard = {};
 
         for (const reportType of Object.keys(REPORT_CONFIG)) {
+            const cfg = REPORT_CONFIG[reportType];
+
+            const scorecardWhereSql = `
+                ${baseWhereSql}
+                ${cfg.statusCondition || ""}
+            `;
+
             scorecard[reportType] = await getScorecardByType({
-                config: REPORT_CONFIG[reportType],
-                whereSql,
+                config: cfg,
+                whereSql: scorecardWhereSql,
                 replacements
             });
         }
+        
+        /* ---------------- GRID WHERE (SELECTED TYPE) ---------------- */
+        const gridWhereSql = `
+            ${baseWhereSql}
+            ${gridConfig.statusCondition || ""}
+        `;
 
-        /* ---------------- GRID QUERY (SELECTED TYPE) ---------------- */
+        /* ---------------- GRID QUERY ---------------- */
         let gridSql = `
         SELECT
             t.*,
@@ -153,36 +163,35 @@ const getSalesReport = async (req, res) => {
         LEFT JOIN customers c ON c.id = t.customer_id
         LEFT JOIN employees e ON e.id = t.employee_id
         LEFT JOIN branches b ON b.id = t.branch_id
-        WHERE ${whereSql}
+        WHERE ${gridWhereSql}
         ORDER BY t.id DESC
-        `;
-
+    `;
 
         if (hasPagination) {
-            gridSql += ` LIMIT :limit OFFSET :offset`;
+            gridSql += " LIMIT :limit OFFSET :offset";
             replacements.limit = perPage;
             replacements.offset = offset;
         }
 
         const data = await sequelize.query(gridSql, {
             replacements,
-            type: sequelize.QueryTypes.SELECT
+            type: QueryTypes.SELECT
         });
 
-        /* ---------------- PAGINATION ---------------- */
+        /* ---------------- PAGINATION---------------- */
         let pagination = null;
 
         if (hasPagination) {
             const countSql = `
-        SELECT COUNT(*)::int AS total
-        FROM ${gridConfig.table} t
-        LEFT JOIN customers c ON c.id = t.customer_id
-        WHERE ${whereSql}
-      `;
+                SELECT COUNT(*)::int AS total
+                FROM ${gridConfig.table} t
+                LEFT JOIN customers c ON c.id = t.customer_id
+                WHERE ${gridWhereSql}
+            `;
 
             const [{ total }] = await sequelize.query(countSql, {
                 replacements,
-                type: sequelize.QueryTypes.SELECT
+                type: QueryTypes.SELECT
             });
 
             pagination = {
@@ -205,6 +214,7 @@ const getSalesReport = async (req, res) => {
         return commonService.handleError(res, error);
     }
 };
+
 
 // get the sold out product based on its subcategory
 const getFastMovingSubCategories = async (req, res) => {
@@ -589,12 +599,160 @@ const getTopBuyingCustomers = async (req, res) => {
     }
 };
 
-module.exports = { getTopBuyingCustomers };
+// Dashboard APIs
+const getBranchWiseSalesCount = async (req, res) => {
+    try {
+        const {
+            branch_id,
+            from_date,
+            to_date,
+            date_filter
+        } = req.query;
+
+        const replacements = {};
+        let whereSql = `WHERE t.deleted_at IS NULL`;
+
+        whereSql += dateFilter(
+            { from_date, to_date, date_filter },
+            "t.created_at::date",
+            replacements
+        );
+
+        if (branch_id) {
+            whereSql += ` AND t.branch_id = :branch_id`;
+            replacements.branch_id = branch_id;
+        }
+
+        const salesInvoiceSql = `
+      SELECT
+        b.id AS branch_id,
+        b.branch_name,
+        COUNT(DISTINCT t.id)::int AS count,
+        COALESCE(SUM(t.total_amount), 0) AS value
+      FROM sales_invoice_bills t
+      JOIN branches b ON b.id = t.branch_id
+      ${whereSql}
+        AND t.status = 'Invoice'
+      GROUP BY b.id, b.branch_name
+    `;
+
+        const salesReturnSql = `
+      SELECT
+        b.id AS branch_id,
+        COUNT(DISTINCT t.id)::int AS count,
+        COALESCE(SUM(t.total_amount), 0) AS value
+      FROM sales_returns t
+      JOIN branches b ON b.id = t.branch_id
+      ${whereSql}
+        AND t.status = 'Printed'
+      GROUP BY b.id
+    `;
+
+        const estimateSql = `
+      SELECT
+        b.id AS branch_id,
+        COUNT(DISTINCT t.id)::int AS count,
+        COALESCE(SUM(t.total_amount), 0) AS value
+      FROM estimate_bills t
+      JOIN branches b ON b.id = t.branch_id
+      ${whereSql}
+        AND t.status = 'Printed'
+      GROUP BY b.id
+    `;
+
+        const oldJewelSql = `
+      SELECT
+        b.id AS branch_id,
+        COUNT(DISTINCT t.id)::int AS count,
+        COALESCE(SUM(t.total_amount), 0) AS value
+      FROM old_jewels t
+      JOIN branches b ON b.id = t.branch_id
+      ${whereSql}
+      GROUP BY b.id
+    `;
+
+        const jewelRepairSql = `
+      SELECT
+        b.id AS branch_id,
+        COUNT(DISTINCT t.id)::int AS count,
+        COALESCE(SUM(t.total_amount), 0) AS value
+      FROM jewel_repairs t
+      JOIN branches b ON b.id = t.branch_id
+      ${whereSql}
+      GROUP BY b.id
+    `;
+
+        const [
+            salesInvoice,
+            salesReturn,
+            estimate,
+            oldJewel,
+            jewelRepair
+        ] = await Promise.all([
+            sequelize.query(salesInvoiceSql, { replacements, type: sequelize.QueryTypes.SELECT }),
+            sequelize.query(salesReturnSql, { replacements, type: sequelize.QueryTypes.SELECT }),
+            sequelize.query(estimateSql, { replacements, type: sequelize.QueryTypes.SELECT }),
+            sequelize.query(oldJewelSql, { replacements, type: sequelize.QueryTypes.SELECT }),
+            sequelize.query(jewelRepairSql, { replacements, type: sequelize.QueryTypes.SELECT }),
+        ]);
+
+        const branchMap = {};
+
+        const initBranch = (row) => {
+            if (!branchMap[row.branch_id]) {
+                branchMap[row.branch_id] = {
+                    branch_id: row.branch_id,
+                    branch_name: row.branch_name,
+                    estimate: { count: 0, value: 0 },
+                    sales_invoice: { count: 0, value: 0 },
+                    sales_return: { count: 0, value: 0 },
+                    old_jewel: { count: 0, value: 0 },
+                    jewel_repair: { count: 0, value: 0 }
+                };
+            }
+            return branchMap[row.branch_id];
+        };
+
+        salesInvoice.forEach(r => {
+            const b = initBranch(r);
+            b.sales_invoice = { count: r.count, value: Number(r.value) };
+        });
+
+        salesReturn.forEach(r => {
+            const b = branchMap[r.branch_id];
+            if (b) b.sales_return = { count: r.count, value: Number(r.value) };
+        });
+
+        estimate.forEach(r => {
+            const b = branchMap[r.branch_id];
+            if (b) b.estimate = { count: r.count, value: Number(r.value) };
+        });
+
+        oldJewel.forEach(r => {
+            const b = branchMap[r.branch_id];
+            if (b) b.old_jewel = { count: r.count, value: Number(r.value) };
+        });
+
+        jewelRepair.forEach(r => {
+            const b = branchMap[r.branch_id];
+            if (b) b.jewel_repair = { count: r.count, value: Number(r.value) };
+        });
+
+        return commonService.okResponse(res, {
+            rows: Object.values(branchMap)
+        });
+
+    } catch (error) {
+        console.error("Branch Wise Sales Count Error:", error);
+        return commonService.handleError(res, error);
+    }
+};
 
 
 module.exports = {
     getSalesReport,
     getFastMovingSubCategories,
     getFastMovingSoldProducts,
-    getTopBuyingCustomers
+    getTopBuyingCustomers,
+    getBranchWiseSalesCount
 };

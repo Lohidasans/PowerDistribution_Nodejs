@@ -6,7 +6,8 @@ const REPORT_CONFIG = {
         dateColumn: "t.created_at",
         codeColumn: "old_jewel_code",
         weightColumn: "net_weight",
-        quantityExpr: "COUNT(i.id)"
+        quantityExpr: "COUNT(i.id)",
+        statusCondition: "AND t.status = 'Printed'"
     },
 
     jewel_repair: {
@@ -16,7 +17,8 @@ const REPORT_CONFIG = {
         dateColumn: "t.created_at",
         codeColumn: "repair_code",
         weightColumn: "weight",
-        quantityExpr: "COUNT(i.id)"
+        quantityExpr: "COUNT(i.id)",
+        statusCondition: "AND t.status = 'Pending'"
     },
 
     estimate: {
@@ -26,7 +28,8 @@ const REPORT_CONFIG = {
         dateColumn: "t.created_at",
         codeColumn: "estimate_no",
         weightColumn: null,
-        quantityExpr: "SUM(i.quantity)" 
+        quantityExpr: "SUM(i.quantity)",
+        statusCondition: "AND t.status = 'Printed'"
     },
 
     sales_invoice: {
@@ -36,7 +39,8 @@ const REPORT_CONFIG = {
         dateColumn: "t.created_at",
         codeColumn: "invoice_no",
         weightColumn: "net_weight",
-        quantityExpr: "SUM(i.quantity)" 
+        quantityExpr: "SUM(i.quantity)",
+        statusCondition: "AND t.status = 'Invoice'"
     },
 
     sales_return: {
@@ -46,7 +50,8 @@ const REPORT_CONFIG = {
         dateColumn: "t.created_at",
         codeColumn: "sales_return_no",
         weightColumn: "CAST(i.net_weight AS NUMERIC)",
-        quantityExpr: "SUM(i.quantity)"
+        quantityExpr: "SUM(i.quantity)",
+        statusCondition: "AND t.status = 'Printed'"
     }
 };
 

@@ -7,4 +7,7 @@ router.get("/sales-management/fast-moving-subcategories", svc.getFastMovingSubCa
 router.get("/sales-management/fast-moving-sold-products", svc.getFastMovingSoldProducts);
 router.get("/sales-management/top-buying-customers", svc.getTopBuyingCustomers);
 
+// Dashboard: Branch Wise Sales Count
+router.get("/sales-management/branch-wise-sales-count", svc.getBranchWiseSalesCount);
+
 module.exports = router;
