@@ -1906,6 +1906,53 @@ const getGrnDiscrepancyList = async (req, res) => {
 };
 
 
+// Helper function to get stock overview counts
+const getTotalStockValueInternal = async (query) => {
+    const { branch_id, from_date, to_date, date_filter } = query;
+
+    const replacements = {};
+
+    let where = `
+        WHERE g.deleted_at IS NULL
+        AND g.is_active = true
+    `;
+
+    // Branch filter via products → GRN
+    if (branch_id) {
+        where += `
+            AND g.id IN (
+                SELECT DISTINCT grn_id
+                FROM products
+                WHERE branch_id = :branch_id
+                AND deleted_at IS NULL
+            )
+        `;
+        replacements.branch_id = branch_id;
+    }
+
+    // Date filter on GRN
+    const dateCondition = dateFilter(
+        { from_date, to_date, date_filter },
+        "g.grn_date",
+        replacements
+    );
+
+    where += dateCondition;
+
+    const [rows] = await sequelize.query(
+        `
+        SELECT
+            COALESCE(SUM(g.total_amount), 0) AS total_stock_value
+        FROM grns g
+        ${where}
+        `,
+        { replacements }
+    );
+
+    return Number(rows[0]?.total_stock_value || 0);
+};
+
+
 const getStockOverviewCount = async (req, res) => {
     try {
         const replacements = {};
@@ -1914,23 +1961,29 @@ const getStockOverviewCount = async (req, res) => {
         const [
             stockInHand,
             lowStock,
-            outOfStock
+            outOfStock,
+            totalStockValue
         ] = await Promise.all([
             getStockInHandSummary(baseWhere, replacements),
             getLowStockSummaryInternal(baseWhere, replacements),
-            getOutOfStockSummaryInternal(req.query)
+            getOutOfStockSummaryInternal(req.query),
+            getTotalStockValueInternal(req.query)
         ]);
 
         return commonService.okResponse(res, {
+            total_stock_value: totalStockValue,
+
             stock_in_hand: {
                 total_quantity: stockInHand.total_quantity,
                 total_weight: stockInHand.total_weight,
                 product_count: stockInHand.product_count
             },
+
             low_stock: {
                 subcategory_count: lowStock.subcategory_count,
                 total_weight: lowStock.total_weight
             },
+
             out_of_stock: {
                 subcategory_count: outOfStock.subcategory_count
             }
@@ -1941,6 +1994,7 @@ const getStockOverviewCount = async (req, res) => {
         return commonService.handleError(res, error);
     }
 };
+
 
 
 module.exports = {
@@ -1965,5 +2019,6 @@ module.exports = {
     getStockByMaterialTypeReport,
     getBranchwiseStockCount,
     getGrnDiscrepancyList,
+    getTotalStockValueInternal,
     getStockOverviewCount
 };
