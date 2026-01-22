@@ -1893,6 +1893,42 @@ const getGrnDiscrepancyList = async (req, res) => {
 };
 
 
+const getStockOverviewCount = async (req, res) => {
+    try {
+        const replacements = {};
+        const baseWhere = buildBaseFilters(req.query, replacements);
+
+        const [
+            stockInHand,
+            lowStock,
+            outOfStock
+        ] = await Promise.all([
+            getStockInHandSummary(baseWhere, replacements),
+            getLowStockSummaryInternal(baseWhere, replacements),
+            getOutOfStockSummaryInternal(req.query)
+        ]);
+
+        return commonService.okResponse(res, {
+            stock_in_hand: {
+                total_quantity: stockInHand.total_quantity,
+                total_weight: stockInHand.total_weight,
+                product_count: stockInHand.product_count
+            },
+            low_stock: {
+                subcategory_count: lowStock.subcategory_count,
+                total_weight: lowStock.total_weight
+            },
+            out_of_stock: {
+                subcategory_count: outOfStock.subcategory_count
+            }
+        });
+
+    } catch (error) {
+        console.error("Stock Overview Count Error:", error);
+        return commonService.handleError(res, error);
+    }
+};
+
 
 module.exports = {
     getOldJewelReport,
@@ -1915,5 +1951,6 @@ module.exports = {
     getVendorContributionReport,
     getStockByMaterialTypeReport,
     getBranchwiseStockCount,
-    getGrnDiscrepancyList
+    getGrnDiscrepancyList,
+    getStockOverviewCount
 };
