@@ -279,6 +279,7 @@ const listCustomerNameMobileDropdown = async (req, res) => {
         c.pin_code,
         c.customer_code,
         c.pan_no,
+        c.gst_no,
         co.country_name,
         s.state_name,
         d.district_name
