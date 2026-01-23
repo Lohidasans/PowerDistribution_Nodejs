@@ -20,12 +20,14 @@ const createCustomer = async (req, res) => {
       mobile_number: req.body.mobile_number,
       // Optional fields
       email_id: req.body.email_id || null,
+      gst_no: req.body.gst_no || null,
       address: req.body.address || null,
       country_id: +req.body.country_id || null,
       state_id: +req.body.state_id || null,
       district_id: +req.body.district_id || null,
       pin_code: req.body.pin_code || null,
       pan_no: req.body.pan_no || null,
+      is_online: !!req.body.is_online 
     };
 
     // Check duplicate mobile number (ACTIVE customers only)
@@ -171,13 +173,15 @@ const updateCustomer = async (req, res) => {
       customer_code: req.body.customer_code ?? entity.customer_code,
       customer_name: req.body.customer_name ?? entity.customer_name,
       mobile_number: req.body.mobile_number ?? entity.mobile_number,
-      address: req.body.address ?? entity.address,
+      address: req.body.address ?? entity.address,    
       country_id: req.body.country_id !== undefined ? +req.body.country_id : entity.country_id,
       state_id: req.body.state_id !== undefined ? +req.body.state_id : entity.state_id,
       district_id: req.body.district_id !== undefined ? +req.body.district_id : entity.district_id,
       pin_code: req.body.pin_code ?? entity.pin_code,
       pan_no: req.body.pan_no ?? entity.pan_no,
-      email_id: req.body.email_id ?? (entity.email_id || null)
+      gst_no: req.body.gst_no ?? entity.gst_no,
+      email_id: req.body.email_id ?? (entity.email_id || null),
+      is_online: req.body.is_online !== undefined ? Boolean(req.body.is_online) : entity.is_online,
     };
     await entity.update(up);
     return commonService.okResponse(res, { customer: entity });

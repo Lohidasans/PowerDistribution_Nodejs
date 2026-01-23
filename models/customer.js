@@ -47,6 +47,15 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.STRING,
         allowNull: true
       },
+      gst_no: {
+        type: DataTypes.STRING,
+        allowNull: true
+      },
+      is_online: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false
+      }
     },
     {
       tableName: "customers",
