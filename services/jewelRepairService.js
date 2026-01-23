@@ -159,20 +159,25 @@ const createJewelRepair = async (req, res) => {
 // Get all jewel repairs with pagination
 const getAllJewelRepairs = async (req, res) => {
   try {
-    const { page = 1, pageSize = 10, search, status, customer_id, branch_id, repair_code, from_date, to_date } = req.query;
+    const {
+      page,
+      pageSize,
+      search,
+      status,
+      customer_id,
+      branch_id,
+      repair_code,
+      from_date,
+      to_date
+    } = req.query;
 
-    const limit = Number(pageSize);
-    const offset = (page - 1) * limit;
-
-    const replacements = { limit, offset };
+    const replacements = {};
     let whereSql = `jr.deleted_at IS NULL`;
-
     // Filters
-    if (status) { whereSql += ` AND jr.status = :status`; replacements.status = status; }
-    if (customer_id) { whereSql += ` AND jr.customer_id = :customer_id`; replacements.customer_id = customer_id; }
+    if (status) { whereSql += ` AND jr.status = :status`; replacements.status = status;}
+    if (customer_id) { whereSql += ` AND jr.customer_id = :customer_id`; replacements.customer_id = customer_id;}
     if (branch_id) { whereSql += ` AND jr.branch_id = :branch_id`; replacements.branch_id = branch_id; }
-    if (repair_code) { whereSql += ` AND jr.repair_code = :repair_code`; replacements.repair_code = repair_code; }
-
+    if (repair_code) { whereSql += ` AND jr.repair_code = :repair_code`; replacements.repair_code = repair_code;}
     if (from_date && to_date) {
       whereSql += ` AND jr.date BETWEEN :from_date AND :to_date`;
       replacements.from_date = from_date;
@@ -190,7 +195,24 @@ const getAllJewelRepairs = async (req, res) => {
       replacements.search = `%${search}%`;
     }
 
-    // 1️. Main repairs query with JOINs
+    
+    // Pagination (optional)
+    
+    let paginationSql = '';
+    let limit, offset;
+
+    if (pageSize) {
+      limit = Number(pageSize);
+      offset = page ? (Number(page) - 1) * limit : 0;
+
+      paginationSql = ` LIMIT :limit OFFSET :offset`;
+      replacements.limit = limit;
+      replacements.offset = offset;
+    }
+
+    
+    // Main query
+    
     const repairs = await sequelize.query(
       `SELECT
         jr.*,
@@ -204,7 +226,7 @@ const getAllJewelRepairs = async (req, res) => {
         c.pin_code AS customer_pincode,
         c.pan_no AS customer_pan_no,
         c.gst_no AS customer_gst_no,
-        
+
         -- Customer location
         cc.country_name AS customer_country_name,
         cd.district_name AS customer_district_name,
@@ -230,33 +252,29 @@ const getAllJewelRepairs = async (req, res) => {
         ) AS total_paid_amount
 
       FROM jewel_repairs jr
-
-      -- Customer joins
       LEFT JOIN customers c ON c.id = jr.customer_id
       LEFT JOIN employees e ON e.id = jr.employee_id
       LEFT JOIN countries cc ON cc.id = c.country_id
       LEFT JOIN states cs ON cs.id = c.state_id
       LEFT JOIN districts cd ON cd.id = c.district_id
-
-      -- Branch joins
       LEFT JOIN branches b ON b.id = jr.branch_id
       LEFT JOIN states bs ON bs.id = b.state_id
       LEFT JOIN districts bd ON bd.id = b.district_id
 
       WHERE ${whereSql}
       ORDER BY jr.id DESC
-      LIMIT :limit OFFSET :offset`,
+      ${paginationSql}`,
       {
         replacements,
         type: sequelize.QueryTypes.SELECT,
-      });
-
-    // 2️. Count query
+      }
+    );
+    // Count query
     const [{ total }] = await sequelize.query(
       `SELECT COUNT(*)::int AS total
-      FROM jewel_repairs jr
-      LEFT JOIN customers c ON c.id = jr.customer_id
-      WHERE ${whereSql}`,
+       FROM jewel_repairs jr
+       LEFT JOIN customers c ON c.id = jr.customer_id
+       WHERE ${whereSql}`,
       {
         replacements,
         type: sequelize.QueryTypes.SELECT
@@ -264,25 +282,28 @@ const getAllJewelRepairs = async (req, res) => {
     );
 
     if (repairs.length === 0) {
-      return commonService.okResponse(res, {
-        data: [],
-        pagination: {
+      const response = { data: [] };
+      if (pageSize) {
+        response.pagination = {
           total,
-          page: Number(page),
+          page: Number(page || 1),
           pageSize: limit,
           totalPages: Math.ceil(total / limit),
-        },
-      });
+        };
+      }
+
+      return commonService.okResponse(res, response);
     }
 
-    // 3️. Fetch repair items and payments
+    
+    // Fetch items & payments
+    
     const repairIds = repairs.map(r => r.id);
 
     const [items, payments] = await Promise.all([
-      // Fetch repair items
       sequelize.query(
         `SELECT
-          jri.*, material_type,
+          jri.*, mt.material_type,
           p.product_name
         FROM jewel_repair_items jri
         LEFT JOIN products p ON p.id = jri.product_id
@@ -293,14 +314,12 @@ const getAllJewelRepairs = async (req, res) => {
           type: sequelize.QueryTypes.SELECT
         }
       ),
-      // Fetch payments
       sequelize.query(
-        `SELECT
-          p.*
-        FROM payments p
-        WHERE p.jewel_repair_id IN (:repairIds)
-        AND p.deleted_at IS NULL
-        ORDER BY p.created_at DESC`,
+        `SELECT *
+         FROM payments
+         WHERE jewel_repair_id IN (:repairIds)
+         AND deleted_at IS NULL
+         ORDER BY created_at DESC`,
         {
           replacements: { repairIds },
           type: sequelize.QueryTypes.SELECT
@@ -308,7 +327,9 @@ const getAllJewelRepairs = async (req, res) => {
       )
     ]);
 
-    // 4️. Group items and payments by repair_id
+    
+    // Group by repair_id
+    
     const itemsMap = items.reduce((acc, item) => {
       if (!acc[item.repair_id]) acc[item.repair_id] = [];
       acc[item.repair_id].push(item);
@@ -321,10 +342,12 @@ const getAllJewelRepairs = async (req, res) => {
       return acc;
     }, {});
 
-    // 5️. Final response
+    
+    // Final response
+    
     const result = repairs.map(repair => {
-      const totalPaid = parseFloat(repair.total_paid_amount || 0);
-      const totalAmount = parseFloat(repair.total_amount || 0);
+      const totalPaid = Number(repair.total_paid_amount || 0);
+      const totalAmount = Number(repair.total_amount || 0);
       const amountDue = totalAmount - totalPaid;
 
       return {
@@ -336,20 +359,24 @@ const getAllJewelRepairs = async (req, res) => {
       };
     });
 
-    return commonService.okResponse(res, {
-      data: result,
-      pagination: {
+    const response = { data: result };
+
+    if (pageSize) {
+      response.pagination = {
         total,
-        page: Number(page),
+        page: Number(page || 1),
         pageSize: limit,
         totalPages: Math.ceil(total / limit),
-      },
-    });
+      };
+    }
+
+    return commonService.okResponse(res, response);
   } catch (error) {
     console.error("Error fetching jewel repairs:", error);
     return commonService.handleError(res, error);
   }
 };
+
 
 // Get a single jewel repair record by ID
 const getJewelRepairById = async (req, res) => {

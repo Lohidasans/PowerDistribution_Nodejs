@@ -144,7 +144,7 @@ const createSalesInvoice = async (req, res) => {
       .filter(p => p.payment_mode?.toLowerCase() === 'cash')
       .reduce((sum, p) => sum + p.amount_received, 0);
 
-    if (totalCashReceived >= 200000) {
+    if (totalCashReceived > 200000) {
       await t.rollback();
       return commonService.badRequest(res, enMessage.billing.panCardRequired);
     }
@@ -900,7 +900,7 @@ const updateSalesInvoice = async (req, res) => {
       .filter(p => p.payment_mode?.toLowerCase() === 'cash')
       .reduce((sum, p) => sum + p.amount_received, 0);
 
-    if (totalCashReceived >= 200000) {
+    if (totalCashReceived > 200000) {
       await t.rollback();
       return commonService.badRequest(res, enMessage.billing.panCardRequired);
     }
