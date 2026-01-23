@@ -31,6 +31,17 @@ const createSalesReturn = async (req, res) => {
       await t.rollback();
       return commonService.badRequest(res, "At least one item is required");
     }
+    
+    // VALIDATION OF INVOICES & ITEMS
+    const isValid = await validateSalesReturnInvoices({
+      items,
+      transaction: t,
+      models,
+      res,
+      commonService,
+    });
+
+    if (isValid !== true) return; // response already sent
 
     // Calculate totals
     let subtotal = 0;
@@ -384,12 +395,23 @@ const updateSalesReturn = async (req, res) => {
     }
 
     if (salesReturn.status != "On Hold") {
-          await t.rollback();
-          return commonService.badRequest(
-            res,
-            "Finalized sales return cannot be edited"
-          );
-        }
+      await t.rollback();
+      return commonService.badRequest(
+        res,
+        "Finalized sales return cannot be edited"
+      );
+    }
+    
+    // INVOICE + ITEM VALIDATION
+    const valid = await validateSalesReturnInvoices({
+      items,
+      transaction: t,
+      models,
+      res,
+      commonService,
+    });
+
+    if (valid !== true) return;
 
     // 3. RECALCULATE TOTALS
     let subtotal = 0;
@@ -408,7 +430,7 @@ const updateSalesReturn = async (req, res) => {
       return {
         id: it.id || null,
         product_id: it.product_id,
-        product_item_detail_id: it.product_item_detail_id || null,
+        product_item_detail_id: it.product_item_detail_id,
         sku_id: it.sku_id || null,
         hsn_code: it.hsn_code || null,
         product_description: it.product_description || null,
@@ -449,7 +471,7 @@ const updateSalesReturn = async (req, res) => {
         sgst_amount: sgstAmt,
         total_amount: total,
         total_quantity: totalQty,
-        status: header.status || salesReturn.status
+        status: header.status
       },
       { transaction: t }
     );
@@ -516,6 +538,78 @@ const updateSalesReturn = async (req, res) => {
   }
 };
 
+const validateSalesReturnInvoices = async ({
+  items,
+  transaction,
+  models,
+  res,
+  commonService,
+}) => {
+  for (const it of items) {
+    if (!it.invoice_no) {
+      await transaction.rollback();
+      return commonService.badRequest(
+        res,
+        "invoice_no is required for all return items"
+      );
+    }
+
+    const invoice = await models.SalesInvoiceBill.findOne({
+      where: {
+        invoice_no: it.invoice_no,
+        status: "Invoice",
+        deleted_at: null,
+      },
+      transaction,
+    });
+
+    if (!invoice) {
+      await transaction.rollback();
+      return commonService.badRequest(
+        res,
+        `Invalid invoice_no ${it.invoice_no}. Invoice not found or not in Invoice status`
+      );
+    }
+
+    if (!it.product_id || !it.product_item_detail_id) {
+      await transaction.rollback();
+      return commonService.badRequest(
+        res,
+        "product_id and product_item_detail_id are required for sales return"
+      );
+    }
+
+    const invoiceItem = await models.SalesInvoiceBillItem.findOne({
+      where: {
+        invoice_bill_id: invoice.id,
+        product_id: it.product_id,
+        product_item_detail_id: it.product_item_detail_id,
+        deleted_at: null,
+      },
+      transaction,
+    });
+
+    if (!invoiceItem) {
+      await transaction.rollback();
+      return commonService.badRequest(
+        res,
+        `Item not found in invoice ${it.invoice_no} for product_id ${it.product_id} and product_item_detail_id ${it.product_item_detail_id}`
+      );
+    }
+
+    if (invoiceItem.is_returned) {
+      await transaction.rollback();
+      return commonService.badRequest(
+        res,
+        `Item already returned for invoice ${it.invoice_no}`
+      );
+    }
+  }
+
+  return true;
+};
+
+
 
 module.exports = {
   generateSalesReturnNo,
@@ -524,5 +618,6 @@ module.exports = {
   listSalesReturns,
   deleteSalesReturn,
   listSalesReturnDropdown,
-  updateSalesReturn
+  updateSalesReturn,
+  validateSalesReturnInvoices
 };
