@@ -243,7 +243,7 @@ const getBranchById = async (req, res) => {
         {
           model: models.State,
           as: "state",
-          attributes: ["id", "state_name", "short_name"],
+          attributes: ["id", "state_name", "state_code"],
         },
       ],
     });

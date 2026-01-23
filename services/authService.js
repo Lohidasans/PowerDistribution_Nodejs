@@ -281,7 +281,7 @@ const verifyOTP = async (req, res) => {
         const cachedOtp = otpCache.getOTP(mobile);
 
         if (!cachedOtp || cachedOtp !== otp.toString()) {
-            return commonService.unauthorized(res, "Invalid or expired OTP");
+            return commonService.notFound(res, "Invalid or expired OTP");
         }
 
         // remove otp after success

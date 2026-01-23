@@ -101,7 +101,7 @@ const getAddressById = async (req, res) => {
     try {
         const address = await models.CustomerAddress.findByPk(req.params.id);
         if (!address) {
-            return commonService.notFound(res, "Address not found");
+            return commonService.okResponse(res, "Address not found");
         }
         return commonService.okResponse(res, address);
     } catch (err) {
