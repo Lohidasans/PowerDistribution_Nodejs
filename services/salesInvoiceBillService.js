@@ -51,6 +51,18 @@ const createSalesInvoice = async (req, res) => {
     // Validate products and stock
     await validateProducts(items, t);
     await validateProductItemDetails(items, t);
+    
+    const invalidItems = items.filter(
+      i => !i.product_item_detail_id
+    );
+
+    if (invalidItems.length > 0) {
+      await t.rollback();
+      return commonService.badRequest(
+        res,
+        "product_item_detail_id is required for all items"
+      );
+    }
 
     // Calculate totals
     let subtotal = 0;
@@ -788,6 +800,19 @@ const updateSalesInvoice = async (req, res) => {
     // Validate products and stock
     await validateProducts(items, t);
     await validateProductItemDetails(items, t);
+
+    // Require product_item_detail_id for all items
+    const invalidItems = items.filter(
+      i => !i.product_item_detail_id
+    );
+
+    if (invalidItems.length > 0) {
+      await t.rollback();
+      return commonService.badRequest(
+        res,
+        "product_item_detail_id is required for all items"
+      );
+    }
 
     // RECALCULATE TOTALS
     let subtotal = 0;
