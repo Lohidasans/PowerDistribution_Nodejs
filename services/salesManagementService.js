@@ -813,11 +813,96 @@ const getBranchwiseSalesAndCustomerStats = async (req, res) => {
     }
 };
 
+const getSalesByMaterialType = async (req, res) => {
+    try {
+        const { branch_id, from_date, to_date, date_filter } = req.query;
+
+        const replacements = {};
+        let whereSql = `
+            t.status = 'Invoice'
+            AND t.deleted_at IS NULL
+            `;
+
+        /* ---------- DATE FILTER ---------- */
+        if (from_date && to_date) {
+            whereSql += ` AND t.invoice_date BETWEEN :from_date AND :to_date`;
+            replacements.from_date = from_date;
+            replacements.to_date = to_date;
+        }
+
+        /* ---------- BRANCH FILTER ---------- */
+        if (branch_id) {
+            whereSql += ` AND t.branch_id = :branch_id`;
+            replacements.branch_id = branch_id;
+        }
+
+        const sql = `
+        WITH material_sales AS (
+            SELECT
+                mt.id AS material_type_id,
+                mt.material_type,
+                SUM(i.amount) AS material_amount
+            FROM sales_invoice_bills t
+            JOIN sales_invoice_bill_items i
+                ON i.invoice_bill_id = t.id
+                AND i.deleted_at IS NULL
+            JOIN products p
+                ON p.id = i.product_id
+                AND p.deleted_at IS NULL
+            JOIN "materialTypes" mt
+                ON mt.id = p.material_type_id
+                AND mt.deleted_at IS NULL
+            WHERE ${whereSql}
+            GROUP BY mt.id, mt.material_type
+        ),
+        total AS (
+            SELECT SUM(material_amount) AS total_amount
+            FROM material_sales
+        )
+        SELECT
+            m.material_type_id,
+            m.material_type,
+            m.material_amount AS amount,
+            ROUND(
+                (m.material_amount / NULLIF(t.total_amount, 0)) * 100,
+                2
+            ) AS percentage,
+            t.total_amount
+        FROM material_sales m
+        CROSS JOIN total t
+        ORDER BY m.material_amount DESC
+        `;
+
+        const rows = await sequelize.query(sql, {
+            replacements,
+            type: sequelize.QueryTypes.SELECT
+        });
+
+        const totalAmount = rows.length ? rows[0].total_amount : 0;
+
+        return commonService.okResponse(res, {
+            total_amount: totalAmount,
+            materials: rows.map(r => ({
+                material_type_id: r.material_type_id,
+                material_type: r.material_type,
+                amount: Number(r.amount),
+                percentage: Number(r.percentage)
+            }))
+        });
+
+    } catch (error) {
+        console.error("Sales by Material Type Error:", error);
+        return commonService.handleError(res, error);
+    }
+};
+
+
 module.exports = {
     getSalesReport,
     getFastMovingSubCategories,
     getFastMovingSoldProducts,
     getTopBuyingCustomers,
     getBranchWiseSalesCount,
-    getBranchwiseSalesAndCustomerStats
+    getBranchwiseSalesAndCustomerStats,
+    getSalesByMaterialType
 };
