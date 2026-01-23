@@ -233,8 +233,24 @@ const listBranches = async (req, res) => {
 const getBranchById = async (req, res) => {
   try {
     const id = req.params.id;
-    const branch = await commonService.findById(models.Branch, id, res);
-    if (!branch) return;
+    const branch = await models.Branch.findByPk(id, {
+      include: [
+        {
+          model: models.District,
+          as: "district",
+          attributes: ["id", "district_name", "short_name"],
+        },
+        {
+          model: models.State,
+          as: "state",
+          attributes: ["id", "state_name", "short_name"],
+        },
+      ],
+    });
+    
+    if (!branch) {
+      return commonService.notFoundResponse(res, "Branch not found");
+    }
 
     const [bank_account, kyc_documents, login, invoice_settings] =
       await Promise.all([

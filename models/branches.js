@@ -78,6 +78,16 @@ module.exports = (sequelize, DataTypes) => {
       foreignKey: "branch_id",
       as: "employees",
     });
+
+    Branch.belongsTo(models.District, {
+      foreignKey: "district_id",
+      as: "district",
+    });
+
+    Branch.belongsTo(models.State, {
+      foreignKey: "state_id",
+      as: "state",
+    });
   };
 
   return Branch;
