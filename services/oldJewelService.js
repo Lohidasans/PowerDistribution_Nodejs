@@ -145,6 +145,8 @@ const getAllOldJewels = async (req, res) => {
         emp.employee_name,
         b.branch_name,
         c.customer_name,
+        c.pan_no AS customer_pan,
+        c.gst_no AS customer_gst,
         c.mobile_number AS customer_mobile
       FROM old_jewels oj
       LEFT JOIN employees emp ON emp.id = oj.employee_id AND emp.deleted_at IS NULL

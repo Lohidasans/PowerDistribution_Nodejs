@@ -385,6 +385,7 @@ const listSalesInvoices = async (req, res) => {
         c.mobile_number AS customer_mobile_number,
         c.pin_code AS customer_pincode,
         c.pan_no AS customer_pan_no,
+        c.gst_no AS customer_gst_no,
         ct.country_name AS customer_country_name,
         d.district_name AS customer_district_name,
         s.state_name AS customer_state_name,
