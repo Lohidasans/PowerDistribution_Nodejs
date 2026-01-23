@@ -49,10 +49,10 @@ const createSalesReturn = async (req, res) => {
 
     const itemRows = items.map((it) => {
       const qty = Number(it.quantity || 0);
-      const rate = Number(it.rate || 0);
-      const amount = Number(it.amount != null ? it.amount : qty * rate);
+      const unitAmount = Number(it.amount || 0); // per-unit amount
+      const lineTotal = qty * unitAmount;
 
-      subtotal += amount;
+      subtotal += lineTotal;
       totalQty += qty;
 
       return {
@@ -64,8 +64,9 @@ const createSalesReturn = async (req, res) => {
         net_weight: it.net_weight || null,
         gross_weight: it.gross_weight || null,
         quantity: qty,
-        rate,
-        amount,
+        rate: it.rate || null,
+        amount: unitAmount,
+        line_total: lineTotal,
         invoice_date: it.invoice_date || null,
         invoice_no: it.invoice_no || null,
       };
@@ -419,12 +420,10 @@ const updateSalesReturn = async (req, res) => {
 
     const itemRows = items.map(it => {
       const qty = Number(it.quantity || 0);
-      const rate = Number(it.rate || 0);
-      const amount = Number(
-        it.amount != null ? it.amount : qty * rate
-      );
+      const unitAmount = Number(it.amount || 0); // per-unit amount
+      const lineTotal = qty * unitAmount;
 
-      subtotal += amount;
+      subtotal += lineTotal;
       totalQty += qty;
 
       return {
@@ -437,8 +436,9 @@ const updateSalesReturn = async (req, res) => {
         net_weight: it.net_weight || null,
         gross_weight: it.gross_weight || null,
         quantity: qty,
-        rate,
-        amount
+        rate: it.rate || null,
+        amount: unitAmount,
+        line_total: lineTotal      // IMPORTANT: used for subtotal
       };
     });
 
