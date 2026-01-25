@@ -346,7 +346,7 @@ const listEmployees = async (req, res) => {
 // Lightweight search dropdown: by employee_name/employee_no/mobile_number (joins employee_contacts)
 const searchEmployeeDropdown = async (req, res) => {
   try {
-    const { search = "", limit = 20 } = req.query || {};
+    const { search = "", limit = 20,branch_id } = req.query || {};
 
     let sql = `
       SELECT 
@@ -362,6 +362,10 @@ const searchEmployeeDropdown = async (req, res) => {
     if (search && String(search).trim() !== "") {
       sql += ` AND (e.employee_name ILIKE :s OR e.employee_no ILIKE :s OR ec.mobile_number ILIKE :s)`;
       replacements.s = `%${search}%`;
+    }
+    if (branch_id) {
+      sql += ` AND e.branch_id = :branch_id`;
+      replacements.branch_id = branch_id;
     }
     sql += ` ORDER BY e.employee_name ASC LIMIT :lim`;
     replacements.lim = Math.min(parseInt(limit) || 20, 50);
