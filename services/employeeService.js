@@ -451,7 +451,7 @@ const getEmployeeById = async (req, res) => {
       return commonService.notFound(res, enMessage.failure.notFound);
     }
 
-    const [bank_account, kyc_documents, login, experiences] = await Promise.all([
+    const [bank_account, kyc_documents, login, billing_login,experiences] = await Promise.all([
       models.BankAccount.findOne({
         where: { entity_type: "employee", entity_id: id },
       }),
@@ -460,6 +460,9 @@ const getEmployeeById = async (req, res) => {
       }),
       models.User.findOne({
         where: { entity_type: "employee", entity_id: id },
+      }),
+       models.User.findOne({
+        where: { entity_type: "billing", entity_id: id },
       }),
       models.EmployeeExperience.findAll({
         where: { employee_id: id },
@@ -508,6 +511,7 @@ const getEmployeeById = async (req, res) => {
       bank_account,
       kyc_documents,
       login,
+      billing_login,
       experiences,
     });
   } catch (err) {
