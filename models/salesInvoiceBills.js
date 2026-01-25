@@ -45,12 +45,21 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.DECIMAL(6, 3),
         allowNull: true,
       },
+        igst_percent: {
+        type: DataTypes.DECIMAL(6, 3),
+        allowNull: true,
+      },
       cgst_amount: {
         type: DataTypes.DECIMAL(15, 2),
         allowNull: false,
         defaultValue: 0,
       },
       sgst_amount: {
+        type: DataTypes.DECIMAL(15, 2),
+        allowNull: false,
+        defaultValue: 0,
+      },
+       igst_amount: {
         type: DataTypes.DECIMAL(15, 2),
         allowNull: false,
         defaultValue: 0,

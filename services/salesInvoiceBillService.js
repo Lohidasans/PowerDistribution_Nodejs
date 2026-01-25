@@ -77,6 +77,9 @@ const createSalesInvoice = async (req, res) => {
       subtotal += amount;
       totalQty += qty;
 
+      // Handle IGST vs SGST/CGST logic
+      const hasIgst = it.igst_amount && Number(it.igst_amount) > 0;
+
       return {
         product_id: it.product_id,
         product_item_detail_id: it.product_item_detail_id ?? null,
@@ -89,12 +92,20 @@ const createSalesInvoice = async (req, res) => {
         rate: rate,
         discount_amount: itemDiscount,
         amount: amount,
+        cgst_percent: hasIgst ? null : (it.cgst_percent ?? null),
+        sgst_percent: hasIgst ? null : (it.sgst_percent ?? null),
+        cgst_amount: hasIgst ? 0 : (it.cgst_amount ?? 0),
+        sgst_amount: hasIgst ? 0 : (it.sgst_amount ?? 0),
+        igst_percent: hasIgst ? (it.igst_percent ?? null) : null,
+        igst_amount: hasIgst ? (it.igst_amount ?? 0) : 0,
       };
     });
 
-    // Tax & header discount
-    const cgstAmt = Number(header.cgst_amount ?? 0);
-    const sgstAmt = Number(header.sgst_amount ?? 0);
+    // Handle IGST vs SGST/CGST logic for header totals
+    const hasHeaderIgst = header.igst_amount && Number(header.igst_amount) > 0;
+    const cgstAmt = hasHeaderIgst ? 0 : Number(header.cgst_amount ?? 0);
+    const sgstAmt = hasHeaderIgst ? 0 : Number(header.sgst_amount ?? 0);
+    const igstAmt = hasHeaderIgst ? Number(header.igst_amount ?? 0) : 0;
 
     let headerDiscountAmt = 0;
     if (header.discount_amount && header.discount_amount > 0) {
@@ -107,7 +118,7 @@ const createSalesInvoice = async (req, res) => {
     }
 
     const taxableAmount = subtotal - headerDiscountAmt;
-    let total = taxableAmount + cgstAmt + sgstAmt;
+    let total = taxableAmount + cgstAmt + sgstAmt + igstAmt;
 
     // Adjustments
     let totalAdjustment = 0;
@@ -171,10 +182,12 @@ const createSalesInvoice = async (req, res) => {
         customer_id: header.customer_id || null,
         branch_id: header.branch_id || null,
         subtotal_amount: subtotal,
-        cgst_percent: header.cgst_percent || null,
-        sgst_percent: header.sgst_percent || null,
+        cgst_percent: hasHeaderIgst ? null : (header.cgst_percent || null),
+        sgst_percent: hasHeaderIgst ? null : (header.sgst_percent || null),
+        igst_percent: hasHeaderIgst ? (header.igst_percent || null) : null,
         cgst_amount: cgstAmt,
         sgst_amount: sgstAmt,
+        igst_amount: igstAmt,
         discount_type: header.discount_type || null,
         discount_amount: headerDiscountAmt,
         total_amount: total,
@@ -828,6 +841,9 @@ const updateSalesInvoice = async (req, res) => {
       subtotal += amount;
       totalQty += qty;
 
+      // Handle IGST vs SGST/CGST logic
+      const hasIgst = it.igst_amount && Number(it.igst_amount) > 0;
+
       return {
         id: it.id || null,
         product_id: it.product_id,
@@ -841,11 +857,20 @@ const updateSalesInvoice = async (req, res) => {
         rate: rate,
         discount_amount: itemDiscount,
         amount: amount,
+        cgst_percent: hasIgst ? null : (it.cgst_percent ?? null),
+        sgst_percent: hasIgst ? null : (it.sgst_percent ?? null),
+        cgst_amount: hasIgst ? 0 : (it.cgst_amount ?? 0),
+        sgst_amount: hasIgst ? 0 : (it.sgst_amount ?? 0),
+        igst_percent: hasIgst ? (it.igst_percent ?? null) : null,
+        igst_amount: hasIgst ? (it.igst_amount ?? 0) : 0,
       };
     });
 
-    const cgstAmt = Number(header.cgst_amount ?? 0);
-    const sgstAmt = Number(header.sgst_amount ?? 0);
+    // Handle IGST vs SGST/CGST logic for header totals
+    const hasHeaderIgst = header.igst_amount && Number(header.igst_amount) > 0;
+    const cgstAmt = hasHeaderIgst ? 0 : Number(header.cgst_amount ?? 0);
+    const sgstAmt = hasHeaderIgst ? 0 : Number(header.sgst_amount ?? 0);
+    const igstAmt = hasHeaderIgst ? Number(header.igst_amount ?? 0) : 0;
 
     let headerDiscountAmt = 0;
     if (header.discount_amount && header.discount_amount > 0) {
@@ -857,7 +882,7 @@ const updateSalesInvoice = async (req, res) => {
       headerDiscountAmt = Math.min(headerDiscountAmt, subtotal);
     }
 
-    let total = subtotal - headerDiscountAmt + cgstAmt + sgstAmt;
+    let total = subtotal - headerDiscountAmt + cgstAmt + sgstAmt + igstAmt;
 
     // 5. APPLY ADJUSTMENTS (CALC ONLY)
     let totalAdjustment = 0;
@@ -940,10 +965,12 @@ const updateSalesInvoice = async (req, res) => {
         customer_id: header.customer_id,
         branch_id: header.branch_id,
         subtotal_amount: subtotal,
-        cgst_percent: header.cgst_percent,
-        sgst_percent: header.sgst_percent,
+        cgst_percent: hasHeaderIgst ? null : (header.cgst_percent || null),
+        sgst_percent: hasHeaderIgst ? null : (header.sgst_percent || null),
+        igst_percent: hasHeaderIgst ? (header.igst_percent || null) : null,
         cgst_amount: cgstAmt,
         sgst_amount: sgstAmt,
+        igst_amount: igstAmt,
         discount_type: header.discount_type,
         discount_amount: headerDiscountAmt,
         total_amount: total,

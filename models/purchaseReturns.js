@@ -58,6 +58,10 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.DECIMAL(5, 2),
         allowNull: true,
       },
+       igst_percent: {
+        type: DataTypes.DECIMAL(5, 2),
+        allowNull: true,
+      },
       discount_percent: {
         type: DataTypes.DECIMAL(5, 2),
         allowNull: true,

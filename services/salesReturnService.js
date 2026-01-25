@@ -55,6 +55,9 @@ const createSalesReturn = async (req, res) => {
       subtotal += amount;
       totalQty += qty;
 
+      // Handle IGST vs SGST/CGST logic
+      const hasIgst = it.igst_amount && Number(it.igst_amount) > 0;
+
       return {
         product_id: it.product_id,
         product_item_detail_id: it.product_item_detail_id || null,
@@ -66,14 +69,23 @@ const createSalesReturn = async (req, res) => {
         quantity: qty,
         rate,
         amount,
+        cgst_percent: hasIgst ? null : (it.cgst_percent ?? null),
+        sgst_percent: hasIgst ? null : (it.sgst_percent ?? null),
+        cgst_amount: hasIgst ? 0 : (it.cgst_amount ?? 0),
+        sgst_amount: hasIgst ? 0 : (it.sgst_amount ?? 0),
+        igst_percent: hasIgst ? (it.igst_percent ?? null) : null,
+        igst_amount: hasIgst ? (it.igst_amount ?? 0) : 0,
         invoice_date: it.invoice_date || null,
         invoice_no: it.invoice_no || null,
       };
     });
 
-    const cgstAmt = Number(header.cgst_amount || 0);
-    const sgstAmt = Number(header.sgst_amount || 0);
-    const total = subtotal + cgstAmt + sgstAmt;
+    // Handle IGST vs SGST/CGST logic for header totals
+    const hasHeaderIgst = header.igst_amount && Number(header.igst_amount) > 0;
+    const cgstAmt = hasHeaderIgst ? 0 : Number(header.cgst_amount || 0);
+    const sgstAmt = hasHeaderIgst ? 0 : Number(header.sgst_amount || 0);
+    const igstAmt = hasHeaderIgst ? Number(header.igst_amount || 0) : 0;
+    const total = subtotal + cgstAmt + sgstAmt + igstAmt;
 
     // Create sales return header
     const salesReturn = await models.SalesReturn.create(
@@ -85,10 +97,12 @@ const createSalesReturn = async (req, res) => {
         customer_id: header.customer_id || null,
         branch_id: header.branch_id || null,
         subtotal_amount: subtotal,
-        cgst_percent: header.cgst_percent || null,
-        sgst_percent: header.sgst_percent || null,
+        cgst_percent: hasHeaderIgst ? null : (header.cgst_percent || null),
+        sgst_percent: hasHeaderIgst ? null : (header.sgst_percent || null),
+        igst_percent: hasHeaderIgst ? (header.igst_percent || null) : null,
         cgst_amount: cgstAmt,
         sgst_amount: sgstAmt,
+        igst_amount: igstAmt,
         total_amount: total,
         total_quantity: totalQty,
         status: header.status || "Printed",
@@ -427,6 +441,9 @@ const updateSalesReturn = async (req, res) => {
       subtotal += amount;
       totalQty += qty;
 
+      // Handle IGST vs SGST/CGST logic
+      const hasIgst = it.igst_amount && Number(it.igst_amount) > 0;
+
       return {
         id: it.id || null,
         product_id: it.product_id,
@@ -438,21 +455,37 @@ const updateSalesReturn = async (req, res) => {
         gross_weight: it.gross_weight || null,
         quantity: qty,
         rate,
-        amount
+        amount,
+        cgst_percent: hasIgst ? null : (it.cgst_percent ?? null),
+        sgst_percent: hasIgst ? null : (it.sgst_percent ?? null),
+        cgst_amount: hasIgst ? 0 : (it.cgst_amount ?? 0),
+        sgst_amount: hasIgst ? 0 : (it.sgst_amount ?? 0),
+        igst_percent: hasIgst ? (it.igst_percent ?? null) : null,
+        igst_amount: hasIgst ? (it.igst_amount ?? 0) : 0,
       };
     });
 
-    const cgstAmt =
+    // Handle IGST vs SGST/CGST logic for header totals
+    const hasHeaderIgst = header.igst_amount && Number(header.igst_amount) > 0;
+    const cgstAmt = hasHeaderIgst ? 0 : (
       header.cgst_amount !== undefined
         ? Number(header.cgst_amount)
-        : Number(salesReturn.cgst_amount || 0);
+        : Number(salesReturn.cgst_amount || 0)
+    );
 
-    const sgstAmt =
+    const sgstAmt = hasHeaderIgst ? 0 : (
       header.sgst_amount !== undefined
         ? Number(header.sgst_amount)
-        : Number(salesReturn.sgst_amount || 0);
+        : Number(salesReturn.sgst_amount || 0)
+    );
 
-    const total = subtotal + cgstAmt + sgstAmt;
+    const igstAmt = hasHeaderIgst ? (
+      header.igst_amount !== undefined
+        ? Number(header.igst_amount)
+        : Number(salesReturn.igst_amount || 0)
+    ) : 0;
+
+    const total = subtotal + cgstAmt + sgstAmt + igstAmt;
 
     // 4. UPDATE SALES RETURN HEADER
     await salesReturn.update(
@@ -465,10 +498,12 @@ const updateSalesReturn = async (req, res) => {
         customer_id: header.customer_id,
         branch_id: header.branch_id,
         subtotal_amount: subtotal,
-        cgst_percent: header.cgst_percent,
-        sgst_percent: header.sgst_percent,
+        cgst_percent: hasHeaderIgst ? null : (header.cgst_percent || null),
+        sgst_percent: hasHeaderIgst ? null : (header.sgst_percent || null),
+        igst_percent: hasHeaderIgst ? (header.igst_percent || null) : null,
         cgst_amount: cgstAmt,
         sgst_amount: sgstAmt,
+        igst_amount: igstAmt,
         total_amount: total,
         total_quantity: totalQty,
         status: header.status
@@ -509,7 +544,13 @@ const updateSalesReturn = async (req, res) => {
             gross_weight: row.gross_weight,
             quantity: row.quantity,
             rate: row.rate,
-            amount: row.amount
+            amount: row.amount,
+            cgst_percent: row.cgst_percent,
+            sgst_percent: row.sgst_percent,
+            igst_percent: row.igst_percent,
+            cgst_amount: row.cgst_amount,
+            sgst_amount: row.sgst_amount,
+            igst_amount: row.igst_amount,
           },
           {
             where: { id: row.id },
