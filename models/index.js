@@ -164,6 +164,9 @@ const MaintenanceType = require("./maintenanceTypes")(sequelize, Sequelize.DataT
 // Payroll related models
 const PayrollMaster = require("./payrollMasters")(sequelize, Sequelize.DataTypes);
 
+//Delivery Chellan Model
+const DeliveryChellan = require("./deliveryChellan")(sequelize, Sequelize.DataTypes);
+const DeliveryChellanItem = require("./deliveryChellanItem")(sequelize, Sequelize.DataTypes);
 const models = {
   Permission,
   Role,
@@ -254,7 +257,9 @@ const models = {
   Offer,
   Maintenance,
   MaintenanceType,
-  PayrollMaster
+  PayrollMaster,
+  DeliveryChellan,
+  DeliveryChellanItem
 };
 
 Object.values(models).forEach((model) => {

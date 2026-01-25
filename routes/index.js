@@ -59,7 +59,7 @@ const StockManagementRoute = require("./stockManagementRoute");
 const SalesManagementRoute = require("./salesManagementRoute");
 const PayrollMasterRoute = require("./payrollMasterRoute");
 const RevenueRoute = require("./revenueRoute");
-
+const DeliveryChellanRouter = require("./deliveryChellanRouter");
 module.exports = (app) => {
   app.use("/api/v1", RoleRouter);
   app.use("/api/v1", RolePermissionRouter);
@@ -123,4 +123,5 @@ module.exports = (app) => {
   app.use("/api/v1", SalesManagementRoute);
   app.use("/api/v1", PayrollMasterRoute);
   app.use("/api/v1", RevenueRoute);
+  app.use("/api/v1", DeliveryChellanRouter);
 };
