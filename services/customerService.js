@@ -27,7 +27,8 @@ const createCustomer = async (req, res) => {
       district_id: +req.body.district_id || null,
       pin_code: req.body.pin_code || null,
       pan_no: req.body.pan_no || null,
-      is_online: !!req.body.is_online 
+      is_online: !!req.body.is_online,
+      branch_id: +req.body.branch_id || null,
     };
 
     // Check duplicate mobile number (ACTIVE customers only)
@@ -252,7 +253,7 @@ const listCustomerMobilesDropdown = async (req, res) => {
 // Dropdown: customer name + mobile with light search - billing section
 const listCustomerNameMobileDropdown = async (req, res) => {
   try {
-    const { search = "" } = req.query;
+    const { search = "",branch_id } = req.query;
 
     const searchTerm = String(search).trim();
 
@@ -268,6 +269,11 @@ const listCustomerNameMobileDropdown = async (req, res) => {
         )
       `;
       replacements.search = `%${searchTerm}%`;
+    }
+
+    if (branch_id) {
+      whereClause += " AND c.branch_id = :branch_id";
+      replacements.branch_id = branch_id;
     }
 
     const query = `

@@ -2,21 +2,21 @@
   "development": {
     "username": "etsuser",
     "password": "Ets@1234",
-    "database": "retailerpnew",
+    "database": "retailERPDemo2026",
     "host": "46.202.160.46",
     "dialect": "postgres"
   },
   "test": {
     "username": "etsuser",
     "password": "Ets@1234",
-    "database": "retailerpnew",
+    "database": "retailERPDemo2026",
     "host": "46.202.160.46",
     "dialect": "postgres"
   },
   "production": {
     "username": "etsuser",
     "password": "Ets@1234",
-    "database": "retailerpnew",
+    "database": "retailERPDemo2026",
     "host": "46.202.160.46",
     "dialect": "postgres"
   }
