@@ -51,7 +51,7 @@ const createSalesInvoice = async (req, res) => {
     // Validate products and stock
     await validateProducts(items, t);
     await validateProductItemDetails(items, t);
-    
+
     const invalidItems = items.filter(
       i => !i.product_item_detail_id
     );
@@ -77,9 +77,6 @@ const createSalesInvoice = async (req, res) => {
       subtotal += amount;
       totalQty += qty;
 
-      // Handle IGST vs SGST/CGST logic
-      const hasIgst = it.igst_amount && Number(it.igst_amount) > 0;
-
       return {
         product_id: it.product_id,
         product_item_detail_id: it.product_item_detail_id ?? null,
@@ -92,12 +89,6 @@ const createSalesInvoice = async (req, res) => {
         rate: rate,
         discount_amount: itemDiscount,
         amount: amount,
-        cgst_percent: hasIgst ? null : (it.cgst_percent ?? null),
-        sgst_percent: hasIgst ? null : (it.sgst_percent ?? null),
-        cgst_amount: hasIgst ? 0 : (it.cgst_amount ?? 0),
-        sgst_amount: hasIgst ? 0 : (it.sgst_amount ?? 0),
-        igst_percent: hasIgst ? (it.igst_percent ?? null) : null,
-        igst_amount: hasIgst ? (it.igst_amount ?? 0) : 0,
       };
     });
 
@@ -107,18 +98,8 @@ const createSalesInvoice = async (req, res) => {
     const sgstAmt = hasHeaderIgst ? 0 : Number(header.sgst_amount ?? 0);
     const igstAmt = hasHeaderIgst ? Number(header.igst_amount ?? 0) : 0;
 
-    let headerDiscountAmt = 0;
-    if (header.discount_amount && header.discount_amount > 0) {
-      if (header.discount_type === "Percentage") {
-        headerDiscountAmt = (subtotal * Number(header.discount_amount)) / 100;
-      } else {
-        headerDiscountAmt = Number(header.discount_amount);
-      }
-      headerDiscountAmt = Math.min(headerDiscountAmt, subtotal);
-    }
-
-    const taxableAmount = subtotal - headerDiscountAmt;
-    let total = taxableAmount + cgstAmt + sgstAmt + igstAmt;
+    // Calculate total before discount and adjustments
+    let total = subtotal + cgstAmt + sgstAmt + igstAmt;
 
     // Adjustments
     let totalAdjustment = 0;
@@ -135,7 +116,20 @@ const createSalesInvoice = async (req, res) => {
       total -= totalAdjustment;
       if (total < 0) total = 0;
     }
-    // Round off total_amount to nearest integer when adjustments exist
+
+    // Now apply discount to the adjusted total
+    let headerDiscountAmt = 0;
+    if (header.discount_amount && header.discount_amount > 0) {
+      if (header.discount_type === "Percentage") {
+        headerDiscountAmt = (total * Number(header.discount_amount)) / 100;
+      } else {
+        headerDiscountAmt = Number(header.discount_amount);
+      }
+      headerDiscountAmt = Math.min(headerDiscountAmt, total);
+      total -= headerDiscountAmt;
+    }
+
+    // Round off final total
     total = Math.round(total);
 
     // PAYMENT PROCESSING
@@ -841,9 +835,6 @@ const updateSalesInvoice = async (req, res) => {
       subtotal += amount;
       totalQty += qty;
 
-      // Handle IGST vs SGST/CGST logic
-      const hasIgst = it.igst_amount && Number(it.igst_amount) > 0;
-
       return {
         id: it.id || null,
         product_id: it.product_id,
@@ -857,12 +848,6 @@ const updateSalesInvoice = async (req, res) => {
         rate: rate,
         discount_amount: itemDiscount,
         amount: amount,
-        cgst_percent: hasIgst ? null : (it.cgst_percent ?? null),
-        sgst_percent: hasIgst ? null : (it.sgst_percent ?? null),
-        cgst_amount: hasIgst ? 0 : (it.cgst_amount ?? 0),
-        sgst_amount: hasIgst ? 0 : (it.sgst_amount ?? 0),
-        igst_percent: hasIgst ? (it.igst_percent ?? null) : null,
-        igst_amount: hasIgst ? (it.igst_amount ?? 0) : 0,
       };
     });
 
@@ -872,17 +857,7 @@ const updateSalesInvoice = async (req, res) => {
     const sgstAmt = hasHeaderIgst ? 0 : Number(header.sgst_amount ?? 0);
     const igstAmt = hasHeaderIgst ? Number(header.igst_amount ?? 0) : 0;
 
-    let headerDiscountAmt = 0;
-    if (header.discount_amount && header.discount_amount > 0) {
-      if (header.discount_type === "Percentage") {
-        headerDiscountAmt = (subtotal * Number(header.discount_amount)) / 100;
-      } else {
-        headerDiscountAmt = Number(header.discount_amount);
-      }
-      headerDiscountAmt = Math.min(headerDiscountAmt, subtotal);
-    }
-
-    let total = subtotal - headerDiscountAmt + cgstAmt + sgstAmt + igstAmt;
+    let total = subtotal + cgstAmt + sgstAmt + igstAmt;
 
     // 5. APPLY ADJUSTMENTS (CALC ONLY)
     let totalAdjustment = 0;
@@ -903,6 +878,17 @@ const updateSalesInvoice = async (req, res) => {
 
       total -= totalAdjustment;
       if (total < 0) total = 0; 
+    }
+
+    let headerDiscountAmt = 0;
+    if (header.discount_amount && header.discount_amount > 0) {
+      if (header.discount_type === "Percentage") {
+        headerDiscountAmt = (total * Number(header.discount_amount)) / 100;
+      } else {
+        headerDiscountAmt = Number(header.discount_amount);
+      }
+      headerDiscountAmt = Math.min(headerDiscountAmt, total);
+      total -= headerDiscountAmt;
     }
     // Round off total_amount to nearest integer when adjustments exist
     total = Math.round(total);
