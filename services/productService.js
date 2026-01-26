@@ -1887,6 +1887,12 @@ const getDeletedProducts = async (req, res) => {
 
 const getProductStockCounts = async (req, res) => {
   try {
+    const { branch_id } = req.query;
+    
+    // Build branch filter condition
+    const branchCondition = branch_id ? 'AND p.branch_id = :branch_id' : '';
+    const replacements = branch_id ? { branch_id: parseInt(branch_id) } : {};
+
     // Get count of products with at least one item in stock (quantity > 0) and total quantity
     const [stockInHandResult] = await sequelize.query(
       `
@@ -1898,8 +1904,12 @@ const getProductStockCounts = async (req, res) => {
       WHERE p.deleted_at IS NULL
       AND pid.quantity > 0
       AND pid.deleted_at IS NULL
+      ${branchCondition}
     `,
-      { type: sequelize.QueryTypes.SELECT }
+      { 
+        type: sequelize.QueryTypes.SELECT,
+        replacements
+      }
     );
 
     // Get count of soft-deleted products
@@ -1908,8 +1918,12 @@ const getProductStockCounts = async (req, res) => {
       SELECT COUNT(*) as count
       FROM "products" p
       WHERE p.deleted_at IS NOT NULL
+      ${branchCondition}
     `,
-      { type: sequelize.QueryTypes.SELECT }
+      { 
+        type: sequelize.QueryTypes.SELECT,
+        replacements
+      }
     );
 
     // Get count of products where all items are out of stock (quantity = 0)
@@ -1918,6 +1932,7 @@ const getProductStockCounts = async (req, res) => {
       SELECT COUNT(DISTINCT p.id) as count
       FROM "products" p
       WHERE p.deleted_at IS NULL
+      ${branchCondition}
       AND NOT EXISTS (
         SELECT 1
         FROM "productItemDetails" pid
@@ -1933,7 +1948,10 @@ const getProductStockCounts = async (req, res) => {
         AND pid.deleted_at IS NULL
       )
     `,
-      { type: sequelize.QueryTypes.SELECT }
+      { 
+        type: sequelize.QueryTypes.SELECT,
+        replacements
+      }
     );
 
     return commonService.okResponse(res, {
