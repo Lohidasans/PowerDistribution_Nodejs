@@ -122,29 +122,31 @@ const createSalesReturn = async (req, res) => {
     });
 
     // === UPDATE ORIGINAL INVOICE ITEMS: is_returned = true (per item) ===
-    for (const item of createdItems) {
-      const originalInvoiceNo = items.find(
-        orig => orig.product_item_detail_id === item.product_item_detail_id
-      )?.invoice_no;
+    if (header.status !== "On Hold") {
+      for (const item of createdItems) {
+        const originalInvoiceNo = items.find(
+          orig => orig.product_item_detail_id === item.product_item_detail_id
+        )?.invoice_no;
 
-      if (originalInvoiceNo && item.product_item_detail_id) {
-        // Find the original invoice by invoice_no
-        const originalInvoice = await models.SalesInvoiceBill.findOne({
-          where: { invoice_no: originalInvoiceNo },
-          transaction: t,
-        });
+        if (originalInvoiceNo && item.product_item_detail_id) {
+          // Find the original invoice by invoice_no
+          const originalInvoice = await models.SalesInvoiceBill.findOne({
+            where: { invoice_no: originalInvoiceNo },
+            transaction: t,
+          });
 
-        if (originalInvoice) {
-          await models.SalesInvoiceBillItem.update(
-            { is_returned: true },
-            {
-              where: {
-                invoice_bill_id: originalInvoice.id,
-                product_item_detail_id: item.product_item_detail_id,
-              },
-              transaction: t,
-            }
-          );
+          if (originalInvoice) {
+            await models.SalesInvoiceBillItem.update(
+              { is_returned: true },
+              {
+                where: {
+                  invoice_bill_id: originalInvoice.id,
+                  product_item_detail_id: item.product_item_detail_id,
+                },
+                transaction: t,
+              }
+            );
+          }
         }
       }
     }
@@ -567,6 +569,36 @@ const updateSalesReturn = async (req, res) => {
         );
       }
     }
+
+    // === UPDATE ORIGINAL INVOICE ITEMS IF STATUS CHANGED TO PRINTED ===
+    if (header.status === "Printed") {
+      for (const row of itemRows) {
+        const originalInvoiceNo = items.find(
+          orig => orig.product_item_detail_id === row.product_item_detail_id
+        )?.invoice_no;
+
+        if (originalInvoiceNo && row.product_item_detail_id) {
+          const originalInvoice = await models.SalesInvoiceBill.findOne({
+            where: { invoice_no: originalInvoiceNo },
+            transaction: t,
+          });
+
+          if (originalInvoice) {
+            await models.SalesInvoiceBillItem.update(
+              { is_returned: true },
+              {
+                where: {
+                  invoice_bill_id: originalInvoice.id,
+                  product_item_detail_id: row.product_item_detail_id,
+                },
+                transaction: t,
+              }
+            );
+          }
+        }
+      }
+    }
+
 
     await t.commit();
     return commonService.okResponse(res, {
