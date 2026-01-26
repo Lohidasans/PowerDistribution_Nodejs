@@ -20,7 +20,11 @@ module.exports = (sequelize, DataTypes) => {
                 type: DataTypes.INTEGER,
                 allowNull: false,
             },
-            payment_mode: {
+            branch_id: { // branches table
+                type: DataTypes.INTEGER,
+                allowNull: true,   
+            },
+            payment_mode: { // payment_modes table
                 type: DataTypes.INTEGER,
                 allowNull: false,
             },

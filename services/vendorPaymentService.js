@@ -6,7 +6,7 @@ const { Op } = require('sequelize');
 const createVendorPayment = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const { payment_no, payment_date, bill_type_id, payment_mode, account_name_id, amount, amount_in_words, invoice_id, purchase_id, ref_id, remarks } = req.body;
+    const { payment_no, payment_date, bill_type_id, branch_id, payment_mode, account_name_id, amount, amount_in_words, invoice_id, purchase_id, ref_id, remarks } = req.body;
 
     // Check if a non-deleted payment no already uses this code
     if (payment_no) {
@@ -27,6 +27,7 @@ const createVendorPayment = async (req, res) => {
     const payment = await models.VendorPayment.create({
       payment_no,
       payment_date,
+      branch_id,
       bill_type_id,
       payment_mode,
       account_name_id,
@@ -154,15 +155,43 @@ const getVendorPayments = async (req, res) => {
 
 const getVendorPaymentById = async (req, res) => {
   try {
-    const payment = await models.VendorPayment.findByPk(req.params.id);
+    const sql = `
+      SELECT
+          vp.*,
+          bt.bill_type,
+          pm.payment_mode,
+          v.vendor_name AS account_name,
+          b.branch_name,
+          b.address AS branch_address,
+          b.gst_no AS branch_gst_no,
+          b.mobile AS branch_mobile,
+          b.pin_code,
+          d.district_name,
+          s.state_name
+      FROM vendor_payments vp
+      LEFT JOIN bill_types bt ON bt.id = vp.bill_type_id AND bt.deleted_at IS NULL
+      LEFT JOIN payment_modes pm ON pm.id = vp.payment_mode AND pm.deleted_at IS NULL
+      LEFT JOIN vendors v ON v.id = vp.account_name_id AND v.deleted_at IS NULL
+      LEFT JOIN branches b ON b.id = vp.branch_id AND b.deleted_at IS NULL
+      LEFT JOIN districts d ON d.id = b.district_id AND d.deleted_at IS NULL
+      LEFT JOIN states s ON s.id = b.state_id AND s.deleted_at IS NULL
+      WHERE vp.id = :paymentId AND vp.deleted_at IS NULL`;
+
+    const [payment] = await sequelize.query(sql, {
+      replacements: { paymentId: req.params.id },
+      type: sequelize.QueryTypes.SELECT,
+    });
+
     if (!payment) {
       return commonService.notFound(res, 'Vendor payment not found');
     }
+
     return commonService.okResponse(res, { data: payment });
   } catch (error) {
     return commonService.handleError(res, error, 'Error fetching vendor payment');
   }
 };
+
 
 const updateVendorPayment = async (req, res) => {
   const t = await sequelize.transaction();
