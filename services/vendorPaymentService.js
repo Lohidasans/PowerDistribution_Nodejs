@@ -214,11 +214,52 @@ const generatePaymentNumber = async (req, res) => {
   }
 }
 
+
+const getBillTypeDropdown = async (_req, res) => {
+  try {
+    const rows = await models.BillType.findAll({
+      order: [["id", "ASC"]],
+    });
+    const items = rows.map((r) => ({ id: r.id, name: r.bill_type }));
+    return commonService.okResponse(res, { items });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
+const getPaymentModeDropdown = async (_req, res) => {
+  try {
+    const rows = await models.PaymentMode.findAll({
+      order: [["id", "ASC"]],
+    });
+    const items = rows.map((r) => ({ id: r.id, name: r.payment_mode }));
+    return commonService.okResponse(res, { items });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
+const getInvoiceDropdown = async (req, res) => {
+  try {
+    const rows = await models.SalesInvoiceBill.findAll({
+      order: [["id", "ASC"]],
+    }); 
+    const items = rows.map((r) => ({ id: r.id, number: r.invoice_no }));
+    return commonService.okResponse(res, { items });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
+
 module.exports = {
   createVendorPayment,
   getVendorPayments,
   getVendorPaymentById,
   updateVendorPayment,
   deleteVendorPayment,
-  generatePaymentNumber
+  generatePaymentNumber,
+  getBillTypeDropdown,
+  getPaymentModeDropdown,
+  getInvoiceDropdown
 };
