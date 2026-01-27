@@ -839,7 +839,6 @@ const searchProductBySku = async (req, res) => {
       items = await models.ProductItemDetail.findAll({
         where: {
           product_id: { [Op.in]: productIds },
-          ...(sku ? { sku_id: sku.trim() } : {}),
           quantity: { [Op.gt]: 0 },
           is_visible: true,
         },
