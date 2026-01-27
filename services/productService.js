@@ -1005,16 +1005,17 @@ const getAllProductDetails = async (req, res) => {
 
 const searchProductBySkuNew = async (req, res) => {
   try {
-    const { sku } = req.query;
+    const { sku, branch_id } = req.query;
 
+    if (!branch_id) {
+      return commonService.badRequest(res, "branch_id is required");
+    }
+    
     // Helper: convert product + item → flat response object
     const formatItem = async (product, item) => {
-    
-      // Add await here
       const priceDetails = await calculateSellingPrice(product, item, models);
-
       return {
-        sku_id: item.sku_id || product.sku_id, // Use item.sku_id if available
+        sku_id: item.sku_id || product.sku_id,
         product_name: product.product_name,
         product_variations: product.product_variations,
         purity: product.purity,
@@ -1031,10 +1032,13 @@ const searchProductBySkuNew = async (req, res) => {
       };
     };
 
-    // CASE 1 → No SKU supplied
+    // CASE 1 → No SKU
     if (!sku || sku.trim() === "") {
       const [allProducts, allItems] = await Promise.all([
-        models.Product.findAll({ raw: true }),
+        models.Product.findAll({
+          where: { branch_id },
+          raw: true,
+        }),
         models.ProductItemDetail.findAll({
           where: {
             quantity: { [Op.gt]: 0 },
@@ -1044,10 +1048,9 @@ const searchProductBySkuNew = async (req, res) => {
         }),
       ]);
 
-      // Process items in parallel
       const output = await Promise.all(
         allItems.map(async (item) => {
-          const product = allProducts.find((p) => p.id === item.product_id);
+          const product = allProducts.find(p => p.id === item.product_id);
           return product ? formatItem(product, item) : null;
         })
       );
@@ -1058,7 +1061,7 @@ const searchProductBySkuNew = async (req, res) => {
 
     // CASE 2 → SKU provided
     const [directProduct, itemDetail] = await Promise.all([
-      models.Product.findOne({ where: { sku_id: sku }, raw: true, }),
+      models.Product.findOne({ where: { sku_id: sku, branch_id }, raw: true,}),
       models.ProductItemDetail.findOne({
         where: {
           sku_id: sku,
@@ -1087,10 +1090,10 @@ const searchProductBySkuNew = async (req, res) => {
     else if (itemDetail) {
       // If item SKU matched, fetch its parent product
       product = await models.Product.findOne({
-        where: { id: itemDetail.product_id },
+        where: { id: itemDetail.product_id, branch_id },
         raw: true,
       });
-      items = [itemDetail];
+      items = product ? [itemDetail] : [];
     }
 
     // Nothing found or all items out of stock
@@ -1101,9 +1104,8 @@ const searchProductBySkuNew = async (req, res) => {
     // Convert to flat response with price calculations
     const flatResponse = await Promise.all(
       items
-        .filter((item) => item.quantity > 0)
-        .map((item) => formatItem(product, item))
-
+        .filter(item => item.quantity > 0)
+        .map(item => formatItem(product, item))
     );
 
     return commonService.okResponse(res, flatResponse);
