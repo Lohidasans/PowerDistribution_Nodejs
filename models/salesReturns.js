@@ -60,7 +60,7 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
         defaultValue: 0,
       },
-        igst_amount: {
+      igst_amount: {
         type: DataTypes.DECIMAL(15, 2),
         allowNull: false,
         defaultValue: 0,
