@@ -299,13 +299,20 @@ const createSalesInvoice = async (req, res) => {
       adjustment: savedAdjustments,
     });
   } catch (err) {
-    if (!t.finished) {
-      await t.rollback();
-    }
-    if (err.message.includes('Invalid product_id') ||
-      err.message.includes('Invalid product_item_detail_id')) {
+    if (!t.finished) await t.rollback();
+    if (
+      err.message === "Invalid Estimate Reference" ||
+      err.message === "Estimate has already been converted to an invoice"
+    ) {
       return commonService.badRequest(res, err.message);
     }
+    if (
+      err.message.includes('Invalid product_id') ||
+      err.message.includes('Invalid product_item_detail_id')
+    ) {
+      return commonService.badRequest(res, err.message);
+    }
+
     return commonService.handleError(res, err);
   }
 };
