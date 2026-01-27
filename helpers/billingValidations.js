@@ -65,6 +65,49 @@ const validateProducts = async (items, transaction) => {
     }
 };
 
+const validateEstimateForInvoice = async (
+    estimateBillId,
+    { models, transaction }
+) => {
+    if (!estimateBillId) {
+        return null; // No estimate reference, valid case
+    }
+
+    const estimateBill = await models.EstimateBill.findOne({
+        where: {
+            id: estimateBillId,
+            deleted_at: null,
+        },
+        transaction,
+    });
+
+    if (!estimateBill) {
+        throw new Error("Invalid Estimate Reference");
+    }
+
+    if (estimateBill.is_converted) {
+        throw new Error("Estimate has already been converted to an invoice");
+    }
+
+    return estimateBill;
+};
+
+const markEstimateAsConverted = async (
+    estimateBill,
+    { transaction }
+) => {
+    if (!estimateBill) return;
+
+    await estimateBill.update(
+        {
+            is_converted: true,
+            converted_at: new Date(),
+            status: "Converted",
+        },
+        { transaction }
+    );
+};
+
 const validateStock = async (items, transaction) => {
     for (const item of items) {
         if (item.product_item_detail_id && item.quantity > 0) {
@@ -92,7 +135,7 @@ const validateCashPayment = (payments) => {
         .filter(p => p.payment_mode?.toLowerCase() === 'cash')
         .reduce((sum, p) => sum + (Number(p.amount_received) || 0), 0);
 
-    if (totalCash >= 200000) {
+    if (totalCash > 200000) {
         throw new Error('PAN card is required for cash payments of ₹2,00,000 or more');
     }
 };
@@ -143,5 +186,7 @@ module.exports = {
     validateProducts,
     validateStock,
     validateCashPayment,
+    validateEstimateForInvoice,
+    markEstimateAsConverted,
     validateAdjustments
 };

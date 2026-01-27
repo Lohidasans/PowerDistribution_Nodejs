@@ -71,9 +71,18 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: true,
       },
       status: {
-        type: DataTypes.ENUM("Draft", "Printed", "Cancelled"),
+        type: DataTypes.ENUM("Draft", "Printed", "Cancelled", "Converted"),
         allowNull: false,
         defaultValue: "Printed",
+      },
+      is_converted: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+      },
+      converted_at: {
+        type: DataTypes.DATE,
+        allowNull: true,
       },
     },
     {

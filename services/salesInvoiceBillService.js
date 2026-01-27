@@ -2,7 +2,7 @@ const { models, sequelize } = require("../models");
 const commonService = require("./commonService");
 const enMessage = require("../constants/en.json");
 const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
-const { validateProductItemDetails, validateProducts} = require('../helpers/billingValidations');
+const { validateProductItemDetails, validateProducts, validateEstimateForInvoice, markEstimateAsConverted } = require('../helpers/billingValidations');
 const { Op } = require("sequelize");
 
 // Generate invoice number (series)
@@ -46,6 +46,13 @@ const createSalesInvoice = async (req, res) => {
         await t.rollback();
         return commonService.badRequest(res, { message: "Invoice no already exists" });
       }
+    }
+
+    
+    // If estimate_bill_id is provided, validate it
+    let estimateBill = null;
+    if (header.estimate_bill_id) {
+      estimateBill = await validateEstimateForInvoice(header.estimate_bill_id, { models, transaction: t });
     }
 
     // Validate products and stock
@@ -175,6 +182,7 @@ const createSalesInvoice = async (req, res) => {
         employee_id: header.employee_id,
         customer_id: header.customer_id || null,
         branch_id: header.branch_id || null,
+        estimate_bill_id: header.estimate_bill_id || null,
         subtotal_amount: subtotal,
         cgst_percent: hasHeaderIgst ? null : (header.cgst_percent || null),
         sgst_percent: hasHeaderIgst ? null : (header.sgst_percent || null),
@@ -275,6 +283,10 @@ const createSalesInvoice = async (req, res) => {
           await productItemDetail.update({ quantity: newQuantity }, { transaction: t });
         }
       }
+    }
+
+    if (estimateBill) {
+      await markEstimateAsConverted(estimateBill, { transaction: t });
     }
 
     await t.commit();
