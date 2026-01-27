@@ -151,6 +151,7 @@ const money = (v) => Number(Number(v || 0).toFixed(2));
 
 const getBranchRevenueDetails = async (req, res) => {
     try {
+        const money = (v) => Number(Number(v || 0).toFixed(2));
         const {
             branch_id,
             from_date,
@@ -158,7 +159,8 @@ const getBranchRevenueDetails = async (req, res) => {
             date_filter,
             search,
             page,
-            limit
+            limit,
+            payment_mode
         } = req.query;
 
         if (!branch_id) {
@@ -186,6 +188,13 @@ const getBranchRevenueDetails = async (req, res) => {
             replacements.search = `%${search}%`;
         }
 
+        let paymentModeCondition = "";
+        if (payment_mode) {
+            paymentModeCondition = `AND p.payment_mode = :payment_mode`;
+            replacements.payment_mode = payment_mode;
+        }
+
+
         const hasPagination = page && limit;
         const limitNum = hasPagination ? Number(limit) : null;
         const offset = hasPagination ? (Number(page) - 1) * limitNum : null;
@@ -193,6 +202,7 @@ const getBranchRevenueDetails = async (req, res) => {
         let query = `
             SELECT
                 COALESCE(sib.invoice_no, jr.repair_code) AS description,
+                COALESCE(SUM(CASE WHEN sib.id IS NOT NULL THEN sib.refund_amount ELSE 0 END), 0) AS refund,
 
                 ROUND(SUM(CASE WHEN p.payment_mode = 'Cash' THEN p.amount_received ELSE 0 END), 2) AS cash,
                 ROUND(SUM(CASE WHEN p.payment_mode = 'UPI' THEN p.amount_received ELSE 0 END), 2) AS upi,
@@ -218,6 +228,7 @@ const getBranchRevenueDetails = async (req, res) => {
                 AND COALESCE(sib.branch_id, jr.branch_id) = :branch_id
                 ${paymentDateCondition}
                 ${searchCondition}
+                 ${paymentModeCondition}  
 
             GROUP BY description, p.id
             ORDER BY total_amount DESC
