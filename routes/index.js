@@ -60,6 +60,7 @@ const SalesManagementRoute = require("./salesManagementRoute");
 const PayrollMasterRoute = require("./payrollMasterRoute");
 const RevenueRoute = require("./revenueRoute");
 const DeliveryChellanRouter = require("./deliveryChellanRouter");
+const VoucherReceiptRoute = require("./voucherReceiptRoute");
 module.exports = (app) => {
   app.use("/api/v1", RoleRouter);
   app.use("/api/v1", RolePermissionRouter);
@@ -74,7 +75,6 @@ module.exports = (app) => {
   app.use("/api/v1", VendorSpocDetailsRoute);
   app.use("/api/v1", VendorRoutes);
   app.use("/api/v1", ProductRouter);
-
   app.use("/api/v1", GrnRouter);
   app.use("/api/v1", ProductGrnInfoRoute);
   app.use("/api/v1", VariantRouter);
@@ -124,4 +124,5 @@ module.exports = (app) => {
   app.use("/api/v1", PayrollMasterRoute);
   app.use("/api/v1", RevenueRoute);
   app.use("/api/v1", DeliveryChellanRouter);
+  app.use("/api/v1", VoucherReceiptRoute);
 };

@@ -145,6 +145,7 @@ const StockTransferStatusHistory = require("./stockTransferStatusHistories")(seq
 const BillType = require("./billTypes")(sequelize, Sequelize.DataTypes);
 const PaymentMode = require("./paymentModes")(sequelize, Sequelize.DataTypes);
 const VendorPayment = require("./vendorPayments")(sequelize, Sequelize.DataTypes);
+const VoucherReceipt = require("./voucherReceipts")(sequelize, Sequelize.DataTypes);
 
 // Order Related models
 const Order = require("./orders")(sequelize, Sequelize.DataTypes);
@@ -259,7 +260,8 @@ const models = {
   MaintenanceType,
   PayrollMaster,
   DeliveryChellan,
-  DeliveryChellanItem
+  DeliveryChellanItem,
+  VoucherReceipt
 };
 
 Object.values(models).forEach((model) => {
