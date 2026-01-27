@@ -12,7 +12,8 @@ const getBranchwiseRevenue = async (req, res) => {
             date_filter,
             page,
             limit,
-            search
+            search, 
+            payment_mode
         } = req.query;
 
         const replacements = {};
@@ -36,6 +37,13 @@ const getBranchwiseRevenue = async (req, res) => {
             searchCondition = `AND b.branch_name ILIKE :search`;
             replacements.search = `%${search}%`;
             dateReplacements.search = `%${search}%`;
+        }
+
+        let paymentModeCondition = "";
+        if (payment_mode) {
+            paymentModeCondition = `AND p.payment_mode = :payment_mode`;
+            replacements.payment_mode = payment_mode;
+            dateReplacements.payment_mode = payment_mode;
         }
 
         const hasPagination = page && limit;
@@ -62,7 +70,7 @@ const getBranchwiseRevenue = async (req, res) => {
             ${paymentDateCondition}
             ${branchCondition}
             ${searchCondition}
-
+            ${paymentModeCondition}
         GROUP BY b.id, b.branch_name
         ORDER BY total_amount DESC
         `;
