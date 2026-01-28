@@ -12,19 +12,21 @@ const getBranchwiseRevenue = async (req, res) => {
             date_filter,
             page,
             limit,
-            search, 
+            search,
             payment_mode
         } = req.query;
 
         const replacements = {};
         const dateReplacements = {};
 
+        // DATE FILTER
         const paymentDateCondition = dateFilter(
             { from_date, to_date, date_filter },
             "p.payment_date::date",
             dateReplacements
         );
 
+        // BRANCH FILTER
         let branchCondition = "";
         if (branch_id) {
             branchCondition = `AND b.id = :branch_id`;
@@ -32,6 +34,7 @@ const getBranchwiseRevenue = async (req, res) => {
             dateReplacements.branch_id = branch_id;
         }
 
+        // SEARCH FILTER
         let searchCondition = "";
         if (search) {
             searchCondition = `AND b.branch_name ILIKE :search`;
@@ -39,9 +42,10 @@ const getBranchwiseRevenue = async (req, res) => {
             dateReplacements.search = `%${search}%`;
         }
 
-        let paymentModeCondition = "";
+        // PAYMENT MODE FILTER — ONLY FOR TABLE ROWS
+        let paymentModeConditionForRows = "";
         if (payment_mode) {
-            paymentModeCondition = `AND p.payment_mode = :payment_mode`;
+            paymentModeConditionForRows = `AND p.payment_mode = :payment_mode`;
             replacements.payment_mode = payment_mode;
             dateReplacements.payment_mode = payment_mode;
         }
@@ -50,57 +54,79 @@ const getBranchwiseRevenue = async (req, res) => {
         const limitNum = hasPagination ? Number(limit) : null;
         const offset = hasPagination ? (Number(page) - 1) * limitNum : null;
 
-        let query = `
-        SELECT
-            b.id AS branch_id,
-            b.branch_name,
+        // ===============================
+        // 1️⃣ TABLE ROWS QUERY (WITH payment_mode)
+        // ===============================
+        let rowsQuery = `
+      SELECT
+        b.id AS branch_id,
+        b.branch_name,
 
-            COALESCE(SUM(CASE WHEN p.payment_mode = 'Cash' THEN p.amount_received ELSE 0 END),0) AS cash,
-            COALESCE(SUM(CASE WHEN p.payment_mode = 'UPI' THEN p.amount_received ELSE 0 END),0) AS upi,
-            COALESCE(SUM(CASE WHEN p.payment_mode = 'Card' THEN p.amount_received ELSE 0 END),0) AS card,
+        COALESCE(SUM(CASE WHEN p.payment_mode = 'Cash' THEN p.amount_received ELSE 0 END),0) AS cash,
+        COALESCE(SUM(CASE WHEN p.payment_mode = 'UPI' THEN p.amount_received ELSE 0 END),0) AS upi,
+        COALESCE(SUM(CASE WHEN p.payment_mode = 'Card' THEN p.amount_received ELSE 0 END),0) AS card,
 
-            COALESCE(SUM(p.amount_received),0) AS total_amount
+        COALESCE(SUM(p.amount_received),0) AS total_amount
 
-        FROM payments p
-        LEFT JOIN sales_invoice_bills sib ON sib.id = p.invoice_bill_id AND sib.deleted_at IS NULL
-        LEFT JOIN jewel_repairs jr ON jr.id = p.jewel_repair_id AND jr.deleted_at IS NULL
-        INNER JOIN branches b ON b.id = COALESCE(sib.branch_id, jr.branch_id)
+      FROM payments p
+      LEFT JOIN sales_invoice_bills sib
+        ON sib.id = p.invoice_bill_id
+        AND sib.deleted_at IS NULL
+      LEFT JOIN jewel_repairs jr
+        ON jr.id = p.jewel_repair_id
+        AND jr.deleted_at IS NULL
+      INNER JOIN branches b
+        ON b.id = COALESCE(sib.branch_id, jr.branch_id)
 
-        WHERE p.deleted_at IS NULL AND p.status = 'Completed'
-            ${paymentDateCondition}
-            ${branchCondition}
-            ${searchCondition}
-            ${paymentModeCondition}
-        GROUP BY b.id, b.branch_name
-        ORDER BY total_amount DESC
-        `;
+      WHERE p.deleted_at IS NULL
+        AND p.status = 'Completed'
+        ${paymentDateCondition}
+        ${branchCondition}
+        ${searchCondition}
+        ${paymentModeConditionForRows}
 
-        if (hasPagination) {
-            query += ` LIMIT :limit OFFSET :offset`;
-            dateReplacements.limit = limitNum;
-            dateReplacements.offset = offset;
-        }
+      GROUP BY b.id, b.branch_name
+      ORDER BY total_amount DESC
+    `;
 
-        const rows = await sequelize.query(query, {
+    if (hasPagination) {
+        rowsQuery += ` LIMIT :limit OFFSET :offset`;
+        dateReplacements.limit = limitNum;
+        dateReplacements.offset = offset;
+    }
+
+    const rows = await sequelize.query(rowsQuery, {
+        replacements: { ...dateReplacements, ...replacements },
+        type: sequelize.QueryTypes.SELECT
+    });
+
+    const summaryQuery = `
+      SELECT
+        COALESCE(SUM(p.amount_received),0) AS total_collection,
+        COALESCE(SUM(CASE WHEN p.payment_mode = 'Cash' THEN p.amount_received ELSE 0 END),0) AS cash,
+        COALESCE(SUM(CASE WHEN p.payment_mode = 'UPI' THEN p.amount_received ELSE 0 END),0) AS upi,
+        COALESCE(SUM(CASE WHEN p.payment_mode = 'Card' THEN p.amount_received ELSE 0 END),0) AS card
+      FROM payments p
+      LEFT JOIN sales_invoice_bills sib
+        ON sib.id = p.invoice_bill_id
+        AND sib.deleted_at IS NULL
+      LEFT JOIN jewel_repairs jr
+        ON jr.id = p.jewel_repair_id
+        AND jr.deleted_at IS NULL
+      INNER JOIN branches b
+        ON b.id = COALESCE(sib.branch_id, jr.branch_id)
+      WHERE p.deleted_at IS NULL
+        AND p.status = 'Completed'
+        ${paymentDateCondition}
+        ${branchCondition}
+        ${searchCondition}
+    `;
+
+        const [summaryResult] = await sequelize.query(summaryQuery, {
             replacements: { ...dateReplacements, ...replacements },
             type: sequelize.QueryTypes.SELECT
         });
 
-        const summary = rows.reduce(
-            (acc, r) => {
-                acc.total_collection += Number(r.total_amount);
-                acc.cash += Number(r.cash);
-                acc.upi += Number(r.upi);
-                acc.card += Number(r.card);
-                return acc;
-            },
-            {
-                total_collection: 0,
-                cash: 0,
-                upi: 0,
-                card: 0
-            }
-        );
         let totalItems = rows.length;
 
         if (hasPagination) {
@@ -114,7 +140,7 @@ const getBranchwiseRevenue = async (req, res) => {
         LEFT JOIN jewel_repairs jr
           ON jr.id = p.jewel_repair_id
           AND jr.deleted_at IS NULL
-        LEFT JOIN branches b
+        INNER JOIN branches b
           ON b.id = COALESCE(sib.branch_id, jr.branch_id)
         WHERE p.deleted_at IS NULL
           AND p.status = 'Completed'
@@ -130,14 +156,14 @@ const getBranchwiseRevenue = async (req, res) => {
         }
 
         return commonService.okResponse(res, {
-                summary: {
-                    total_collection: summary.total_collection,
-                    cash: summary.cash,
-                    upi: summary.upi,
-                    card: summary.card
-                },
-                totalItems,
-                rows
+            summary: {
+                total_collection: Number(summaryResult.total_collection),
+                cash: Number(summaryResult.cash),
+                upi: Number(summaryResult.upi),
+                card: Number(summaryResult.card)
+            },
+            totalItems,
+            rows
         });
 
     } catch (error) {
