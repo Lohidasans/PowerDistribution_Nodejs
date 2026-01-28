@@ -228,19 +228,23 @@ const generateOnlineCustomerCode = async () => {
   );
   return code;
 };
-// Dropdown: distinct customer mobile numbers
+// Dropdown: customer names and mobile numbers
 const listCustomerMobilesDropdown = async (req, res) => {
   try {
     const rows = await models.Customer.findAll({
-      attributes: [[sequelize.fn("DISTINCT", sequelize.col("mobile_number")), "mobile_number"]],
-      order: [["mobile_number", "ASC"]],
-      where: { deleted_at: null },
+      attributes: ['id', 'customer_name', 'mobile_number'],
+      order: [["customer_name", "ASC"]],
+      where: { 
+        deleted_at: null,
+        mobile_number: { [Op.ne]: null }
+      },
     });
 
     const mobiles = rows
-      .map((r, index) => ({
-        id: index + 1,
-        mobile: r.mobile_number ?? r.get("mobile_number"),
+      .map((r) => ({
+        id: r.id,
+        customer_name: r.customer_name || '',
+        mobile: r.mobile_number,
       }))
       .filter(item => item.mobile); 
 

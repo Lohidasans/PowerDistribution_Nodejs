@@ -171,9 +171,9 @@ const getVoucherReceipts = async (req, res) => {
         vr.receipt_date,
         vr.amount,
         vr.account_id,
-        a.vendor_name AS account_name
+        a.customer_name AS account_name
       FROM voucher_receipts vr
-      LEFT JOIN vendors a ON a.id = vr.account_id
+      LEFT JOIN customers a ON a.id = vr.account_id
       ${whereSql}
       ORDER BY vr.receipt_date DESC
       ${paginationSql}
