@@ -89,7 +89,7 @@ const getVoucherReceiptById = async (req, res) => {
           vr.*,
           bt.bill_type,
           pm.payment_mode,
-          v.vendor_name AS account_name,
+          v.customer_name AS account_name,
           b.branch_name,
           b.address AS branch_address,
           b.gst_no AS branch_gst_no,
@@ -100,7 +100,7 @@ const getVoucherReceiptById = async (req, res) => {
       FROM voucher_receipts vr
       LEFT JOIN bill_types bt ON bt.id = vr.bill_type_id AND bt.deleted_at IS NULL
       LEFT JOIN payment_modes pm ON pm.id = vr.payment_mode_id AND pm.deleted_at IS NULL
-      LEFT JOIN vendors v ON v.id = vr.account_id AND v.deleted_at IS NULL
+      LEFT JOIN customers v ON v.id = vr.account_id AND v.deleted_at IS NULL
       LEFT JOIN branches b ON b.id = vr.branch_id AND b.deleted_at IS NULL
       LEFT JOIN districts d ON d.id = b.district_id AND d.deleted_at IS NULL
       LEFT JOIN states s ON s.id = b.state_id AND s.deleted_at IS NULL
