@@ -2,7 +2,11 @@ const { models, sequelize } = require("../models");
 const commonService = require("./commonService");
 const enMessage = require("../constants/en.json");
 const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
-const { validateProductItemDetails, validateProducts } = require('../helpers/billingValidations');
+const { validateProductItemDetails,
+  validateProducts,
+  reduceStockForInvoice,
+  validateCashPayment,
+  updateBillAdjustmentFlags } = require('../helpers/billingValidations');
 const { calculateItemsAndSubtotal, calculateInvoiceTotals, calculatePaymentSummary } = require("../helpers/billingCalculations");
 const { Op } = require("sequelize");
 
@@ -87,14 +91,7 @@ const createSalesInvoice = async (req, res) => {
     const { amountDue, refundAmount } = calculatePaymentSummary(paymentRows, total);
 
     // === PAN CARD VALIDATION: Total CASH received ≥ ₹2 Lakh ===
-    const totalCashReceived = paymentRows
-      .filter(p => p.payment_mode?.toLowerCase() === 'cash')
-      .reduce((sum, p) => sum + p.amount_received, 0);
-
-    if (totalCashReceived > 200000) {
-      await t.rollback();
-      return commonService.badRequest(res, enMessage.billing.panCardRequired);
-    }
+    validateCashPayment(paymentRows);
 
     // Create invoice bill
     const bill = await models.SalesInvoiceBill.create(
@@ -153,21 +150,7 @@ const createSalesInvoice = async (req, res) => {
       savedAdjustments = await models.SalesInvoiceAdjustment.bulkCreate(adjustmentRows, { transaction: t });
 
       // Update is_bill_adjusted flags
-      for (const adj of adjustments) {
-        if (adj.reference_id) {
-          if (adj.adjustment_type_id === 1) { // Sales Return
-            await models.SalesReturn.update(
-              { is_bill_adjusted: true },
-              { where: { id: adj.reference_id }, transaction: t }
-            );
-          } else if (adj.adjustment_type_id === 2) { // Old Jewel
-            await models.OldJewel.update(
-              { is_bill_adjusted: true },
-              { where: { id: adj.reference_id }, transaction: t }
-            );
-          }
-        }
-      }
+      await updateBillAdjustmentFlags(adjustments, t);
     }
 
     // Create invoice items
@@ -183,30 +166,8 @@ const createSalesInvoice = async (req, res) => {
     }
 
     // Reduce stock only if status = "Invoice"
-    if (header.status === "Invoice" && savedPayments.length > 0) {
-      for (const item of items) {
-        if (item.product_item_detail_id && item.quantity > 0) {
-          const productItemDetail = await models.ProductItemDetail.findByPk(
-            item.product_item_detail_id,
-            { transaction: t }
-          );
-
-          if (!productItemDetail) {
-            await t.rollback();
-            return commonService.badRequest(res, `Product item detail not found for ID: ${item.product_item_detail_id}`);
-          }
-
-          const newQuantity = productItemDetail.quantity - item.quantity;
-          if (newQuantity < 0) {
-            await t.rollback();
-            return commonService.badRequest(res, `Insufficient stock for product item detail ID: ${item.product_item_detail_id}`);
-          }
-
-          await productItemDetail.update({ quantity: newQuantity }, { transaction: t });
-        }
-      }
-    }
-
+    await reduceStockForInvoice(items, header.status, savedPayments, t);
+    
     await t.commit();
 
     return commonService.createdResponse(res, {

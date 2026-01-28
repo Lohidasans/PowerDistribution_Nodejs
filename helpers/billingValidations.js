@@ -65,25 +65,33 @@ const validateProducts = async (items, transaction) => {
     }
 };
 
-const validateStock = async (items, transaction) => {
+const reduceStockForInvoice = async (items, status, payments, transaction) => {
+    if (status !== "Invoice" || !payments || payments.length === 0) return;
+
     for (const item of items) {
-        if (item.product_item_detail_id && item.quantity > 0) {
-            const productItem = await models.ProductItemDetail.findByPk(
-                item.product_item_detail_id,
-                {
-                    transaction,
-                    attributes: ['id', 'quantity']
-                }
-            );
+        if (!item.product_item_detail_id || item.quantity <= 0) continue;
 
-            if (!productItem) {
-                throw new Error(`Product item detail not found: ${item.product_item_detail_id}`);
-            }
+        const productItemDetail = await models.ProductItemDetail.findByPk(
+            item.product_item_detail_id,
+            { transaction }
+        );
 
-            if (productItem.quantity < item.quantity) {
-                throw new Error(`Insufficient stock for item ${item.product_item_detail_id}. Available: ${productItem.quantity}, Requested: ${item.quantity}`);
-            }
+        if (!productItemDetail) {
+            throw new Error(`Invalid product_item_detail_id: ${item.product_item_detail_id}`);
         }
+
+        const newQuantity = productItemDetail.quantity - item.quantity;
+
+        if (newQuantity < 0) {
+            throw new Error(
+                `Insufficient stock for product_item_detail_id: ${item.product_item_detail_id}`
+            );
+        }
+
+        await productItemDetail.update(
+            { quantity: newQuantity },
+            { transaction }
+        );
     }
 };
 
@@ -97,51 +105,39 @@ const validateCashPayment = (payments) => {
     }
 };
 
-const validateAdjustments = async (adjustments, invoiceTotal, transaction) => {
-    if (!Array.isArray(adjustments) || adjustments.length === 0) {
-        return 0; // No adjustments
-    }
+const updateBillAdjustmentFlags = async (adjustments, transaction) => {
+    if (!Array.isArray(adjustments) || adjustments.length === 0) return;
 
-    const totalAdjustment = adjustments.reduce(
-        (sum, adj) => sum + (Number(adj.adjustment_amount) || 0),
-        0
-    );
-
-    if (totalAdjustment > invoiceTotal) {
-        throw new Error(`Total adjustment amount (${totalAdjustment}) cannot exceed invoice total (${invoiceTotal})`);
-    }
-
-    // Validate adjustment references
     for (const adj of adjustments) {
-        if (adj.reference_id) {
-            let isValid = false;
-            if (adj.adjustment_type_id === 1) { // Sales Return
-                const sr = await models.SalesReturn.findByPk(adj.reference_id, {
-                    transaction,
-                    attributes: ['id', 'is_bill_adjusted']
-                });
-                isValid = !!sr && !sr.is_bill_adjusted;
-            } else if (adj.adjustment_type_id === 2) { // Old Jewel
-                const oj = await models.OldJewel.findByPk(adj.reference_id, {
-                    transaction,
-                    attributes: ['id', 'is_bill_adjusted']
-                });
-                isValid = !!oj && !oj.is_bill_adjusted;
-            }
+        if (!adj.reference_id) continue;
 
-            if (!isValid) {
-                throw new Error(`Invalid or already used reference ID: ${adj.reference_id} for adjustment type ${adj.adjustment_type_id}`);
-            }
+        switch (adj.adjustment_type_id) {
+            case 1: // Sales Return
+                await models.SalesReturn.update(
+                    { is_bill_adjusted: true },
+                    { where: { id: adj.reference_id }, transaction }
+                );
+                break;
+
+            case 2: // Old Jewel
+                await models.OldJewel.update(
+                    { is_bill_adjusted: true },
+                    { where: { id: adj.reference_id }, transaction }
+                );
+                break;
+
+            default:
+                // Future adjustment types can be handled here
+                break;
         }
     }
-
-    return totalAdjustment;
 };
+
 
 module.exports = {
     validateProductItemDetails,
     validateProducts,
-    validateStock,
+    reduceStockForInvoice,
     validateCashPayment,
-    validateAdjustments
+    updateBillAdjustmentFlags
 };
