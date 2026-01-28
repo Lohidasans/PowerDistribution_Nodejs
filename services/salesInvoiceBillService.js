@@ -85,10 +85,10 @@ const createSalesInvoice = async (req, res) => {
         net_weight: it.net_weight,
         gross_weight: it.gross_weight,
         wastage: it.wastage,
-        quantity: qty,
-        rate: rate,
-        discount_amount: itemDiscount,
-        amount: amount,
+        quantity: qty, //1
+        rate: rate, // 1500
+        discount_amount: itemDiscount,  // 10
+        amount: amount,  // 1490
       };
     });
 
@@ -99,7 +99,7 @@ const createSalesInvoice = async (req, res) => {
     const igstAmt = hasHeaderIgst ? Number(header.igst_amount ?? 0) : 0;
 
     // Calculate total before discount and adjustments
-    let total = subtotal + cgstAmt + sgstAmt + igstAmt;
+    let total = subtotal + cgstAmt + sgstAmt + igstAmt; // 1490 + 15+15 = 1520
 
     // Adjustments
     let totalAdjustment = 0;
@@ -121,7 +121,7 @@ const createSalesInvoice = async (req, res) => {
     let headerDiscountAmt = 0;
     if (header.discount_amount && header.discount_amount > 0) {
       if (header.discount_type === "Percentage") {
-        headerDiscountAmt = (total * Number(header.discount_amount)) / 100;
+        headerDiscountAmt = (total * Number(header.discount_amount)) / 100;  // 1520* 5/100  = 76
       } else {
         headerDiscountAmt = Number(header.discount_amount);
       }
@@ -130,7 +130,7 @@ const createSalesInvoice = async (req, res) => {
     }
 
     // Round off final total
-    total = Math.round(total);
+    total = Math.round(total); //1,444
 
     // PAYMENT PROCESSING
     const paymentInput = Array.isArray(payment) ? payment : [];
@@ -594,47 +594,65 @@ const listSalesInvoices = async (req, res) => {
 
     // Format the response
     const formattedInvoices = invoices.map(invoice => {
-      const totalPaid = parseFloat(invoice.total_paid_amount || 0);
+      // Parse numeric fields safely
+      const subtotal = parseFloat(invoice.subtotal_amount || 0);
+      const cgst = parseFloat(invoice.cgst_amount || 0);
+      const sgst = parseFloat(invoice.sgst_amount || 0);
+      const igst = parseFloat(invoice.igst_amount || 0);
+
+      const discountAmount = parseFloat(invoice.discount_amount || 0);
       const totalAfterAdjustment = parseFloat(invoice.total_amount || 0);
       const totalAdjustment = parseFloat(invoice.total_adjustment_amount || 0);
-      const totalBeforeAdjustment = totalAfterAdjustment + totalAdjustment;
+      const totalPaid = parseFloat(invoice.total_paid_amount || 0);
+
+      // ✅ Correct total before discount (matches CREATE logic)
+      const totalBeforeAdjustment = subtotal + cgst + sgst + igst;
+
+      // Amount due (can be negative → refund)
       const amountDue = totalAfterAdjustment - totalPaid;
+
+      // Parse JSON safely
       const invoiceItems =
         typeof invoice.invoice_items === "string"
           ? JSON.parse(invoice.invoice_items)
           : invoice.invoice_items || [];
 
+      const billAdjustments =
+        typeof invoice.bill_adjustments === "string"
+          ? JSON.parse(invoice.bill_adjustments)
+          : invoice.bill_adjustments || [];
+
+      const paymentDetails =
+        typeof invoice.payment_details === "string"
+          ? JSON.parse(invoice.payment_details)
+          : invoice.payment_details || [];
+
       return {
         ...invoice,
 
-        total_amount_before_adjustment: totalBeforeAdjustment.toFixed(2),
-        total_amount_after_adjustment: totalAfterAdjustment.toFixed(2),
+        // ✅ Totals (FIXED)
+        total_amount_before_adjustment: totalBeforeAdjustment.toFixed(2), // eg: 1520.00
+        total_amount_after_adjustment: totalAfterAdjustment.toFixed(2),   // eg: 1444.00
         total_paid_amount: totalPaid.toFixed(2),
         amount_due: amountDue.toFixed(2),
 
+        // Line items with remaining stock & SKU
         invoice_items: invoiceItems.map(item => ({
           ...item,
-          remaining_quantity: productItemMap[item.product_item_detail_id]?.quantity ?? 0,
-          product_item_sku_id: productItemMap[item.product_item_detail_id]?.sku_id ?? null
+          remaining_quantity:
+            productItemMap[item.product_item_detail_id]?.quantity ?? 0,
+          product_item_sku_id:
+            productItemMap[item.product_item_detail_id]?.sku_id ?? null
         })),
 
-        bill_adjustments:
-          typeof invoice.bill_adjustments === "string"
-            ? JSON.parse(invoice.bill_adjustments)
-            : invoice.bill_adjustments || [],
+        bill_adjustments: billAdjustments,
+        payment_details: paymentDetails,
 
-        payment_details:
-          typeof invoice.payment_details === "string"
-            ? JSON.parse(invoice.payment_details)
-            : invoice.payment_details || [],
-
-        total_items_quantity:
-          parseInt(invoice.total_items_quantity) || 0,
-
-        total_items_amount:
-          parseFloat(invoice.total_items_amount) || 0
+        total_items_quantity: parseInt(invoice.total_items_quantity) || 0,
+        total_items_amount: parseFloat(invoice.total_items_amount) || 0
       };
     });
+
 
     return commonService.okResponse(res, {
       invoices: formattedInvoices
