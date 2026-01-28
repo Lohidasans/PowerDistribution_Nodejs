@@ -36,36 +36,25 @@ const calculateItemsAndSubtotal = (items, withId = false) => {
     return { itemRows, subtotal, totalQty };
 };
 
-const calculateHeaderDiscount = (subtotal, header) => {
-    let headerDiscountAmt = 0;
+const calculateInvoiceTotals = ({
+    subtotal,
+    header,
+    adjustments = []
+}) => {
+    const hasHeaderIgst =
+        header.igst_amount && Number(header.igst_amount) > 0;
+    const cgstAmt = hasHeaderIgst ? 0 : Number(header.cgst_amount ?? 0);
+    const sgstAmt = hasHeaderIgst ? 0 : Number(header.sgst_amount ?? 0);
+    const igstAmt = hasHeaderIgst ? 0 : Number(header.igst_amount ?? 0);
 
-    if (header.discount_amount && header.discount_amount > 0) {
-        if (header.discount_type === "Percentage") {
-            headerDiscountAmt = (subtotal * Number(header.discount_amount)) / 100;
-        } else {
-            headerDiscountAmt = Number(header.discount_amount);
-        }
-        headerDiscountAmt = Math.min(headerDiscountAmt, subtotal);
-    }
+    // subtotal + tax
+    let total = subtotal + cgstAmt + sgstAmt + igstAmt;  // 1490 + 15+15 = 1520
 
-    return headerDiscountAmt;
-};
-
-const calculateInvoiceTotal = (subtotal, headerDiscountAmt, header) => {
-    const cgstAmt = Number(header.cgst_amount ?? 0);
-    const sgstAmt = Number(header.sgst_amount ?? 0);
-
-    let total = subtotal - headerDiscountAmt + cgstAmt + sgstAmt;
-
-    return { total, cgstAmt, sgstAmt };
-};
-
-const applyAdjustments = (total, adjustments) => {
+    // adjustments
     let totalAdjustment = 0;
-
     if (Array.isArray(adjustments) && adjustments.length > 0) {
         totalAdjustment = adjustments.reduce(
-            (sum, adj) => sum + (Number(adj.adjustment_amount) || 0),
+            (sum, a) => sum + Number(a.adjustment_amount || 0),
             0
         );
 
@@ -76,11 +65,35 @@ const applyAdjustments = (total, adjustments) => {
         }
 
         total -= totalAdjustment;
-        if (total < 0) total = 0;
     }
 
-    return { total, totalAdjustment };
+    // header discount (AFTER adjustments)
+    let headerDiscountAmt = 0;
+    if (header.discount_amount && header.discount_amount > 0) {
+        if (header.discount_type === "Percentage") {
+            headerDiscountAmt = (total * Number(header.discount_amount)) / 100; // 1520* 5/100  = 76
+        } else {
+            headerDiscountAmt = Number(header.discount_amount);
+        }
+
+        headerDiscountAmt = Math.min(headerDiscountAmt, total);
+        total -= headerDiscountAmt;
+    }
+
+    // round
+    total = Math.round(total); //1,444
+
+    return {
+        total,
+        cgstAmt,
+        sgstAmt,
+        igstAmt,
+        headerDiscountAmt,
+        totalAdjustment,
+        hasHeaderIgst   
+    };
 };
+
 
 const calculatePaymentSummary = (payments, total) => {
     const totalPaid = payments.reduce(
@@ -103,8 +116,6 @@ const calculatePaymentSummary = (payments, total) => {
 
 module.exports = {
     calculateItemsAndSubtotal,
-    calculateHeaderDiscount,
-    calculateInvoiceTotal,
-    applyAdjustments,
+    calculateInvoiceTotals,
     calculatePaymentSummary,
 };

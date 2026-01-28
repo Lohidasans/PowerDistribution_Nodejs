@@ -2,7 +2,8 @@ const { models, sequelize } = require("../models");
 const commonService = require("./commonService");
 const enMessage = require("../constants/en.json");
 const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
-const { validateProductItemDetails, validateProducts} = require('../helpers/billingValidations');
+const { validateProductItemDetails, validateProducts } = require('../helpers/billingValidations');
+const { calculateItemsAndSubtotal, calculateInvoiceTotals, calculatePaymentSummary } = require("../helpers/billingCalculations");
 const { Op } = require("sequelize");
 
 // Generate invoice number (series)
@@ -65,72 +66,10 @@ const createSalesInvoice = async (req, res) => {
     }
 
     // Calculate totals
-    let subtotal = 0;
-    let totalQty = 0;
-    const itemRows = items.map((it) => {
-      const qty = Number(it.quantity || 0);
-      const rate = Number(it.rate || 0);
-      const itemAmount = qty * rate;
-      const itemDiscount = Number(it.discount_amount || 0);
-      const amount = itemAmount - itemDiscount;
-
-      subtotal += amount;
-      totalQty += qty;
-
-      return {
-        product_id: it.product_id,
-        product_item_detail_id: it.product_item_detail_id ?? null,
-        hsn_code: it.hsn_code ?? null,
-        product_name_snapshot: it.product_name_snapshot ?? null,
-        net_weight: it.net_weight,
-        gross_weight: it.gross_weight,
-        wastage: it.wastage,
-        quantity: qty, //1
-        rate: rate, // 1500
-        discount_amount: itemDiscount,  // 10
-        amount: amount,  // 1490
-      };
-    });
-
+    const { itemRows, subtotal, totalQty } = calculateItemsAndSubtotal(items);
+      
     // Handle IGST vs SGST/CGST logic for header totals
-    const hasHeaderIgst = header.igst_amount && Number(header.igst_amount) > 0;
-    const cgstAmt = hasHeaderIgst ? 0 : Number(header.cgst_amount ?? 0);
-    const sgstAmt = hasHeaderIgst ? 0 : Number(header.sgst_amount ?? 0);
-    const igstAmt = hasHeaderIgst ? Number(header.igst_amount ?? 0) : 0;
-
-    // Calculate total before discount and adjustments
-    let total = subtotal + cgstAmt + sgstAmt + igstAmt; // 1490 + 15+15 = 1520
-
-    // Adjustments
-    let totalAdjustment = 0;
-    if (Array.isArray(adjustments) && adjustments.length > 0) {
-      totalAdjustment = adjustments.reduce((sum, adj) => sum + (Number(adj.adjustment_amount) || 0), 0);
-
-      if (totalAdjustment > total) {
-        await t.rollback();
-        return commonService.badRequest(res, {
-          message: "Total adjustment amount cannot exceed the invoice total",
-        });
-      }
-
-      total -= totalAdjustment;
-      if (total < 0) total = 0;
-    }
-
-    // Now apply discount to the adjusted total
-    let headerDiscountAmt = 0;
-    if (header.discount_amount && header.discount_amount > 0) {
-      if (header.discount_type === "Percentage") {
-        headerDiscountAmt = (total * Number(header.discount_amount)) / 100;  // 1520* 5/100  = 76
-      } else {
-        headerDiscountAmt = Number(header.discount_amount);
-      }
-      headerDiscountAmt = Math.min(headerDiscountAmt, total);
-      total -= headerDiscountAmt;
-    }
-
-    // Round off final total
-    total = Math.round(total); //1,444
+    const { total, cgstAmt, sgstAmt, igstAmt, headerDiscountAmt, totalAdjustment, hasHeaderIgst } = calculateInvoiceTotals({ subtotal, header, adjustments});
 
     // PAYMENT PROCESSING
     const paymentInput = Array.isArray(payment) ? payment : [];
@@ -145,16 +84,7 @@ const createSalesInvoice = async (req, res) => {
         created_by: req.user?.id || null,
       }));
 
-    const totalPaid = paymentRows.reduce((sum, p) => sum + p.amount_received, 0);
-
-    let refundAmount = 0;
-    let amountDue = total;
-    if (totalPaid > total) {
-      refundAmount = totalPaid - total;
-      amountDue = 0;
-    } else {
-      amountDue = total - totalPaid;
-    }
+    const { amountDue, refundAmount } = calculatePaymentSummary(paymentRows, total);
 
     // === PAN CARD VALIDATION: Total CASH received ≥ ₹2 Lakh ===
     const totalCashReceived = paymentRows
