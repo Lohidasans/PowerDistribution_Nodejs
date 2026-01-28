@@ -176,6 +176,7 @@ const getBranchwiseRevenue = async (req, res) => {
 const getBranchRevenueDetails = async (req, res) => {
     try {
         const money = (v) => Number(Number(v || 0).toFixed(2));
+
         const {
             branch_id,
             from_date,
@@ -205,25 +206,25 @@ const getBranchRevenueDetails = async (req, res) => {
         if (search) {
             searchCondition = `
                 AND (
-                    sib.invoice_no ILIKE :search
-                    OR jr.repair_code ILIKE :search
+                sib.invoice_no ILIKE :search
+                OR jr.repair_code ILIKE :search
                 )
             `;
             replacements.search = `%${search}%`;
         }
 
-        let paymentModeCondition = "";
+        // payment_mode → ONLY for rows
+        let paymentModeConditionForRows = "";
         if (payment_mode) {
-            paymentModeCondition = `AND p.payment_mode = :payment_mode`;
+            paymentModeConditionForRows = `AND p.payment_mode = :payment_mode`;
             replacements.payment_mode = payment_mode;
         }
-
 
         const hasPagination = page && limit;
         const limitNum = hasPagination ? Number(limit) : null;
         const offset = hasPagination ? (Number(page) - 1) * limitNum : null;
 
-        let query = `
+        let rowsQuery = `
             SELECT
                 COALESCE(sib.invoice_no, jr.repair_code) AS description,
 
@@ -236,6 +237,43 @@ const getBranchRevenueDetails = async (req, res) => {
                 ROUND(SUM(p.amount_received), 2) AS total_amount,
 
                 MAX(p.created_at) AS payment_date
+
+            FROM payments p
+            LEFT JOIN sales_invoice_bills sib
+                ON sib.id = p.invoice_bill_id
+                AND sib.deleted_at IS NULL
+            LEFT JOIN jewel_repairs jr
+                ON jr.id = p.jewel_repair_id
+                AND jr.deleted_at IS NULL
+
+            WHERE p.deleted_at IS NULL
+                AND p.status = 'Completed'
+                AND COALESCE(sib.branch_id, jr.branch_id) = :branch_id
+                ${paymentDateCondition}
+                ${searchCondition}
+                ${paymentModeConditionForRows}
+
+            GROUP BY description
+            ORDER BY total_amount DESC
+            `;
+
+                if (hasPagination) {
+                    rowsQuery += ` LIMIT :limit OFFSET :offset`;
+                    replacements.limit = limitNum;
+                    replacements.offset = offset;
+                }
+
+                const rows = await sequelize.query(rowsQuery, {
+                    replacements,
+                    type: sequelize.QueryTypes.SELECT
+                });
+
+            const summaryQuery = `
+            SELECT
+                COALESCE(SUM(p.amount_received), 0) AS total_collection,
+                COALESCE(SUM(CASE WHEN p.payment_mode = 'Cash' THEN p.amount_received ELSE 0 END), 0) AS cash,
+                COALESCE(SUM(CASE WHEN p.payment_mode = 'UPI' THEN p.amount_received ELSE 0 END), 0) AS upi,
+                COALESCE(SUM(CASE WHEN p.payment_mode = 'Card' THEN p.amount_received ELSE 0 END), 0) AS card
             FROM payments p
             LEFT JOIN sales_invoice_bills sib
                 ON sib.id = p.invoice_bill_id
@@ -248,37 +286,12 @@ const getBranchRevenueDetails = async (req, res) => {
                 AND COALESCE(sib.branch_id, jr.branch_id) = :branch_id
                 ${paymentDateCondition}
                 ${searchCondition}
-                ${paymentModeCondition}
-            GROUP BY description
-            ORDER BY total_amount DESC
-        `;
+            `;
 
-        if (hasPagination) {
-            query += ` LIMIT :limit OFFSET :offset`;
-            replacements.limit = limitNum;
-            replacements.offset = offset;
-        }
-
-        const rows = await sequelize.query(query, {
+        const [summaryResult] = await sequelize.query(summaryQuery, {
             replacements,
             type: sequelize.QueryTypes.SELECT
         });
-
-        const summary = rows.reduce(
-            (acc, r) => {
-                acc.total_collection = money(acc.total_collection + Number(r.total_amount));
-                acc.cash = money(acc.cash + Number(r.cash));
-                acc.upi = money(acc.upi + Number(r.upi));
-                acc.card = money(acc.card + Number(r.card));
-                return acc;
-            },
-            {
-                total_collection: 0,
-                cash: 0,
-                upi: 0,
-                card: 0
-            }
-        );
 
         let totalItems = rows.length;
 
@@ -309,7 +322,12 @@ const getBranchRevenueDetails = async (req, res) => {
 
         return commonService.okResponse(res, {
             data: {
-                summary,
+                summary: {
+                    total_collection: money(summaryResult.total_collection),
+                    cash: money(summaryResult.cash),
+                    upi: money(summaryResult.upi),
+                    card: money(summaryResult.card)
+                },
                 totalItems,
                 rows
             }
@@ -319,7 +337,8 @@ const getBranchRevenueDetails = async (req, res) => {
         console.error("getBranchRevenueDetails Error:", error);
         return commonService.handleError(res, error);
     }
-}
+};
+
 module.exports = {
     getBranchwiseRevenue,
     getBranchRevenueDetails
