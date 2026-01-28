@@ -146,8 +146,6 @@ const getBranchwiseRevenue = async (req, res) => {
     }
 };
 
-// helper for safe money math
-const money = (v) => Number(Number(v || 0).toFixed(2));
 
 const getBranchRevenueDetails = async (req, res) => {
     try {
@@ -202,7 +200,8 @@ const getBranchRevenueDetails = async (req, res) => {
         let query = `
             SELECT
                 COALESCE(sib.invoice_no, jr.repair_code) AS description,
-                COALESCE(SUM(CASE WHEN sib.id IS NOT NULL THEN sib.refund_amount ELSE 0 END), 0) AS refund,
+
+                COALESCE(MAX(CASE WHEN sib.id IS NOT NULL THEN sib.refund_amount ELSE 0 END), 0) AS refund,
 
                 ROUND(SUM(CASE WHEN p.payment_mode = 'Cash' THEN p.amount_received ELSE 0 END), 2) AS cash,
                 ROUND(SUM(CASE WHEN p.payment_mode = 'UPI' THEN p.amount_received ELSE 0 END), 2) AS upi,
@@ -210,27 +209,21 @@ const getBranchRevenueDetails = async (req, res) => {
 
                 ROUND(SUM(p.amount_received), 2) AS total_amount,
 
-                p.id AS payment_id,
-                p.created_at AS payment_date
-
+                MAX(p.created_at) AS payment_date
             FROM payments p
-
             LEFT JOIN sales_invoice_bills sib
                 ON sib.id = p.invoice_bill_id
                 AND sib.deleted_at IS NULL
-
             LEFT JOIN jewel_repairs jr
                 ON jr.id = p.jewel_repair_id
                 AND jr.deleted_at IS NULL
-
             WHERE p.deleted_at IS NULL
                 AND p.status = 'Completed'
                 AND COALESCE(sib.branch_id, jr.branch_id) = :branch_id
                 ${paymentDateCondition}
                 ${searchCondition}
-                 ${paymentModeCondition}  
-
-            GROUP BY description, p.id
+                ${paymentModeCondition}
+            GROUP BY description
             ORDER BY total_amount DESC
         `;
 
