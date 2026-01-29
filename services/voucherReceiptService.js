@@ -132,6 +132,7 @@ const getVoucherReceipts = async (req, res) => {
       pageSize,
       search,
       receipt_date,
+      branch_id,
     } = req.query;
 
     const replacements = {};
@@ -140,6 +141,11 @@ const getVoucherReceipts = async (req, res) => {
     if (receipt_date) {
       whereSql += " AND vr.receipt_date = :receipt_date";
       replacements.receipt_date = receipt_date;
+    }
+
+    if (branch_id) {
+      whereSql += " AND vr.branch_id = :branch_id";
+      replacements.branch_id = branch_id;
     }
 
     if (search) {
@@ -167,6 +173,7 @@ const getVoucherReceipts = async (req, res) => {
     const dataQuery = `
       SELECT
         vr.id,
+        vr.branch_id,
         vr.receipt_no,
         vr.receipt_date,
         vr.amount,
@@ -191,7 +198,7 @@ const getVoucherReceipts = async (req, res) => {
       const countQuery = `
         SELECT COUNT(*)::int AS count
         FROM voucher_receipts vr
-        LEFT JOIN vendors a ON a.id = vr.account_id
+        LEFT JOIN customers a ON a.id = vr.account_id
         ${whereSql}
       `;
 

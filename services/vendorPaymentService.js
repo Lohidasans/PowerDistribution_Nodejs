@@ -56,6 +56,7 @@ const getVendorPayments = async (req, res) => {
       bill_type_id,
       payment_mode,
       search,
+      branch_id,
       payment_date
     } = req.query;
 
@@ -63,6 +64,7 @@ const getVendorPayments = async (req, res) => {
 
     // Filters
     if (bill_type_id) whereClause.bill_type_id = bill_type_id;
+    if (branch_id) whereClause.branch_id = branch_id; 
     if (payment_mode) whereClause.payment_mode = payment_mode;
     if (payment_date) {
       whereClause.payment_date = { [Op.eq]: payment_date };
