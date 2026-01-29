@@ -234,7 +234,7 @@ const getBranchRevenueDetails = async (req, res) => {
                 ROUND(SUM(CASE WHEN p.payment_mode = 'UPI' THEN p.amount_received ELSE 0 END), 2) AS upi,
                 ROUND(SUM(CASE WHEN p.payment_mode = 'Card' THEN p.amount_received ELSE 0 END), 2) AS card,
 
-                ROUND(SUM(p.amount_received), 2) AS total_amount,
+                ROUND(SUM(p.amount_received)- COALESCE(MAX(sib.refund_amount), 0), 2) AS total_amount,
 
                 MAX(p.created_at) AS payment_date
 
