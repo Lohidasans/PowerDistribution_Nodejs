@@ -75,6 +75,7 @@ const createJewelRepair = async (req, res) => {
         total_quantity: totalQuantity,
         amount_in_words: repairData.amount_in_words || null,
         amount_due: repairData.amount_due || 0,
+        refund_amount: repairData.refund_amount || 0,
       },
       { transaction }
     );
@@ -346,13 +347,13 @@ const getAllJewelRepairs = async (req, res) => {
     // Final response
     
     const result = repairs.map(repair => {
-      const totalPaid = Number(repair.total_paid_amount || 0);
-      const totalAmount = Number(repair.total_amount || 0);
-      const amountDue = totalAmount - totalPaid;
-
+      const totalPaid = Number(repair.total_paid_amount || 0);  
+      const amountDue = Number(repair.amount_due || 0); 
+      const refundAmount = Number(repair.refund_amount || 0);
       return {
         ...repair,
         total_paid_amount: totalPaid.toFixed(2),
+        refundAmount: refundAmount.toFixed(2),
         amount_due: amountDue.toFixed(2),
         items: itemsMap[repair.id] || [],
         payments: paymentsMap[repair.id] || []
@@ -376,7 +377,6 @@ const getAllJewelRepairs = async (req, res) => {
     return commonService.handleError(res, error);
   }
 };
-
 
 // Get a single jewel repair record by ID
 const getJewelRepairById = async (req, res) => {
