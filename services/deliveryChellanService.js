@@ -298,7 +298,33 @@ const updateDeliveryChellan = async (req, res) => {
   }
 };
 
+const updateDeliveryChellanClose = async (req, res) => {
+  const entity = await commonService.findById(
+    models.DeliveryChellan,
+    req.params.id,
+    res
+  );
+  if (!entity) return;
 
+  const t = await sequelize.transaction();
+  try {
+    const { items, ...payload } = req.body;
+
+    // update header
+    await entity.update(payload, { transaction: t });
+
+   
+    await t.commit();
+
+    return commonService.okResponse(res, {
+      delivery_chellan: entity,
+    
+    });
+  } catch (err) {
+    await t.rollback();
+    return commonService.handleError(res, err);
+  }
+};
 const deleteDeliveryChellan = async (req, res) => {
   const entity = await commonService.findById(
     models.DeliveryChellan,
@@ -351,5 +377,6 @@ module.exports = {
   deleteDeliveryChellanItem,
   updateDeliveryChellan,
   deleteDeliveryChellan,
-  generateDeliveryChallanNo
+  generateDeliveryChallanNo,
+  updateDeliveryChellanClose
 };
