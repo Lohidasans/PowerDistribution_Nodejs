@@ -26,7 +26,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"delivery_challan_no\": \"DC-0001\",\n  \"date\": \"2026-01-26\",\n  \"delivery_challan_type_id\": 1,\n  \"vendor_id\": 10,\n  \"ref_no\": \"REF-123\",\n  \"amount_in_words\": \"One thousand only\",\n  \"sub_total\": 1000.00,\n  \"sgst\": 0.00,\n  \"cgst\": 0.00,\n  \"igst\": 0.00,\n  \"discount\": 0.00,\n  \"total_amount\": 1000.00,\n  \"remarks\": \"Test delivery chellan\",\n  \"items\": [\n    {\n      \"sku_id\": \"SKU-001\",\n      \"product_description\": \"Product A\",\n      \"quantity\": 2,\n      \"weight\": 1.250,\n      \"amount\": 500.00\n    },\n    {\n      \"sku_id\": \"SKU-002\",\n      \"product_description\": \"Product B\",\n      \"quantity\": 1,\n      \"weight\": 0.750,\n      \"amount\": 500.00\n    }\n  ]\n}"
+              "raw": "{\n    \"delivery_challan_no\": \"DC-0001\",\n    \"date\": \"2026-01-26\",\n    \"delivery_challan_type_id\": 1, //1.Job work 2.others\n    \"vendor_id\": 10,\n    \"ref_no\": \"REF-123\",\n    \"amount_in_words\": \"One thousand only\",\n    \"sub_total\": 1000.00,\n    \"sgst\": 0.00,\n    \"cgst\": 0.00,\n    \"igst\": 0.00,\n    \"discount\": 0.00,\n    \"total_amount\": 1000.00,\n    \"remarks\": \"Test delivery chellan\",\n    \"discount_type_id\": 1, // 1.Percentage 2.Amount\n    \"status_id\": 1, //1.issued 2.closed\n    \"items\": [\n        {\n            \"sku_id\": \"SKU-001\",\n            \"product_description\": \"Product A\",\n            \"quantity\": 2,\n            \"weight\": 1.250,\n            \"amount\": 500.00\n        },\n        {\n            \"sku_id\": \"SKU-002\",\n            \"product_description\": \"Product B\",\n            \"quantity\": 1,\n            \"weight\": 0.750,\n            \"amount\": 500.00\n        }\n    ]\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/delivery-chellan",
@@ -129,7 +129,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"ref_no\": \"REF-UPDATED\",\n  \"remarks\": \"Updated delivery chellan\",\n  \"sub_total\": 1200.00,\n  \"discount\": 50.00,\n  \"total_amount\": 1150.00,\n  \"items\": [\n    {\n      \"sku_id\": \"SKU-001\",\n      \"product_description\": \"Product A (updated)\",\n      \"quantity\": 3,\n      \"weight\": 1.500,\n      \"amount\": 900.00\n    },\n    {\n      \"sku_id\": \"SKU-003\",\n      \"product_description\": \"Product C\",\n      \"quantity\": 1,\n      \"weight\": 0.500,\n      \"amount\": 250.00\n    }\n  ]\n}"
+              "raw": "{\n  \"ref_no\": \"REF-UPDATED\",\n  \"remarks\": \"Updated delivery chellan\",\n  \"sub_total\": 1200.00,\n  \"discount\": 50.00,\n  \"total_amount\": 1150.00,\n  \"status_id\":2,\n  \"items\": [\n    {\n      \"sku_id\": \"SKU-001\",\n      \"product_description\": \"Product A (updated)\",\n      \"quantity\": 3,\n      \"weight\": 1.500,\n      \"amount\": 900.00\n    },\n    {\n      \"sku_id\": \"SKU-003\",\n      \"product_description\": \"Product C\",\n      \"quantity\": 1,\n      \"weight\": 0.500,\n      \"amount\": 250.00\n    }\n  ]\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/delivery-chellan/{{id}}",
@@ -189,13 +189,11 @@
               "variable": [
                 {
                   "key": "delivery_chellan_id",
-                  "value": "1",
-                  "uuid": "ad4daf5b-be97-4f57-8ae5-64e4545176b9"
+                  "value": "1"
                 },
                 {
                   "key": "id",
-                  "value": "1",
-                  "uuid": "c3543464-b91d-4a75-9505-edb013171991"
+                  "value": "1"
                 }
               ]
             }
@@ -209,7 +207,115 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": ""
+              "raw": "{{baseUrl}}/delivery-chellan/code",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "delivery-chellan",
+                "code"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "close status",
+          "id": "61e16021-21e8-45e7-97a4-7a7208153e7e",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"status_id\":2\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/delivery-chellan/8/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "delivery-chellan",
+                "8",
+                "status"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "https://apiuat.ramvell.in:8448/api/v1/products/search/sku",
+          "id": "1a4934b0-f2e8-4a11-95d9-94bba41b2000",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "https://apiuat.ramvell.in:8448/api/v1/products/search/sku?sku=CJ_BRC_0005&branch_id=22",
+              "protocol": "https",
+              "host": [
+                "apiuat",
+                "ramvell",
+                "in"
+              ],
+              "port": "8448",
+              "path": [
+                "api",
+                "v1",
+                "products",
+                "search",
+                "sku"
+              ],
+              "query": [
+                {
+                  "key": "sku",
+                  "value": "CJ_BRC_0005"
+                },
+                {
+                  "key": "branch_id",
+                  "value": "22"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "http://localhost:5000/api/v1/products/search/sku",
+          "id": "9067535b-3502-4e38-bd98-f4a4bba04ff0",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:5000/api/v1/products/search/sku?sku=CJ_CHN_0005&branch_id=1",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "5000",
+              "path": [
+                "api",
+                "v1",
+                "products",
+                "search",
+                "sku"
+              ],
+              "query": [
+                {
+                  "key": "sku",
+                  "value": "CJ_CHN_0005",
+                  "uuid": "668aff69-4e90-4193-80aa-097c8b12c233"
+                },
+                {
+                  "key": "branch_id",
+                  "value": "1",
+                  "uuid": "02990cd7-0b33-430f-bcbf-cf15620c8c2e"
+                }
+              ]
             }
           },
           "response": []

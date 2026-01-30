@@ -26,15 +26,15 @@ deliveryChellanRouter.put(
   "/delivery-chellan/:id",
   deliveryChellanService.updateDeliveryChellan
 );
-
+deliveryChellanRouter.put(
+  "/delivery-chellan/:id/status",
+  deliveryChellanService.updateDeliveryChellanClose
+);
 deliveryChellanRouter.delete(
   "/delivery-chellan/:id",
   deliveryChellanService.deleteDeliveryChellan
 );
-deliveryChellanRouter.delete(
-  "/delivery-chellan/:delivery_chellan_id/status",
-  deliveryChellanService.updateDeliveryChellanClose
-);
+
 // 🔥 delete single delivery chellan item
 deliveryChellanRouter.delete(
   "/delivery-chellan/:delivery_chellan_id/item/:id",

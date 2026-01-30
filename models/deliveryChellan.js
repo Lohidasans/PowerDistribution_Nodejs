@@ -79,6 +79,16 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
         defaultValue: 1
       },
+       discount_type_id: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 1
+      },
+      branch_id:{
+        type: DataTypes.INTEGER,
+        allowNull: true,
+      }
+      
     },
     {
           tableName: "delivery_chellan",      // ✅ exact table name

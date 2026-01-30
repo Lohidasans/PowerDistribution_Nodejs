@@ -308,10 +308,10 @@ const updateDeliveryChellanClose = async (req, res) => {
 
   const t = await sequelize.transaction();
   try {
-    const { items, ...payload } = req.body;
+    const { status_id } = req.body;
 
-    // update header
-    await entity.update(payload, { transaction: t });
+    // update only status_id
+    await entity.update({ status_id }, { transaction: t });
 
    
     await t.commit();
