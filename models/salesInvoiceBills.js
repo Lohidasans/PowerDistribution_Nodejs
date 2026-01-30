@@ -32,7 +32,12 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.INTEGER,
         allowNull: true,
       },
-      subtotal_amount: {
+      net_total: { //sum of the items totals  --> newly added
+        type: DataTypes.DECIMAL(15, 2),
+        allowNull: false,
+        defaultValue: 0,
+      },
+      subtotal_amount: { // net total - discount
         type: DataTypes.DECIMAL(15, 2),
         allowNull: false,
         defaultValue: 0,
@@ -45,7 +50,7 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.DECIMAL(6, 3),
         allowNull: true,
       },
-        igst_percent: {
+      igst_percent: {
         type: DataTypes.DECIMAL(6, 3),
         allowNull: true,
       },
@@ -59,7 +64,7 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
         defaultValue: 0,
       },
-       igst_amount: {
+      igst_amount: {
         type: DataTypes.DECIMAL(15, 2),
         allowNull: false,
         defaultValue: 0,
@@ -68,7 +73,12 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.ENUM("Amount", "Percentage"),
         allowNull: true,
       },
-      discount_amount: {
+      discount_amount: {  // amount = discount/1.03  , percentage(5)= (5% of total_amount)/1.03
+        type: DataTypes.DECIMAL(15, 2),
+        allowNull: true,
+        defaultValue: 0,
+      },
+      discount_calculated: {  // discount/1.03
         type: DataTypes.DECIMAL(15, 2),
         allowNull: true,
         defaultValue: 0,

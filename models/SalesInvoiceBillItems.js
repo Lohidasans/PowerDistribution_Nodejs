@@ -60,7 +60,7 @@ module.exports = (sequelize, DataTypes) => {
                 allowNull: false,
                 defaultValue: 0,
             },
-            is_returned: {
+            is_returned: {    //To know if the invoice has been returned by using sales return
                 type: DataTypes.BOOLEAN,
                 allowNull: false,
                 defaultValue: false,
