@@ -152,7 +152,7 @@ const getVoucherReceipts = async (req, res) => {
       whereSql += `
         AND (
           vr.receipt_no ILIKE :search
-          OR a.vendor_name ILIKE :search
+          OR a.customer_name ILIKE :search
         )
       `;
       replacements.search = `%${search}%`;
@@ -182,7 +182,7 @@ const getVoucherReceipts = async (req, res) => {
       FROM voucher_receipts vr
       LEFT JOIN customers a ON a.id = vr.account_id
       ${whereSql}
-      ORDER BY vr.receipt_date DESC
+      ORDER BY vr.receipt_no DESC
       ${paginationSql}
     `;
 
