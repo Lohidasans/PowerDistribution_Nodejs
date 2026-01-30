@@ -123,11 +123,27 @@ const getAllDeliveryChellans = async (req, res) => {
     const { search, vendor_id, delivery_challan_type_id, date_from, date_to } =
       req.query;
 
-    // 1) get headers
+    // 1) get headers with vendor details
     let query = `
       SELECT
-        dc.*
+        dc.*,
+        v.vendor_name,
+        v.email as vendor_email,
+        v.mobile as vendor_mobile,
+        v.gst_no as vendor_gst_no,
+        v.address as vendor_address,
+        CASE 
+          WHEN dc.delivery_challan_type_id = 1 THEN 'Job Work'
+          WHEN dc.delivery_challan_type_id = 2 THEN 'Others'
+          ELSE NULL
+        END as delivery_challan_type,
+        CASE 
+          WHEN dc.status_id = 1 THEN 'Issued'
+          WHEN dc.status_id = 2 THEN 'Closed'
+          ELSE NULL
+        END as status
       FROM delivery_chellan dc
+      LEFT JOIN vendors v ON dc.vendor_id = v.id
       WHERE dc.deleted_at IS NULL
     `;
     const replacements = {};
@@ -150,7 +166,7 @@ const getAllDeliveryChellans = async (req, res) => {
     }
 
     if (search) {
-      const fields = ["dc.delivery_challan_no", "dc.ref_no"];
+      const fields = ["dc.delivery_challan_no", "dc.ref_no", "v.vendor_name"];
       query += ` AND (${fields
         .map((f) => `${f} ILIKE :search`)
         .join(" OR ")})`;
@@ -186,6 +202,13 @@ const getAllDeliveryChellans = async (req, res) => {
 
     const delivery_chellans = headers.map((h) => ({
       ...h,
+      vendor: {
+        vendor_name: h.vendor_name,
+        email: h.vendor_email,
+        mobile: h.vendor_mobile,
+        gst_no: h.vendor_gst_no,
+        address: h.vendor_address,
+      },
       items: map[h.id] || [],
     }));
 
@@ -219,14 +242,68 @@ const listDeliveryChellansDropdown = async (req, res) => {
 };
 
 const getDeliveryChellanById = async (req, res) => {
-  const entity = await commonService.findById(
-    models.DeliveryChellan,
-    req.params.id,
-    res
-  );
-  if (!entity) return;
+  try {
+    const { id } = req.params;
 
-  return commonService.okResponse(res, { delivery_chellan: entity });
+    const query = `
+      SELECT
+        dc.*,
+        v.vendor_name,
+        v.email as vendor_email,
+        v.mobile as vendor_mobile,
+        v.gst_no as vendor_gst_no,
+        v.address as vendor_address,
+        CASE 
+          WHEN dc.delivery_challan_type_id = 1 THEN 'Job Work'
+          WHEN dc.delivery_challan_type_id = 2 THEN 'Others'
+          ELSE NULL
+        END as delivery_challan_type,
+        CASE 
+          WHEN dc.status_id = 1 THEN 'Issued'
+          WHEN dc.status_id = 2 THEN 'Closed'
+          ELSE NULL
+        END as status
+      FROM delivery_chellan dc
+      LEFT JOIN vendors v ON dc.vendor_id = v.id
+      WHERE dc.id = :id AND dc.deleted_at IS NULL
+    `;
+
+    const [results] = await sequelize.query(query, {
+      replacements: { id },
+    });
+
+    if (!results || results.length === 0) {
+      return commonService.notFoundResponse(res, "Delivery Chellan not found");
+    }
+
+    const header = results[0];
+
+    // Get items
+    const items = await models.DeliveryChellanItem.findAll({
+      where: {
+        delivery_chellan_id: id,
+        deleted_at: null,
+      },
+      order: [["id", "ASC"]],
+      raw: true,
+    });
+
+    const delivery_chellan = {
+      ...header,
+      vendor: {
+        vendor_name: header.vendor_name,
+        email: header.vendor_email,
+        mobile: header.vendor_mobile,
+        gst_no: header.vendor_gst_no,
+        address: header.vendor_address,
+      },
+      items,
+    };
+
+    return commonService.okResponse(res, { delivery_chellan });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
 };
 
 const updateDeliveryChellan = async (req, res) => {
