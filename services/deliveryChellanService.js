@@ -253,6 +253,8 @@ const getDeliveryChellanById = async (req, res) => {
         v.mobile as vendor_mobile,
         v.gst_no as vendor_gst_no,
         v.address as vendor_address,
+        b.gst_no as branch_gst_no,
+        b.branch_name,
         CASE 
           WHEN dc.delivery_challan_type_id = 1 THEN 'Job Work'
           WHEN dc.delivery_challan_type_id = 2 THEN 'Others'
@@ -265,6 +267,7 @@ const getDeliveryChellanById = async (req, res) => {
         END as status
       FROM delivery_chellan dc
       LEFT JOIN vendors v ON dc.vendor_id = v.id
+      LEFT JOIN branches b ON dc.branch_id = b.id
       WHERE dc.id = :id AND dc.deleted_at IS NULL
     `;
 
@@ -296,6 +299,10 @@ const getDeliveryChellanById = async (req, res) => {
         mobile: header.vendor_mobile,
         gst_no: header.vendor_gst_no,
         address: header.vendor_address,
+      },
+      branch: {
+        gst_no: header.branch_gst_no,
+        branch_name: header.branch_name,
       },
       items,
     };

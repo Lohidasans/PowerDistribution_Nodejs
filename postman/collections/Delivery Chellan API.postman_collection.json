@@ -319,6 +319,18 @@
             }
           },
           "response": []
+        },
+        {
+          "name": "New Request",
+          "id": "16422b20-7a67-46e4-84a8-2a9f6d411354",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": ""
+            }
+          },
+          "response": []
         }
       ],
       "id": "aa9fad4b-a772-43cc-b0cc-e25a075f194b"

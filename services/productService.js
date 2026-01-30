@@ -1003,7 +1003,7 @@ const getAllProductDetails = async (req, res) => {
   }
 };
 
-// Get details for Web list page (with filters and search)
+// Get details for Web list page (with filters and search) - OPTIMIZED
 const newGetAllProductDetails = async (req, res) => {
   try {
     const {
@@ -1025,6 +1025,7 @@ const newGetAllProductDetails = async (req, res) => {
     const limitNum = usePagination ? parseInt(limit || 10, 10) : null;
     const offset = usePagination ? (pageNum - 1) * limitNum : null;
 
+    // Build base WHERE for products table only (no JOINs for performance)
     let whereClause = `
       WHERE p.status = 'Active'
       AND p.deleted_at IS NULL
@@ -1064,7 +1065,6 @@ const newGetAllProductDetails = async (req, res) => {
 
     if (variant_type_ids) {
       const typeIds = variant_type_ids.split(",").map((id) => +id.trim());
-
       whereClause += `
         AND EXISTS (
           SELECT 1
@@ -1075,7 +1075,44 @@ const newGetAllProductDetails = async (req, res) => {
       `;
     }
 
+    // Stock filtering - optimized to run on products table directly
+    if (stock === "stock_in_hand") {
+      whereClause += `
+        AND EXISTS (
+          SELECT 1 FROM "productItemDetails" pid
+          WHERE pid.product_id = p.id
+          AND pid.quantity > 0
+          AND pid.deleted_at IS NULL
+        )
+      `;
+    }
+
+    if (stock === "out_of_stock") {
+      whereClause += `
+        AND EXISTS (
+          SELECT 1 FROM "productItemDetails" pid
+          WHERE pid.product_id = p.id
+          AND pid.deleted_at IS NULL
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM "productItemDetails" pid
+          WHERE pid.product_id = p.id
+          AND pid.quantity > 0
+          AND pid.deleted_at IS NULL
+        )
+      `;
+    }
+
+    // Only add search JOINs if search is provided
+    let searchJoins = '';
     if (search) {
+      searchJoins = `
+        LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
+        LEFT JOIN branches b ON b.id = p.branch_id
+        LEFT JOIN grns g ON g.id = p.grn_id AND g.deleted_at IS NULL
+        LEFT JOIN "grnItems" gi ON gi.grn_id = g.id AND gi.id = p.ref_no_id AND gi.deleted_at IS NULL
+      `;
+      
       const like = `%${search}%`;
       whereClause += `
         AND (
@@ -1095,81 +1132,39 @@ const newGetAllProductDetails = async (req, res) => {
       replacements.like = like;
     }
 
-    const validProductCondition = `
-      AND EXISTS (
-        SELECT 1 FROM grns g
-        WHERE g.id = p.grn_id
-        AND g.deleted_at IS NULL
-      )
-      AND EXISTS (
-        SELECT 1 FROM "grnItems" gi
-        WHERE gi.grn_id = p.grn_id
-        AND gi.id = p.ref_no_id
-        AND gi.deleted_at IS NULL
-      )
-      AND EXISTS (
-        SELECT 1 FROM "materialTypes" mt
-        WHERE mt.id = p.material_type_id
-      )
-      AND EXISTS (
-        SELECT 1 FROM branches b
-        WHERE b.id = p.branch_id
-      )
-    `;
-
-    let stockValidityCondition = ``;
-
-    if (stock === "stock_in_hand") {
-      stockValidityCondition = `
-        AND EXISTS (
-          SELECT 1 FROM "productItemDetails" pid
-          WHERE pid.product_id = p.id
-          AND pid.quantity > 0
-          AND pid.deleted_at IS NULL
-        )
-      `;
-    }
-
-    if (stock === "out_of_stock") {
-      stockValidityCondition = `
-        AND EXISTS (
-          SELECT 1 FROM "productItemDetails" pid
-          WHERE pid.product_id = p.id
-          AND pid.deleted_at IS NULL
-        )
-        AND NOT EXISTS (
-          SELECT 1 FROM "productItemDetails" pid
-          WHERE pid.product_id = p.id
-          AND pid.quantity > 0
-          AND pid.deleted_at IS NULL
-        )
-      `;
-    }
-
     let total = null;
+    let paginatedProductIds = [];
 
     if (usePagination) {
+      // Optimized COUNT query - no JOINs unless search requires it
       const countQuery = `
-        SELECT COUNT(*) AS total
+        SELECT COUNT(DISTINCT p.id) AS total
         FROM products p
+        ${searchJoins}
         ${whereClause}
-        ${validProductCondition}
-        ${stockValidityCondition}
       `;
 
       const [countResult] = await sequelize.query(countQuery, { replacements });
       total = Number(countResult[0]?.total || 0);
-    }
 
-    let paginatedProductIds = [];
+      if (total === 0) {
+        return commonService.okResponse(res, {
+          products: [],
+          pagination: {
+            total: 0,
+            page: pageNum,
+            limit: limitNum,
+            totalPages: 0,
+          },
+        });
+      }
 
-    if (usePagination) {
+      // Get paginated product IDs only
       const idQuery = `
-        SELECT p.id
+        SELECT DISTINCT p.id
         FROM products p
+        ${searchJoins}
         ${whereClause}
-        ${validProductCondition}
-        ${stockValidityCondition}
         ORDER BY p.id DESC
         LIMIT :limit OFFSET :offset
       `;
@@ -1191,11 +1186,22 @@ const newGetAllProductDetails = async (req, res) => {
           },
         });
       }
-
-      whereClause += ` AND p.id IN (:productIds)`;
-      replacements.productIds = paginatedProductIds;
     }
 
+    // Build WHERE clause for main query
+    let mainWhereClause = `WHERE p.status = 'Active' AND p.deleted_at IS NULL`;
+    const mainReplacements = {};
+
+    if (usePagination && paginatedProductIds.length) {
+      mainWhereClause += ` AND p.id IN (:productIds)`;
+      mainReplacements.productIds = paginatedProductIds;
+    } else if (!usePagination) {
+      // Apply all filters for non-paginated query
+      Object.assign(mainReplacements, replacements);
+      mainWhereClause = whereClause;
+    }
+
+    // Simplified main query without aggregations
     const query = `
       SELECT
         p.id,
@@ -1208,42 +1214,10 @@ const newGetAllProductDetails = async (req, res) => {
         p.vendor_id,
         p.material_type_id,
         p.category_id,
-        ct.category_name,
-        ct.category_image_url,
         p.subcategory_id,
-        sc.subcategory_name,
         p.ref_no_id,
         p.grn_id,
-        g.grn_no,
-        g.grn_date,
-        g.total_gross_wt_in_g,
-        g.total_amount AS grn_total_amount,
-        gi.ref_no AS grn_ref_no,
-        gi.gross_wt_in_g AS grn_gross_weight,
-        gi.net_wt_in_g AS grn_net_weight,
-        gi.quantity AS grn_quantity,
-        gi.type AS grn_item_type,
-        mt.material_type,
-        mt.material_price,
-        COALESCE(
-          (
-            SELECT JSON_AGG(
-              JSON_BUILD_OBJECT(
-                'id', pv.variant_id,
-                'type_ids', pv.variant_type_ids
-              )
-            )
-            FROM product_variants pv
-            WHERE pv.product_id = p.id
-            AND pv.variant_id IS NOT NULL
-          ),
-          '[]'::json
-        ) AS variants,
-        COALESCE(SUM(COALESCE(pid.quantity, 0)), 0) AS total_quantity,
-        COALESCE(SUM(COALESCE(pid.quantity, 0) * COALESCE(pid.net_weight, 0)), 0) AS total_weight,
-        COUNT(DISTINCT pid.id) AS variation_count,
         p.branch_id,
-        b.branch_name,
         p.sku_id,
         p.hsn_code,
         p.purity,
@@ -1255,81 +1229,167 @@ const newGetAllProductDetails = async (req, res) => {
         p.total_products,
         p.remaining_weight,
         p.created_at,
-        p.updated_at
+        p.updated_at,
+        ct.category_name,
+        ct.category_image_url,
+        sc.subcategory_name,
+        mt.material_type,
+        mt.material_price,
+        b.branch_name,
+        g.grn_no,
+        g.grn_date,
+        g.total_gross_wt_in_g,
+        g.total_amount AS grn_total_amount,
+        gi.ref_no AS grn_ref_no,
+        gi.gross_wt_in_g AS grn_gross_weight,
+        gi.net_wt_in_g AS grn_net_weight,
+        gi.quantity AS grn_quantity,
+        gi.type AS grn_item_type
       FROM products p
-      LEFT JOIN "productItemDetails" pid ON pid.product_id = p.id
       LEFT JOIN grns g ON g.id = p.grn_id AND g.deleted_at IS NULL
       LEFT JOIN "grnItems" gi ON gi.grn_id = g.id AND gi.id = p.ref_no_id AND gi.deleted_at IS NULL
       LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
       LEFT JOIN categories ct ON ct.id = p.category_id
       LEFT JOIN subcategories sc ON sc.id = p.subcategory_id
       LEFT JOIN branches b ON b.id = p.branch_id
-      ${whereClause}
-      GROUP BY
-        p.id, mt.material_type, mt.material_price,
-        ct.category_name, ct.category_image_url,
-        sc.subcategory_name,
-        g.grn_no, g.grn_date, g.total_gross_wt_in_g, g.total_amount,
-        gi.ref_no, gi.gross_wt_in_g, b.branch_name, gi.net_wt_in_g, gi.quantity, gi.type
+      ${usePagination ? mainWhereClause : whereClause}
       ORDER BY p.id DESC
     `;
 
-    const [rows] = await sequelize.query(query, { replacements });
+    const [rows] = await sequelize.query(query, { 
+      replacements: usePagination ? mainReplacements : replacements 
+    });
 
-    let products = rows.map((row) => ({
-      ...row,
-      variants: row.variants || [],
-    }));
-
-    if (products.length) {
-      const productIds = products.map((p) => p.id);
-
-      const itemWhere = { product_id: productIds };
-
-      if (!stock || stock === "stock_in_hand") {
-        itemWhere.quantity = { [Op.gt]: 0 };
+    if (!rows.length) {
+      const emptyResponse = { products: [] };
+      if (usePagination) {
+        emptyResponse.pagination = {
+          total,
+          page: pageNum,
+          limit: limitNum,
+          totalPages: Math.ceil(total / limitNum),
+        };
       }
+      return commonService.okResponse(res, emptyResponse);
+    }
 
-      if (stock === "out_of_stock") {
-        itemWhere.quantity = 0;
-      }
+    const productIds = rows.map((p) => p.id);
 
-      const itemDetails = await models.ProductItemDetail.findAll({
-        where: itemWhere,
-        order: [["id", "ASC"]],
+    // Fetch variants in one query
+    const [variantRows] = await sequelize.query(
+      `
+      SELECT
+        pv.product_id,
+        JSON_AGG(
+          JSON_BUILD_OBJECT(
+            'id', pv.variant_id,
+            'type_ids', pv.variant_type_ids
+          )
+        ) AS variants
+      FROM product_variants pv
+      WHERE pv.product_id IN (:productIds)
+      AND pv.variant_id IS NOT NULL
+      GROUP BY pv.product_id
+      `,
+      { replacements: { productIds } }
+    );
+
+    const variantMap = {};
+    variantRows.forEach(row => {
+      variantMap[row.product_id] = row.variants || [];
+    });
+
+    // Fetch item details
+    const itemWhere = { product_id: productIds };
+
+    if (!stock || stock === "stock_in_hand") {
+      itemWhere.quantity = { [Op.gt]: 0 };
+    }
+
+    if (stock === "out_of_stock") {
+      itemWhere.quantity = 0;
+    }
+
+    const itemDetails = await models.ProductItemDetail.findAll({
+      where: itemWhere,
+      order: [["id", "ASC"]],
+      raw: true,
+    });
+
+    // Fetch additional details
+    const itemIds = itemDetails.map((it) => it.id);
+    const additionalDetails = itemIds.length
+      ? await models.ProductAdditionalDetail.findAll({
+          where: { item_detail_id: itemIds },
+          raw: true,
+        })
+      : [];
+
+    const addsByItem = additionalDetails.reduce((acc, add) => {
+      (acc[add.item_detail_id] ??= []).push(add);
+      return acc;
+    }, {});
+
+    const itemsByProduct = itemDetails.reduce((acc, item) => {
+      (acc[item.product_id] ??= []).push(item);
+      return acc;
+    }, {});
+
+    // Batch fetch all material prices once (CRITICAL OPTIMIZATION)
+    const materialIds = [...new Set(rows.map(p => p.material_type_id).filter(Boolean))];
+    const materialPriceMap = {};
+    
+    if (materialIds.length) {
+      const materials = await models.MaterialType.findAll({
+        where: { id: materialIds },
+        attributes: ['id', 'material_price'],
+        raw: true,
+      });
+      materials.forEach(m => {
+        materialPriceMap[m.id] = parseFloat(m.material_price) || 0;
+      });
+    }
+
+    // Calculate totals and prices
+    const products = rows.map((row) => {
+      const productItems = itemsByProduct[row.id] || [];
+      
+      // Calculate aggregations
+      let totalQuantity = 0;
+      let totalWeight = 0;
+      let variationCount = productItems.length;
+
+      const itemsWithPrices = productItems.map((item) => {
+        const netWeight = parseFloat(item.net_weight) || 0;
+        const qty = parseFloat(item.quantity) || 0;
+        
+        totalQuantity += qty;
+        totalWeight += qty * netWeight;
+
+        // Calculate price without additional DB query
+        const priceDetails = calculateSellingPriceSync(
+          row,
+          item,
+          addsByItem[item.id] || [],
+          materialPriceMap[row.material_type_id] || 0
+        );
+
+        return {
+          ...item,
+          additional_details: addsByItem[item.id] || [],
+          price_details: priceDetails,
+        };
       });
 
-      const itemIds = itemDetails.map((it) => it.id);
-
-      const additionalDetails = itemIds.length
-        ? await models.ProductAdditionalDetail.findAll({
-            where: { item_detail_id: itemIds },
-          })
-        : [];
-
-      const addsByItem = additionalDetails.reduce((acc, add) => {
-        (acc[add.item_detail_id] ??= []).push(add);
-        return acc;
-      }, {});
-
-      const itemsByProduct = itemDetails.reduce((acc, item) => {
-        (acc[item.product_id] ??= []).push(item);
-        return acc;
-      }, {});
-
-      products = await Promise.all(
-        products.map(async (product) => ({
-          ...product,
-          item_details: await Promise.all(
-            (itemsByProduct[product.id] || []).map(async (item) => ({
-              ...item.get({ plain: true }),
-              additional_details: addsByItem[item.id] || [],
-              price_details: await calculateSellingPrice(product, item, models),
-            }))
-          ),
-        }))
-      );
-    }
+      return {
+        ...row,
+        variants: variantMap[row.id] || [],
+        total_quantity: totalQuantity,
+        total_weight: totalWeight,
+        variation_count: variationCount,
+        item_details: itemsWithPrices,
+      };
+    });
 
     const response = { products };
 
@@ -1344,7 +1404,95 @@ const newGetAllProductDetails = async (req, res) => {
 
     return commonService.okResponse(res, response);
   } catch (err) {
+    console.error("Error in newGetAllProductDetails:", err);
     return commonService.handleError(res, err);
+  }
+};
+
+// OPTIMIZED: Synchronous price calculation without DB queries
+const calculateSellingPriceSync = (product, item, additionalDetails, materialPrice) => {
+  try {
+    // 1. Get Material Rate Per Gram
+    let materialRate;
+    
+    if (product.product_type === "Piece Rate") {
+      const ratePerGram = parseFloat(item.rate_per_gram) || 0;
+      materialRate = Math.max(ratePerGram, materialPrice);
+    } else {
+      materialRate = materialPrice;
+    }
+
+    // 2. Material Contribution
+    const netWeight = parseFloat(item.net_weight) || 0;
+    const materialContribution = materialRate * netWeight;
+
+    // 3. Stone Value
+    const stoneValue = parseFloat(item.stone_value) || 0;
+
+    // 4. Additional Details Sum (already fetched)
+    const additionalDetailsSum = additionalDetails.reduce((sum, detail) => {
+      return sum + (parseFloat(detail.value) || 0);
+    }, 0);
+
+    // 5. Making Charge Calculation
+    let makingCharge = 0;
+    const makingChargeValue = parseFloat(item.making_charge) || 0;
+    switch (item.making_charge_type) {
+      case "Per Gram":
+        makingCharge = makingChargeValue * netWeight;
+        break;
+      case "Percentage":
+        makingCharge = (makingChargeValue / 100) * materialContribution;
+        break;
+      case "Amount":
+        makingCharge = makingChargeValue;
+        break;
+    }
+
+    // 6. Wastage Calculation
+    let wastage = 0;
+    const wastageValue = parseFloat(item.wastage) || 0;
+    switch (item.wastage_type) {
+      case "Per Gram":
+        wastage = wastageValue * netWeight;
+        break;
+      case "Percentage":
+        wastage = (wastageValue / 100) * materialContribution;
+        break;
+      case "Amount":
+        wastage = wastageValue;
+        break;
+    }
+
+    // 7. Final Selling Price
+    const sellingPrice =
+      materialContribution +
+      makingCharge +
+      wastage +
+      stoneValue +
+      additionalDetailsSum;
+
+    return {
+      material_rate_per_gram: materialRate,
+      material_contribution: materialContribution,
+      making_charge: makingCharge,
+      wastage: wastage,
+      stone_value: stoneValue,
+      additional_details_value: additionalDetailsSum,
+      selling_price: sellingPrice,
+    };
+  } catch (error) {
+    console.error("Error in calculateSellingPriceSync:", error);
+    return {
+      material_rate_per_gram: 0,
+      material_contribution: 0,
+      making_charge: 0,
+      wastage: 0,
+      stone_value: 0,
+      additional_details_value: 0,
+      selling_price: 0,
+      error: "Error calculating price",
+    };
   }
 };
 
