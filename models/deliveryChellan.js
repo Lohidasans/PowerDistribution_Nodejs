@@ -91,7 +91,7 @@ module.exports = (sequelize, DataTypes) => {
       
     },
     {
-          tableName: "delivery_chellan",      // ✅ exact table name
+      tableName: "delivery_chellan",      // ✅ exact table name
       freezeTableName: true,    
       timestamps: true,
       createdAt: "created_at",

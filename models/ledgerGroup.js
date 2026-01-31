@@ -17,6 +17,10 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.STRING,
         allowNull: false,
       },
+      normal_balance: {
+      type: DataTypes.ENUM("Debit", "Credit"),
+      allowNull: true,
+    },
       status_id: {
         type: DataTypes.INTEGER,
         allowNull: false,

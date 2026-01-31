@@ -90,7 +90,7 @@ const list = async (req, res) => {
         where,
         limit: parseInt(limit),
         offset: parseInt(offset),
-        order: [["created_at", "DESC"]],
+        order: [["id", "ASC"]],
       });
 
     return commonService.okResponse(res, {

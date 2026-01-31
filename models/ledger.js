@@ -13,7 +13,7 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
         unique: true,
       },
-      ledger_group_no: {
+      ledger_group_id: {
         type: DataTypes.INTEGER,
         allowNull: false,
       },
@@ -34,7 +34,7 @@ module.exports = (sequelize, DataTypes) => {
 
   Ledger.associate = (models) => {
     Ledger.belongsTo(models.LedgerGroup, {
-      foreignKey: "ledger_group_no",
+      foreignKey: "ledger_group_id",
       as: "ledgerGroup",
     });
   };
