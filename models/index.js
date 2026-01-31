@@ -126,6 +126,7 @@ const JewelRepairItem = require("./jewelRepairItems")(sequelize, Sequelize.DataT
 // Quotation related models
 const Quotation = require("./quotations")(sequelize, Sequelize.DataTypes);
 const QuotationItem = require("./quotationItems")(sequelize, Sequelize.DataTypes);
+const VendorQuotation = require("./vendorQuotations")(sequelize, Sequelize.DataTypes);
 
 // Leave related models
 const LeaveType = require("./leaveTypes")(sequelize, Sequelize.DataTypes);
@@ -229,6 +230,7 @@ const models = {
   Payment,
   Quotation,
   QuotationItem,
+  VendorQuotation,
   LeaveType,
   Leave,
   Holiday,

@@ -41,6 +41,22 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
         defaultValue: 1,
       },
+      vendor_quotation_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+      },
+      rate: {
+        type: DataTypes.DECIMAL(15, 2),
+        allowNull: true,
+      },
+      amount: {
+        type: DataTypes.DECIMAL(15, 2),
+        allowNull: true,
+      },
+      vendor_remarks: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
       created_by: {
         type: DataTypes.INTEGER,
         allowNull: true,
@@ -58,6 +74,6 @@ module.exports = (sequelize, DataTypes) => {
       deletedAt: "deleted_at",
     }
   );
-  
+
   return QuotationItem;
 };

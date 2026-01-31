@@ -32,7 +32,7 @@ module.exports = (sequelize, DataTypes) => {
       status_id: {
         type: DataTypes.INTEGER,
         allowNull: false,
-        defaultValue: 1, // 1- pending, 2 - accepted, 3 - rejected
+        defaultValue: 1, // 1- pending, 2 - partially received, 3 - received
       },
       created_by: {
         type: DataTypes.INTEGER,
