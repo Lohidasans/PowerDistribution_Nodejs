@@ -157,9 +157,9 @@ const validateInvoiceItems = async ({
             throw new ValidationError("Invoice not found");
         }
 
-        if (invoice.status === "Invoice") {
-            throw new ValidationError("Finalized invoice cannot be edited");
-        }
+        // if (invoice.status === "Invoice") {
+        //     throw new ValidationError("Finalized invoice cannot be edited");
+        // }
     }
 
     // invoice_no uniqueness (only on create or when changed)
