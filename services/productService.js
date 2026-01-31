@@ -2305,7 +2305,7 @@ const getDeletedProducts = async (req, res) => {
       SELECT
         p.*,
         g.grn_no,
-        gi.ref_no,
+        gi.ref_no as grn_ref_no,
         b.branch_name
       FROM products p
       LEFT JOIN grns g ON p.grn_id = g.id
