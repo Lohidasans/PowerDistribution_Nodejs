@@ -345,7 +345,16 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": ""
+              "raw": "{{baseUrl}}/api/v1/ledgers/generate-number",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "ledgers",
+                "generate-number"
+              ]
             }
           },
           "response": []
@@ -357,7 +366,16 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": ""
+              "raw": "{{baseUrl}}/api/v1/ledger-groups/generate-number",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "ledger-groups",
+                "generate-number"
+              ]
             }
           },
           "response": []

@@ -1,6 +1,6 @@
 module.exports = (sequelize, DataTypes) => {
-  const Ledger = sequelize.define(
-    "Ledger",
+  const JournalEntry = sequelize.define(
+    "journal_entry",
     {
       id: {
         allowNull: false,
@@ -8,22 +8,36 @@ module.exports = (sequelize, DataTypes) => {
         primaryKey: true,
         type: DataTypes.INTEGER,
       },
-      ledger_no: {
+
+      journal_no: {
         type: DataTypes.STRING,
         allowNull: false,
         unique: true,
       },
-      ledger_group_id: {
-        type: DataTypes.INTEGER,
+
+      date: {
+        type: DataTypes.DATEONLY,
         allowNull: false,
       },
-      ledger_name: {
-        type: DataTypes.STRING,
+
+      total: {
+        type: DataTypes.DECIMAL(15, 2),
+        allowNull: false,
+        defaultValue: 0,
+      },
+
+      difference: {
+        type: DataTypes.DECIMAL(15, 2),
+        allowNull: true,
+        defaultValue: 0,
+      },
+
+      branch_id: {
+        type: DataTypes.INTEGER,
         allowNull: false,
       },
     },
     {
-      tableName: "ledger",
       timestamps: true,
       createdAt: "created_at",
       updatedAt: "updated_at",
@@ -32,12 +46,5 @@ module.exports = (sequelize, DataTypes) => {
     }
   );
 
-  // Ledger.associate = (models) => {
-  //   Ledger.belongsTo(models.LedgerGroup, {
-  //     foreignKey: "ledger_group_id",
-  //     as: "ledgerGroup",
-  //   });
-  // };
-
-  return Ledger;
+  return JournalEntry;
 };

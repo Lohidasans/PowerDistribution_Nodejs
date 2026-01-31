@@ -169,6 +169,11 @@ const PayrollMaster = require("./payrollMasters")(sequelize, Sequelize.DataTypes
 //Delivery Chellan Model
 const DeliveryChellan = require("./deliveryChellan")(sequelize, Sequelize.DataTypes);
 const DeliveryChellanItem = require("./deliveryChellanItem")(sequelize, Sequelize.DataTypes);
+
+// Journal Entry related models
+const JournalEntry = require("./journalEntries")(sequelize, Sequelize.DataTypes);
+const JournalEntryItem = require("./journalEntryItems")(sequelize, Sequelize.DataTypes);
+
 const models = {
   Permission,
   Role,
@@ -263,7 +268,9 @@ const models = {
   PayrollMaster,
   DeliveryChellan,
   DeliveryChellanItem,
-  VoucherReceipt
+  VoucherReceipt,
+  JournalEntry,
+  JournalEntryItem
 };
 
 Object.values(models).forEach((model) => {

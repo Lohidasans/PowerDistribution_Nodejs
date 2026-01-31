@@ -1,0 +1,245 @@
+{
+  "info": {
+    "name": "Journal Entry API",
+    "description": "Complete API collection for Journal Entry management with items",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Journal Entries",
+      "item": [
+        {
+          "name": "1. Generate Journal Number",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/journal-entries/generate-number",
+              "host": ["{{baseUrl}}"],
+              "path": ["journal-entries", "generate-number"]
+            },
+            "description": "Auto-generate the next journal entry number in format JE001, JE002, etc."
+          },
+          "response": []
+        },
+        {
+          "name": "2. Create Journal Entry",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"journal_no\": \"JE-2026-001\",\n  \"date\": \"2026-01-31\",\n  \"total\": 10000,\n  \"difference\": 0,\n  \"branch_id\": 1,\n  \"items\": [\n    {\n      \"account_id\": 101,\n      \"description\": \"Cash received from customer\",\n      \"debit\": 10000,\n      \"credit\": 0\n    },\n    {\n      \"account_id\": 201,\n      \"description\": \"Sales revenue\",\n      \"debit\": 0,\n      \"credit\": 10000\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/journal-entries",
+              "host": ["{{baseUrl}}"],
+              "path": ["journal-entries"]
+            },
+            "description": "Create a new journal entry with multiple items. Items array is required with at least one item."
+          },
+          "response": []
+        },
+        {
+          "name": "3. Get All Journal Entries",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/journal-entries?search=JE-2026&branch_id=1",
+              "host": ["{{baseUrl}}"],
+              "path": ["journal-entries"],
+              "query": [
+                {
+                  "key": "search",
+                  "value": "JE-2026",
+                  "description": "Search by journal number"
+                },
+                {
+                  "key": "branch_id",
+                  "value": "1",
+                  "description": "Filter by branch ID"
+                },
+                {
+                  "key": "date_from",
+                  "value": "2026-01-01",
+                  "disabled": true,
+                  "description": "Filter from date"
+                },
+                {
+                  "key": "date_to",
+                  "value": "2026-01-31",
+                  "disabled": true,
+                  "description": "Filter to date"
+                }
+              ]
+            },
+            "description": "Get all journal entries with their items. Supports filtering by search, branch_id, date_from, and date_to."
+          },
+          "response": []
+        },
+        {
+          "name": "4. Get Journal Entry by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/journal-entries/{{journal_entry_id}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["journal-entries", "{{journal_entry_id}}"]
+            },
+            "description": "Get a specific journal entry with all its items by ID."
+          },
+          "response": []
+        },
+        {
+          "name": "5. Update Journal Entry",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"journal_no\": \"JE-2026-001\",\n  \"date\": \"2026-01-31\",\n  \"total\": 15000,\n  \"difference\": 0,\n  \"branch_id\": 1,\n  \"items\": [\n    {\n      \"account_id\": 101,\n      \"description\": \"Updated cash received\",\n      \"debit\": 15000,\n      \"credit\": 0\n    },\n    {\n      \"account_id\": 201,\n      \"description\": \"Updated sales revenue\",\n      \"debit\": 0,\n      \"credit\": 15000\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/journal-entries/{{journal_entry_id}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["journal-entries", "{{journal_entry_id}}"]
+            },
+            "description": "Update an existing journal entry. If items array is provided, old items will be deleted and replaced with new ones."
+          },
+          "response": []
+        },
+        {
+          "name": "6. Delete Journal Entry",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/journal-entries/{{journal_entry_id}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["journal-entries", "{{journal_entry_id}}"]
+            },
+            "description": "Soft delete a journal entry and all its associated items."
+          },
+          "response": []
+        },
+        {
+          "name": "7. Delete Journal Entry Item",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/journal-entries/items/{{item_id}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["journal-entries", "items", "{{item_id}}"]
+            },
+            "description": "Soft delete a specific journal entry item by its ID."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Example Payloads",
+      "item": [
+        {
+          "name": "Example - Multiple Debit/Credit Entries",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"journal_no\": \"JE-2026-002\",\n  \"date\": \"2026-01-31\",\n  \"total\": 50000,\n  \"difference\": 0,\n  \"branch_id\": 1,\n  \"items\": [\n    {\n      \"account_id\": 101,\n      \"description\": \"Cash account\",\n      \"debit\": 20000,\n      \"credit\": 0\n    },\n    {\n      \"account_id\": 102,\n      \"description\": \"Bank account\",\n      \"debit\": 30000,\n      \"credit\": 0\n    },\n    {\n      \"account_id\": 301,\n      \"description\": \"Sales revenue\",\n      \"debit\": 0,\n      \"credit\": 45000\n    },\n    {\n      \"account_id\": 302,\n      \"description\": \"Discount given\",\n      \"debit\": 0,\n      \"credit\": 5000\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/journal-entries",
+              "host": ["{{baseUrl}}"],
+              "path": ["journal-entries"]
+            },
+            "description": "Example with multiple debit and credit entries"
+          },
+          "response": []
+        },
+        {
+          "name": "Example - Asset Purchase",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"journal_no\": \"JE-2026-003\",\n  \"date\": \"2026-01-31\",\n  \"total\": 100000,\n  \"difference\": 0,\n  \"branch_id\": 2,\n  \"items\": [\n    {\n      \"account_id\": 501,\n      \"description\": \"Equipment purchase\",\n      \"debit\": 100000,\n      \"credit\": 0\n    },\n    {\n      \"account_id\": 102,\n      \"description\": \"Bank payment\",\n      \"debit\": 0,\n      \"credit\": 100000\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/journal-entries",
+              "host": ["{{baseUrl}}"],
+              "path": ["journal-entries"]
+            },
+            "description": "Example journal entry for asset purchase"
+          },
+          "response": []
+        },
+        {
+          "name": "Example - Expense Entry",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"journal_no\": \"JE-2026-004\",\n  \"date\": \"2026-01-31\",\n  \"total\": 25000,\n  \"difference\": 0,\n  \"branch_id\": 1,\n  \"items\": [\n    {\n      \"account_id\": 601,\n      \"description\": \"Office rent expense\",\n      \"debit\": 15000,\n      \"credit\": 0\n    },\n    {\n      \"account_id\": 602,\n      \"description\": \"Utility bills\",\n      \"debit\": 5000,\n      \"credit\": 0\n    },\n    {\n      \"account_id\": 603,\n      \"description\": \"Office supplies\",\n      \"debit\": 5000,\n      \"credit\": 0\n    },\n    {\n      \"account_id\": 101,\n      \"description\": \"Cash payment\",\n      \"debit\": 0,\n      \"credit\": 25000\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/journal-entries",
+              "host": ["{{baseUrl}}"],
+              "path": ["journal-entries"]
+            },
+            "description": "Example journal entry for multiple expenses"
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000/api",
+      "type": "string"
+    },
+    {
+      "key": "journal_entry_id",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "item_id",
+      "value": "1",
+      "type": "string"
+    }
+  ]
+}
