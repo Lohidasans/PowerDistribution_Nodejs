@@ -1,5 +1,7 @@
+const { ValidationError } = require("../utils/errors");
+
 const calculateItemsAndSubtotal = (items, withId = false) => {
-    let subtotal = 0;
+    let netTotal = 0;
     let totalQty = 0;
 
     const itemRows = items.map(it => {
@@ -7,9 +9,9 @@ const calculateItemsAndSubtotal = (items, withId = false) => {
         const rate = Number(it.rate || 0);
         const itemAmount = qty * rate;
         const itemDiscount = Number(it.discount_amount || 0);
-        const amount = itemAmount - itemDiscount;
+        const amount = itemAmount - itemDiscount; // item-level discount
 
-        subtotal += amount;
+        netTotal += amount;
         totalQty += qty;
 
         const row = {
@@ -22,8 +24,8 @@ const calculateItemsAndSubtotal = (items, withId = false) => {
             wastage: it.wastage,
             quantity: qty,
             rate,
-            discount_amount: itemDiscount,
-            amount,
+            discount_amount: itemDiscount, // keep item discount
+            amount,                         // net item amount
         };
 
         if (withId) {
@@ -33,9 +35,10 @@ const calculateItemsAndSubtotal = (items, withId = false) => {
         return row;
     });
 
-    return { itemRows, subtotal, totalQty };
+    return { itemRows, netTotal, totalQty };
 };
 
+/*
 const calculateInvoiceTotals = ({
     subtotal,
     header,
@@ -59,7 +62,7 @@ const calculateInvoiceTotals = ({
         );
 
         if (totalAdjustment > total) {
-            throw new Error(
+            throw new ValidationError(
                 `Total adjustment amount (${totalAdjustment}) cannot exceed invoice total (${total})`
             );
         }
@@ -90,7 +93,79 @@ const calculateInvoiceTotals = ({
         igstAmt,
         headerDiscountAmt,
         totalAdjustment,
-        hasHeaderIgst   
+        hasHeaderIgst
+    };
+};  */
+
+const calculateInvoiceTotals = ({
+    netTotal,
+    header,
+    adjustments = []
+}) => {
+    const hasHeaderIgst = header.igst_amount && Number(header.igst_amount) > 0;
+
+    const cgstAmt = hasHeaderIgst ? 0 : Number(header.cgst_amount ?? 0);
+    const sgstAmt = hasHeaderIgst ? 0 : Number(header.sgst_amount ?? 0);
+    const igstAmt = hasHeaderIgst ? Number(header.igst_amount ?? 0) : 0;
+
+    const gstTotal = cgstAmt + sgstAmt + igstAmt;
+    const GST_FACTOR = 1.03;
+
+    let discountCalculated = 0;
+    let discountGross = 0; //what user discount equals in money
+
+    // DISCOUNT CALCULATION
+    if (header.discount_amount && header.discount_amount > 0) {
+        if (header.discount_type === "Amount") {
+            discountGross = Number(header.discount_amount); // user value
+            discountCalculated = discountGross / GST_FACTOR;
+        } 
+
+        if (header.discount_type === "Percentage") {
+            const grantTotalBeforeDiscount = netTotal + gstTotal;
+            discountGross =
+                (grantTotalBeforeDiscount * Number(header.discount_amount)) / 100;
+
+            discountCalculated = discountGross / GST_FACTOR;
+        }
+
+        discountCalculated = Math.min(discountCalculated, netTotal);
+    }
+
+    // SUBTOTAL & TOTAL
+    const subtotal = netTotal - discountCalculated;
+    let total = subtotal + gstTotal;
+
+    // ADJUSTMENTS (LAST)
+    let totalAdjustment = 0;
+    if (Array.isArray(adjustments) && adjustments.length > 0) {
+        totalAdjustment = adjustments.reduce(
+            (sum, a) => sum + Number(a.adjustment_amount || 0),
+            0
+        );
+
+        if (totalAdjustment > total) {
+            throw new ValidationError(
+                `Total adjustment amount (${totalAdjustment}) cannot exceed invoice total (${total})`
+            );
+        }
+
+        total -= totalAdjustment;
+    }
+
+    total = Math.round(total);
+
+    return {
+        netTotal,
+        subtotal,
+        total,
+        discountGross,        // user-facing discount value
+        discountCalculated,   // actual pre-GST discount
+        cgstAmt,
+        sgstAmt,
+        igstAmt,
+        totalAdjustment,
+        hasHeaderIgst
     };
 };
 

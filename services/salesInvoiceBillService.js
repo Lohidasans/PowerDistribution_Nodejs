@@ -6,7 +6,8 @@ const { validateProductItemDetails,
   validateProducts,
   reduceStockForInvoice,
   validateCashPayment,
-  updateBillAdjustmentFlags } = require('../helpers/billingValidations');
+  updateBillAdjustmentFlags,
+  validateInvoiceItems } = require('../helpers/billingValidations');
 const { calculateItemsAndSubtotal, calculateInvoiceTotals, calculatePaymentSummary } = require("../helpers/billingCalculations");
 const { Op } = require("sequelize");
 
@@ -27,6 +28,7 @@ const generateSalesInvoiceNo = async (req, res) => {
   }
 };
 
+/*
 // Create Sales invoice (header + items + payment)
 const createSalesInvoice = async (req, res) => {
   const t = await sequelize.transaction();
@@ -34,46 +36,30 @@ const createSalesInvoice = async (req, res) => {
     const { header = {}, items = [], payment = {}, adjustments = [] } = req.body || {};
 
     // Validate items
-    if (!Array.isArray(items) || items.length === 0) {
-      await t.rollback();
-      return commonService.badRequest(res, "At least one item is required");
-    }
-
-    // Check if invoice_no already exists
-    if (header.invoice_no) {
-      const existing = await models.SalesInvoiceBill.findOne({
-        where: {
-          invoice_no: header.invoice_no,
-          deleted_at: null,
-        },
-      });
-      if (existing) {
-        await t.rollback();
-        return commonService.badRequest(res, { message: "Invoice no already exists" });
-      }
-    }
+    await validateInvoiceItems({items, header, transaction: t, isCreate: true,});
 
     // Validate products and stock
     await validateProducts(items, t);
     await validateProductItemDetails(items, t);
 
-    const invalidItems = items.filter(
-      i => !i.product_item_detail_id
-    );
-
-    if (invalidItems.length > 0) {
-      await t.rollback();
-      return commonService.badRequest(
-        res,
-        "product_item_detail_id is required for all items"
-      );
-    }
-
     // Calculate totals
-    const { itemRows, subtotal, totalQty } = calculateItemsAndSubtotal(items);
+    const { itemRows, netTotal, totalQty } = calculateItemsAndSubtotal(items);
       
     // Handle IGST vs SGST/CGST logic for header totals
-    const { total, cgstAmt, sgstAmt, igstAmt, headerDiscountAmt, totalAdjustment, hasHeaderIgst } = calculateInvoiceTotals({ subtotal, header, adjustments});
+    const {
+      subtotal,
+      total,
+      discountGross,
+      discountCalculated,
+      cgstAmt,
+      sgstAmt,
+      igstAmt,
+      hasHeaderIgst
+    } = calculateInvoiceTotals({
+      netTotal,
+      header,
+      adjustments
+    });
 
     // PAYMENT PROCESSING
     const paymentInput = Array.isArray(payment) ? payment : [];
@@ -102,7 +88,8 @@ const createSalesInvoice = async (req, res) => {
         employee_id: header.employee_id,
         customer_id: header.customer_id || null,
         branch_id: header.branch_id || null,
-        subtotal_amount: subtotal,
+        netTotal : netTotal, // sum of items amounts
+        subtotal_amount: subtotal,   // net total - discount
         cgst_percent: hasHeaderIgst ? null : (header.cgst_percent || null),
         sgst_percent: hasHeaderIgst ? null : (header.sgst_percent || null),
         igst_percent: hasHeaderIgst ? (header.igst_percent || null) : null,
@@ -110,7 +97,8 @@ const createSalesInvoice = async (req, res) => {
         sgst_amount: sgstAmt,
         igst_amount: igstAmt,
         discount_type: header.discount_type || null,
-        discount_amount: headerDiscountAmt,
+        discount_amount: discountGross,
+        discount_calculated: discountCalculated,
         total_amount: total,
         amount_due: amountDue,
         refund_amount: refundAmount,
@@ -181,13 +169,12 @@ const createSalesInvoice = async (req, res) => {
     if (!t.finished) {
       await t.rollback();
     }
-    if (err.message.includes('Invalid product_id') ||
-      err.message.includes('Invalid product_item_detail_id')) {
+    if (err.name === "ValidationError") {
       return commonService.badRequest(res, err.message);
     }
     return commonService.handleError(res, err);
   }
-};
+};  */
 
 // Get a single sales invoice by ID with related data
 const getSalesInvoiceById = async (req, res) => {
@@ -678,129 +665,33 @@ const searchInvoices = async (req, res) => {
   }
 };
 
-const updateSalesInvoice = async (req, res) => {
+/*const updateSalesInvoice = async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const invoiceId = req.params.id;
     const { header = {}, items = [], payment = [], adjustments = [] } = req.body || {};
 
-    // 1. FETCH & VALIDATE INVOICE
-    const invoice = await models.SalesInvoiceBill.findByPk(invoiceId, {
+    // FETCH & VALIDATE INVOICE
+    const invoice = await validateInvoiceItems({
+      items,
+      header,
       transaction: t,
+      isCreate: false,
+      excludeInvoiceId: invoiceId,
     });
 
-    if (!invoice) {
-      await t.rollback();
-      return commonService.notFound(res, "Invoice not found");
-    }
-
-    if (invoice.status === "Invoice") {
-      await t.rollback();
-      return commonService.badRequest(
-        res,
-        "Finalized invoice cannot be edited"
-      );
-    }
-
     const status = header.status ?? invoice.status;
-
-    // 2. ITEMS VALIDATION
-    if (!Array.isArray(items) || items.length === 0) {
-      await t.rollback();
-      return commonService.badRequest(
-        res,
-        "At least one item is required"
-      );
-    }
 
     // Validate products and stock
     await validateProducts(items, t);
     await validateProductItemDetails(items, t);
 
-    // Require product_item_detail_id for all items
-    const invalidItems = items.filter(
-      i => !i.product_item_detail_id
-    );
-
-    if (invalidItems.length > 0) {
-      await t.rollback();
-      return commonService.badRequest(
-        res,
-        "product_item_detail_id is required for all items"
-      );
-    }
 
     // RECALCULATE TOTALS
-    let subtotal = 0;
-    let totalQty = 0;
-
-    const itemRows = items.map(it => {
-      const qty = Number(it.quantity || 0);
-      const rate = Number(it.rate || 0);
-      const itemAmount = qty * rate;
-      const itemDiscount = Number(it.discount_amount || 0);
-      const amount = itemAmount - itemDiscount;
-
-      subtotal += amount;
-      totalQty += qty;
-
-      return {
-        id: it.id || null,
-        product_id: it.product_id,
-        product_item_detail_id: it.product_item_detail_id ?? null,
-        hsn_code: it.hsn_code ?? null,
-        product_name_snapshot: it.product_name_snapshot ?? null,
-        net_weight: it.net_weight,
-        gross_weight: it.gross_weight,
-        wastage: it.wastage,
-        quantity: qty,
-        rate: rate,
-        discount_amount: itemDiscount,
-        amount: amount,
-      };
-    });
+    const { itemRows, subtotal, totalQty } = calculateItemsAndSubtotal(items);
 
     // Handle IGST vs SGST/CGST logic for header totals
-    const hasHeaderIgst = header.igst_amount && Number(header.igst_amount) > 0;
-    const cgstAmt = hasHeaderIgst ? 0 : Number(header.cgst_amount ?? 0);
-    const sgstAmt = hasHeaderIgst ? 0 : Number(header.sgst_amount ?? 0);
-    const igstAmt = hasHeaderIgst ? Number(header.igst_amount ?? 0) : 0;
-
-    let total = subtotal + cgstAmt + sgstAmt + igstAmt;
-
-    // 5. APPLY ADJUSTMENTS (CALC ONLY)
-    let totalAdjustment = 0;
-    if (Array.isArray(adjustments) && adjustments.length > 0) {
-      totalAdjustment = adjustments.reduce(
-        (sum, adj) => sum + (Number(adj.adjustment_amount) || 0),
-        0
-      );
-
-      if (totalAdjustment > total) {
-        await t.rollback();
-        return commonService.badRequest(res, {
-          message: "Total adjustment amount cannot exceed invoice total",
-          maxAllowedAdjustment: total,
-          attemptedAdjustment: totalAdjustment,
-        });
-      }
-
-      total -= totalAdjustment;
-      if (total < 0) total = 0; 
-    }
-
-    let headerDiscountAmt = 0;
-    if (header.discount_amount && header.discount_amount > 0) {
-      if (header.discount_type === "Percentage") {
-        headerDiscountAmt = (total * Number(header.discount_amount)) / 100;
-      } else {
-        headerDiscountAmt = Number(header.discount_amount);
-      }
-      headerDiscountAmt = Math.min(headerDiscountAmt, total);
-      total -= headerDiscountAmt;
-    }
-    // Round off total_amount to nearest integer when adjustments exist
-    total = Math.round(total);
+    const { total, cgstAmt, sgstAmt, igstAmt, headerDiscountAmt, totalAdjustment, hasHeaderIgst } = calculateInvoiceTotals({ subtotal, header, adjustments });
 
     // 5. PAYMENT PROCESSING & CASH VALIDATION
     const incomingPayments = Array.isArray(payment) ? payment : [];
@@ -828,28 +719,10 @@ const updateSalesInvoice = async (req, res) => {
         })),
     ];
 
-    const totalPaid = allPayments.reduce((sum, p) => sum + p.amount_received, 0);
-
-    let refundAmount = 0;
-    let amountDue = total;
-
-    if (totalPaid > total) {
-      refundAmount = totalPaid - total;
-      amountDue = 0;
-    } else {
-      amountDue = total - totalPaid;
-    }
+    const { amountDue, refundAmount } = calculatePaymentSummary(allPayments, total);
 
     // === PAN CARD VALIDATION: Total CASH ≥ ₹2 Lakh ===
-    const totalCashReceived = allPayments
-      .filter(p => p.payment_mode?.toLowerCase() === 'cash')
-      .reduce((sum, p) => sum + p.amount_received, 0);
-
-    if (totalCashReceived > 200000) {
-      await t.rollback();
-      return commonService.badRequest(res, enMessage.billing.panCardRequired);
-    }
-    // === END VALIDATION ===
+    validateCashPayment(allPayments);
 
     // 6. UPDATE INVOICE HEADER
     await invoice.update(
@@ -971,54 +844,10 @@ const updateSalesInvoice = async (req, res) => {
     // FINALIZE SIDE EFFECTS (ONLY IF STATUS = "Invoice")
     if (status === "Invoice") {
       // Reduce stock
-      for (const item of items) {
-        if (item.product_item_detail_id && item.quantity > 0) {
-          const productItemDetail = await models.ProductItemDetail.findByPk(
-            item.product_item_detail_id,
-            { transaction: t }
-          );
-
-          if (!productItemDetail) {
-            await t.rollback();
-            return commonService.badRequest(
-              res,
-              `Product item detail not found: ${item.product_item_detail_id}`
-            );
-          }
-
-          const newQty = productItemDetail.quantity - Number(item.quantity);
-
-          if (newQty < 0) {
-            await t.rollback();
-            return commonService.badRequest(
-              res,
-              `Insufficient stock for item ${item.product_item_detail_id}`
-            );
-          }
-
-          await productItemDetail.update(
-            { quantity: newQty },
-            { transaction: t }
-          );
-        }
-      }
+      await reduceStockForInvoice(items, status, allPayments, t);
 
       // Lock adjustments
-      for (const adj of adjustments) {
-        if (adj.reference_id) {
-          if (adj.adjustment_type_id === 1) {
-            await models.SalesReturn.update(
-              { is_bill_adjusted: true },
-              { where: { id: adj.reference_id }, transaction: t }
-            );
-          } else if (adj.adjustment_type_id === 2) {
-            await models.OldJewel.update(
-              { is_bill_adjusted: true },
-              { where: { id: adj.reference_id }, transaction: t }
-            );
-          }
-        }
-      }
+      await updateBillAdjustmentFlags(adjustments, t);
     }
 
     await t.commit();
@@ -1030,13 +859,368 @@ const updateSalesInvoice = async (req, res) => {
     if (!t.finished) {
       await t.rollback();
     }
-    if (err.message.includes('Invalid product_id') ||
-      err.message.includes('Invalid product_item_detail_id')) {
+    if (err.name === "ValidationError") {
+      return commonService.badRequest(res, err.message);
+    }
+    return commonService.handleError(res, err);
+  }
+};*/
+
+
+
+// New invoice - Calaculations are handled in the UI, so here we just save what we get
+const createSalesInvoice = async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const { header = {}, items = [], payment = {}, adjustments = [] } = req.body || {};
+
+    // Validate items
+    await validateInvoiceItems({ items, header, transaction: t, isCreate: true });
+
+    // Validate products
+    await validateProducts(items, t);
+    await validateProductItemDetails(items, t);
+
+    // OPTIONAL BUT HIGHLY RECOMMENDED:
+    // Validate numbers are sane (no negatives, NaN)
+    if (header.net_total < 0 || header.total_amount < 0) {
+      throw new ValidationError("Invalid invoice totals");
+    }
+
+    // PAYMENT PROCESSING
+    const paymentRows = (Array.isArray(payment) ? payment : [])
+      .filter(p => p.payment_mode)
+      .map(p => ({
+        payment_mode: p.payment_mode,
+        amount_received: Number(p.amount_received || 0),
+        payment_date: p.payment_date || new Date(),
+        transaction_id: p.transaction_id || null,
+        status: "Completed",
+        created_by: req.user?.id || null,
+      }));
+
+    validateCashPayment(paymentRows);
+
+    const hasHeaderIgst = header.igst_amount !== undefined && Number(header.igst_amount) > 0;
+    const cgstAmt = hasHeaderIgst ? 0 : Number(header.cgst_amount || 0);
+    const sgstAmt = hasHeaderIgst ? 0 : Number(header.sgst_amount || 0);
+    const igstAmt = hasHeaderIgst ? Number(header.igst_amount || 0) : 0;
+
+    // CREATE INVOICE (NO CALCULATION)
+    const bill = await models.SalesInvoiceBill.create(
+      {
+        invoice_no: header.invoice_no,
+        invoice_date: header.invoice_date,
+        invoice_time: header.invoice_time,
+        employee_id: header.employee_id,
+        customer_id: header.customer_id,
+        branch_id: header.branch_id,
+
+        net_total: header.net_total,
+        subtotal_amount: header.subtotal_amount,
+
+        discount_type: header.discount_type,
+        discount_amount: header.discount_amount,           // user-entered
+        discount_calculated: header.discount_calculated,   // UI-calculated
+
+        cgst_percent: header.cgst_percent,
+        sgst_percent: header.sgst_percent,
+        igst_percent: header.igst_percent,
+        cgst_amount: cgstAmt,
+        sgst_amount: sgstAmt,
+        igst_amount: igstAmt,
+
+        total_amount: header.total_amount,
+        amount_due: header.amount_due,
+        refund_amount: header.refund_amount,
+        amount_in_words: header.amount_in_words,
+        
+        total_quantity: header.total_quantity,
+        hasBillAdjustment: header.hasBillAdjustment || false,
+        status: header.status,
+      },
+      { transaction: t }
+    );
+
+    // PAYMENTS
+    paymentRows.forEach(p => (p.invoice_bill_id = bill.id));
+    const savedPayments =
+      paymentRows.length > 0
+        ? await models.Payment.bulkCreate(paymentRows, { transaction: t, returning: true })
+        : [];
+
+    // ADJUSTMENTS
+    const savedAdjustments =
+      adjustments.length > 0
+        ? await models.SalesInvoiceAdjustment.bulkCreate(
+          adjustments.map(adj => ({
+            sales_invoice_id: bill.id,
+            adjustment_type_id: adj.adjustment_type_id,
+            reference_id: adj.reference_id,
+            reference_no: adj.reference_no,
+            adjustment_amount: Number(adj.adjustment_amount || 0),
+          })),
+          { transaction: t }
+        )
+        : [];
+
+    await updateBillAdjustmentFlags(adjustments, t);
+
+    // ITEMS (amounts already calculated by UI)
+    const savedItems = await models.SalesInvoiceBillItem.bulkCreate(
+      items.map(i => ({
+        ...i,
+        invoice_bill_id: bill.id
+      })),
+      { transaction: t, returning: true }
+    );
+
+    // Update customer PAN
+    if (req.body.customer?.pan_no && header.customer_id) {
+      await models.Customer.update(
+        { pan_no: req.body.customer.pan_no },
+        { where: { id: header.customer_id }, transaction: t }
+      );
+    }
+
+    await reduceStockForInvoice(items, header.status, savedPayments, t);
+
+    await t.commit();
+
+    return commonService.createdResponse(res, {
+      message: enMessage.billing.invoiceCreationSuccess,
+      invoice: bill,
+      items: savedItems,
+      payments: savedPayments,
+      adjustment: savedAdjustments,
+    });
+  } catch (err) {
+    if (!t.finished) await t.rollback();
+    if (err.name === "ValidationError") {
       return commonService.badRequest(res, err.message);
     }
     return commonService.handleError(res, err);
   }
 };
+
+const updateSalesInvoice = async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const invoiceId = req.params.id;
+    const { header = {}, items = [], payment = [], adjustments = [] } = req.body || {};
+
+    // FETCH & VALIDATE INVOICE
+    const invoice = await validateInvoiceItems({
+      items,
+      header,
+      transaction: t,
+      isCreate: false,
+      excludeInvoiceId: invoiceId,
+    });
+
+    const status = header.status ?? invoice.status;
+
+    // Validate products and stock
+    await validateProducts(items, t);
+    await validateProductItemDetails(items, t);
+
+    // Validate numbers are sane (no negatives, NaN)
+    if (header.net_total < 0 || header.total_amount < 0) {
+      throw new ValidationError("Invalid invoice totals");
+    }
+
+    // PAYMENT PROCESSING
+    const incomingPayments = Array.isArray(payment) ? payment : [];
+
+    // Fetch existing payments for cash validation
+    const existingPayments = await models.Payment.findAll({
+      where: { invoice_bill_id: invoice.id },
+      attributes: ['id', 'payment_mode', 'amount_received'],
+      transaction: t,
+    });
+
+    // Combine existing + incoming (excluding deleted ones)
+    const allPayments = [
+      ...existingPayments.map(p => ({
+        id: p.id,
+        payment_mode: p.payment_mode,
+        amount_received: Number(p.amount_received),
+      })),
+      ...incomingPayments
+        .filter(p => p.payment_mode)
+        .map(p => ({
+          id: p.id || null,
+          payment_mode: p.payment_mode,
+          amount_received: Number(p.amount_received || 0),
+        })),
+    ];
+
+    // === PAN CARD VALIDATION: Total CASH ≥ ₹2 Lakh ===
+    validateCashPayment(allPayments);
+
+    // Determine IGST vs CGST/SGST
+    const hasHeaderIgst = header.igst_amount !== undefined && Number(header.igst_amount) > 0;
+    const cgstAmt = hasHeaderIgst ? 0 : Number(header.cgst_amount || 0);
+    const sgstAmt = hasHeaderIgst ? 0 : Number(header.sgst_amount || 0);
+    const igstAmt = hasHeaderIgst ? Number(header.igst_amount || 0) : 0;
+
+    // UPDATE INVOICE HEADER (NO CALCULATION)
+    await invoice.update(
+      {
+        invoice_date: header.invoice_date || invoice.invoice_date,
+        invoice_time: header.invoice_time || invoice.invoice_time,
+        employee_id: header.employee_id,
+        customer_id: header.customer_id,
+        branch_id: header.branch_id,
+
+        net_total: header.net_total,
+        subtotal_amount: header.subtotal_amount,
+
+        discount_type: header.discount_type,
+        discount_amount: header.discount_amount,           // user-entered
+        discount_calculated: header.discount_calculated,   // UI-calculated
+
+        cgst_percent: header.cgst_percent,
+        sgst_percent: header.sgst_percent,
+        igst_percent: header.igst_percent,
+        cgst_amount: cgstAmt,
+        sgst_amount: sgstAmt,
+        igst_amount: igstAmt,
+
+        total_amount: header.total_amount,
+        amount_due: header.amount_due,
+        refund_amount: header.refund_amount,
+        amount_in_words: header.amount_in_words,
+        total_quantity: header.total_quantity,
+        hasBillAdjustment: header.hasBillAdjustment || false,
+        status: status,
+      },
+      { transaction: t }
+    );
+
+    // UPSERT INVOICE ITEMS (amounts already calculated by UI)
+    const payloadItemIds = items.filter(i => i.id).map(i => i.id);
+
+    await models.SalesInvoiceBillItem.destroy({
+      where: {
+        invoice_bill_id: invoice.id,
+        id: { [Op.notIn]: payloadItemIds.length > 0 ? payloadItemIds : [0] },
+      },
+      transaction: t,
+    });
+
+    for (const item of items) {
+      if (item.id) {
+        await models.SalesInvoiceBillItem.update(
+          { ...item },
+          { where: { id: item.id }, transaction: t }
+        );
+      } else {
+        await models.SalesInvoiceBillItem.create(
+          { ...item, invoice_bill_id: invoice.id },
+          { transaction: t }
+        );
+      }
+    }
+
+    // UPSERT PAYMENTS
+    const payloadPaymentIds = incomingPayments.filter(p => p.id).map(p => p.id);
+
+    await models.Payment.destroy({
+      where: {
+        invoice_bill_id: invoice.id,
+        id: { [Op.notIn]: payloadPaymentIds.length > 0 ? payloadPaymentIds : [0] },
+      },
+      transaction: t,
+    });
+
+    for (const p of incomingPayments) {
+      const data = {
+        payment_mode: p.payment_mode,
+        amount_received: Number(p.amount_received || 0),
+        payment_date: p.payment_date || new Date(),
+        transaction_id: p.transaction_id || null,
+        status: "Completed",
+      };
+
+      if (p.id) {
+        await models.Payment.update(data, {
+          where: { id: p.id },
+          transaction: t,
+        });
+      } else {
+        await models.Payment.create(
+          { ...data, invoice_bill_id: invoice.id },
+          { transaction: t }
+        );
+      }
+    }
+
+    // UPSERT ADJUSTMENTS
+    const payloadAdjIds = adjustments.filter(a => a.id).map(a => a.id);
+
+    await models.SalesInvoiceAdjustment.destroy({
+      where: {
+        sales_invoice_id: invoice.id,
+        id: { [Op.notIn]: payloadAdjIds.length > 0 ? payloadAdjIds : [0] },
+      },
+      transaction: t,
+    });
+
+    for (const adj of adjustments) {
+      const data = {
+        adjustment_type_id: adj.adjustment_type_id,
+        reference_id: adj.reference_id,
+        reference_no: adj.reference_no,
+        adjustment_amount: Number(adj.adjustment_amount) || 0,
+      };
+
+      if (adj.id) {
+        await models.SalesInvoiceAdjustment.update(data, {
+          where: { id: adj.id },
+          transaction: t,
+        });
+      } else {
+        await models.SalesInvoiceAdjustment.create(
+          { ...data, sales_invoice_id: invoice.id },
+          { transaction: t }
+        );
+      }
+    }
+
+    // Update customer PAN
+    if (req.body.customer?.pan_no && header.customer_id) {
+      await models.Customer.update(
+        { pan_no: req.body.customer.pan_no },
+        { where: { id: header.customer_id }, transaction: t }
+      );
+    }
+
+    // FINALIZE SIDE EFFECTS (ONLY IF STATUS = "Invoice")
+    if (status === "Invoice") {
+      // Reduce stock
+      await reduceStockForInvoice(items, status, allPayments, t);
+
+      // Lock adjustments
+      await updateBillAdjustmentFlags(adjustments, t);
+    }
+
+    await t.commit();
+    return commonService.okResponse(res, {
+      message: "Invoice updated successfully",
+    });
+
+  } catch (err) {
+    if (!t.finished) {
+      await t.rollback();
+    }
+    if (err.name === "ValidationError") {
+      return commonService.badRequest(res, err.message);
+    }
+    return commonService.handleError(res, err);
+  }
+};
+
 
 
 module.exports = {

@@ -1,5 +1,6 @@
 const { Op } = require('sequelize');
 const { models, sequelize } = require('../models');
+const { ValidationError } = require("../utils/errors");
 
 const validateProductItemDetails = async (items, transaction) => {
     const pairs = items
@@ -29,7 +30,7 @@ const validateProductItemDetails = async (items, transaction) => {
     );
 
     if (invalidPairs.length > 0) {
-        throw new Error(
+        throw new ValidationError(
             `Invalid product_item_detail_id for product_id: ${invalidPairs
                 .map(p => `(product_id: ${p.product_id}, detail_id: ${p.id})`)
                 .join(", ")}`
@@ -61,7 +62,7 @@ const validateProducts = async (items, transaction) => {
     const invalidProductIds = productIds.filter(id => !existingIds.has(id));
 
     if (invalidProductIds.length > 0) {
-        throw new Error(`Invalid product_id(s): ${invalidProductIds.join(", ")}`);
+        throw new ValidationError(`Invalid product_id(s): ${invalidProductIds.join(", ")}`);
     }
 };
 
@@ -77,13 +78,13 @@ const reduceStockForInvoice = async (items, status, payments, transaction) => {
         );
 
         if (!productItemDetail) {
-            throw new Error(`Invalid product_item_detail_id: ${item.product_item_detail_id}`);
+            throw new ValidationError(`Invalid product_item_detail_id: ${item.product_item_detail_id}`);
         }
 
         const newQuantity = productItemDetail.quantity - item.quantity;
 
         if (newQuantity < 0) {
-            throw new Error(
+            throw new ValidationError(
                 `Insufficient stock for product_item_detail_id: ${item.product_item_detail_id}`
             );
         }
@@ -101,7 +102,7 @@ const validateCashPayment = (payments) => {
         .reduce((sum, p) => sum + (Number(p.amount_received) || 0), 0);
 
     if (totalCash >= 200000) {
-        throw new Error('PAN card is required for cash payments of ₹2,00,000 or more');
+        throw new ValidationError('PAN card is required for cash payments of ₹2,00,000 or more');
     }
 };
 
@@ -133,11 +134,71 @@ const updateBillAdjustmentFlags = async (adjustments, transaction) => {
     }
 };
 
+const validateInvoiceItems = async ({
+    items,
+    header,
+    transaction,
+    isCreate = true,
+    excludeInvoiceId = null,
+}) => {
+
+    if (!Array.isArray(items) || items.length === 0) {
+        throw new ValidationError("At least one item is required");
+    }
+
+    let invoice = null;
+
+    if (!isCreate) {
+        invoice = await models.SalesInvoiceBill.findByPk(excludeInvoiceId, {
+            transaction,
+        });
+
+        if (!invoice) {
+            throw new ValidationError("Invoice not found");
+        }
+
+        if (invoice.status === "Invoice") {
+            throw new ValidationError("Finalized invoice cannot be edited");
+        }
+    }
+
+    // invoice_no uniqueness (only on create or when changed)
+    if (header.invoice_no) {
+        const where = {
+            invoice_no: header.invoice_no,
+            deleted_at: null,
+        };
+
+        if (!isCreate) {
+            where.id = { [Op.ne]: excludeInvoiceId };
+        }
+
+        const existing = await models.SalesInvoiceBill.findOne({
+            where,
+            transaction,
+        });
+
+        if (existing) {
+            throw new ValidationError("Invoice no already exists");
+        }
+    }
+
+    // product_item_detail_id required
+    const invalidItems = items.filter(i => !i.product_item_detail_id);
+    if (invalidItems.length > 0) {
+        throw new ValidationError("product_item_detail_id is required for all items");
+    }
+
+    return invoice; // IMPORTANT
+};
+
+
 
 module.exports = {
     validateProductItemDetails,
     validateProducts,
     reduceStockForInvoice,
     validateCashPayment,
-    updateBillAdjustmentFlags
+    updateBillAdjustmentFlags,
+    validateInvoiceItems
 };
