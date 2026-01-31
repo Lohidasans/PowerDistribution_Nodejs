@@ -2,6 +2,7 @@ const { models } = require("../models/index");
 const { Op } = require("sequelize");
 const commonService = require("../services/commonService");
 const message = require("../constants/en.json");
+const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
 
 // Create Ledger
 const create = async (req, res) => {
@@ -186,7 +187,7 @@ const getByLedgerGroupId = async (req, res) => {
 const update = async (req, res) => {
   try {
     const { id } = req.params;
-    const { ledger_group_id, ledger_name, ledger_no } = req.body;
+    const { ledger_group_id, ledger_name } = req.body;
 
     const ledger = await models.Ledger.findByPk(id);
 
@@ -202,11 +203,10 @@ const update = async (req, res) => {
       }
     }
 
-    // Update the ledger
+    // Update the ledger (ledger_no is auto-generated and should not be updated)
     await ledger.update({
       ledger_group_id: ledger_group_id || ledger.ledger_group_id,
       ledger_name: ledger_name || ledger.ledger_name,
-      ledger_no: ledger_no || ledger.ledger_no,
     });
 
     // Get the updated ledger with ledger group details
@@ -249,6 +249,24 @@ const remove = async (req, res) => {
   }
 };
 
+// Generate next Ledger Number
+const generateLedgerNo = async (req, res) => {
+  try {
+    // Auto-generate next ledger_no in format LAID001
+    const ledger_no = await generateFiscalSeriesCode(
+      models.Ledger,
+      "ledger_no",
+      "LAID",
+      { pad: 3 }
+    );
+
+    return commonService.okResponse(res, { ledger_no });
+  } catch (err) {
+    console.error("Error generating ledger number:", err);
+    return commonService.handleError(res, err);
+  }
+};
+
 module.exports = {
   create,
   bulkCreate,
@@ -257,4 +275,5 @@ module.exports = {
   getByLedgerGroupId,
   update,
   remove,
+  generateLedgerNo,
 };

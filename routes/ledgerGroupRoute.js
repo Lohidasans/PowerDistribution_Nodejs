@@ -5,6 +5,7 @@ const ledgerGroupService = require("../services/ledgerGroupService");
 ledgerGroupRouter.post("/ledger-groups", ledgerGroupService.create);
 ledgerGroupRouter.post("/ledger-groups/bulk", ledgerGroupService.bulkCreate);
 ledgerGroupRouter.get("/ledger-groups", ledgerGroupService.list);
+ledgerGroupRouter.get("/ledger-groups/generate-number", ledgerGroupService.generateLedgerGroupNo);
 ledgerGroupRouter.get("/ledger-groups/:id", ledgerGroupService.getById);
 ledgerGroupRouter.put("/ledger-groups/:id", ledgerGroupService.update);
 ledgerGroupRouter.patch("/ledger-groups/:id/status", ledgerGroupService.toggleStatus);

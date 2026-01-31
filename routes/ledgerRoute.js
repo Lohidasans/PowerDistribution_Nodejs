@@ -5,11 +5,12 @@ const ledgerService = require("../services/ledgerService");
 ledgerRouter.post("/ledgers", ledgerService.create);
 ledgerRouter.post("/ledgers/bulk", ledgerService.bulkCreate);
 ledgerRouter.get("/ledgers", ledgerService.list);
-ledgerRouter.get("/ledgers/:id", ledgerService.getById);
+ledgerRouter.get("/ledgers/generate-number", ledgerService.generateLedgerNo);
 ledgerRouter.get(
   "/ledgers/group/:ledgerGroupId",
   ledgerService.getByLedgerGroupId
 );
+ledgerRouter.get("/ledgers/:id", ledgerService.getById);
 ledgerRouter.put("/ledgers/:id", ledgerService.update);
 ledgerRouter.delete("/ledgers/:id", ledgerService.remove);
 

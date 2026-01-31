@@ -2,6 +2,7 @@ const { models } = require("../models/index");
 const { Op } = require("sequelize");
 const commonService = require("../services/commonService");
 const message = require("../constants/en.json");
+const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
 
 // Create Ledger Group
 const create = async (req, res) => {
@@ -219,6 +220,24 @@ const remove = async (req, res) => {
   }
 };
 
+// Generate next Ledger Group Number
+const generateLedgerGroupNo = async (req, res) => {
+  try {
+    // Auto-generate next ledger_group_no in format LGID001
+    const ledger_group_no = await generateFiscalSeriesCode(
+      models.LedgerGroup,
+      "ledger_group_no",
+      "LGID",
+      { pad: 3 }
+    );
+
+    return commonService.okResponse(res, { ledger_group_no });
+  } catch (err) {
+    console.error("Error generating ledger group number:", err);
+    return commonService.handleError(res, err);
+  }
+};
+
 module.exports = {
   create,
   bulkCreate,
@@ -227,4 +246,5 @@ module.exports = {
   update,
   toggleStatus,
   remove,
+  generateLedgerGroupNo,
 };
