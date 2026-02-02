@@ -5,6 +5,7 @@ const svc = require("../services/quotationRequestService");
 // Routes
 router.post("/quotation-requests", svc.createQuotationRequest);
 router.get("/quotation-requests", svc.getAllQuotationRequests);
+router.get("/quotation-requests/:quotation_id/compare", svc.getQuotationComparisonById);
 router.get("/quotation-requests/:id", svc.getQuotationRequestById);
 router.put("/quotation-requests/:id", svc.updateQuotationRequest);
 router.delete("/quotation-requests/:id", svc.deleteQuotationRequest);

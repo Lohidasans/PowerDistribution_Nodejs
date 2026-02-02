@@ -608,7 +608,6 @@ const getAllQuotationRequests = async (req, res) => {
   }
 };
 
-
 // Generate Quotation Request Code
 const generateQuotationRequestCode = async (req, res) => {
   try {
@@ -625,6 +624,103 @@ const generateQuotationRequestCode = async (req, res) => {
     return commonService.handleError(res, err);
   }
 };
+
+const getQuotationComparisonById = async (req, res) => {
+  try {
+    const { quotation_id } = req.params;
+
+    /** STEP 1: QUOTATION BASIC INFO */
+    const quotationQuery = `
+      SELECT id, qr_id, request_date, expiry_date
+      FROM quotations
+      WHERE id = :quotation_id AND deleted_at IS NULL
+    `;
+
+    const [quotation] = await sequelize.query(quotationQuery, {
+      replacements: { quotation_id },
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    if (!quotation) {
+      return commonService.notFound(res, "Quotation not found");
+    }
+
+    /** STEP 2: ITEM MASTER (COMMON ITEMS) */
+    const itemsQuery = `
+      SELECT 
+        material_type_id,
+        category_id,
+        subcategory_id,
+        product_description,
+        purity,
+        weight,
+        quantity
+      FROM quotation_items
+      WHERE quotation_id = :quotation_id
+        AND vendor_quotation_id IS NULL
+        AND deleted_at IS NULL
+    `;
+
+    const items = await sequelize.query(itemsQuery, {
+      replacements: { quotation_id },
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    /** STEP 3: ACCEPTED VENDORS WITH PRICES */
+    const vendorsQuery = `
+      SELECT
+        v.id AS vendor_id,
+        v.vendor_name,
+        qi.rate,
+        qi.amount,
+        vq.total_amount,
+        vq.terms_and_conditions,
+        vq.attachment_url
+      FROM vendor_quotations vq
+      JOIN vendors v ON v.id = vq.vendor_id
+      JOIN quotation_items qi ON qi.vendor_quotation_id = vq.id
+      WHERE vq.quotation_id = :quotation_id
+        AND vq.status = 'accepted'
+        AND vq.deleted_at IS NULL
+        AND qi.deleted_at IS NULL
+      ORDER BY v.vendor_name
+    `;
+
+    const vendorRows = await sequelize.query(vendorsQuery, {
+      replacements: { quotation_id },
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    /** STEP 4: GROUP BY VENDOR */
+    const vendorsMap = {};
+    vendorRows.forEach(row => {
+      if (!vendorsMap[row.vendor_id]) {
+        vendorsMap[row.vendor_id] = {
+          vendor_id: row.vendor_id,
+          vendor_name: row.vendor_name,
+          items: [],
+          total_amount: row.total_amount,
+        };
+      }
+
+      vendorsMap[row.vendor_id].items.push({
+        rate: row.rate,
+        amount: row.amount,
+      });
+    });
+
+    return commonService.okResponse(res, {
+      quotation,
+      items,
+      vendors: Object.values(vendorsMap),
+    });
+
+  } catch (error) {
+    console.error("Error in getQuotationView:", error);
+    return commonService.handleError(res, error);
+  }
+};
+
 
 // ==================== VENDOR QUOTATION FUNCTIONS ====================
 
@@ -928,54 +1024,72 @@ const submitVendorRates = async (req, res) => {
 // Get All Vendor Quotations with Score Cards and Filtering
 const getAllVendorQuotations = async (req, res) => {
   try {
-    const { page, limit, status = "received", search } = req.query;
+    const { page, limit, status = "received", search, vendor_id } = req.query;
 
+    // vendor_id is REQUIRED
+    if (!vendor_id) {
+      return commonService.badRequest(res, "vendor_id is required");
+    }
+
+    const vendorId = parseInt(vendor_id);
+
+    // --- Optional Pagination ---
     const isPaginated = page && limit;
-
     const parsedPage = isPaginated ? parseInt(page) : 1;
     const parsedLimit = isPaginated ? parseInt(limit) : null;
     const offset = isPaginated ? (parsedPage - 1) * parsedLimit : null;
 
-    // --- Build WHERE clause ---
-    let whereSql = `WHERE vq.deleted_at IS NULL`;
-    const replacements = {};
+    // BASE WHERE (vendor-only)
+    let whereSql = `
+      WHERE vq.deleted_at IS NULL
+        AND vq.vendor_id = :vendor_id
+    `;
+    const replacements = { vendor_id: vendorId };
 
-    if (status) {
-      whereSql += ` AND vq.status = :status`;
-      replacements.status = status;
+    // STATUS FILTER (CORRECTED)
+    if (status === "received") {
+      // Vendor inbox → admin created quotation
+      whereSql += ` AND vq.status = 'pending'`;
+    } else if (status === "sent") {
+      // Vendor accepted / submitted
+      whereSql += ` AND vq.status = 'accepted'`;
+    } else if (status === "rejected") {
+      // Vendor rejected
+      whereSql += ` AND vq.status = 'rejected'`;
     }
 
     if (search) {
-      whereSql += ` AND (q.qr_id ILIKE :search OR v.vendor_name ILIKE :search)`;
+      whereSql += ` AND q.qr_id ILIKE :search`;
       replacements.search = `%${search}%`;
     }
 
-    // --- Score Cards (unchanged) ---
+    // SCORE CARDS (MATCH DB + UI)
     const scoreCardQuery = `
-      SELECT 
-        COUNT(*) FILTER (WHERE vq.status = 'received') AS received_count,
-        COUNT(*) FILTER (WHERE vq.status = 'pending') AS sent_count,
+      SELECT
+        COUNT(*) FILTER (WHERE vq.status = 'pending')  AS received_count,
+        COUNT(*) FILTER (WHERE vq.status = 'accepted') AS sent_count,
         COUNT(*) FILTER (WHERE vq.status = 'rejected') AS rejected_count
       FROM vendor_quotations vq
-      WHERE vq.deleted_at IS NULL;
+      WHERE vq.deleted_at IS NULL
+        AND vq.vendor_id = :vendor_id;
     `;
 
     const [scoreCardResult] = await sequelize.query(scoreCardQuery, {
+      replacements: { vendor_id: vendorId },
       type: sequelize.QueryTypes.SELECT,
     });
 
     const scoreCards = {
-      received: parseInt(scoreCardResult?.received_count || 0),
-      sent: parseInt(scoreCardResult?.sent_count || 0),
-      rejected: parseInt(scoreCardResult?.rejected_count || 0),
+      received: Number(scoreCardResult.received_count || 0),
+      sent: Number(scoreCardResult.sent_count || 0),
+      rejected: Number(scoreCardResult.rejected_count || 0),
     };
 
-    // --- Total Count ---
+    // TOTAL COUNT
     const countQuery = `
-      SELECT COUNT(DISTINCT vq.id) AS total
+      SELECT COUNT(*) AS total
       FROM vendor_quotations vq
-      LEFT JOIN quotations q ON vq.quotation_id = q.id
-      LEFT JOIN vendors v ON vq.vendor_id = v.id
+      LEFT JOIN quotations q ON q.id = vq.quotation_id
       ${whereSql};
     `;
 
@@ -984,42 +1098,41 @@ const getAllVendorQuotations = async (req, res) => {
       type: sequelize.QueryTypes.SELECT,
     });
 
-    const total = parseInt(countResult?.total || 0);
+    const total = Number(countResult.total || 0);
 
-    // --- Data Query ---
     let dataQuery = `
       SELECT
-        vq.id,
+        vq.id AS vendor_quotation_id,
         vq.quotation_id,
-        vq.vendor_id,
         vq.status,
         vq.response_date,
         vq.total_amount,
         vq.vendor_quotation_number,
+
         q.qr_id,
         q.request_date,
         q.expiry_date,
-        v.vendor_name,
-        v.vendor_image_url,
+
         STRING_AGG(
           DISTINCT qi.product_description,
           ', '
         ) AS item_details,
+
         COALESCE(SUM(qi.quantity), 0) AS quantity
 
       FROM vendor_quotations vq
-      LEFT JOIN quotations q ON vq.quotation_id = q.id
-      LEFT JOIN vendors v ON vq.vendor_id = v.id
-      LEFT JOIN quotation_items qi ON qi.quotation_id = vq.quotation_id AND qi.deleted_at IS NULL
+      LEFT JOIN quotations q 
+        ON q.id = vq.quotation_id
+
+      LEFT JOIN quotation_items qi 
+        ON qi.quotation_id = q.id
+        AND qi.vendor_quotation_id IS NULL
+        AND qi.deleted_at IS NULL
+
       ${whereSql}
-      GROUP BY 
-        vq.id,
-        q.qr_id,
-        q.request_date,
-        q.expiry_date,
-        v.vendor_name,
-        v.vendor_image_url
-      ORDER BY q.request_date DESC, vq.id DESC;
+
+      GROUP BY vq.id, q.id
+      ORDER BY q.request_date DESC, vq.id DESC
     `;
 
     if (isPaginated) {
@@ -1033,7 +1146,6 @@ const getAllVendorQuotations = async (req, res) => {
       type: sequelize.QueryTypes.SELECT,
     });
 
-    // --- Response ---
     return commonService.okResponse(res, {
       score_cards: scoreCards,
       total,
@@ -1049,6 +1161,7 @@ const getAllVendorQuotations = async (req, res) => {
 };
 
 
+
 module.exports = {
   createQuotationRequest,
   getQuotationRequestById,
@@ -1056,6 +1169,7 @@ module.exports = {
   deleteQuotationRequest,
   getAllQuotationRequests,
   generateQuotationRequestCode,
+  getQuotationComparisonById,
   // Vendor-specific functions
   generateVendorQuotationCode,
   getVendorQuotationById,
