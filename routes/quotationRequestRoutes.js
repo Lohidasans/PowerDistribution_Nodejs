@@ -11,9 +11,11 @@ router.delete("/quotation-requests/:id", svc.deleteQuotationRequest);
 router.post("/quotation-requests/code", svc.generateQuotationRequestCode);
 
 // Vendor Quotation Routes
+router.get("/vendor-quotations", svc.getAllVendorQuotations);
 router.get("/vendor-quotations/:id", svc.getVendorQuotationById);
 router.put("/vendor-quotations/:id/status", svc.updateVendorQuotationStatus);
 router.put("/vendor-quotations/:id/rates", svc.submitVendorRates);
+router.post("/vendor-quotations/code", svc.generateVendorQuotationCode);
 
 
 module.exports = router;

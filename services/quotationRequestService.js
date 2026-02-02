@@ -19,16 +19,20 @@ const calculateQuotationStatus = async (quotationId, transaction = null) => {
     }
 
     const statuses = vendorQuotations.map((vq) => vq.status);
-    const receivedCount = statuses.filter((s) => s === "received").length;
     const totalVendors = statuses.length;
 
-    // All vendors are pending
-    if (receivedCount === 0) {
+    // Count vendors who have responded (either received or rejected)
+    const respondedCount = statuses.filter(
+      (s) => s === "received" || s === "rejected"
+    ).length;
+
+    // No vendors have responded yet
+    if (respondedCount === 0) {
       return 1; // Pending
     }
 
-    // Some vendors have received status
-    if (receivedCount < totalVendors) {
+    // Some vendors have responded, but not all
+    if (respondedCount < totalVendors) {
       return 2; // Partially Received
     }
 
@@ -479,6 +483,23 @@ const generateQuotationRequestCode = async (req, res) => {
 
 // ==================== VENDOR QUOTATION FUNCTIONS ====================
 
+// Generate Vendor Quotation Code
+const generateVendorQuotationCode = async (req, res) => {
+  try {
+    const { prefix } = req.query || {};
+
+    const code = await generateFiscalSeriesCode(
+      models.VendorQuotation,
+      "vendor_quotation_number",
+      String(prefix).toUpperCase(),
+      { pad: 3 },
+    );
+    return commonService.okResponse(res, { vendor_quotation_number: code });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
 // Get Vendor Quotation by ID (for vendor portal)
 const getVendorQuotationById = async (req, res) => {
   try {
@@ -720,6 +741,9 @@ const submitVendorRates = async (req, res) => {
         total_amount: req.body.total_amount
           ? parseFloat(req.body.total_amount)
           : null,
+        terms_and_conditions: req.body.terms_and_conditions || null,
+        attachment_url: req.body.attachment_url || null,
+        vendor_quotation_number: req.body.vendor_quotation_number || null,
       },
       { transaction },
     );
@@ -750,6 +774,130 @@ const submitVendorRates = async (req, res) => {
   }
 };
 
+// Get All Vendor Quotations with Score Cards and Filtering
+const getAllVendorQuotations = async (req, res) => {
+  try {
+    const { page, limit, status = "received", search } = req.query;
+
+    const isPaginated = page && limit;
+
+    const parsedPage = isPaginated ? parseInt(page) : 1;
+    const parsedLimit = isPaginated ? parseInt(limit) : null;
+    const offset = isPaginated ? (parsedPage - 1) * parsedLimit : null;
+
+    // --- Build WHERE clause ---
+    let whereSql = `WHERE vq.deleted_at IS NULL`;
+    const replacements = {};
+
+    if (status) {
+      whereSql += ` AND vq.status = :status`;
+      replacements.status = status;
+    }
+
+    if (search) {
+      whereSql += ` AND (q.qr_id ILIKE :search OR v.vendor_name ILIKE :search)`;
+      replacements.search = `%${search}%`;
+    }
+
+    // --- Score Cards (unchanged) ---
+    const scoreCardQuery = `
+      SELECT 
+        COUNT(*) FILTER (WHERE vq.status = 'received') AS received_count,
+        COUNT(*) FILTER (WHERE vq.status = 'pending') AS sent_count,
+        COUNT(*) FILTER (WHERE vq.status = 'rejected') AS rejected_count
+      FROM vendor_quotations vq
+      WHERE vq.deleted_at IS NULL;
+    `;
+
+    const [scoreCardResult] = await sequelize.query(scoreCardQuery, {
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    const scoreCards = {
+      received: parseInt(scoreCardResult?.received_count || 0),
+      sent: parseInt(scoreCardResult?.sent_count || 0),
+      rejected: parseInt(scoreCardResult?.rejected_count || 0),
+    };
+
+    // --- Total Count ---
+    const countQuery = `
+      SELECT COUNT(DISTINCT vq.id) AS total
+      FROM vendor_quotations vq
+      LEFT JOIN quotations q ON vq.quotation_id = q.id
+      LEFT JOIN vendors v ON vq.vendor_id = v.id
+      ${whereSql};
+    `;
+
+    const [countResult] = await sequelize.query(countQuery, {
+      replacements,
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    const total = parseInt(countResult?.total || 0);
+
+    // --- Data Query ---
+    let dataQuery = `
+      SELECT
+        vq.id,
+        vq.quotation_id,
+        vq.vendor_id,
+        vq.status,
+        vq.response_date,
+        vq.total_amount,
+        vq.vendor_quotation_number,
+        q.qr_id,
+        q.request_date,
+        q.expiry_date,
+        v.vendor_name,
+        v.vendor_image_url,
+        STRING_AGG(
+          DISTINCT qi.product_description,
+          ', '
+        ) AS item_details,
+        COALESCE(SUM(qi.quantity), 0) AS quantity
+
+      FROM vendor_quotations vq
+      LEFT JOIN quotations q ON vq.quotation_id = q.id
+      LEFT JOIN vendors v ON vq.vendor_id = v.id
+      LEFT JOIN quotation_items qi ON qi.quotation_id = vq.quotation_id AND qi.deleted_at IS NULL
+      ${whereSql}
+      GROUP BY 
+        vq.id,
+        q.qr_id,
+        q.request_date,
+        q.expiry_date,
+        v.vendor_name,
+        v.vendor_image_url
+      ORDER BY q.request_date DESC, vq.id DESC;
+    `;
+
+    if (isPaginated) {
+      dataQuery += ` LIMIT :limit OFFSET :offset`;
+      replacements.limit = parsedLimit;
+      replacements.offset = offset;
+    }
+
+    const data = await sequelize.query(dataQuery, {
+      replacements,
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    // --- Response ---
+    return commonService.okResponse(res, {
+      score_cards: scoreCards,
+      total,
+      page: isPaginated ? parsedPage : null,
+      totalPages: isPaginated ? Math.ceil(total / parsedLimit) : 1,
+      data,
+    });
+
+  } catch (error) {
+    console.error("Error in getAllVendorQuotations:", error);
+    return commonService.handleError(res, error);
+  }
+};
+
+
 module.exports = {
   createQuotationRequest,
   getQuotationRequestById,
@@ -758,7 +906,9 @@ module.exports = {
   getAllQuotationRequests,
   generateQuotationRequestCode,
   // Vendor-specific functions
+  generateVendorQuotationCode,
   getVendorQuotationById,
   updateVendorQuotationStatus,
   submitVendorRates,
+  getAllVendorQuotations,
 };

@@ -21,7 +21,7 @@ module.exports = (sequelize, DataTypes) => {
                 allowNull: false,
                 defaultValue: "pending",
             },
-            vendor_quotation_number: {
+            vendor_quotation_number: {  // unique code for vendor quotation
                 type: DataTypes.STRING,
                 allowNull: true,
             },
