@@ -415,7 +415,7 @@ const getAllQuotationRequests = async (req, res) => {
       whereSql += ` AND (q.qr_id ILIKE :search OR v.vendor_name ILIKE :search)`;
       replacements.search = `%${search}%`;
     }
-    
+
     // SCORE CARDS (DYNAMIC & FILTER-AWARE)
     let sentWhereSql = `WHERE q.deleted_at IS NULL`;
     let receivedWhereSql = `WHERE vq.deleted_at IS NULL AND vq.status = 'accepted'`;
@@ -460,7 +460,7 @@ const getAllQuotationRequests = async (req, res) => {
       sent: parseInt(scoreCardResult?.sent_count || 0),
       received: parseInt(scoreCardResult?.received_count || 0),
     };
-   
+
     // DATA FETCH
     let data, total;
     if (type === "received") {
@@ -659,10 +659,16 @@ const getVendorQuotationById = async (req, res) => {
         q.expiry_date,
         q.remarks AS quotation_remarks,
         v.vendor_name,
-        v.vendor_image_url
+        v.vendor_image_url,
+        v.address AS vendor_address,
+        v.pin_code AS vendor_pincode,
+        s.state_name AS vendor_state,
+        d.district_name AS vendor_city
       FROM "vendor_quotations" vq
       LEFT JOIN "quotations" q ON vq.quotation_id = q.id
       LEFT JOIN "vendors" v ON vq.vendor_id = v.id
+      LEFT JOIN "states" s ON v.state_id = s.id
+      LEFT JOIN "districts" d ON v.district_id = d.id
       WHERE vq.id = :id AND vq.deleted_at IS NULL
       LIMIT 1;
     `,
