@@ -21,6 +21,10 @@ module.exports = (sequelize, DataTypes) => {
                 allowNull: false,
                 defaultValue: "pending",
             },
+            vendor_quotation_number: {
+                type: DataTypes.STRING,
+                allowNull: true,
+            },
             response_date: {
                 type: DataTypes.DATEONLY,
                 allowNull: true,
@@ -59,6 +63,14 @@ module.exports = (sequelize, DataTypes) => {
             },
             total_amount: {
                 type: DataTypes.DECIMAL(15, 2),
+                allowNull: true,
+            },
+            terms_and_conditions: {
+                type: DataTypes.TEXT,
+                allowNull: true,
+            },
+            attachment_url: {
+                type: DataTypes.STRING(500),
                 allowNull: true,
             },
             created_by: {
