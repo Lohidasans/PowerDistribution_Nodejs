@@ -174,6 +174,10 @@ const DeliveryChellanItem = require("./deliveryChellanItem")(sequelize, Sequeliz
 const JournalEntry = require("./journalEntries")(sequelize, Sequelize.DataTypes);
 const JournalEntryItem = require("./journalEntryItems")(sequelize, Sequelize.DataTypes);
 
+// Asset Management related models
+const AssetManagement = require("./assetManagement")(sequelize, Sequelize.DataTypes);
+const MaintenanceHistory = require("./maintenanceHistory")(sequelize, Sequelize.DataTypes);
+
 const models = {
   Permission,
   Role,
@@ -270,7 +274,9 @@ const models = {
   DeliveryChellanItem,
   VoucherReceipt,
   JournalEntry,
-  JournalEntryItem
+  JournalEntryItem,
+  AssetManagement,
+  MaintenanceHistory
 };
 
 Object.values(models).forEach((model) => {

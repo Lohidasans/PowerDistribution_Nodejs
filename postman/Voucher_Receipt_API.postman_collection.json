@@ -1,0 +1,165 @@
+{
+  "info": {
+    "name": "Voucher Receipt API",
+    "description": "Complete API collection for Voucher Receipt management",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Voucher Receipts",
+      "item": [
+        {
+          "name": "1. Generate Receipt Number",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/voucher-receipts/code?prefix=VR",
+              "host": ["{{baseUrl}}"],
+              "path": ["voucher-receipts", "code"],
+              "query": [
+                {
+                  "key": "prefix",
+                  "value": "VR",
+                  "description": "Prefix for receipt number (e.g., VR, RCP)"
+                }
+              ]
+            },
+            "description": "Auto-generate the next voucher receipt number with specified prefix"
+          },
+          "response": []
+        },
+        {
+          "name": "2. Create Voucher Receipt",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"receipt_no\": \"VR-2026-001\",\n  \"receipt_date\": \"2026-02-01\",\n  \"bill_type_id\": 1,\n  \"branch_id\": 1,\n  \"payment_mode_id\": 2,\n  \"account_id\": 100,\n  \"transaction_no\": \"TXN20260201001\",\n  \"reference_no\": \"REF-2026-001\",\n  \"amount\": 25000,\n  \"amount_in_words\": \"Twenty Five Thousand Only\",\n  \"remarks\": \"Receipt for customer payment\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/voucher-receipts",
+              "host": ["{{baseUrl}}"],
+              "path": ["voucher-receipts"]
+            },
+            "description": "Create a new voucher receipt record"
+          },
+          "response": []
+        },
+        {
+          "name": "3. Get All Voucher Receipts",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/voucher-receipts?page=1&pageSize=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["voucher-receipts"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Page number (optional)"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "10",
+                  "description": "Items per page (optional)"
+                },
+                {
+                  "key": "receipt_date",
+                  "value": "",
+                  "description": "Filter by receipt date (YYYY-MM-DD)",
+                  "disabled": true
+                },
+                {
+                  "key": "branch_id",
+                  "value": "",
+                  "description": "Filter by branch ID",
+                  "disabled": true
+                },
+                {
+                  "key": "search",
+                  "value": "",
+                  "description": "Search by receipt number or customer name",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Get list of all voucher receipts with optional filters and pagination"
+          },
+          "response": []
+        },
+        {
+          "name": "4. Get Voucher Receipt by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/voucher-receipts/1",
+              "host": ["{{baseUrl}}"],
+              "path": ["voucher-receipts", "1"]
+            },
+            "description": "Get detailed information of a specific voucher receipt including branch, bill type, payment mode, and customer details"
+          },
+          "response": []
+        },
+        {
+          "name": "5. Update Voucher Receipt",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"receipt_no\": \"VR-2026-001-UPDATED\",\n  \"receipt_date\": \"2026-02-02\",\n  \"amount\": 30000,\n  \"amount_in_words\": \"Thirty Thousand Only\",\n  \"transaction_no\": \"TXN20260202001\",\n  \"remarks\": \"Updated receipt details\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/voucher-receipts/1",
+              "host": ["{{baseUrl}}"],
+              "path": ["voucher-receipts", "1"]
+            },
+            "description": "Update an existing voucher receipt"
+          },
+          "response": []
+        },
+        {
+          "name": "6. Delete Voucher Receipt",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/voucher-receipts/1",
+              "host": ["{{baseUrl}}"],
+              "path": ["voucher-receipts", "1"]
+            },
+            "description": "Soft delete a voucher receipt record"
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000/api/v1",
+      "type": "string"
+    }
+  ]
+}

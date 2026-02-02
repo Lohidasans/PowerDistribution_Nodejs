@@ -1,5 +1,5 @@
-const { models } = require("../models/index");
-const { Op } = require("sequelize");
+const { models, sequelize } = require("../models/index");
+const { Op, QueryTypes } = require("sequelize");
 const commonService = require("../services/commonService");
 const message = require("../constants/en.json");
 const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
@@ -22,16 +22,34 @@ const create = async (req, res) => {
       ledger_name,
     });
 
-    // Get the created ledger with the ledger group details
-    const createdLedger = await models.Ledger.findByPk(ledger.id, {
-      include: [
-        {
-          model: models.LedgerGroup,
-          as: "ledgerGroup",
-          attributes: ["id", "ledger_group_no", "ledger_group_name"],
-        },
-      ],
-    });
+    // Get the created ledger with the ledger group details using raw query
+    const [result] = await sequelize.query(
+      `SELECT l.*, 
+              lg.id as ledger_group_id_fk,
+              lg.ledger_group_no, 
+              lg.ledger_group_name
+       FROM ledger l
+       LEFT JOIN ledger_group lg ON l.ledger_group_id = lg.id
+       WHERE l.id = :ledgerId AND l.deleted_at IS NULL`,
+      {
+        replacements: { ledgerId: ledger.id },
+        type: QueryTypes.SELECT,
+      }
+    );
+
+    // Transform to nested structure
+    const createdLedger = {
+      ...result,
+      ledgerGroup: result.ledger_group_no ? {
+        id: result.ledger_group_id,
+        ledger_group_no: result.ledger_group_no,
+        ledger_group_name: result.ledger_group_name,
+      } : null
+    };
+    // Remove flat properties
+    delete createdLedger.ledger_group_no;
+    delete createdLedger.ledger_group_name;
+    delete createdLedger.ledger_group_id_fk;
 
     return commonService.createdResponse(res, { ledger: createdLedger });
   } catch (err) {
@@ -81,39 +99,62 @@ const list = async (req, res) => {
     const { page = 1, limit = 10, search, ledger_group_id } = req.query;
     const offset = (page - 1) * limit;
 
-    let where = {};
+    let whereConditions = ["l.deleted_at IS NULL"];
+    let replacements = { limit: parseInt(limit), offset: parseInt(offset) };
 
     if (search) {
-      where = {
-        [Op.or]: [{ ledger_name: { [Op.like]: `%${search}%` } }],
-      };
+      whereConditions.push("l.ledger_name LIKE :search");
+      replacements.search = `%${search}%`;
     }
 
     if (ledger_group_id) {
-      where.ledger_group_id = ledger_group_id;
+      whereConditions.push("l.ledger_group_id = :ledger_group_id");
+      replacements.ledger_group_id = ledger_group_id;
     }
 
-    const { count, rows: ledgers } = await models.Ledger.findAndCountAll({
-      where,
-      include: [
-        {
-          model: models.LedgerGroup,
-          as: "ledgerGroup",
-          attributes: ["id", "ledger_group_no", "ledger_group_name"],
-        },
-      ],
-      limit: parseInt(limit),
-      offset: parseInt(offset),
-      order: [["id", "ASC"]],
-    });
+    const whereClause = whereConditions.join(" AND ");
+
+    // Get total count
+    const [countResult] = await sequelize.query(
+      `SELECT COUNT(*) as total FROM ledger l WHERE ${whereClause}`,
+      { replacements, type: QueryTypes.SELECT }
+    );
+
+    // Get ledgers with ledger group details
+    const results = await sequelize.query(
+      `SELECT l.*, 
+              lg.ledger_group_no, 
+              lg.ledger_group_name
+       FROM ledger l
+       LEFT JOIN ledger_group lg ON l.ledger_group_id = lg.id
+       WHERE ${whereClause}
+       ORDER BY l.id ASC
+       LIMIT :limit OFFSET :offset`,
+      {
+        replacements,
+        type: QueryTypes.SELECT,
+      }
+    );
+
+    // Transform to nested structure
+    const ledgers = results.map(result => ({
+      ...result,
+      ledgerGroup: result.ledger_group_no ? {
+        id: result.ledger_group_id,
+        ledger_group_no: result.ledger_group_no,
+        ledger_group_name: result.ledger_group_name,
+      } : null,
+      ledger_group_no: undefined,
+      ledger_group_name: undefined,
+    }));
 
     return commonService.okResponse(res, {
       ledgers,
       pagination: {
-        total: count,
+        total: countResult.total,
         page: parseInt(page),
         limit: parseInt(limit),
-        totalPages: Math.ceil(count / limit),
+        totalPages: Math.ceil(countResult.total / limit),
       },
     });
   } catch (err) {
@@ -127,19 +168,34 @@ const getById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const ledger = await models.Ledger.findByPk(id, {
-      include: [
-        {
-          model: models.LedgerGroup,
-          as: "ledgerGroup",
-          attributes: ["id", "ledger_group_no", "ledger_group_name"],
-        },
-      ],
-    });
+    const [result] = await sequelize.query(
+      `SELECT l.*, 
+              lg.ledger_group_no, 
+              lg.ledger_group_name
+       FROM ledger l
+       LEFT JOIN ledger_group lg ON l.ledger_group_id = lg.id
+       WHERE l.id = :id AND l.deleted_at IS NULL`,
+      {
+        replacements: { id },
+        type: QueryTypes.SELECT,
+      }
+    );
 
-    if (!ledger) {
+    if (!result) {
       return commonService.notFound(res, "Ledger not found");
     }
+
+    // Transform to nested structure
+    const ledger = {
+      ...result,
+      ledgerGroup: result.ledger_group_no ? {
+        id: result.ledger_group_id,
+        ledger_group_no: result.ledger_group_no,
+        ledger_group_name: result.ledger_group_name,
+      } : null
+    };
+    delete ledger.ledger_group_no;
+    delete ledger.ledger_group_name;
 
     return commonService.okResponse(res, { ledger });
   } catch (err) {
@@ -209,16 +265,31 @@ const update = async (req, res) => {
       ledger_name: ledger_name || ledger.ledger_name,
     });
 
-    // Get the updated ledger with ledger group details
-    const updatedLedger = await models.Ledger.findByPk(id, {
-      include: [
-        {
-          model: models.LedgerGroup,
-          as: "ledgerGroup",
-          attributes: ["id", "ledger_group_no", "ledger_group_name"],
-        },
-      ],
-    });
+    // Get the updated ledger with ledger group details using raw query
+    const [result] = await sequelize.query(
+      `SELECT l.*, 
+              lg.ledger_group_no, 
+              lg.ledger_group_name
+       FROM ledger l
+       LEFT JOIN ledger_group lg ON l.ledger_group_id = lg.id
+       WHERE l.id = :id AND l.deleted_at IS NULL`,
+      {
+        replacements: { id },
+        type: QueryTypes.SELECT,
+      }
+    );
+
+    // Transform to nested structure
+    const updatedLedger = {
+      ...result,
+      ledgerGroup: result.ledger_group_no ? {
+        id: result.ledger_group_id,
+        ledger_group_no: result.ledger_group_no,
+        ledger_group_name: result.ledger_group_name,
+      } : null
+    };
+    delete updatedLedger.ledger_group_no;
+    delete updatedLedger.ledger_group_name;
 
     return commonService.okResponse(res, { ledger: updatedLedger });
   } catch (err) {

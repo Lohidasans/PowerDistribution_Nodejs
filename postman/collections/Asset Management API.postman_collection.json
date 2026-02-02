@@ -1,0 +1,388 @@
+{
+  "info": {
+    "_postman_id": "d8df7c74-39f1-44b0-bb2e-778e02259d9f",
+    "name": "Asset Management API",
+    "description": "Complete API collection for Asset Management and Maintenance History",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Asset Management",
+      "item": [
+        {
+          "name": "1. Generate Asset Number",
+          "id": "4d6b8459-5fe3-41bd-b362-6fee0ed27696",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/asset-management/generate-number",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "asset-management",
+                "generate-number"
+              ]
+            },
+            "description": "Auto-generate the next asset number in format AST0001, AST0002, etc."
+          },
+          "response": []
+        },
+        {
+          "name": "2. Create Asset Management",
+          "id": "b54c4388-ab54-4209-b8a3-b8f5a8e4dcd9",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"asset_no\": \"AST0001\",\n  \"journal_entry_id\": 1,\n  \"ledger_account_id\": 101,\n  \"asset_name\": \"Desktop Computer\",\n  \"purchase_date\": \"2026-01-15\",\n  \"asset_value\": 50000,\n  \"serial_no\": \"DC12345ABC\",\n  \"vendor_id\": 1,\n  \"upload_invoice_url\": \"https://example.com/invoice.pdf\",\n  \"status_id\": 1,\n  \"maintenance_cycle_id\": 1,\n  \"next_maintenance_date\": \"2026-07-15\",\n  \"warranty_expiry_date\": \"2028-01-15\",\n  \"upload_document_url\": \"https://example.com/warranty.pdf\",\n  \"branch_id\": 1,\n  \"department_id\": 2,\n  \"receipt_id\": null,\n  \"upload_disposal_document_url\": null,\n  \"disposal_reason\": null\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/asset-management",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "asset-management"
+              ]
+            },
+            "description": "Create a new asset management record."
+          },
+          "response": []
+        },
+        {
+          "name": "3. Get All Assets",
+          "id": "ee0970d0-fe0f-4fd5-9906-60672fd90788",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/asset-management?search=AST&branch_id=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "asset-management"
+              ],
+              "query": [
+                {
+                  "key": "search",
+                  "value": "AST",
+                  "description": "Search by asset_no, asset_name, or serial_no"
+                },
+                {
+                  "key": "branch_id",
+                  "value": "1",
+                  "description": "Filter by branch"
+                },
+                {
+                  "key": "vendor_id",
+                  "value": "1",
+                  "description": "Filter by vendor",
+                  "disabled": true
+                },
+                {
+                  "key": "status_id",
+                  "value": "1",
+                  "description": "Filter by status",
+                  "disabled": true
+                },
+                {
+                  "key": "department_id",
+                  "value": "2",
+                  "description": "Filter by department",
+                  "disabled": true
+                },
+                {
+                  "key": "date_from",
+                  "value": "2026-01-01",
+                  "description": "Filter from purchase date",
+                  "disabled": true
+                },
+                {
+                  "key": "date_to",
+                  "value": "2026-01-31",
+                  "description": "Filter to purchase date",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Get all assets with filters."
+          },
+          "response": []
+        },
+        {
+          "name": "4. Get Asset by ID",
+          "id": "739f7dd2-5a77-43fb-967d-ae839260cb13",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/asset-management/{{asset_id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "asset-management",
+                "{{asset_id}}"
+              ]
+            },
+            "description": "Get a specific asset with its maintenance history."
+          },
+          "response": []
+        },
+        {
+          "name": "5. Update Asset",
+          "id": "f241a148-cd94-4230-bd0f-42650f156959",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"asset_name\": \"Updated Desktop Computer\",\n  \"asset_value\": 55000,\n  \"status_id\": 2,\n  \"next_maintenance_date\": \"2026-08-15\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/asset-management/{{asset_id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "asset-management",
+                "{{asset_id}}"
+              ]
+            },
+            "description": "Update an existing asset."
+          },
+          "response": []
+        },
+        {
+          "name": "6. Delete Asset",
+          "id": "0f874626-872f-4622-b7cd-86b5a455be43",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/asset-management/{{asset_id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "asset-management",
+                "{{asset_id}}"
+              ]
+            },
+            "description": "Soft delete an asset."
+          },
+          "response": []
+        }
+      ],
+      "id": "8a8f0932-3a25-44d7-bc2b-5601666521be"
+    },
+    {
+      "name": "Maintenance History",
+      "item": [
+        {
+          "name": "1. Create Maintenance History",
+          "id": "cad916d6-6ac4-4555-9dd5-0a0684347ad0",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"date\": \"2026-01-25\",\n  \"asset_management_id\": 1,\n  \"maintenance_type_id\": 1,\n  \"technician_name\": \"John Doe\",\n  \"machine_performance_id\": 1,\n  \"remarks\": \"Regular maintenance completed. All systems working properly.\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/maintenance-history",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "maintenance-history"
+              ]
+            },
+            "description": "Create a new maintenance history record."
+          },
+          "response": []
+        },
+        {
+          "name": "2. Get All Maintenance History",
+          "id": "49bac2e2-ceab-4898-9a74-3d5420315210",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/maintenance-history?asset_management_id=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "maintenance-history"
+              ],
+              "query": [
+                {
+                  "key": "asset_management_id",
+                  "value": "1",
+                  "description": "Filter by asset"
+                },
+                {
+                  "key": "maintenance_type_id",
+                  "value": "1",
+                  "description": "Filter by maintenance type",
+                  "disabled": true
+                },
+                {
+                  "key": "search",
+                  "value": "John",
+                  "description": "Search by asset_no, asset_name, or technician_name",
+                  "disabled": true
+                },
+                {
+                  "key": "date_from",
+                  "value": "2026-01-01",
+                  "description": "Filter from date",
+                  "disabled": true
+                },
+                {
+                  "key": "date_to",
+                  "value": "2026-01-31",
+                  "description": "Filter to date",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Get all maintenance history with filters."
+          },
+          "response": []
+        },
+        {
+          "name": "3. Get Maintenance History by Asset ID",
+          "id": "1b8b1eb6-851d-421a-8f80-e3628dcac8c2",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/maintenance-history/asset/{{asset_id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "maintenance-history",
+                "asset",
+                "{{asset_id}}"
+              ]
+            },
+            "description": "Get all maintenance history for a specific asset."
+          },
+          "response": []
+        },
+        {
+          "name": "4. Get Maintenance History by ID",
+          "id": "863aab11-c443-472f-b553-39b8c87c76ad",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/maintenance-history/{{history_id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "maintenance-history",
+                "{{history_id}}"
+              ]
+            },
+            "description": "Get a specific maintenance history record."
+          },
+          "response": []
+        },
+        {
+          "name": "5. Update Maintenance History",
+          "id": "ca8ee309-d4e6-409f-af08-203e9dbb7d49",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"technician_name\": \"Jane Smith\",\n  \"remarks\": \"Maintenance updated. Additional parts replaced.\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/maintenance-history/{{history_id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "maintenance-history",
+                "{{history_id}}"
+              ]
+            },
+            "description": "Update an existing maintenance history record."
+          },
+          "response": []
+        },
+        {
+          "name": "6. Delete Maintenance History",
+          "id": "9e115092-3313-4389-900e-c4046de18fb7",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/maintenance-history/{{history_id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "maintenance-history",
+                "{{history_id}}"
+              ]
+            },
+            "description": "Soft delete a maintenance history record."
+          },
+          "response": []
+        }
+      ],
+      "id": "d3bea561-4d11-45d0-baad-82e2d75b57e8"
+    }
+  ],
+  "variable": [
+    {
+      "id": "fda66bb7-1a87-4296-bfad-7721bb40d80e",
+      "key": "baseUrl",
+      "value": "http://localhost:3000/api/v1",
+      "type": "string"
+    },
+    {
+      "id": "ec152672-dc0f-4ea8-b4e9-386cda3ea0fa",
+      "key": "asset_id",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "id": "fa1e8214-893e-4f95-806a-0e09d3e9af81",
+      "key": "history_id",
+      "value": "1",
+      "type": "string"
+    }
+  ]
+}

@@ -53,6 +53,27 @@ module.exports = (sequelize, DataTypes) => {
                 allowNull: false,
                 defaultValue: "Active",
             },
+            ref_employee_id: {
+                type: DataTypes.INTEGER,
+                allowNull: true,
+            },
+            device_id: {
+                type: DataTypes.STRING,
+                allowNull: true,
+            },
+            enroll_type: {
+                type: DataTypes.STRING,
+                allowNull: true,
+            },
+            is_enrolled: {
+                type: DataTypes.BOOLEAN,
+                allowNull: false,
+                defaultValue: false,
+            },
+            card: {
+                type: DataTypes.INTEGER,
+                allowNull: true,
+            },
         },
         {
             timestamps: true,

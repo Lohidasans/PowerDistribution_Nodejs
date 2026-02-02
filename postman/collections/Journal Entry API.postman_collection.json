@@ -173,6 +173,18 @@
             "description": "Soft delete a specific journal entry item by its ID."
           },
           "response": []
+        },
+        {
+          "name": "New Request",
+          "id": "829a58cb-1f47-493e-a87f-b95ce9d7609a",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": ""
+            }
+          },
+          "response": []
         }
       ],
       "id": "3c4440f8-c042-4543-b823-0f16984a57f2"

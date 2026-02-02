@@ -1,0 +1,152 @@
+{
+  "info": {
+    "name": "Device Info API",
+    "description": "Complete API collection for Device Information Management",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Device Info",
+      "item": [
+        {
+          "name": "1. Create Device Info",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"device_name\": \"Biometric Device 1\",\n  \"mac_address\": \"00:1A:2B:3C:4D:5E\",\n  \"devices\": \"Fingerprint Scanner\",\n  \"ip_address\": \"192.168.1.100\",\n  \"branch_id\": 1\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/device-info",
+              "host": ["{{baseUrl}}"],
+              "path": ["device-info"]
+            },
+            "description": "Create a new device info record."
+          },
+          "response": []
+        },
+        {
+          "name": "2. Get All Device Infos",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/device-info?page=1&limit=10&search=Biometric&branch_id=1",
+              "host": ["{{baseUrl}}"],
+              "path": ["device-info"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Page number"
+                },
+                {
+                  "key": "limit",
+                  "value": "10",
+                  "description": "Records per page"
+                },
+                {
+                  "key": "search",
+                  "value": "Biometric",
+                  "description": "Search by device_name, mac_address, or ip_address"
+                },
+                {
+                  "key": "branch_id",
+                  "value": "1",
+                  "description": "Filter by branch"
+                }
+              ]
+            },
+            "description": "Get all device infos with pagination, search, and filters."
+          },
+          "response": []
+        },
+        {
+          "name": "3. Get Device Info by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/device-info/1",
+              "host": ["{{baseUrl}}"],
+              "path": ["device-info", "1"]
+            },
+            "description": "Get a specific device info by ID."
+          },
+          "response": []
+        },
+        {
+          "name": "4. Update Device Info",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"device_name\": \"Biometric Device 1 - Updated\",\n  \"mac_address\": \"00:1A:2B:3C:4D:5F\",\n  \"devices\": \"Fingerprint & Face Scanner\",\n  \"ip_address\": \"192.168.1.101\",\n  \"branch_id\": 1\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/device-info/1",
+              "host": ["{{baseUrl}}"],
+              "path": ["device-info", "1"]
+            },
+            "description": "Update an existing device info record."
+          },
+          "response": []
+        },
+        {
+          "name": "5. Delete Device Info",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/device-info/1",
+              "host": ["{{baseUrl}}"],
+              "path": ["device-info", "1"]
+            },
+            "description": "Soft delete a device info record."
+          },
+          "response": []
+        },
+        {
+          "name": "6. Get Device Info Dropdown",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/device-info/dropdown?branch_id=1",
+              "host": ["{{baseUrl}}"],
+              "path": ["device-info", "dropdown"],
+              "query": [
+                {
+                  "key": "branch_id",
+                  "value": "1",
+                  "description": "Filter by branch (optional)"
+                }
+              ]
+            },
+            "description": "Get device infos dropdown list for select boxes."
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000/api/v1",
+      "type": "string"
+    }
+  ]
+}

@@ -1,0 +1,224 @@
+{
+  "info": {
+    "name": "Vendor Payment API",
+    "description": "Complete API collection for Vendor Payment management",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Vendor Payments",
+      "item": [
+        {
+          "name": "1. Generate Payment Number",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vendor-payments/code?prefix=VP",
+              "host": ["{{baseUrl}}"],
+              "path": ["vendor-payments", "code"],
+              "query": [
+                {
+                  "key": "prefix",
+                  "value": "VP",
+                  "description": "Prefix for payment number (e.g., VP, VPY)"
+                }
+              ]
+            },
+            "description": "Auto-generate the next vendor payment number with specified prefix"
+          },
+          "response": []
+        },
+        {
+          "name": "2. Create Vendor Payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"payment_no\": \"VP-2026-001\",\n  \"payment_date\": \"2026-02-01\",\n  \"bill_type_id\": 1,\n  \"branch_id\": 1,\n  \"payment_mode\": 1,\n  \"account_name_id\": 5,\n  \"amount\": 50000,\n  \"amount_in_words\": \"Fifty Thousand Only\",\n  \"invoice_id\": 10,\n  \"purchase_id\": 15,\n  \"ref_id\": \"REF-001\",\n  \"remarks\": \"Payment for purchase order\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/vendor-payments",
+              "host": ["{{baseUrl}}"],
+              "path": ["vendor-payments"]
+            },
+            "description": "Create a new vendor payment record"
+          },
+          "response": []
+        },
+        {
+          "name": "3. Get All Vendor Payments",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/vendor-payments?page=1&pageSize=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["vendor-payments"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Page number (optional)"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "10",
+                  "description": "Items per page (optional)"
+                },
+                {
+                  "key": "bill_type_id",
+                  "value": "",
+                  "description": "Filter by bill type ID",
+                  "disabled": true
+                },
+                {
+                  "key": "payment_mode",
+                  "value": "",
+                  "description": "Filter by payment mode ID",
+                  "disabled": true
+                },
+                {
+                  "key": "branch_id",
+                  "value": "",
+                  "description": "Filter by branch ID",
+                  "disabled": true
+                },
+                {
+                  "key": "payment_date",
+                  "value": "",
+                  "description": "Filter by payment date (YYYY-MM-DD)",
+                  "disabled": true
+                },
+                {
+                  "key": "search",
+                  "value": "",
+                  "description": "Search by payment number or vendor name",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Get list of all vendor payments with optional filters and pagination"
+          },
+          "response": []
+        },
+        {
+          "name": "4. Get Vendor Payment by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/vendor-payments/1",
+              "host": ["{{baseUrl}}"],
+              "path": ["vendor-payments", "1"]
+            },
+            "description": "Get detailed information of a specific vendor payment including branch, bill type, payment mode, and vendor details"
+          },
+          "response": []
+        },
+        {
+          "name": "5. Update Vendor Payment",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"payment_no\": \"VP-2026-001-UPDATED\",\n  \"payment_date\": \"2026-02-02\",\n  \"amount\": 55000,\n  \"amount_in_words\": \"Fifty Five Thousand Only\",\n  \"remarks\": \"Updated payment details\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/vendor-payments/1",
+              "host": ["{{baseUrl}}"],
+              "path": ["vendor-payments", "1"]
+            },
+            "description": "Update an existing vendor payment"
+          },
+          "response": []
+        },
+        {
+          "name": "6. Delete Vendor Payment",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/vendor-payments/1",
+              "host": ["{{baseUrl}}"],
+              "path": ["vendor-payments", "1"]
+            },
+            "description": "Soft delete a vendor payment record"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Dropdowns",
+      "item": [
+        {
+          "name": "Get Bill Type Dropdown",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/vendor-payments/bill-type-dropdown",
+              "host": ["{{baseUrl}}"],
+              "path": ["vendor-payments", "bill-type-dropdown"]
+            },
+            "description": "Get list of bill types for dropdown selection"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Payment Mode Dropdown",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/vendor-payments/payment-mode-dropdown",
+              "host": ["{{baseUrl}}"],
+              "path": ["vendor-payments", "payment-mode-dropdown"]
+            },
+            "description": "Get list of payment modes for dropdown selection"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Invoice Dropdown",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/vendor-payments/invoice-dropdown",
+              "host": ["{{baseUrl}}"],
+              "path": ["vendor-payments", "invoice-dropdown"]
+            },
+            "description": "Get list of invoices for dropdown selection"
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000/api/v1",
+      "type": "string"
+    }
+  ]
+}

@@ -32,6 +32,7 @@ module.exports = (sequelize, DataTypes) => {
     }
   );
 
+  // Association not needed when using raw queries
   // Ledger.associate = (models) => {
   //   Ledger.belongsTo(models.LedgerGroup, {
   //     foreignKey: "ledger_group_id",
