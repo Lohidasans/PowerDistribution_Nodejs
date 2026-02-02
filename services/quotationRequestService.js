@@ -21,23 +21,28 @@ const calculateQuotationStatus = async (quotationId, transaction = null) => {
     const statuses = vendorQuotations.map((vq) => vq.status);
     const totalVendors = statuses.length;
 
-    // Count vendors who have responded (either received or rejected)
-    const respondedCount = statuses.filter(
-      (s) => s === "received" || s === "rejected"
-    ).length;
+    // Count different status types
+    const receivedCount = statuses.filter((s) => s === "received").length;
+    const rejectedCount = statuses.filter((s) => s === "rejected").length;
+    const pendingCount = statuses.filter((s) => s === "pending").length;
 
-    // No vendors have responded yet
-    if (respondedCount === 0) {
+    // Status 1: Pending - No vendors have responded yet
+    if (receivedCount === 0 && rejectedCount === 0) {
       return 1; // Pending
     }
 
-    // Some vendors have responded, but not all
-    if (respondedCount < totalVendors) {
-      return 2; // Partially Received
+    // Status 4: Rejected - All vendors have rejected
+    if (rejectedCount === totalVendors) {
+      return 4; // Rejected
     }
 
-    // All vendors have responded (either received or rejected)
-    return 3; // Received
+    // Status 3: Received - All vendors have accepted
+    if (receivedCount === totalVendors) {
+      return 3; // Received
+    }
+
+    // Status 2: Partially Received - Some accepted, some pending/rejected (but not all)
+    return 2; // Partially Received
   } catch (error) {
     console.error("Error calculating quotation status:", error);
     return 1; // Default to pending on error
