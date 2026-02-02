@@ -389,85 +389,225 @@ const deleteQuotationRequest = async (req, res) => {
 // List all Quotation Requests with pagination
 const getAllQuotationRequests = async (req, res) => {
   try {
-    const { page = 1, limit = 10, vendor_id, search } = req.query;
+    const { page, limit, type = "sent", status_id, vendor_id, search } = req.query;
 
-    const offset = (parseInt(page) - 1) * parseInt(limit);
+    // --- Optional Pagination ---
+    const isPaginated = page && limit;
+    const parsedPage = isPaginated ? parseInt(page) : 1;
+    const parsedLimit = isPaginated ? parseInt(limit) : null;
+    const offset = isPaginated ? (parsedPage - 1) * parsedLimit : null;
 
-    // --- Base WHERE clause ---
+    // --- Base WHERE clause for SENT list ---
     let whereSql = `WHERE q.deleted_at IS NULL`;
-    const replacements = { limit: parseInt(limit), offset };
+    const replacements = {};
 
-    // --- Apply filters ---
-    if (vendor_id) {
-      whereSql += ` AND (:vendor_id = ANY(q.vendor_ids))`;
-      replacements.vendor_id = vendor_id;
+    if (status_id) {
+      whereSql += ` AND q.status_id = :status_id`;
+      replacements.status_id = parseInt(status_id);
     }
+
+    if (vendor_id) {
+      whereSql += ` AND :vendor_id = ANY(q.vendor_ids)`;
+      replacements.vendor_id = parseInt(vendor_id);
+    }
+
     if (search) {
       whereSql += ` AND (q.qr_id ILIKE :search OR v.vendor_name ILIKE :search)`;
       replacements.search = `%${search}%`;
     }
+    
+    // SCORE CARDS (DYNAMIC & FILTER-AWARE)
+    let sentWhereSql = `WHERE q.deleted_at IS NULL`;
+    let receivedWhereSql = `WHERE vq.deleted_at IS NULL AND vq.status = 'accepted'`;
+    const scoreReplacements = {};
 
-    // --- Count total quotations ---
-    const countQuery = `
-      SELECT COUNT(*) AS total
-      FROM (
-        SELECT q.id
+    if (vendor_id) {
+      sentWhereSql += ` AND :vendor_id = ANY(q.vendor_ids)`;
+      receivedWhereSql += ` AND vq.vendor_id = :vendor_id`;
+      scoreReplacements.vendor_id = parseInt(vendor_id);
+    }
+
+    if (search) {
+      sentWhereSql += ` AND (q.qr_id ILIKE :search OR v.vendor_name ILIKE :search)`;
+      receivedWhereSql += ` AND (q.qr_id ILIKE :search OR v.vendor_name ILIKE :search)`;
+      scoreReplacements.search = `%${search}%`;
+    }
+
+    const scoreCardQuery = `
+      SELECT
+        (
+          SELECT COUNT(DISTINCT q.id)
+          FROM quotations q
+          LEFT JOIN vendors v ON v.id = ANY(q.vendor_ids)
+          ${sentWhereSql}
+        ) AS sent_count,
+
+        (
+          SELECT COUNT(DISTINCT vq.id)
+          FROM vendor_quotations vq
+          LEFT JOIN quotations q ON q.id = vq.quotation_id
+          LEFT JOIN vendors v ON v.id = vq.vendor_id
+          ${receivedWhereSql}
+        ) AS received_count
+    `;
+
+    const [scoreCardResult] = await sequelize.query(scoreCardQuery, {
+      replacements: scoreReplacements,
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    const scoreCards = {
+      sent: parseInt(scoreCardResult?.sent_count || 0),
+      received: parseInt(scoreCardResult?.received_count || 0),
+    };
+   
+    // DATA FETCH
+    let data, total;
+    if (type === "received") {
+      // ---------------- RECEIVED ----------------
+      let vqWhereSql = `WHERE vq.deleted_at IS NULL AND vq.status = 'accepted'`;
+      const vqReplacements = {};
+
+      if (vendor_id) {
+        vqWhereSql += ` AND vq.vendor_id = :vendor_id`;
+        vqReplacements.vendor_id = parseInt(vendor_id);
+      }
+
+      if (search) {
+        vqWhereSql += ` AND (q.qr_id ILIKE :search OR v.vendor_name ILIKE :search)`;
+        vqReplacements.search = `%${search}%`;
+      }
+
+      const vqCountQuery = `
+        SELECT COUNT(*) AS total
+        FROM vendor_quotations vq
+        LEFT JOIN quotations q ON q.id = vq.quotation_id
+        LEFT JOIN vendors v ON v.id = vq.vendor_id
+        ${vqWhereSql};
+      `;
+
+      const [vqCountResult] = await sequelize.query(vqCountQuery, {
+        replacements: vqReplacements,
+        type: sequelize.QueryTypes.SELECT,
+      });
+
+      total = parseInt(vqCountResult?.total || 0);
+
+      let vqDataQuery = `
+        SELECT 
+          vq.id AS vendor_quotation_id,
+          vq.quotation_id,
+          vq.vendor_quotation_number,
+          vq.status,
+          vq.response_date,
+          vq.sub_total,
+          vq.total_amount,
+          q.qr_id,
+          q.request_date,
+          q.expiry_date,
+          q.status_id AS quotation_status_id,
+          v.id AS vendor_id,
+          v.vendor_name,
+          v.vendor_image_url,
+          STRING_AGG(DISTINCT qi.product_description, ', ') AS item_details,
+          COALESCE(SUM(qi.quantity), 0) AS total_quantity
+        FROM vendor_quotations vq
+        LEFT JOIN quotations q ON q.id = vq.quotation_id
+        LEFT JOIN vendors v ON v.id = vq.vendor_id
+        LEFT JOIN quotation_items qi 
+          ON qi.vendor_quotation_id = vq.id 
+          AND qi.deleted_at IS NULL
+        ${vqWhereSql}
+        GROUP BY vq.id, q.id, v.id
+        ORDER BY vq.response_date DESC, vq.id DESC
+      `;
+
+      if (isPaginated) {
+        vqDataQuery += ` LIMIT :limit OFFSET :offset`;
+        vqReplacements.limit = parsedLimit;
+        vqReplacements.offset = offset;
+      }
+
+      data = await sequelize.query(vqDataQuery, {
+        replacements: vqReplacements,
+        type: sequelize.QueryTypes.SELECT,
+      });
+
+    } else {
+      // ---------------- SENT ----------------
+      const countQuery = `
+        SELECT COUNT(*) AS total
+        FROM (
+          SELECT q.id
+          FROM quotations q
+          LEFT JOIN vendors v ON v.id = ANY(q.vendor_ids)
+          ${whereSql}
+          GROUP BY q.id
+        ) t;
+      `;
+
+      const [countResult] = await sequelize.query(countQuery, {
+        replacements,
+        type: sequelize.QueryTypes.SELECT,
+      });
+
+      total = parseInt(countResult?.total || 0);
+
+      let dataQuery = `
+        SELECT 
+          q.id,
+          q.qr_id,
+          q.request_date,
+          q.expiry_date,
+          q.status_id,
+          q.remarks,
+          ARRAY_AGG(DISTINCT v.id) FILTER (WHERE v.id IS NOT NULL) AS vendor_ids,
+          ARRAY_AGG(DISTINCT v.vendor_name) FILTER (WHERE v.vendor_name IS NOT NULL) AS vendor_names,
+          ARRAY_AGG(DISTINCT v.vendor_image_url) FILTER (WHERE v.vendor_image_url IS NOT NULL) AS vendor_images,
+          STRING_AGG(DISTINCT qi.product_description, ', ') AS item_details,
+          COALESCE(SUM(qi.quantity), 0) AS total_quantity,
+          u.email AS created_by,
+          COUNT(DISTINCT vq.id) FILTER (WHERE vq.status = 'pending') AS pending_vendors,
+          COUNT(DISTINCT vq.id) FILTER (WHERE vq.status = 'received') AS received_vendors,
+          COUNT(DISTINCT vq.id) AS total_vendors
         FROM quotations q
         LEFT JOIN vendors v ON v.id = ANY(q.vendor_ids)
+        LEFT JOIN vendor_quotations vq ON vq.quotation_id = q.id AND vq.deleted_at IS NULL
+        LEFT JOIN quotation_items qi 
+          ON qi.quotation_id = q.id 
+          AND qi.vendor_quotation_id IS NULL 
+          AND qi.deleted_at IS NULL
+        LEFT JOIN users u ON u.id = q.created_by
         ${whereSql}
-        GROUP BY q.id
-      ) t;
-    `;
-    const [countRows] = await sequelize.query(countQuery, { replacements });
-    const total = parseInt(countRows?.[0]?.total || 0, 10);
+        GROUP BY q.id, u.email
+        ORDER BY q.request_date DESC, q.id DESC
+      `;
 
-    // --- Fetch data with vendor response status ---
-    const dataQuery = `
-      SELECT 
-        q.id,
-        q.qr_id,
-        q.request_date,
-        q.expiry_date,
-        q.status_id,
-        q.remarks,
-        ARRAY_AGG(DISTINCT v.vendor_name) FILTER (WHERE v.vendor_name IS NOT NULL) AS vendor_names,
-        ARRAY_AGG(DISTINCT v.vendor_image_url) FILTER (WHERE v.vendor_image_url IS NOT NULL) AS vendor_images,
-        STRING_AGG(DISTINCT c.category_name, ', ') AS category_names,
-        STRING_AGG(DISTINCT sc.subcategory_name, ', ') AS subcategory_names,
-        COALESCE(SUM(DISTINCT qi.quantity), 0) AS total_quantity,
-        u.email AS created_by,
-        COUNT(DISTINCT vq.id) FILTER (WHERE vq.status = 'pending') AS pending_vendors,
-        COUNT(DISTINCT vq.id) FILTER (WHERE vq.status = 'received') AS received_vendors,
-        COUNT(DISTINCT vq.id) AS total_vendors
-      FROM quotations q
-      LEFT JOIN vendors v ON v.id = ANY(q.vendor_ids)
-      LEFT JOIN vendor_quotations vq ON vq.quotation_id = q.id AND vq.deleted_at IS NULL
-      LEFT JOIN quotation_items qi ON qi.quotation_id = q.id 
-        AND qi.vendor_quotation_id IS NULL 
-        AND qi.deleted_at IS NULL
-      LEFT JOIN categories c ON qi.category_id = c.id
-      LEFT JOIN subcategories sc ON qi.subcategory_id = sc.id
-      LEFT JOIN users u ON u.id = q.created_by
-      ${whereSql}
-      GROUP BY q.id, u.email
-      ORDER BY q.request_date DESC, q.id DESC
-      LIMIT :limit OFFSET :offset;
-    `;
+      if (isPaginated) {
+        dataQuery += ` LIMIT :limit OFFSET :offset`;
+        replacements.limit = parsedLimit;
+        replacements.offset = offset;
+      }
 
-    const [rows] = await sequelize.query(dataQuery, { replacements });
-
-    // --- Send response ---
+      data = await sequelize.query(dataQuery, {
+        replacements,
+        type: sequelize.QueryTypes.SELECT,
+      });
+    }
     return commonService.okResponse(res, {
+      score_cards: scoreCards,
       total,
-      page: parseInt(page),
-      totalPages: Math.ceil(total / parseInt(limit)),
-      data: rows,
+      page: isPaginated ? parsedPage : null,
+      totalPages: isPaginated ? Math.ceil(total / parsedLimit) : 1,
+      data,
     });
+
   } catch (error) {
     console.error("Error in getAllQuotationRequests:", error);
     return commonService.handleError(res, error);
   }
 };
+
 
 // Generate Quotation Request Code
 const generateQuotationRequestCode = async (req, res) => {
