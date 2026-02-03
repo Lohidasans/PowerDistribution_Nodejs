@@ -648,17 +648,30 @@ const getQuotationComparisonById = async (req, res) => {
     /** STEP 2: ITEM MASTER (COMMON ITEMS) */
     const itemsQuery = `
       SELECT 
-        material_type_id,
-        category_id,
-        subcategory_id,
-        product_description,
-        purity,
-        weight,
-        quantity
-      FROM quotation_items
-      WHERE quotation_id = :quotation_id
-        AND vendor_quotation_id IS NULL
-        AND deleted_at IS NULL
+        qi.material_type_id,
+        mt.material_type AS material_type,
+        qi.category_id,
+        ct.category_name,
+        qi.subcategory_id,
+        sc.subcategory_name,
+        qi.product_description,
+        qi.purity,
+        qi.weight,
+        qi.quantity
+      FROM quotation_items qi
+      LEFT JOIN "materialTypes" mt
+        ON mt.id = qi.material_type_id
+        AND mt.deleted_at IS NULL
+      LEFT JOIN categories ct
+        ON ct.id = qi.category_id
+        AND ct.deleted_at IS NULL
+      LEFT JOIN subcategories sc
+        ON sc.id = qi.subcategory_id
+        AND sc.deleted_at IS NULL
+      WHERE qi.quotation_id = :quotation_id
+        AND qi.vendor_quotation_id IS NULL
+        AND qi.deleted_at IS NULL
+      ORDER BY qi.id ASC
     `;
 
     const items = await sequelize.query(itemsQuery, {
@@ -671,6 +684,16 @@ const getQuotationComparisonById = async (req, res) => {
       SELECT
         v.id AS vendor_id,
         v.vendor_name,
+        qi.material_type_id,
+        mt.material_type AS material_type,
+        qi.category_id,
+        ct.category_name,
+        qi.subcategory_id,
+        sc.subcategory_name,
+        qi.product_description,
+        qi.purity,
+        qi.weight,
+        qi.quantity,
         qi.rate,
         qi.amount,
         vq.total_amount,
@@ -679,11 +702,20 @@ const getQuotationComparisonById = async (req, res) => {
       FROM vendor_quotations vq
       JOIN vendors v ON v.id = vq.vendor_id
       JOIN quotation_items qi ON qi.vendor_quotation_id = vq.id
+      LEFT JOIN "materialTypes" mt
+        ON mt.id = qi.material_type_id
+        AND mt.deleted_at IS NULL
+      LEFT JOIN categories ct
+        ON ct.id = qi.category_id
+        AND ct.deleted_at IS NULL
+      LEFT JOIN subcategories sc
+        ON sc.id = qi.subcategory_id
+        AND sc.deleted_at IS NULL
       WHERE vq.quotation_id = :quotation_id
         AND vq.status = 'accepted'
         AND vq.deleted_at IS NULL
         AND qi.deleted_at IS NULL
-      ORDER BY v.vendor_name
+      ORDER BY v.vendor_name, qi.id ASC
     `;
 
     const vendorRows = await sequelize.query(vendorsQuery, {
@@ -704,6 +736,16 @@ const getQuotationComparisonById = async (req, res) => {
       }
 
       vendorsMap[row.vendor_id].items.push({
+        material_type_id: row.material_type_id,
+        material_type: row.material_type,
+        category_id: row.category_id,
+        category_name: row.category_name,
+        subcategory_id: row.subcategory_id,
+        subcategory_name: row.subcategory_name,
+        product_description: row.product_description,
+        purity: row.purity,
+        weight: row.weight,
+        quantity: row.quantity,
         rate: row.rate,
         amount: row.amount,
       });
