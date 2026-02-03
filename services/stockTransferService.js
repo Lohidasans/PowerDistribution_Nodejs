@@ -201,8 +201,12 @@ const createStockTransfer = async (req, res) => {
 
         if (!sourceItem) throw new Error("Insufficient stock for item " + product_item_detail_id);
 
+        const newQty = Number(sourceItem.quantity) - Number(transfer_quantity);
         await sourceItem.update(
-          { quantity: Number(sourceItem.quantity) - Number(transfer_quantity) },
+          {
+            quantity: newQty,
+            stock_out_reason: newQty === 0 ? "TRANSFERRED" : null
+          },
           { transaction }
         );
 

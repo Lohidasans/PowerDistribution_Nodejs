@@ -90,7 +90,10 @@ const reduceStockForInvoice = async (items, status, payments, transaction) => {
         }
 
         await productItemDetail.update(
-            { quantity: newQuantity },
+            {
+                quantity: newQuantity,
+                stock_out_reason: newQuantity === 0 ? "SOLD" : null,
+             },
             { transaction }
         );
     }
@@ -191,7 +194,6 @@ const validateInvoiceItems = async ({
 
     return invoice; // IMPORTANT
 };
-
 
 
 module.exports = {
