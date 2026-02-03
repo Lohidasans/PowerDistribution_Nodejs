@@ -99,6 +99,15 @@ module.exports = (sequelize, DataTypes) => {
         defaultValue: false,
         allowNull: false,
       },
+      stock_out_reason: {
+        type: DataTypes.ENUM(
+          "SOLD",  // Sold to customer → SHOULD be out of stock
+          "TRANSFERRED",  //Transferred to another branch → SHOULD NOT be out of stock
+          "DAMAGED",
+          "ADJUSTMENT"
+        ),
+        allowNull: true
+      }
     },
     {
       timestamps: true,
