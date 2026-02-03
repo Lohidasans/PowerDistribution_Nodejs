@@ -66,7 +66,7 @@ const getAllMaintenanceHistory = async (req, res) => {
         mh.*,
         am.asset_no,
         am.asset_name,
-        mt.maintenance_type_name
+        mt.type_name
       FROM maintenance_history mh
       LEFT JOIN asset_management am ON mh.asset_management_id = am.id
       LEFT JOIN maintenance_types mt ON mh.maintenance_type_id = mt.id
