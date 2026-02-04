@@ -66,10 +66,48 @@ const getAllMaintenanceHistory = async (req, res) => {
         mh.*,
         am.asset_no,
         am.asset_name,
-        mt.type_name
+        am.purchase_date,
+        am.asset_value,
+        am.serial_no,
+        am.vendor_id,
+        am.upload_invoice_url,
+        am.status_id,
+        am.maintenance_cycle_id,
+        am.next_maintenance_date,
+        am.warranty_expiry_date,
+        am.upload_document_url,
+        am.branch_id,
+        am.department_id,
+        am.receipt_id,
+        am.upload_disposal_document_url,
+        am.journal_entry_id,
+        am.ledger_account_id,
+        am.created_at as asset_created_at,
+        am.updated_at as asset_updated_at,
+        mt.type_name,
+        je.journal_no,
+        v.vendor_name as vendor_name,
+        CASE 
+          WHEN am.status_id = 1 THEN 'Update pending'
+          WHEN am.status_id = 2 THEN 'Under maintenance'
+          WHEN am.status_id = 3 THEN 'In use'
+          WHEN am.status_id = 4 THEN 'Retired'
+          ELSE NULL
+        END as status,
+        CASE 
+          WHEN am.maintenance_cycle_id = 1 THEN 'Daily'
+          WHEN am.maintenance_cycle_id = 2 THEN 'Weekly'
+          WHEN am.maintenance_cycle_id = 3 THEN 'Monthly'
+          WHEN am.maintenance_cycle_id = 4 THEN 'Quarterly'
+          WHEN am.maintenance_cycle_id = 5 THEN 'Half yearly'
+          WHEN am.maintenance_cycle_id = 6 THEN 'Yearly'
+          ELSE NULL
+        END as maintenance_cycle
       FROM maintenance_history mh
       LEFT JOIN asset_management am ON mh.asset_management_id = am.id
       LEFT JOIN maintenance_types mt ON mh.maintenance_type_id = mt.id
+      LEFT JOIN journal_entries je ON am.journal_entry_id = je.id
+      LEFT JOIN vendors v ON am.vendor_id = v.id
       WHERE mh.deleted_at IS NULL
     `;
     const replacements = {};
