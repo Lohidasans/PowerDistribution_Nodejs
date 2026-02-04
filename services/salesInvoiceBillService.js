@@ -7,7 +7,9 @@ const { validateProductItemDetails,
   reduceStockForInvoice,
   validateCashPayment,
   updateBillAdjustmentFlags,
-  validateInvoiceItems } = require('../helpers/billingValidations');
+  validateInvoiceItems,
+  validateEstimateForInvoice,
+  markEstimateAsConverted } = require('../helpers/billingValidations');
 const { calculateItemsAndSubtotal, calculateInvoiceTotals, calculatePaymentSummary } = require("../helpers/billingCalculations");
 const { Op } = require("sequelize");
 
@@ -877,6 +879,12 @@ const createSalesInvoice = async (req, res) => {
     // Validate items
     await validateInvoiceItems({ items, header, transaction: t, isCreate: true });
 
+    // If estimate_bill_id is provided, validate it
+    let estimateBill = null;
+    if (header.estimate_bill_id) {
+      estimateBill = await validateEstimateForInvoice(header.estimate_bill_id, { models, transaction: t });
+    }
+
     // Validate products
     await validateProducts(items, t);
     await validateProductItemDetails(items, t);
@@ -909,6 +917,7 @@ const createSalesInvoice = async (req, res) => {
     // CREATE INVOICE (NO CALCULATION)
     const bill = await models.SalesInvoiceBill.create(
       {
+        estimate_bill_id: header.estimate_bill_id || null,
         invoice_no: header.invoice_no,
         invoice_date: header.invoice_date,
         invoice_time: header.invoice_time,
@@ -985,8 +994,11 @@ const createSalesInvoice = async (req, res) => {
 
     await reduceStockForInvoice(items, header.status, savedPayments, t);
 
-    await t.commit();
+    if (estimateBill) {
+      await markEstimateAsConverted(estimateBill, { transaction: t });
+    }
 
+    await t.commit();
     return commonService.createdResponse(res, {
       message: enMessage.billing.invoiceCreationSuccess,
       invoice: bill,

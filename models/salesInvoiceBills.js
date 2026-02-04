@@ -8,6 +8,10 @@ module.exports = (sequelize, DataTypes) => {
         primaryKey: true,
         type: DataTypes.INTEGER,
       },
+      estimate_bill_id: {  // Reference to Estimate Bill if converted
+        type: DataTypes.INTEGER,
+        allowNull: true,
+      },
       invoice_no: {
         type: DataTypes.STRING,
         allowNull: false,

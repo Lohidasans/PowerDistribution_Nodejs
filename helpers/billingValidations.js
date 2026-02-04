@@ -195,6 +195,48 @@ const validateInvoiceItems = async ({
     return invoice; // IMPORTANT
 };
 
+const validateEstimateForInvoice = async (
+    estimateBillId,
+    { models, transaction }
+) => {
+    if (!estimateBillId) {
+        return null; // No estimate reference, valid case
+    }
+
+    const estimateBill = await models.EstimateBill.findOne({
+        where: {
+            id: estimateBillId,
+            deleted_at: null,
+        },
+        transaction,
+    });
+
+    if (!estimateBill) {
+        throw new ValidationError("Invalid Estimate Reference");
+    }
+
+    if (estimateBill.is_converted) {
+        throw new ValidationError("Estimate has already been converted to an invoice");
+    }
+
+    return estimateBill;
+};
+
+const markEstimateAsConverted = async (
+    estimateBill,
+    { transaction }
+) => {
+    if (!estimateBill) return;
+
+    await estimateBill.update(
+        {
+            is_converted: true,
+            converted_at: new Date(),
+            status: "Converted",
+        },
+        { transaction }
+    );
+};
 
 module.exports = {
     validateProductItemDetails,
@@ -202,5 +244,7 @@ module.exports = {
     reduceStockForInvoice,
     validateCashPayment,
     updateBillAdjustmentFlags,
-    validateInvoiceItems
+    validateInvoiceItems,
+    validateEstimateForInvoice,
+    markEstimateAsConverted
 };
