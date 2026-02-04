@@ -82,18 +82,18 @@ const getAllMaintenanceHistory = async (req, res) => {
         am.upload_disposal_document_url,
         am.journal_entry_id,
         am.ledger_account_id,
-        am.created_at as asset_created_at,
-        am.updated_at as asset_updated_at,
+        am.created_at AS asset_created_at,
+        am.updated_at AS asset_updated_at,
         mt.type_name,
         je.journal_no,
-        v.vendor_name as vendor_name,
+        v.vendor_name,
         CASE 
           WHEN am.status_id = 1 THEN 'Update pending'
           WHEN am.status_id = 2 THEN 'Under maintenance'
           WHEN am.status_id = 3 THEN 'In use'
           WHEN am.status_id = 4 THEN 'Retired'
           ELSE NULL
-        END as status,
+        END AS status,
         CASE 
           WHEN am.maintenance_cycle_id = 1 THEN 'Daily'
           WHEN am.maintenance_cycle_id = 2 THEN 'Weekly'
@@ -102,7 +102,7 @@ const getAllMaintenanceHistory = async (req, res) => {
           WHEN am.maintenance_cycle_id = 5 THEN 'Half yearly'
           WHEN am.maintenance_cycle_id = 6 THEN 'Yearly'
           ELSE NULL
-        END as maintenance_cycle
+        END AS maintenance_cycle
       FROM maintenance_history mh
       LEFT JOIN asset_management am ON mh.asset_management_id = am.id
       LEFT JOIN maintenance_types mt ON mh.maintenance_type_id = mt.id
@@ -110,6 +110,7 @@ const getAllMaintenanceHistory = async (req, res) => {
       LEFT JOIN vendors v ON am.vendor_id = v.id
       WHERE mh.deleted_at IS NULL
     `;
+
     const replacements = {};
 
     if (asset_management_id) {
@@ -123,7 +124,13 @@ const getAllMaintenanceHistory = async (req, res) => {
     }
 
     if (search) {
-      query += ` AND (am.asset_no LIKE :search OR am.asset_name LIKE :search OR mh.technician_name LIKE :search)`;
+      query += `
+        AND (
+          am.asset_no LIKE :search
+          OR am.asset_name LIKE :search
+          OR mh.technician_name LIKE :search
+        )
+      `;
       replacements.search = `%${search}%`;
     }
 
@@ -139,16 +146,159 @@ const getAllMaintenanceHistory = async (req, res) => {
 
     query += ` ORDER BY mh.date DESC, mh.id DESC`;
 
-    const maintenanceHistory = await sequelize.query(query, {
+    const results = await sequelize.query(query, {
       type: sequelize.QueryTypes.SELECT,
       replacements,
     });
 
-    return commonService.okResponse(res, maintenanceHistory);
+    const maintenanceHistoryArray = [];
+    let assetManagement = null;
+
+    // -------------------------------
+    // Transform result
+    // -------------------------------
+    results.forEach(row => {
+      const {
+        // Maintenance history
+        id,
+        date,
+        asset_management_id,
+        maintenance_type_id,
+        technician_name,
+        cost,
+        description,
+        next_service_date,
+        created_at,
+        updated_at,
+        deleted_at,
+        type_name,
+
+        // Asset
+        asset_no,
+        asset_name,
+        purchase_date,
+        asset_value,
+        serial_no,
+        vendor_id,
+        vendor_name,
+        upload_invoice_url,
+        status_id,
+        status,
+        maintenance_cycle_id,
+        maintenance_cycle,
+        next_maintenance_date,
+        warranty_expiry_date,
+        upload_document_url,
+        branch_id,
+        department_id,
+        receipt_id,
+        upload_disposal_document_url,
+        journal_entry_id,
+        journal_no,
+        ledger_account_id,
+        asset_created_at,
+        asset_updated_at,
+      } = row;
+
+      maintenanceHistoryArray.push({
+        id,
+        date,
+        asset_management_id,
+        maintenance_type_id,
+        technician_name,
+        cost,
+        description,
+        next_service_date,
+        created_at,
+        updated_at,
+        deleted_at,
+        type_name,
+      });
+
+      // Set asset details once
+      if (!assetManagement && asset_management_id) {
+        assetManagement = {
+          id: asset_management_id,
+          asset_no,
+          asset_name,
+          purchase_date,
+          asset_value,
+          serial_no,
+          vendor_id,
+          vendor_name,
+          upload_invoice_url,
+          status_id,
+          status,
+          maintenance_cycle_id,
+          maintenance_cycle,
+          next_maintenance_date,
+          warranty_expiry_date,
+          upload_document_url,
+          branch_id,
+          department_id,
+          receipt_id,
+          upload_disposal_document_url,
+          journal_entry_id,
+          journal_no,
+          ledger_account_id,
+          created_at: asset_created_at,
+          updated_at: asset_updated_at,
+        };
+      }
+    });
+
+    // -------------------------------
+    // If no maintenance history found
+    // -------------------------------
+    if (results.length === 0 && asset_management_id) {
+      const assetQuery = `
+        SELECT
+          am.*,
+          v.vendor_name,
+          je.journal_no,
+          CASE 
+            WHEN am.status_id = 1 THEN 'Update pending'
+            WHEN am.status_id = 2 THEN 'Under maintenance'
+            WHEN am.status_id = 3 THEN 'In use'
+            WHEN am.status_id = 4 THEN 'Retired'
+            ELSE NULL
+          END AS status,
+          CASE 
+            WHEN am.maintenance_cycle_id = 1 THEN 'Daily'
+            WHEN am.maintenance_cycle_id = 2 THEN 'Weekly'
+            WHEN am.maintenance_cycle_id = 3 THEN 'Monthly'
+            WHEN am.maintenance_cycle_id = 4 THEN 'Quarterly'
+            WHEN am.maintenance_cycle_id = 5 THEN 'Half yearly'
+            WHEN am.maintenance_cycle_id = 6 THEN 'Yearly'
+            ELSE NULL
+          END AS maintenance_cycle
+        FROM asset_management am
+        LEFT JOIN vendors v ON am.vendor_id = v.id
+        LEFT JOIN journal_entries je ON am.journal_entry_id = je.id
+        WHERE am.id = :asset_management_id
+          AND am.deleted_at IS NULL
+      `;
+
+      const assetResult = await sequelize.query(assetQuery, {
+        type: sequelize.QueryTypes.SELECT,
+        replacements: { asset_management_id },
+      });
+
+      assetManagement = assetResult[0] || {};
+    }
+
+    return commonService.okResponse(res, {
+      data: {
+        maintenance_history: maintenanceHistoryArray,
+        asset_management: assetManagement,
+      },
+    });
+
   } catch (err) {
     return commonService.handleError(res, err);
   }
 };
+
 
 // Get Maintenance History by ID
 const getMaintenanceHistoryById = async (req, res) => {
