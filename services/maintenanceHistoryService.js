@@ -64,6 +64,8 @@ const getAllMaintenanceHistory = async (req, res) => {
     let query = `
       SELECT
         mh.*,
+
+        -- Asset
         am.asset_no,
         am.asset_name,
         am.purchase_date,
@@ -84,11 +86,15 @@ const getAllMaintenanceHistory = async (req, res) => {
         am.ledger_account_id,
         am.created_at AS asset_created_at,
         am.updated_at AS asset_updated_at,
+
+        -- Lookup tables
         mt.type_name,
         je.journal_no,
         v.vendor_name,
         b.branch_name,
         r.role_name,
+        l.ledger_name,
+
         CASE 
           WHEN am.status_id = 1 THEN 'Update pending'
           WHEN am.status_id = 2 THEN 'Under maintenance'
@@ -96,6 +102,7 @@ const getAllMaintenanceHistory = async (req, res) => {
           WHEN am.status_id = 4 THEN 'Retired'
           ELSE NULL
         END AS status,
+
         CASE 
           WHEN am.maintenance_cycle_id = 1 THEN 'Daily'
           WHEN am.maintenance_cycle_id = 2 THEN 'Weekly'
@@ -105,6 +112,7 @@ const getAllMaintenanceHistory = async (req, res) => {
           WHEN am.maintenance_cycle_id = 6 THEN 'Yearly'
           ELSE NULL
         END AS maintenance_cycle
+
       FROM maintenance_history mh
       LEFT JOIN asset_management am ON mh.asset_management_id = am.id
       LEFT JOIN maintenance_types mt ON mh.maintenance_type_id = mt.id
@@ -112,6 +120,7 @@ const getAllMaintenanceHistory = async (req, res) => {
       LEFT JOIN vendors v ON am.vendor_id = v.id
       LEFT JOIN branches b ON am.branch_id = b.id
       LEFT JOIN roles r ON am.department_id = r.department_id
+      LEFT JOIN ledger l ON am.ledger_account_id = l.id
       WHERE mh.deleted_at IS NULL
     `;
 
@@ -133,6 +142,7 @@ const getAllMaintenanceHistory = async (req, res) => {
           am.asset_no LIKE :search
           OR am.asset_name LIKE :search
           OR mh.technician_name LIKE :search
+          OR l.ledger_name LIKE :search
         )
       `;
       replacements.search = `%${search}%`;
@@ -158,12 +168,8 @@ const getAllMaintenanceHistory = async (req, res) => {
     const maintenanceHistoryArray = [];
     let assetManagement = null;
 
-    // -------------------------------
-    // Transform result
-    // -------------------------------
     results.forEach(row => {
       const {
-        // Maintenance history
         id,
         date,
         asset_management_id,
@@ -177,7 +183,6 @@ const getAllMaintenanceHistory = async (req, res) => {
         deleted_at,
         type_name,
 
-        // Asset
         asset_no,
         asset_name,
         purchase_date,
@@ -194,16 +199,17 @@ const getAllMaintenanceHistory = async (req, res) => {
         warranty_expiry_date,
         upload_document_url,
         branch_id,
+        branch_name,
         department_id,
+        role_name,
         receipt_id,
         upload_disposal_document_url,
         journal_entry_id,
         journal_no,
         ledger_account_id,
+        ledger_name,
         asset_created_at,
         asset_updated_at,
-        branch_name,
-        role_name,
       } = row;
 
       maintenanceHistoryArray.push({
@@ -221,7 +227,6 @@ const getAllMaintenanceHistory = async (req, res) => {
         type_name,
       });
 
-      // Set asset details once
       if (!assetManagement && asset_management_id) {
         assetManagement = {
           id: asset_management_id,
@@ -249,48 +254,51 @@ const getAllMaintenanceHistory = async (req, res) => {
           journal_entry_id,
           journal_no,
           ledger_account_id,
+          ledger_name,
           created_at: asset_created_at,
           updated_at: asset_updated_at,
         };
       }
     });
 
-    // -------------------------------
     // If no maintenance history found
-    // -------------------------------
     if (results.length === 0 && asset_management_id) {
-const assetQuery = `
-  SELECT
-    am.*,
-    v.vendor_name,
-    je.journal_no,
-    b.branch_name,
-    r.role_name,
-    CASE 
-      WHEN am.status_id = 1 THEN 'Update pending'
-      WHEN am.status_id = 2 THEN 'Under maintenance'
-      WHEN am.status_id = 3 THEN 'In use'
-      WHEN am.status_id = 4 THEN 'Retired'
-      ELSE NULL
-    END AS status,
-    CASE 
-      WHEN am.maintenance_cycle_id = 1 THEN 'Daily'
-      WHEN am.maintenance_cycle_id = 2 THEN 'Weekly'
-      WHEN am.maintenance_cycle_id = 3 THEN 'Monthly'
-      WHEN am.maintenance_cycle_id = 4 THEN 'Quarterly'
-      WHEN am.maintenance_cycle_id = 5 THEN 'Half yearly'
-      WHEN am.maintenance_cycle_id = 6 THEN 'Yearly'
-      ELSE NULL
-    END AS maintenance_cycle
-  FROM asset_management am
-  LEFT JOIN vendors v ON am.vendor_id = v.id
-  LEFT JOIN journal_entries je ON am.journal_entry_id = je.id
-  LEFT JOIN branches b ON am.branch_id = b.id
-  LEFT JOIN roles r ON am.department_id = r.department_id
-  WHERE am.id = :asset_management_id
-    AND am.deleted_at IS NULL
-`;
+      const assetQuery = `
+        SELECT
+          am.*,
+          v.vendor_name,
+          je.journal_no,
+          b.branch_name,
+          r.role_name,
+          l.ledger_name,
 
+          CASE 
+            WHEN am.status_id = 1 THEN 'Update pending'
+            WHEN am.status_id = 2 THEN 'Under maintenance'
+            WHEN am.status_id = 3 THEN 'In use'
+            WHEN am.status_id = 4 THEN 'Retired'
+            ELSE NULL
+          END AS status,
+
+          CASE 
+            WHEN am.maintenance_cycle_id = 1 THEN 'Daily'
+            WHEN am.maintenance_cycle_id = 2 THEN 'Weekly'
+            WHEN am.maintenance_cycle_id = 3 THEN 'Monthly'
+            WHEN am.maintenance_cycle_id = 4 THEN 'Quarterly'
+            WHEN am.maintenance_cycle_id = 5 THEN 'Half yearly'
+            WHEN am.maintenance_cycle_id = 6 THEN 'Yearly'
+            ELSE NULL
+          END AS maintenance_cycle
+
+        FROM asset_management am
+        LEFT JOIN vendors v ON am.vendor_id = v.id
+        LEFT JOIN journal_entries je ON am.journal_entry_id = je.id
+        LEFT JOIN branches b ON am.branch_id = b.id
+        LEFT JOIN roles r ON am.department_id = r.department_id
+        LEFT JOIN ledger l ON am.ledger_account_id = l.id
+        WHERE am.id = :asset_management_id
+          AND am.deleted_at IS NULL
+      `;
 
       const assetResult = await sequelize.query(assetQuery, {
         type: sequelize.QueryTypes.SELECT,
@@ -311,6 +319,7 @@ const assetQuery = `
     return commonService.handleError(res, err);
   }
 };
+
 
 
 // Get Maintenance History by ID
