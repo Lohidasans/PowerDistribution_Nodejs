@@ -13,6 +13,7 @@ router.get("/products/list-details", svc.getAllProductDetails);
 router.get("/products/addon-list", svc.getProductAddonList);
 router.get("/products/stock/counts", svc.getProductStockCounts);
 router.get("/products/top-selling-subcategories", svc.getTopSellingSubcategories);
+router.get("/products/stock-updates", svc.getStockUpdates);
 router.get("/product-id-by-sku", svc.getProductIdBySku);
 router.get("/products/deleted", svc.getDeletedProducts);
 router.get("/products/:id", svc.getProductById);
@@ -342,4 +343,47 @@ module.exports = router;
  *                           total_invoices: { type: integer, description: "Total number of invoices" }
  *                           total_sales_amount: { type: string, description: "Total sales amount" }
  *                     total_results: { type: integer, description: "Number of results returned" }
+ */
+
+/**
+ * @openapi
+ * /api/v1/products/stock-updates:
+ *   get:
+ *     summary: Get recent stock updates
+ *     tags: [Product]
+ *     description: Returns recent stock updates showing date, material type, category, subcategory, and quantity for newly added products.
+ *     parameters:
+ *       - in: query
+ *         name: branch_id
+ *         schema: { type: integer }
+ *         description: Filter by specific branch ID (optional)
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 10 }
+ *         description: Maximum number of stock updates to return
+ *     responses:
+ *       200:
+ *         description: OK
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 statusCode: { type: integer }
+ *                 message: { type: string }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     stock_updates:
+ *                       type: array
+ *                       description: "Recent stock updates"
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           date: { type: string, format: date, description: "Date of stock update" }
+ *                           material_type: { type: string, description: "Material type (Gold, Silver, etc.)" }
+ *                           category: { type: string, description: "Category name" }
+ *                           sub_category: { type: string, description: "Subcategory name" }
+ *                           quantity: { type: integer, description: "Quantity of products" }
+ *                     total_records: { type: integer, description: "Number of records returned" }
  */

@@ -2618,6 +2618,67 @@ const getTopSellingSubcategories = async (req, res) => {
   }
 };
 
+// Get recent stock updates
+const getStockUpdates = async (req, res) => {
+  try {
+    const { branch_id, limit = 10 } = req.query;
+
+    const replacements = { limit: parseInt(limit, 10) };
+    let branchFilter = '';
+
+    if (branch_id) {
+      branchFilter = 'AND p.branch_id = :branch_id';
+      replacements.branch_id = branch_id;
+    }
+
+    const query = `
+      SELECT 
+        p.created_at::date AS date,
+        mt.material_type,
+        c.category_name AS category,
+        sc.subcategory_name AS sub_category,
+        p.total_products AS quantity
+      FROM 
+        products p
+      INNER JOIN 
+        "materialTypes" mt ON mt.id = p.material_type_id AND mt.deleted_at IS NULL
+      INNER JOIN 
+        categories c ON c.id = p.category_id AND c.deleted_at IS NULL
+      INNER JOIN 
+        subcategories sc ON sc.id = p.subcategory_id AND sc.deleted_at IS NULL
+      WHERE 
+        p.deleted_at IS NULL
+        AND p.status = 'Active'
+        ${branchFilter}
+      ORDER BY 
+        p.created_at DESC
+      LIMIT :limit
+    `;
+
+    const stockUpdates = await sequelize.query(query, {
+      replacements,
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    // Format the response
+    const formattedData = stockUpdates.map(item => ({
+      date: item.date,
+      material_type: item.material_type,
+      category: item.category,
+      sub_category: item.sub_category,
+      quantity: parseInt(item.quantity, 10) || 0,
+    }));
+
+    return commonService.okResponse(res, {
+      stock_updates: formattedData,
+      total_records: formattedData.length,
+    });
+  } catch (err) {
+    console.error('Error in getStockUpdates:', err);
+    return commonService.handleError(res, err);
+  }
+};
+
 module.exports = {
   createProductSKUCode,
   createProduct,
@@ -2640,4 +2701,5 @@ module.exports = {
   cloneProductAddOns,
   newGetAllProductDetails,
   getTopSellingSubcategories,
+  getStockUpdates,
 };

@@ -1,0 +1,543 @@
+{
+  "info": {
+    "_postman_id": "b5d99856-0f60-4000-b558-7f1e17faaa7c",
+    "name": "Branch",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Overview",
+      "item": [
+        {
+          "name": "Branch wise -overview",
+          "id": "7c8ffacc-5b64-48b8-8e22-828c82ef9e7a",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/branch/overview?branch_id=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "branch",
+                "overview"
+              ],
+              "query": [
+                {
+                  "key": "branch_id",
+                  "value": "1",
+                  "type": "text",
+                  "uuid": "82959441-1de5-4954-820a-8bad2b8132f6"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Sales Statistics",
+          "id": "c002df00-f204-4b7e-b480-bb8ed3f155da",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/branch/sales-statistics?branch_id=2&period=weekly",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "branch",
+                "sales-statistics"
+              ],
+              "query": [
+                {
+                  "key": "branch_id",
+                  "value": "2",
+                  "uuid": "8ed41f51-33a3-4ca9-af5d-7f97552987cb"
+                },
+                {
+                  "key": "period",
+                  "value": "weekly",
+                  "description": "yearly, montly",
+                  "uuid": "d96ee238-f316-4935-8e20-e224b1dd414f"
+                },
+                {
+                  "key": "year",
+                  "value": "2025",
+                  "type": "text",
+                  "uuid": "866dadbe-68da-42e8-9376-af54c397d2bf",
+                  "disabled": true
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Top Selling Sub Category",
+          "id": "adb85598-873f-4218-9a45-16fc857913fc",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/products/top-selling-subcategories?branch_id=2",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products",
+                "top-selling-subcategories"
+              ],
+              "query": [
+                {
+                  "key": "branch_id",
+                  "value": "2",
+                  "uuid": "5b737d06-5308-4622-8aea-e9ed008735c7"
+                },
+                {
+                  "key": "period",
+                  "value": "weekly",
+                  "uuid": "d4ee0c69-ff03-4975-b81f-fee2f8fe5c95",
+                  "disabled": true
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Customer Visits",
+          "id": "7f4ab3bc-7f92-4285-a9ca-311d45117d9a",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/branch/customer-visits?branch_id=2",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "branch",
+                "customer-visits"
+              ],
+              "query": [
+                {
+                  "key": "branch_id",
+                  "value": "2",
+                  "type": "text",
+                  "uuid": "eac4f4c0-f333-4393-adec-c43d66d27792"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Stock Update",
+          "id": "865ff82b-4849-4239-8871-fb789fde7189",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/products/stock-updates?branch_id=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products",
+                "stock-updates"
+              ],
+              "query": [
+                {
+                  "key": "branch_id",
+                  "value": "1",
+                  "uuid": "0c69ae55-b1ff-48ec-9f3e-d103736233b5"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "id": "8bfa5dfb-443f-4f50-8a5a-8396da31f8ad"
+    },
+    {
+      "name": "Sales",
+      "item": [
+        {
+          "name": "Sales Dashboard",
+          "id": "7c90f75c-5b89-4183-befd-954ccd059414",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/branch/sales-analytics?branch_id=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "branch",
+                "sales-analytics"
+              ],
+              "query": [
+                {
+                  "key": "branch_id",
+                  "value": "1",
+                  "uuid": "c0572e05-7e0c-4195-8860-74c4380d6f50"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Top-performers",
+          "id": "7271ae85-d1e3-4183-bf9d-d530b5cf3975",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/employees/top-performers?branch_id=100",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "employees",
+                "top-performers"
+              ],
+              "query": [
+                {
+                  "key": "branch_id",
+                  "value": "100",
+                  "type": "text",
+                  "uuid": "33b8e5f6-121a-4c77-80d6-142fd36360a9"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Top Buying Customers",
+          "id": "9033e2e1-d077-4cd3-904e-7553115c2f18",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/customers/top-buying?branch_id=100",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "customers",
+                "top-buying"
+              ],
+              "query": [
+                {
+                  "key": "branch_id",
+                  "value": "100",
+                  "type": "text",
+                  "uuid": "6834375d-ac0a-4138-898b-96d73082d29f"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Recent Sales",
+          "id": "90f63a83-e8df-44f0-b84d-f0b6f049ed86",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/branch/recent-sales?branch_id=81&start_date=01-02-2026&end-date=31-02-2026",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "branch",
+                "recent-sales"
+              ],
+              "query": [
+                {
+                  "key": "branch_id",
+                  "value": "81",
+                  "uuid": "b72c0320-bed2-4d4f-9c5b-e162425ddb7b"
+                },
+                {
+                  "key": "start_date",
+                  "value": "01-02-2026",
+                  "uuid": "a2ef9d8b-072f-4b28-9b9a-2cfa753a87b3"
+                },
+                {
+                  "key": "end-date",
+                  "value": "31-02-2026",
+                  "uuid": "a0529c78-db84-488c-89ef-1799147a3492"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Sales By Category",
+          "id": "447f5e89-450c-4885-adbb-b4726d30bd00",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/branch/top-selling-categories?branch_id=1&start_date=01-02-2026&end-date=31-02-2026",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "branch",
+                "top-selling-categories"
+              ],
+              "query": [
+                {
+                  "key": "branch_id",
+                  "value": "1",
+                  "uuid": "7b3563b5-9dfe-4e46-b912-efb9f4162b24"
+                },
+                {
+                  "key": "start_date",
+                  "value": "01-02-2026"
+                },
+                {
+                  "key": "end-date",
+                  "value": "31-02-2026"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "id": "42b87ab1-20a8-48ee-ac37-eed73c8705c1"
+    },
+    {
+      "name": "Stock",
+      "item": [
+        {
+          "name": "Stock",
+          "id": "6d27a8a2-cbc0-4206-a10b-862d62a54495",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/branch/stock-analytics?branch_id=2&start_date=01-02-2026&end-date=31-02-2026",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "branch",
+                "stock-analytics"
+              ],
+              "query": [
+                {
+                  "key": "branch_id",
+                  "value": "2",
+                  "uuid": "5e4b8ca6-1d54-4961-891c-b6e1fb71a956"
+                },
+                {
+                  "key": "start_date",
+                  "value": "01-02-2026",
+                  "uuid": "2144333d-228e-4bd6-8f23-c6e6c392581a"
+                },
+                {
+                  "key": "end-date",
+                  "value": "31-02-2026",
+                  "uuid": "6ffd8303-3e5e-4cd6-b941-5b867dfff41f"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Vendor Contribution",
+          "id": "b8c3db15-b2e6-49b0-8183-3b205afe72c0",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/branch/vendor-contribution?branch_id=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "branch",
+                "vendor-contribution"
+              ],
+              "query": [
+                {
+                  "key": "branch_id",
+                  "value": "1",
+                  "uuid": "58ab3025-67d9-4ed6-a51c-964fd0d23ca0"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "id": "1917d3b8-8172-467e-9d2a-53d0e4afb3be"
+    },
+    {
+      "name": "Customer",
+      "item": [
+        {
+          "name": "Customer",
+          "id": "9e9216d6-820c-4fd6-8cfe-be1dd2eb595c",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/branch/customers?branch_id=1&limit=10&offset=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "branch",
+                "customers"
+              ],
+              "query": [
+                {
+                  "key": "branch_id",
+                  "value": "1",
+                  "uuid": "cfd8bf85-6fbc-4d05-b507-458c3039da64"
+                },
+                {
+                  "key": "limit",
+                  "value": "10",
+                  "uuid": "c3a487a4-c3ec-42ee-8f2f-74194c652b00"
+                },
+                {
+                  "key": "offset",
+                  "value": "1",
+                  "uuid": "22bca2c3-687d-46f1-a850-d40c6d49c924"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Invoices",
+          "id": "303fe939-e512-4fcb-8a6b-719af1df51df",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/branch/customers/31/invoices",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "branch",
+                "customers",
+                "31",
+                "invoices"
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "id": "99d4da1d-c679-49a1-a2df-9f29a30b8890"
+    },
+    {
+      "name": "Vendor",
+      "item": [
+        {
+          "name": "Vendor List",
+          "id": "6dc77f6f-beb3-4b77-8663-c1dcda66c485",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/branch/vendors?branch_id=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "branch",
+                "vendors"
+              ],
+              "query": [
+                {
+                  "key": "branch_id",
+                  "value": "1"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Payments",
+          "id": "863159a5-e682-40b2-ae1c-50e693d0be61",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/branch/vendors/payments?vendor_id=5&branch_id=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "branch",
+                "vendors",
+                "payments"
+              ],
+              "query": [
+                {
+                  "key": "vendor_id",
+                  "value": "5",
+                  "uuid": "30eb3a1f-a573-4115-aad2-bff913f84667"
+                },
+                {
+                  "key": "branch_id",
+                  "value": "1",
+                  "uuid": "92d6df03-17a0-455d-bbda-e8e61613dfd3"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "id": "e90ec1ca-d440-47e5-95ae-0fa5f8a6f652"
+    },
+    {
+      "name": "Branch Wise",
+      "id": "3244d5d6-55b8-45f3-b873-f5a6da4f908d",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/branch/details",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "branch",
+            "details"
+          ]
+        }
+      },
+      "response": []
+    }
+  ],
+  "variable": [
+    {
+      "id": "40eb054d-9801-4f0e-bc25-7ae32929bd44",
+      "key": "baseUrl",
+      "value": "",
+      "type": "default"
+    }
+  ]
+}

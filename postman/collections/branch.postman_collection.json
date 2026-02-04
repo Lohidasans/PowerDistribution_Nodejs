@@ -33,44 +33,6 @@
       "response": []
     },
     {
-      "name": "Top Buying Customers",
-      "id": "9033e2e1-d077-4cd3-904e-7553115c2f18",
-      "request": {
-        "method": "GET",
-        "header": [],
-        "url": {
-          "raw": "{{baseUrl}}/customers/top-buying",
-          "host": [
-            "{{baseUrl}}"
-          ],
-          "path": [
-            "customers",
-            "top-buying"
-          ]
-        }
-      },
-      "response": []
-    },
-    {
-      "name": "Top Buying Customers Copy",
-      "id": "7271ae85-d1e3-4183-bf9d-d530b5cf3975",
-      "request": {
-        "method": "GET",
-        "header": [],
-        "url": {
-          "raw": "{{baseUrl}}/employees/top-performers",
-          "host": [
-            "{{baseUrl}}"
-          ],
-          "path": [
-            "employees",
-            "top-performers"
-          ]
-        }
-      },
-      "response": []
-    },
-    {
       "name": "Branch Revenue Comparison",
       "id": "ee9d9868-a2b8-49c7-822c-555f7a1d2ce0",
       "request": {

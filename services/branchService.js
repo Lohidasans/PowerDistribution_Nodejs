@@ -1261,3 +1261,989 @@ module.exports = {
   getSalesStatistics,
   getCustomerVisits,
 };
+
+// Get comprehensive branch sales analytics
+const getBranchSalesAnalytics = async (req, res) => {
+  try {
+    const { branch_id, start_date, end_date } = req.query;
+
+    if (!branch_id) {
+      return commonService.badRequest(res, "branch_id is required");
+    }
+
+    const replacements = { branch_id };
+    let dateFilter = '';
+
+    if (start_date && end_date) {
+      dateFilter = 'AND sib.invoice_date BETWEEN :start_date AND :end_date';
+      replacements.start_date = start_date;
+      replacements.end_date = end_date;
+    }
+
+    // 1. Total Sales Value (for selected period)
+    const salesQuery = `
+      SELECT COALESCE(SUM(total_amount), 0) AS total_sales_value
+      FROM sales_invoice_bills sib
+      WHERE sib.branch_id = :branch_id
+        AND sib.deleted_at IS NULL
+        AND sib.status != 'Cancelled'
+        ${dateFilter}
+    `;
+
+    // 2. Total Weight Value (current stock weight in grams)
+    const weightQuery = `
+      SELECT COALESCE(SUM(remaining_weight), 0) AS total_weight_value
+      FROM products
+      WHERE branch_id = :branch_id
+        AND deleted_at IS NULL
+        AND status = 'Active'
+    `;
+
+    // 3. Total Stock Value (current stock purchase value)
+    const stockValueQuery = `
+      SELECT COALESCE(SUM(total_grn_value), 0) AS total_stock_value
+      FROM products
+      WHERE branch_id = :branch_id
+        AND deleted_at IS NULL
+        AND status = 'Active'
+    `;
+
+    // 4. Revenue by Payment Mode (Cash, UPI, Card)
+    const revenueQuery = `
+      SELECT 
+        payment_mode,
+        COALESCE(SUM(amount_received), 0) AS total_amount
+      FROM payments p
+      WHERE p.deleted_at IS NULL
+        AND p.status = 'Completed'
+        AND (
+          EXISTS (
+            SELECT 1 FROM sales_invoice_bills sib 
+            WHERE sib.id = p.invoice_bill_id 
+              AND sib.branch_id = :branch_id 
+              ${dateFilter}
+          )
+          OR EXISTS (
+            SELECT 1 FROM jewel_repairs jr 
+            WHERE jr.id = p.jewel_repair_id 
+              AND jr.branch_id = :branch_id 
+              ${dateFilter.replace(/sib\./g, 'jr.')}
+          )
+        )
+      GROUP BY payment_mode
+    `;
+
+    // 5. Sales by Group (Sales Invoice, Repair, Scheme)
+    const salesByGroupQuery = `
+      SELECT 
+        'Sales' AS group_name,
+        COALESCE(SUM(total_amount), 0) AS total_amount
+      FROM sales_invoice_bills
+      WHERE branch_id = :branch_id
+        AND deleted_at IS NULL
+        AND status != 'Cancelled'
+        ${dateFilter}
+      
+      UNION ALL
+      
+      SELECT 
+        'Repair' AS group_name,
+        COALESCE(SUM(total_amount), 0) AS total_amount
+      FROM jewel_repairs
+      WHERE branch_id = :branch_id
+        AND deleted_at IS NULL
+        AND status != 'Cancelled'
+        ${dateFilter.replace(/sib\./g, 'jewel_repairs.')}
+      
+      UNION ALL
+      
+      SELECT 
+        'Scheme' AS group_name,
+        0 AS total_amount
+    `;
+
+    // 6. Stock Metrics
+    // Opening Stock: Stock at the beginning of the period
+    const openingStockQuery = `
+      SELECT COALESCE(SUM(remaining_weight), 0) AS opening_stock
+      FROM products
+      WHERE branch_id = :branch_id
+        AND deleted_at IS NULL
+        ${start_date ? `AND created_at < :start_date` : ''}
+    `;
+
+    // Sales Stock: Weight sold during the period
+    const salesStockQuery = `
+      SELECT COALESCE(SUM(sibi.net_weight), 0) AS sales_stock
+      FROM sales_invoice_bill_items sibi
+      INNER JOIN sales_invoice_bills sib ON sib.id = sibi.invoice_bill_id
+      WHERE sib.branch_id = :branch_id
+        AND sibi.deleted_at IS NULL
+        AND sib.deleted_at IS NULL
+        AND sib.status != 'Cancelled'
+        ${dateFilter}
+    `;
+
+    // Old Jewel: Old jewel weight received during the period
+    const oldJewelQuery = `
+      SELECT COALESCE(SUM(oji.net_weight), 0) AS old_jewel_stock
+      FROM old_jewel_items oji
+      INNER JOIN old_jewels oj ON oj.id = oji.old_jewel_id
+      WHERE oj.branch_id = :branch_id
+        AND oji.deleted_at IS NULL
+        AND oj.deleted_at IS NULL
+        AND oj.status != 'Cancelled'
+        ${dateFilter.replace(/sib\./g, 'oj.')}
+    `;
+
+    // Execute all queries
+    const [
+      salesResult,
+      weightResult,
+      stockValueResult,
+      revenueResult,
+      salesByGroupResult,
+      openingStockResult,
+      salesStockResult,
+      oldJewelResult
+    ] = await Promise.all([
+      sequelize.query(salesQuery, { replacements, type: sequelize.QueryTypes.SELECT }),
+      sequelize.query(weightQuery, { replacements, type: sequelize.QueryTypes.SELECT }),
+      sequelize.query(stockValueQuery, { replacements, type: sequelize.QueryTypes.SELECT }),
+      sequelize.query(revenueQuery, { replacements, type: sequelize.QueryTypes.SELECT }),
+      sequelize.query(salesByGroupQuery, { replacements, type: sequelize.QueryTypes.SELECT }),
+      sequelize.query(openingStockQuery, { replacements, type: sequelize.QueryTypes.SELECT }),
+      sequelize.query(salesStockQuery, { replacements, type: sequelize.QueryTypes.SELECT }),
+      sequelize.query(oldJewelQuery, { replacements, type: sequelize.QueryTypes.SELECT })
+    ]);
+
+    // Format revenue by payment mode
+    const revenueBreakdown = {
+      cash: 0,
+      upi: 0,
+      card: 0
+    };
+
+    revenueResult.forEach(item => {
+      const amount = parseFloat(item.total_amount || 0);
+      if (item.payment_mode === 'Cash') revenueBreakdown.cash = amount;
+      else if (item.payment_mode === 'UPI') revenueBreakdown.upi = amount;
+      else if (item.payment_mode === 'Card') revenueBreakdown.card = amount;
+    });
+
+    // Format sales by group
+    const salesByGroup = salesByGroupResult.map(item => ({
+      group: item.group_name,
+      amount: parseFloat(item.total_amount || 0).toFixed(2)
+    }));
+
+    // Calculate closing stock
+    const openingStock = parseFloat(openingStockResult[0]?.opening_stock || 0);
+    const salesStock = parseFloat(salesStockResult[0]?.sales_stock || 0);
+    const oldJewelStock = parseFloat(oldJewelResult[0]?.old_jewel_stock || 0);
+    const closingStock = openingStock - salesStock + oldJewelStock;
+
+    // Format response
+    const analytics = {
+      sales_metrics: {
+        total_sales_value: parseFloat(salesResult[0]?.total_sales_value || 0).toFixed(2),
+        total_weight_value: parseFloat(weightResult[0]?.total_weight_value || 0).toFixed(3),
+        total_stock_value: parseFloat(stockValueResult[0]?.total_stock_value || 0).toFixed(2)
+      },
+      revenue: {
+        cash: revenueBreakdown.cash.toFixed(2),
+        upi: revenueBreakdown.upi.toFixed(2),
+        card: revenueBreakdown.card.toFixed(2)
+      },
+      sales_by_group: salesByGroup,
+      stock: {
+        opening_stock: openingStock.toFixed(3),
+        sales_stock: salesStock.toFixed(3),
+        old_jewel: oldJewelStock.toFixed(3),
+        closing_stock: closingStock.toFixed(3)
+      }
+    };
+
+    return commonService.okResponse(res, analytics);
+
+  } catch (err) {
+    console.error('Error in getBranchSalesAnalytics:', err);
+    return commonService.handleError(res, err);
+  }
+};
+
+
+
+module.exports = {
+  createBranch,
+  listBranches,
+  getBranchById,
+  updateBranch,
+  deleteBranch,
+  branchDropdownList,
+  generateBranchCode,
+  getBranchDashboard,
+  getBranchRevenueComparison,
+  getBranchStats,
+  getBranchDetails,
+  getBranchOverview,
+  getSalesStatistics,
+  getCustomerVisits,
+  getBranchSalesAnalytics,
+};
+
+// Get recent sales invoices for selected period
+const getRecentSales = async (req, res) => {
+  try {
+    const { branch_id, start_date, end_date, limit = 10 } = req.query;
+
+    const replacements = { limit: parseInt(limit, 10) };
+    let whereClause = 'sib.deleted_at IS NULL AND sib.status != \'Cancelled\'';
+
+    if (branch_id) {
+      whereClause += ' AND sib.branch_id = :branch_id';
+      replacements.branch_id = branch_id;
+    }
+
+    if (start_date && end_date) {
+      whereClause += ' AND sib.invoice_date BETWEEN :start_date AND :end_date';
+      replacements.start_date = start_date;
+      replacements.end_date = end_date;
+    }
+
+    const query = `
+      SELECT 
+        sib.id AS invoice_id,
+        sib.invoice_no,
+        sib.invoice_date AS date,
+        sibi.product_name_snapshot AS product_name,
+        COALESCE(sibi.gross_weight, 0) AS grs_weight,
+        COALESCE(sibi.net_weight, 0) AS net_weight,
+        COALESCE(sibi.quantity, 0) AS quantity,
+        sib.total_amount
+      FROM 
+        sales_invoice_bills sib
+      INNER JOIN 
+        sales_invoice_bill_items sibi ON sibi.invoice_bill_id = sib.id AND sibi.deleted_at IS NULL
+      WHERE 
+        ${whereClause}
+      ORDER BY 
+        sib.invoice_date DESC, sib.id DESC
+      LIMIT :limit
+    `;
+
+    const recentSales = await sequelize.query(query, {
+      replacements,
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    // Format the response
+    const formattedData = recentSales.map((item, index) => ({
+      s_no: index + 1,
+      date: item.date,
+      id: item.invoice_id,
+      invoice_no: item.invoice_no,
+      invoice_id: item.invoice_id,
+      product_name: item.product_name,
+      grs_weight: parseFloat(item.grs_weight || 0).toFixed(2),
+      net_weight: parseFloat(item.net_weight || 0).toFixed(2),
+      quantity: parseInt(item.quantity, 10),
+      total_amount: parseFloat(item.total_amount || 0).toFixed(2),
+    }));
+
+    return commonService.okResponse(res, {
+      recent_sales: formattedData,
+      total_records: formattedData.length,
+    });
+  } catch (err) {
+    console.error('Error in getRecentSales:', err);
+    return commonService.handleError(res, err);
+  }
+};
+
+
+module.exports = {
+  createBranch,
+  listBranches,
+  getBranchById,
+  updateBranch,
+  deleteBranch,
+  branchDropdownList,
+  generateBranchCode,
+  getBranchDashboard,
+  getBranchRevenueComparison,
+  getBranchStats,
+  getBranchDetails,
+  getBranchOverview,
+  getSalesStatistics,
+  getCustomerVisits,
+  getBranchSalesAnalytics,
+  getRecentSales,
+};
+
+// Get top selling categories based on invoice counts
+const getTopSellingCategories = async (req, res) => {
+  try {
+    const { branch_id, start_date, end_date, limit = 10 } = req.query;
+
+    const replacements = { limit: parseInt(limit, 10) };
+    let whereClause = 'sib.deleted_at IS NULL AND sib.status != \'Cancelled\'';
+
+    if (branch_id) {
+      whereClause += ' AND sib.branch_id = :branch_id';
+      replacements.branch_id = branch_id;
+    }
+
+    if (start_date && end_date) {
+      whereClause += ' AND sib.invoice_date BETWEEN :start_date AND :end_date';
+      replacements.start_date = start_date;
+      replacements.end_date = end_date;
+    }
+
+    const query = `
+      SELECT 
+        c.id AS category_id,
+        c.category_name,
+        c.category_image_url,
+        COUNT(DISTINCT sib.id) AS total_invoices,
+        COALESCE(SUM(sib.total_amount), 0) AS total_sales_amount
+      FROM 
+        categories c
+      INNER JOIN 
+        products p ON p.category_id = c.id AND p.deleted_at IS NULL
+      INNER JOIN 
+        sales_invoice_bill_items sibi ON sibi.product_id = p.id AND sibi.deleted_at IS NULL
+      INNER JOIN 
+        sales_invoice_bills sib ON sib.id = sibi.invoice_bill_id
+      WHERE 
+        c.deleted_at IS NULL
+        AND c.status = 'Active'
+        AND ${whereClause}
+      GROUP BY 
+        c.id, c.category_name, c.category_image_url
+      ORDER BY 
+        total_invoices DESC, total_sales_amount DESC
+      LIMIT :limit
+    `;
+
+    const topCategories = await sequelize.query(query, {
+      replacements,
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    // Format the response
+    const formattedData = topCategories.map((item) => ({
+      category_id: item.category_id,
+      category_name: item.category_name,
+      category_image_url: item.category_image_url || null,
+      total_invoices: parseInt(item.total_invoices, 10),
+      total_sales_amount: parseFloat(item.total_sales_amount || 0).toFixed(2),
+    }));
+
+    return commonService.okResponse(res, {
+      top_selling_categories: formattedData,
+      total_results: formattedData.length,
+    });
+  } catch (err) {
+    console.error('Error in getTopSellingCategories:', err);
+    return commonService.handleError(res, err);
+  }
+};
+
+
+module.exports = {
+  createBranch,
+  listBranches,
+  getBranchById,
+  updateBranch,
+  deleteBranch,
+  branchDropdownList,
+  generateBranchCode,
+  getBranchDashboard,
+  getBranchRevenueComparison,
+  getBranchStats,
+  getBranchDetails,
+  getBranchOverview,
+  getSalesStatistics,
+  getCustomerVisits,
+  getBranchSalesAnalytics,
+  getRecentSales,
+  getTopSellingCategories,
+};
+
+// Get comprehensive stock analytics
+const getStockAnalytics = async (req, res) => {
+  try {
+    const { branch_id, start_date, end_date } = req.query;
+
+    if (!branch_id) {
+      return commonService.badRequest(res, "branch_id is required");
+    }
+
+    const replacements = { branch_id };
+
+    // Date filter for products created within the period
+    let dateFilter = '';
+    if (start_date && end_date) {
+      dateFilter = 'AND p.created_at BETWEEN :start_date AND :end_date';
+      replacements.start_date = start_date;
+      replacements.end_date = end_date;
+    }
+
+    // 1. Total Quantity - Stock in hand (total products count and weight)
+    const totalQuantityQuery = `
+      SELECT 
+        COALESCE(SUM(total_products), 0) AS total_quantity,
+        COALESCE(SUM(remaining_weight), 0) AS total_weight
+      FROM products p
+      WHERE p.branch_id = :branch_id
+        AND p.deleted_at IS NULL
+        AND p.status = 'Active'
+        ${dateFilter}
+    `;
+
+    // 2. Stock by Category - Bar chart data (weight by category)
+    const stockByCategoryQuery = `
+      SELECT 
+        c.category_name,
+        COALESCE(SUM(p.remaining_weight), 0) AS total_weight
+      FROM categories c
+      INNER JOIN products p ON p.category_id = c.id 
+        AND p.branch_id = :branch_id
+        AND p.deleted_at IS NULL
+        AND p.status = 'Active'
+        ${dateFilter}
+      WHERE c.deleted_at IS NULL
+        AND c.status = 'Active'
+      GROUP BY c.category_name
+      ORDER BY total_weight DESC
+    `;
+
+    // 3. Low Stock - Top 5 subcategories with low stock (quantity < reorder level or threshold)
+    // Assuming low stock means remaining_weight is low
+    const lowStockQuery = `
+      SELECT 
+        sc.subcategory_name,
+        COALESCE(SUM(p.total_products), 0) AS quantity,
+        25 AS reorder_level
+      FROM subcategories sc
+      INNER JOIN products p ON p.subcategory_id = sc.id 
+        AND p.branch_id = :branch_id
+        AND p.deleted_at IS NULL
+        AND p.status = 'Active'
+        ${dateFilter}
+      WHERE sc.deleted_at IS NULL
+        AND sc.status = 'Active'
+      GROUP BY sc.id, sc.subcategory_name
+      HAVING SUM(p.total_products) > 0 AND SUM(p.total_products) <= 25
+      ORDER BY quantity ASC
+      LIMIT 5
+    `;
+
+    // 4. Out of Stock - Top 5 subcategories with zero stock
+    const outOfStockQuery = `
+      SELECT 
+        sc.subcategory_name,
+        25 AS reorder_level
+      FROM subcategories sc
+      INNER JOIN products p ON p.subcategory_id = sc.id 
+        AND p.branch_id = :branch_id
+        AND p.deleted_at IS NULL
+        ${dateFilter}
+      WHERE sc.deleted_at IS NULL
+        AND sc.status = 'Active'
+      GROUP BY sc.id, sc.subcategory_name
+      HAVING SUM(COALESCE(p.total_products, 0)) = 0
+      ORDER BY sc.subcategory_name ASC
+      LIMIT 5
+    `;
+
+    // Execute all queries
+    const [
+      totalQuantityResult,
+      stockByCategoryResult,
+      lowStockResult,
+      outOfStockResult
+    ] = await Promise.all([
+      sequelize.query(totalQuantityQuery, { replacements, type: sequelize.QueryTypes.SELECT }),
+      sequelize.query(stockByCategoryQuery, { replacements, type: sequelize.QueryTypes.SELECT }),
+      sequelize.query(lowStockQuery, { replacements, type: sequelize.QueryTypes.SELECT }),
+      sequelize.query(outOfStockQuery, { replacements, type: sequelize.QueryTypes.SELECT })
+    ]);
+
+    // Format total quantity
+    const totalQuantity = {
+      total_quantity: parseInt(totalQuantityResult[0]?.total_quantity || 0),
+      total_weight: parseFloat(totalQuantityResult[0]?.total_weight || 0).toFixed(2)
+    };
+
+    // Format stock by category for bar chart
+    const stockByCategory = stockByCategoryResult.map(item => ({
+      category_name: item.category_name,
+      total_weight: parseFloat(item.total_weight || 0).toFixed(2)
+    }));
+
+    // Format low stock items
+    const lowStock = {
+      count: lowStockResult.length,
+      total_weight: lowStockResult.reduce((sum, item) => sum + parseFloat(item.quantity || 0), 0).toFixed(2),
+      items: lowStockResult.map(item => ({
+        subcategory_name: item.subcategory_name,
+        quantity: parseInt(item.quantity, 10),
+        reorder_level: parseInt(item.reorder_level, 10)
+      }))
+    };
+
+    // Format out of stock items
+    const outOfStock = {
+      count: outOfStockResult.length,
+      total_weight: "0.00",
+      items: outOfStockResult.map(item => ({
+        subcategory_name: item.subcategory_name,
+        reorder_level: parseInt(item.reorder_level, 10)
+      }))
+    };
+
+    // Format response
+    const analytics = {
+      total_quantity: totalQuantity,
+      stock_by_category: stockByCategory,
+      low_stock: lowStock,
+      out_of_stock: outOfStock
+    };
+
+    return commonService.okResponse(res, analytics);
+
+  } catch (err) {
+    console.error('Error in getStockAnalytics:', err);
+    return commonService.handleError(res, err);
+  }
+};
+
+
+module.exports = {
+  createBranch,
+  listBranches,
+  getBranchById,
+  updateBranch,
+  deleteBranch,
+  branchDropdownList,
+  generateBranchCode,
+  getBranchDashboard,
+  getBranchRevenueComparison,
+  getBranchStats,
+  getBranchDetails,
+  getBranchOverview,
+  getSalesStatistics,
+  getCustomerVisits,
+  getBranchSalesAnalytics,
+  getRecentSales,
+  getTopSellingCategories,
+  getStockAnalytics,
+};
+
+// Get vendor contribution - GRNs raised from vendors with total values
+const getVendorContribution = async (req, res) => {
+  try {
+    const { branch_id, start_date, end_date } = req.query;
+
+    const replacements = {};
+    let whereClause = 'g.deleted_at IS NULL AND g.is_active = true';
+
+    if (branch_id) {
+      whereClause += ' AND p.branch_id = :branch_id';
+      replacements.branch_id = branch_id;
+    }
+
+    if (start_date && end_date) {
+      whereClause += ' AND g.grn_date BETWEEN :start_date AND :end_date';
+      replacements.start_date = start_date;
+      replacements.end_date = end_date;
+    }
+
+    const query = `
+      SELECT 
+        v.id AS vendor_id,
+        v.vendor_name,
+        COUNT(DISTINCT g.id) AS total_grns,
+        COALESCE(SUM(g.total_amount), 0) AS total_value
+      FROM 
+        vendors v
+      INNER JOIN 
+        grns g ON g.vendor_id = v.id AND g.deleted_at IS NULL AND g.is_active = true
+      LEFT JOIN
+        products p ON p.grn_id = g.id AND p.deleted_at IS NULL
+      WHERE 
+        v.deleted_at IS NULL
+        AND v.status = 'Active'
+        AND ${whereClause}
+      GROUP BY 
+        v.id, v.vendor_name
+      ORDER BY 
+        total_value DESC, total_grns DESC
+    `;
+
+    const vendorContributions = await sequelize.query(query, {
+      replacements,
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    // Format the response for bar chart
+    const formattedData = vendorContributions.map((item) => ({
+      vendor_id: item.vendor_id,
+      vendor_name: item.vendor_name,
+      total_grns: parseInt(item.total_grns, 10),
+      total_value: parseFloat(item.total_value || 0).toFixed(2),
+    }));
+
+    return commonService.okResponse(res, {
+      vendor_contributions: formattedData,
+      total_vendors: formattedData.length,
+    });
+  } catch (err) {
+    console.error('Error in getVendorContribution:', err);
+    return commonService.handleError(res, err);
+  }
+};
+
+
+module.exports = {
+  createBranch,
+  listBranches,
+  getBranchById,
+  updateBranch,
+  deleteBranch,
+  branchDropdownList,
+  generateBranchCode,
+  getBranchDashboard,
+  getBranchRevenueComparison,
+  getBranchStats,
+  getBranchDetails,
+  getBranchOverview,
+  getSalesStatistics,
+  getCustomerVisits,
+  getBranchSalesAnalytics,
+  getRecentSales,
+  getTopSellingCategories,
+  getStockAnalytics,
+  getVendorContribution,
+};
+
+// Get customers associated with a branch
+const getBranchCustomers = async (req, res) => {
+  try {
+    const { branch_id, limit = 10, offset = 0 } = req.query;
+
+    if (!branch_id) {
+      return commonService.badRequest(res, "branch_id is required");
+    }
+
+    const replacements = {
+      branch_id,
+      limit: parseInt(limit, 10),
+      offset: parseInt(offset, 10)
+    };
+
+    const query = `
+      SELECT 
+        c.id AS customer_id,
+        c.customer_code AS customer_no,
+        c.customer_name,
+        c.mobile_number,
+        COUNT(DISTINCT sib.id) AS total_no_of_order,
+        COALESCE(SUM(sib.total_amount), 0) AS purchase_amount
+      FROM 
+        customers c
+      INNER JOIN 
+        sales_invoice_bills sib ON sib.customer_id = c.id 
+          AND sib.branch_id = :branch_id
+          AND sib.deleted_at IS NULL
+          AND sib.status != 'Cancelled'
+      WHERE 
+        c.deleted_at IS NULL
+      GROUP BY 
+        c.id, c.customer_code, c.customer_name, c.mobile_number
+      ORDER BY 
+        purchase_amount DESC, total_no_of_order DESC
+      LIMIT :limit OFFSET :offset
+    `;
+
+    // Count query for pagination
+    const countQuery = `
+      SELECT COUNT(DISTINCT c.id) AS total_count
+      FROM customers c
+      INNER JOIN sales_invoice_bills sib ON sib.customer_id = c.id 
+        AND sib.branch_id = :branch_id
+        AND sib.deleted_at IS NULL
+        AND sib.status != 'Cancelled'
+      WHERE c.deleted_at IS NULL
+    `;
+
+    const [customers, countResult] = await Promise.all([
+      sequelize.query(query, { replacements, type: sequelize.QueryTypes.SELECT }),
+      sequelize.query(countQuery, { replacements: { branch_id }, type: sequelize.QueryTypes.SELECT })
+    ]);
+
+    // Format the response
+    const formattedData = customers.map((item, index) => ({
+      s_no: parseInt(offset, 10) + index + 1,
+      customer_id: item.customer_id,
+      customer_no: item.customer_no,
+      customer_name: item.customer_name,
+      mobile_number: item.mobile_number,
+      total_no_of_order: parseInt(item.total_no_of_order, 10),
+      purchase_amount: parseFloat(item.purchase_amount || 0).toFixed(2),
+    }));
+
+    return commonService.okResponse(res, {
+      customers: formattedData,
+      total_count: parseInt(countResult[0]?.total_count || 0),
+      current_page: Math.floor(parseInt(offset, 10) / parseInt(limit, 10)) + 1,
+      per_page: parseInt(limit, 10),
+    });
+  } catch (err) {
+    console.error('Error in getBranchCustomers:', err);
+    return commonService.handleError(res, err);
+  }
+};
+
+// Get all invoices for a specific customer (across all branches)
+const getCustomerInvoices = async (req, res) => {
+  try {
+    const { customer_id } = req.params;
+
+    if (!customer_id) {
+      return commonService.badRequest(res, "customer_id is required");
+    }
+
+    const query = `
+      SELECT 
+        sib.id AS invoice_id,
+        sib.invoice_no,
+        sib.invoice_date,
+        b.branch_name,
+        sib.total_amount,
+        sib.status,
+        COUNT(sibi.id) AS total_items
+      FROM 
+        sales_invoice_bills sib
+      INNER JOIN 
+        branches b ON b.id = sib.branch_id AND b.deleted_at IS NULL
+      LEFT JOIN 
+        sales_invoice_bill_items sibi ON sibi.invoice_bill_id = sib.id AND sibi.deleted_at IS NULL
+      WHERE 
+        sib.customer_id = :customer_id
+        AND sib.deleted_at IS NULL
+      GROUP BY 
+        sib.id, sib.invoice_no, sib.invoice_date, b.branch_name, sib.total_amount, sib.status
+      ORDER BY 
+        sib.invoice_date DESC, sib.id DESC
+    `;
+
+    const invoices = await sequelize.query(query, {
+      replacements: { customer_id },
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    // Format the response
+    const formattedData = invoices.map((item, index) => ({
+      s_no: index + 1,
+      invoice_id: item.invoice_id,
+      invoice_no: item.invoice_no,
+      invoice_date: item.invoice_date,
+      branch_name: item.branch_name,
+      total_items: parseInt(item.total_items, 10),
+      total_amount: parseFloat(item.total_amount || 0).toFixed(2),
+      status: item.status,
+    }));
+
+    return commonService.okResponse(res, {
+      invoices: formattedData,
+      total_invoices: formattedData.length,
+    });
+  } catch (err) {
+    console.error('Error in getCustomerInvoices:', err);
+    return commonService.handleError(res, err);
+  }
+};
+
+
+module.exports = {
+  createBranch,
+  listBranches,
+  getBranchById,
+  updateBranch,
+  deleteBranch,
+  branchDropdownList,
+  generateBranchCode,
+  getBranchDashboard,
+  getBranchRevenueComparison,
+  getBranchStats,
+  getBranchDetails,
+  getBranchOverview,
+  getSalesStatistics,
+  getCustomerVisits,
+  getBranchSalesAnalytics,
+  getRecentSales,
+  getTopSellingCategories,
+  getStockAnalytics,
+  getVendorContribution,
+  getBranchCustomers,
+  getCustomerInvoices,
+};
+
+// Get vendors associated with a branch (based on visibility settings)
+const getBranchVendors = async (req, res) => {
+  try {
+    const { branch_id } = req.query;
+
+    if (!branch_id) {
+      return commonService.badRequest(res, "branch_id is required");
+    }
+
+    const query = `
+      SELECT 
+        v.id AS vendor_id,
+        v.vendor_code,
+        v.vendor_name,
+        v.proprietor_name AS contact_person,
+        v.mobile AS contact_number,
+        ARRAY_TO_STRING(
+          ARRAY(
+            SELECT mt.material_type 
+            FROM "materialTypes" mt 
+            WHERE mt.id = ANY(v.material_type_ids) 
+              AND mt.deleted_at IS NULL
+          ), 
+          ', '
+        ) AS material_type,
+        b.branch_name
+      FROM 
+        vendors v
+      INNER JOIN 
+        branches b ON b.id = :branch_id AND b.deleted_at IS NULL
+      WHERE 
+        v.deleted_at IS NULL
+        AND v.status = 'Active'
+        AND :branch_id = ANY(v.visibilities)
+      ORDER BY 
+        v.vendor_name ASC
+    `;
+
+    const vendors = await sequelize.query(query, {
+      replacements: { branch_id },
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    // Format the response
+    const formattedData = vendors.map((item, index) => ({
+      s_no: index + 1,
+      vendor_id: item.vendor_id,
+      vendor_code: item.vendor_code,
+      vendor_name: item.vendor_name,
+      contact_person: item.contact_person,
+      contact_number: item.contact_number,
+      material_type: item.material_type,
+      branch: item.branch_name,
+    }));
+
+    return commonService.okResponse(res, {
+      vendors: formattedData,
+      total_vendors: formattedData.length,
+    });
+  } catch (err) {
+    console.error('Error in getBranchVendors:', err);
+    return commonService.handleError(res, err);
+  }
+};
+
+// Get payment/receipt details for a specific vendor at a branch
+const getVendorPaymentDetails = async (req, res) => {
+  try {
+    const { vendor_id, branch_id } = req.query;
+
+    if (!vendor_id) {
+      return commonService.badRequest(res, "vendor_id is required");
+    }
+
+    if (!branch_id) {
+      return commonService.badRequest(res, "branch_id is required");
+    }
+
+    const query = `
+      SELECT 
+        g.id AS grn_id,
+        g.grn_no,
+        g.grn_date AS date,
+        g.total_amount AS total_purchase,
+        COALESCE(SUM(vp.amount), 0) AS total_paid,
+        (g.total_amount - COALESCE(SUM(vp.amount), 0)) AS outstanding
+      FROM 
+        grns g
+      LEFT JOIN 
+        vendor_payments vp ON vp.purchase_id = g.id::text 
+          AND vp.branch_id = :branch_id
+          AND vp.deleted_at IS NULL
+          AND vp.status != 'Cancelled'
+      WHERE 
+        g.vendor_id = :vendor_id
+        AND g.deleted_at IS NULL
+        AND g.is_active = true
+      GROUP BY 
+        g.id, g.grn_no, g.grn_date, g.total_amount
+      ORDER BY 
+        g.grn_date DESC, g.id DESC
+    `;
+
+    const payments = await sequelize.query(query, {
+      replacements: { vendor_id, branch_id },
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    // Format the response
+    const formattedData = payments.map((item, index) => ({
+      s_no: index + 1,
+      grn_id: item.grn_id,
+      grn_no: item.grn_no,
+      date: item.date,
+      total_purchase: parseFloat(item.total_purchase || 0).toFixed(2),
+      total_paid: parseFloat(item.total_paid || 0).toFixed(2),
+      outstanding: parseFloat(item.outstanding || 0).toFixed(2),
+    }));
+
+    return commonService.okResponse(res, {
+      payments: formattedData,
+      total_records: formattedData.length,
+    });
+  } catch (err) {
+    console.error('Error in getVendorPaymentDetails:', err);
+    return commonService.handleError(res, err);
+  }
+};
+
+
+module.exports = {
+  createBranch,
+  listBranches,
+  getBranchById,
+  updateBranch,
+  deleteBranch,
+  branchDropdownList,
+  generateBranchCode,
+  getBranchDashboard,
+  getBranchRevenueComparison,
+  getBranchStats,
+  getBranchDetails,
+  getBranchOverview,
+  getSalesStatistics,
+  getCustomerVisits,
+  getBranchSalesAnalytics,
+  getRecentSales,
+  getTopSellingCategories,
+  getStockAnalytics,
+  getVendorContribution,
+  getBranchCustomers,
+  getCustomerInvoices,
+  getBranchVendors,
+  getVendorPaymentDetails,
+};

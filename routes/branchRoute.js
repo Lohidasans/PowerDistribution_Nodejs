@@ -11,6 +11,15 @@ branchRouter.get("/branch/details", branchService.getBranchDetails);
 branchRouter.get("/branch/overview", branchService.getBranchOverview);
 branchRouter.get("/branch/sales-statistics", branchService.getSalesStatistics);
 branchRouter.get("/branch/customer-visits", branchService.getCustomerVisits);
+branchRouter.get("/branch/sales-analytics", branchService.getBranchSalesAnalytics);
+branchRouter.get("/branch/recent-sales", branchService.getRecentSales);
+branchRouter.get("/branch/top-selling-categories", branchService.getTopSellingCategories);
+branchRouter.get("/branch/stock-analytics", branchService.getStockAnalytics);
+branchRouter.get("/branch/vendor-contribution", branchService.getVendorContribution);
+branchRouter.get("/branch/customers", branchService.getBranchCustomers);
+branchRouter.get("/branch/customers/:customer_id/invoices", branchService.getCustomerInvoices);
+branchRouter.get("/branch/vendors", branchService.getBranchVendors);
+branchRouter.get("/branch/vendors/payments", branchService.getVendorPaymentDetails);
 branchRouter.post("/branch/code", branchService.generateBranchCode);
 
 // General routes
@@ -425,6 +434,494 @@ module.exports = branchRouter;
  *                           day: { type: string, description: "Day of week (Mon, Tue...)" }
  *                           visits: { type: integer, description: "Number of invoices/visits" }
  *                     total_visits: { type: integer, description: "Total visits for the period" }
+ */
+
+/**
+ * @openapi
+ * /api/v1/branch/sales-analytics:
+ *   get:
+ *     summary: Get comprehensive branch sales analytics
+ *     tags: [Branch]
+ *     description: Returns comprehensive sales analytics including sales metrics, revenue breakdown by payment method, sales by group (pie chart data), and stock metrics.
+ *     parameters:
+ *       - in: query
+ *         name: branch_id
+ *         required: true
+ *         schema: { type: integer }
+ *         description: Branch ID (required)
+ *       - in: query
+ *         name: start_date
+ *         schema: { type: string, format: date }
+ *         description: Start date for period filtering (YYYY-MM-DD)
+ *       - in: query
+ *         name: end_date
+ *         schema: { type: string, format: date }
+ *         description: End date for period filtering (YYYY-MM-DD)
+ *     responses:
+ *       200:
+ *         description: OK
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 statusCode: { type: integer }
+ *                 message: { type: string }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     sales_metrics:
+ *                       type: object
+ *                       properties:
+ *                         total_sales_value: { type: string, description: "Total sales value for period" }
+ *                         total_weight_value: { type: string, description: "Total stock weight in grams" }
+ *                         total_stock_value: { type: string, description: "Total stock purchase value" }
+ *                     revenue:
+ *                       type: object
+ *                       properties:
+ *                         cash: { type: string, description: "Cash collection for period" }
+ *                         upi: { type: string, description: "UPI collection for period" }
+ *                         card: { type: string, description: "Card collection for period" }
+ *                     sales_by_group:
+ *                       type: array
+ *                       description: "Sales breakdown by group (for pie chart)"
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           group: { type: string, description: "Group name (Sales, Repair, Scheme)" }
+ *                           amount: { type: string, description: "Total amount for group" }
+ *                     stock:
+ *                       type: object
+ *                       properties:
+ *                         opening_stock: { type: string, description: "Opening stock weight in grams" }
+ *                         sales_stock: { type: string, description: "Sales stock weight in grams" }
+ *                         old_jewel: { type: string, description: "Old jewel weight in grams" }
+ *                         closing_stock: { type: string, description: "Closing stock weight in grams" }
+ *       400:
+ *         description: Bad Request - branch_id is required
+ */
+
+/**
+ * @openapi
+ * /api/v1/branch/recent-sales:
+ *   get:
+ *     summary: Get recent sales invoices for selected period
+ *     tags: [Branch]
+ *     description: Returns a list of recent sales invoices with invoice number, date, product name, weights, quantity, and total amount. Invoice number can be used as a hyperlink to view the sales invoice detail page.
+ *     parameters:
+ *       - in: query
+ *         name: branch_id
+ *         schema: { type: integer }
+ *         description: Filter by specific branch ID (optional)
+ *       - in: query
+ *         name: start_date
+ *         schema: { type: string, format: date }
+ *         description: Start date for period filtering (YYYY-MM-DD)
+ *       - in: query
+ *         name: end_date
+ *         schema: { type: string, format: date }
+ *         description: End date for period filtering (YYYY-MM-DD)
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 10 }
+ *         description: Maximum number of records to return
+ *     responses:
+ *       200:
+ *         description: OK
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 statusCode: { type: integer }
+ *                 message: { type: string }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     recent_sales:
+ *                       type: array
+ *                       description: "List of recent sales invoices"
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           s_no: { type: integer, description: "Serial number" }
+ *                           date: { type: string, format: date, description: "Invoice date" }
+ *                           invoice_no: { type: string, description: "Invoice number (use as hyperlink)" }
+ *                           invoice_id: { type: integer, description: "Invoice ID for detail page" }
+ *                           product_name: { type: string, description: "Product name" }
+ *                           grs_weight: { type: string, description: "Gross weight in grams" }
+ *                           net_weight: { type: string, description: "Net weight in grams" }
+ *                           quantity: { type: integer, description: "Quantity" }
+ *                           total_amount: { type: string, description: "Total amount" }
+ *                     total_records: { type: integer, description: "Number of records returned" }
+ */
+
+/**
+ * @openapi
+ * /api/v1/branch/top-selling-categories:
+ *   get:
+ *     summary: Get top selling categories by invoice count
+ *     tags: [Branch]
+ *     description: Returns the most sold jewelry categories based on total number of invoices raised. Each category includes image URL, name, total invoices, and cumulative sales amount.
+ *     parameters:
+ *       - in: query
+ *         name: branch_id
+ *         schema: { type: integer }
+ *         description: Filter by specific branch ID (optional)
+ *       - in: query
+ *         name: start_date
+ *         schema: { type: string, format: date }
+ *         description: Start date for period filtering (YYYY-MM-DD)
+ *       - in: query
+ *         name: end_date
+ *         schema: { type: string, format: date }
+ *         description: End date for period filtering (YYYY-MM-DD)
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 10 }
+ *         description: Maximum number of categories to return
+ *     responses:
+ *       200:
+ *         description: OK
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 statusCode: { type: integer }
+ *                 message: { type: string }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     top_selling_categories:
+ *                       type: array
+ *                       description: "List of top selling categories"
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           category_id: { type: integer, description: "Category ID" }
+ *                           category_name: { type: string, description: "Category name (e.g., Necklace, Bangles)" }
+ *                           category_image_url: { type: string, description: "Category image URL" }
+ *                           total_invoices: { type: integer, description: "Total number of invoices" }
+ *                           total_sales_amount: { type: string, description: "Total sales amount" }
+ *                     total_results: { type: integer, description: "Number of results returned" }
+ */
+
+/**
+ * @openapi
+ * /api/v1/branch/stock-analytics:
+ *   get:
+ *     summary: Get comprehensive stock management analytics
+ *     tags: [Branch]
+ *     description: Returns stock analytics including total quantity (stock in hand), stock by category for bar chart, top 5 low stock subcategories, and top 5 out of stock subcategories.
+ *     parameters:
+ *       - in: query
+ *         name: branch_id
+ *         required: true
+ *         schema: { type: integer }
+ *         description: Branch ID (required)
+ *       - in: query
+ *         name: start_date
+ *         schema: { type: string, format: date }
+ *         description: Start date for filtering products (YYYY-MM-DD or DD-MM-YYYY)
+ *       - in: query
+ *         name: end_date
+ *         schema: { type: string, format: date }
+ *         description: End date for filtering products (YYYY-MM-DD or DD-MM-YYYY)
+ *     responses:
+ *       200:
+ *         description: OK
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 statusCode: { type: integer }
+ *                 message: { type: string }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     total_quantity:
+ *                       type: object
+ *                       properties:
+ *                         total_quantity: { type: integer, description: "Total product count" }
+ *                         total_weight: { type: string, description: "Total weight in grams" }
+ *                     stock_by_category:
+ *                       type: array
+ *                       description: "Stock breakdown by category for bar chart"
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           category_name: { type: string, description: "Category name" }
+ *                           total_weight: { type: string, description: "Total weight in grams" }
+ *                     low_stock:
+ *                       type: object
+ *                       properties:
+ *                         count: { type: integer, description: "Number of low stock items" }
+ *                         total_weight: { type: string, description: "Total weight of low stock items" }
+ *                         items:
+ *                           type: array
+ *                           description: "Top 5 low stock subcategories"
+ *                           items:
+ *                             type: object
+ *                             properties:
+ *                               subcategory_name: { type: string, description: "Subcategory name" }
+ *                               quantity: { type: integer, description: "Current quantity" }
+ *                               reorder_level: { type: integer, description: "Reorder level threshold" }
+ *                     out_of_stock:
+ *                       type: object
+ *                       properties:
+ *                         count: { type: integer, description: "Number of out of stock items" }
+ *                         total_weight: { type: string, description: "Total weight (always 0)" }
+ *                         items:
+ *                           type: array
+ *                           description: "Top 5 out of stock subcategories"
+ *                           items:
+ *                             type: object
+ *                             properties:
+ *                               subcategory_name: { type: string, description: "Subcategory name" }
+ *                               reorder_level: { type: integer, description: "Reorder level threshold" }
+ *       400:
+ *         description: Bad Request - branch_id is required
+ */
+
+/**
+ * @openapi
+ * /api/v1/branch/vendor-contribution:
+ *   get:
+ *     summary: Get vendor contribution analytics
+ *     tags: [Branch]
+ *     description: Returns vendor contribution showing GRNs (Goods Receipt Notes) raised from each vendor along with their total values for bar chart visualization.
+ *     parameters:
+ *       - in: query
+ *         name: branch_id
+ *         schema: { type: integer }
+ *         description: Filter by specific branch ID (optional)
+ *       - in: query
+ *         name: start_date
+ *         schema: { type: string, format: date }
+ *         description: Start date for filtering GRNs (YYYY-MM-DD or DD-MM-YYYY)
+ *       - in: query
+ *         name: end_date
+ *         schema: { type: string, format: date }
+ *         description: End date for filtering GRNs (YYYY-MM-DD or DD-MM-YYYY)
+ *     responses:
+ *       200:
+ *         description: OK
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 statusCode: { type: integer }
+ *                 message: { type: string }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     vendor_contributions:
+ *                       type: array
+ *                       description: "List of vendor contributions"
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           vendor_id: { type: integer, description: "Vendor ID" }
+ *                           vendor_name: { type: string, description: "Vendor name (e.g., Golden Hub Pvt. Ltd.)" }
+ *                           total_grns: { type: integer, description: "Total number of GRNs raised" }
+ *                           total_value: { type: string, description: "Total value of all GRNs" }
+ *                     total_vendors: { type: integer, description: "Number of vendors" }
+ */
+
+/**
+ * @openapi
+ * /api/v1/branch/customers:
+ *   get:
+ *     summary: Get customers associated with a branch
+ *     tags: [Branch]
+ *     description: Returns a list of customers who have made purchases at the specified branch, including customer details, order count, and total purchase amount. Supports pagination.
+ *     parameters:
+ *       - in: query
+ *         name: branch_id
+ *         required: true
+ *         schema: { type: integer }
+ *         description: Branch ID (required)
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 10 }
+ *         description: Number of records per page
+ *       - in: query
+ *         name: offset
+ *         schema: { type: integer, default: 0 }
+ *         description: Number of records to skip
+ *     responses:
+ *       200:
+ *         description: OK
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 statusCode: { type: integer }
+ *                 message: { type: string }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     customers:
+ *                       type: array
+ *                       description: "List of customers"
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           s_no: { type: integer, description: "Serial number" }
+ *                           customer_id: { type: integer, description: "Customer ID (clickable to view invoices)" }
+ *                           customer_no: { type: string, description: "Customer code (e.g., CID 01/24-25)" }
+ *                           customer_name: { type: string, description: "Customer name" }
+ *                           mobile_number: { type: string, description: "Mobile number" }
+ *                           total_no_of_order: { type: integer, description: "Total number of orders" }
+ *                           purchase_amount: { type: string, description: "Total purchase amount" }
+ *                     total_count: { type: integer, description: "Total number of customers" }
+ *                     current_page: { type: integer, description: "Current page number" }
+ *                     per_page: { type: integer, description: "Records per page" }
+ *       400:
+ *         description: Bad Request - branch_id is required
+ */
+
+/**
+ * @openapi
+ * /api/v1/branch/customers/{customer_id}/invoices:
+ *   get:
+ *     summary: Get all invoices for a specific customer
+ *     tags: [Branch]
+ *     description: Returns all invoices raised for a specific customer across all branches. Used when clicking on a customer ID from the customer list.
+ *     parameters:
+ *       - in: path
+ *         name: customer_id
+ *         required: true
+ *         schema: { type: integer }
+ *         description: Customer ID
+ *     responses:
+ *       200:
+ *         description: OK
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 statusCode: { type: integer }
+ *                 message: { type: string }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     invoices:
+ *                       type: array
+ *                       description: "List of invoices"
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           s_no: { type: integer, description: "Serial number" }
+ *                           invoice_id: { type: integer, description: "Invoice ID" }
+ *                           invoice_no: { type: string, description: "Invoice number" }
+ *                           invoice_date: { type: string, format: date, description: "Invoice date" }
+ *                           branch_name: { type: string, description: "Branch name" }
+ *                           total_items: { type: integer, description: "Number of items in invoice" }
+ *                           total_amount: { type: string, description: "Total invoice amount" }
+ *                           status: { type: string, description: "Invoice status" }
+ *                     total_invoices: { type: integer, description: "Total number of invoices" }
+ *       400:
+ *         description: Bad Request - customer_id is required
+ */
+
+/**
+ * @openapi
+ * /api/v1/branch/vendors:
+ *   get:
+ *     summary: Get vendors associated with a branch
+ *     tags: [Branch]
+ *     description: Returns a list of vendors marked for the specified branch in their visibility settings during vendor creation.
+ *     parameters:
+ *       - in: query
+ *         name: branch_id
+ *         required: true
+ *         schema: { type: integer }
+ *         description: Branch ID (required)
+ *     responses:
+ *       200:
+ *         description: OK
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 statusCode: { type: integer }
+ *                 message: { type: string }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     vendors:
+ *                       type: array
+ *                       description: "List of vendors"
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           s_no: { type: integer, description: "Serial number" }
+ *                           vendor_id: { type: integer, description: "Vendor ID" }
+ *                           vendor_code: { type: string, description: "Vendor code (e.g., VEN 01/24-25)" }
+ *                           vendor_name: { type: string, description: "Vendor name (clickable hyperlink)" }
+ *                           contact_person: { type: string, description: "Contact person name" }
+ *                           contact_number: { type: string, description: "Contact number" }
+ *                           material_type: { type: string, description: "Material types (comma-separated)" }
+ *                           branch: { type: string, description: "Branch name" }
+ *                     total_vendors: { type: integer, description: "Total number of vendors" }
+ *       400:
+ *         description: Bad Request - branch_id is required
+ */
+
+/**
+ * @openapi
+ * /api/v1/branch/vendors/payments:
+ *   get:
+ *     summary: Get payment/receipt details for a specific vendor
+ *     tags: [Branch]
+ *     description: Returns GRN and payment details for a specific vendor at a branch. Shows total purchase, total paid, and outstanding amounts. Used when clicking on vendor name from vendor list.
+ *     parameters:
+ *       - in: query
+ *         name: vendor_id
+ *         required: true
+ *         schema: { type: integer }
+ *         description: Vendor ID (required)
+ *       - in: query
+ *         name: branch_id
+ *         required: true
+ *         schema: { type: integer }
+ *         description: Branch ID (required)
+ *     responses:
+ *       200:
+ *         description: OK
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 statusCode: { type: integer }
+ *                 message: { type: string }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     payments:
+ *                       type: array
+ *                       description: "List of GRN/payment records"
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           s_no: { type: integer, description: "Serial number" }
+ *                           grn_id: { type: integer, description: "GRN ID" }
+ *                           grn_no: { type: string, description: "GRN number" }
+ *                           date: { type: string, format: date, description: "GRN date" }
+ *                           total_purchase: { type: string, description: "Total purchase amount" }
+ *                           total_paid: { type: string, description: "Total amount paid" }
+ *                           outstanding: { type: string, description: "Outstanding amount" }
+ *                     total_records: { type: integer, description: "Total number of records" }
+ *       400:
+ *         description: Bad Request - vendor_id and branch_id are required
  */
 
 /**
