@@ -1,0 +1,157 @@
+{
+  "info": {
+    "_postman_id": "5ce8de93-21ce-4c20-95f3-702981bf1288",
+    "name": "Branch Overview",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "branch Status Count",
+      "id": "af7efb1f-44a6-470f-9bc6-6cafcea86952",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/branch/dashboard?branch_id=81",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "branch",
+            "dashboard"
+          ],
+          "query": [
+            {
+              "key": "branch_id",
+              "value": "81",
+              "type": "text",
+              "uuid": "f521623e-408b-4443-af24-44763c0408da"
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Top Buying Customers",
+      "id": "9033e2e1-d077-4cd3-904e-7553115c2f18",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/customers/top-buying",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "customers",
+            "top-buying"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Top Buying Customers Copy",
+      "id": "7271ae85-d1e3-4183-bf9d-d530b5cf3975",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/employees/top-performers",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "employees",
+            "top-performers"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Branch Revenue Comparison",
+      "id": "ee9d9868-a2b8-49c7-822c-555f7a1d2ce0",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/branch/revenue-comparison?period=1&start_date=12-01-2026&end_date=12-04-2026",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "branch",
+            "revenue-comparison"
+          ],
+          "query": [
+            {
+              "key": "period",
+              "value": "1",
+              "uuid": "d26672ac-dd23-452b-90bf-39a64dcea349"
+            },
+            {
+              "key": "start_date",
+              "value": "12-01-2026",
+              "type": "text",
+              "uuid": "9638c2d6-89a8-476a-a6a2-e3ff33090857"
+            },
+            {
+              "key": "end_date",
+              "value": "12-04-2026",
+              "type": "text",
+              "uuid": "c05bcdf0-733f-4b02-a9cc-ec4326c127ea"
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Branch Stats",
+      "id": "5437ce33-f58f-4e39-8e67-9a9e0cdd31ad",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/branch/stats?period=1&start_date=12-03-2026&end_date=12-04-2026",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "branch",
+            "stats"
+          ],
+          "query": [
+            {
+              "key": "period",
+              "value": "1",
+              "description": "1-Today 2- This Week 3-This Month 4-This Month",
+              "uuid": "7c55b041-3696-4a48-ace4-fbb5320dd83b"
+            },
+            {
+              "key": "start_date",
+              "value": "12-03-2026",
+              "uuid": "c10d9bd3-6e05-4dc9-9544-b6837b980275"
+            },
+            {
+              "key": "end_date",
+              "value": "12-04-2026",
+              "uuid": "e01133cd-516a-437f-9858-ecd4cc410428"
+            }
+          ]
+        }
+      },
+      "response": []
+    }
+  ],
+  "variable": [
+    {
+      "id": "ccf79ee3-3c4e-4880-a729-12a6bfbb9021",
+      "key": "baseUrl",
+      "value": "",
+      "type": "default"
+    }
+  ]
+}

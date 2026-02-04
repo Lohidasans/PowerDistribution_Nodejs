@@ -1,0 +1,167 @@
+{
+  "info": {
+    "_postman_id": "b5d99856-0f60-4000-b558-7f1e17faaa7c",
+    "name": "Branch",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Overview",
+      "item": [
+        {
+          "name": "Branch wise -overview",
+          "id": "7c8ffacc-5b64-48b8-8e22-828c82ef9e7a",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/branch/overview?branch_id=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "branch",
+                "overview"
+              ],
+              "query": [
+                {
+                  "key": "branch_id",
+                  "value": "1",
+                  "type": "text",
+                  "uuid": "82959441-1de5-4954-820a-8bad2b8132f6"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Sales Statistics",
+          "id": "c002df00-f204-4b7e-b480-bb8ed3f155da",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/branch/sales-statistics?branch_id=2&period=weekly",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "branch",
+                "sales-statistics"
+              ],
+              "query": [
+                {
+                  "key": "branch_id",
+                  "value": "2",
+                  "uuid": "8ed41f51-33a3-4ca9-af5d-7f97552987cb"
+                },
+                {
+                  "key": "period",
+                  "value": "weekly",
+                  "description": "yearly, montly",
+                  "uuid": "d96ee238-f316-4935-8e20-e224b1dd414f"
+                },
+                {
+                  "key": "year",
+                  "value": "2025",
+                  "type": "text",
+                  "uuid": "866dadbe-68da-42e8-9376-af54c397d2bf",
+                  "disabled": true
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Top Selling Sub Category",
+          "id": "adb85598-873f-4218-9a45-16fc857913fc",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/products/top-selling-subcategories?branch_id=2",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products",
+                "top-selling-subcategories"
+              ],
+              "query": [
+                {
+                  "key": "branch_id",
+                  "value": "2",
+                  "uuid": "5b737d06-5308-4622-8aea-e9ed008735c7"
+                },
+                {
+                  "key": "period",
+                  "value": "weekly",
+                  "uuid": "d4ee0c69-ff03-4975-b81f-fee2f8fe5c95",
+                  "disabled": true
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Customer Visits",
+          "id": "7f4ab3bc-7f92-4285-a9ca-311d45117d9a",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/branch/customer-visits?branch_id=2",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "branch",
+                "customer-visits"
+              ],
+              "query": [
+                {
+                  "key": "branch_id",
+                  "value": "2",
+                  "type": "text",
+                  "uuid": "eac4f4c0-f333-4393-adec-c43d66d27792"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "id": "8bfa5dfb-443f-4f50-8a5a-8396da31f8ad"
+    },
+    {
+      "name": "Branch Wise",
+      "id": "3244d5d6-55b8-45f3-b873-f5a6da4f908d",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/branch/details",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "branch",
+            "details"
+          ]
+        }
+      },
+      "response": []
+    }
+  ],
+  "variable": [
+    {
+      "id": "40eb054d-9801-4f0e-bc25-7ae32929bd44",
+      "key": "baseUrl",
+      "value": "",
+      "type": "default"
+    }
+  ]
+}

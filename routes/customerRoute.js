@@ -8,6 +8,7 @@ router.get("/customers/list", customerService.listCustomers);
 router.get("/customers", customerService.listCustomersWithMobileNumber);
 router.get("/customers/mobile/dropdown", customerService.listCustomerMobilesDropdown);
 router.get("/customers/dropdown", customerService.listCustomerNameMobileDropdown);
+router.get("/customers/top-buying", customerService.getTopBuyingCustomers);
 router.get("/customers/:id", customerService.getCustomerById);
 router.put("/customers/:id", customerService.updateCustomer);
 router.delete("/customers/:id", customerService.deleteCustomer);
@@ -45,6 +46,49 @@ module.exports = router;
  *       200:
  *         description: OK
  */
+
+/**
+ * @openapi
+ * /api/v1/customers/top-buying:
+ *   get:
+ *     summary: Get top buying customers ranked by total invoice value
+ *     tags: [Customer]
+ *     description: Returns customers ranked by the total value of all invoices raised across all branches or a specific branch. Excludes cancelled invoices.
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 10 }
+ *         description: Number of top customers to return
+ *       - in: query
+ *         name: branch_id
+ *         schema: { type: integer }
+ *         description: Optional - Filter by specific branch ID
+ *     responses:
+ *       200:
+ *         description: OK
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 statusCode: { type: integer }
+ *                 message: { type: string }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     top_buying_customers:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           customer_id: { type: integer, description: "Customer ID" }
+ *                           customer_code: { type: string, description: "Customer code" }
+ *                           customer_name: { type: string, description: "Customer name" }
+ *                           mobile_number: { type: string, description: "Customer mobile number" }
+ *                           total_amount: { type: string, description: "Total invoice amount" }
+ *                           total_invoices: { type: integer, description: "Total number of invoices" }
+ */
+
 
 /**
  * @openapi

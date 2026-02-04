@@ -7,7 +7,7 @@ const { Op } = require("sequelize");
 // Create customer
 const createCustomer = async (req, res) => {
   try {
-    const required = ["customer_name", "mobile_number" ];
+    const required = ["customer_name", "mobile_number"];
     for (const f of required) {
       if (req.body?.[f] === undefined || req.body?.[f] === null || req.body?.[f] === "") {
         return commonService.badRequest(res, enMessage.failure.requiredFields);
@@ -44,7 +44,7 @@ const createCustomer = async (req, res) => {
         message: "Mobile number already exists",
       });
     }
-    
+
     // Check if a non-deleted customer already uses this code
     if (payload.customer_code) {
       const existing = await models.Customer.findOne({
@@ -174,7 +174,7 @@ const updateCustomer = async (req, res) => {
       customer_code: req.body.customer_code ?? entity.customer_code,
       customer_name: req.body.customer_name ?? entity.customer_name,
       mobile_number: req.body.mobile_number ?? entity.mobile_number,
-      address: req.body.address ?? entity.address,    
+      address: req.body.address ?? entity.address,
       country_id: req.body.country_id !== undefined ? +req.body.country_id : entity.country_id,
       state_id: req.body.state_id !== undefined ? +req.body.state_id : entity.state_id,
       district_id: req.body.district_id !== undefined ? +req.body.district_id : entity.district_id,
@@ -205,19 +205,19 @@ const deleteCustomer = async (req, res) => {
 
 // Generate auto code: CUS-0001
 const generateCustomerCode = async (req, res) => {
-   try {
-      const { prefix } = req.query || {};
-  
-      const code = await generateFiscalSeriesCode(
-        models.Customer,
-        "customer_code",
-        String(prefix).toUpperCase(),
-        { pad: 3 }
-      );
-      return commonService.okResponse(res, { customer_code: code });
-    } catch (err) {
-      return commonService.handleError(res, err);
-    }
+  try {
+    const { prefix } = req.query || {};
+
+    const code = await generateFiscalSeriesCode(
+      models.Customer,
+      "customer_code",
+      String(prefix).toUpperCase(),
+      { pad: 3 }
+    );
+    return commonService.okResponse(res, { customer_code: code });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
 };
 const generateOnlineCustomerCode = async () => {
   const code = await generateFiscalSeriesCode(
@@ -234,7 +234,7 @@ const listCustomerMobilesDropdown = async (req, res) => {
     const rows = await models.Customer.findAll({
       attributes: ['id', 'customer_name', 'mobile_number'],
       order: [["customer_name", "ASC"]],
-      where: { 
+      where: {
         deleted_at: null,
         mobile_number: { [Op.ne]: null }
       },
@@ -246,7 +246,7 @@ const listCustomerMobilesDropdown = async (req, res) => {
         customer_name: r.customer_name || '',
         mobile: r.mobile_number,
       }))
-      .filter(item => item.mobile); 
+      .filter(item => item.mobile);
 
     return commonService.okResponse(res, { mobiles });
   } catch (err) {
@@ -257,7 +257,7 @@ const listCustomerMobilesDropdown = async (req, res) => {
 // Dropdown: customer name + mobile with light search - billing section
 const listCustomerNameMobileDropdown = async (req, res) => {
   try {
-    const { search = "",branch_id } = req.query;
+    const { search = "", branch_id } = req.query;
 
     const searchTerm = String(search).trim();
 
@@ -463,6 +463,70 @@ const listCustomers = async (req, res) => {
   }
 };
 
+// Get top buying customers ranked by total invoice value across all branches (or specific branch)
+const getTopBuyingCustomers = async (req, res) => {
+  try {
+    const { limit = 10, branch_id } = req.query;
+
+    // Build WHERE clause for branch filter
+    let branchFilter = '';
+    const replacements = { limit: parseInt(limit, 10) };
+
+    if (branch_id) {
+      branchFilter = 'AND sib.branch_id = :branch_id';
+      replacements.branch_id = parseInt(branch_id, 10);
+    }
+
+    const query = `
+      SELECT 
+        c.id AS customer_id,
+        c.customer_code,
+        c.customer_name,
+        c.mobile_number,
+        COALESCE(SUM(sib.total_amount), 0) AS total_amount,
+        COUNT(sib.id) AS total_invoices
+      FROM 
+        customers c
+      LEFT JOIN 
+        sales_invoice_bills sib ON sib.customer_id = c.id 
+        AND sib.deleted_at IS NULL
+        AND sib.status != 'Cancelled'
+        ${branchFilter}
+      WHERE 
+        c.deleted_at IS NULL
+      GROUP BY 
+        c.id, c.customer_code, c.customer_name, c.mobile_number
+      HAVING 
+        COALESCE(SUM(sib.total_amount), 0) > 0
+      ORDER BY 
+        total_amount DESC
+      LIMIT :limit
+    `;
+
+    const topCustomers = await sequelize.query(query, {
+      replacements,
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    // Format the response
+    const formattedCustomers = topCustomers.map(customer => ({
+      customer_id: customer.customer_id,
+      customer_code: customer.customer_code,
+      customer_name: customer.customer_name,
+      mobile_number: customer.mobile_number,
+      total_amount: parseFloat(customer.total_amount || 0).toFixed(2),
+      total_invoices: parseInt(customer.total_invoices, 10),
+    }));
+
+    return commonService.okResponse(res, {
+      top_buying_customers: formattedCustomers
+    });
+  } catch (err) {
+    console.error('Error in getTopBuyingCustomers:', err);
+    return commonService.handleError(res, err);
+  }
+};
+
 
 module.exports = {
   createCustomer,
@@ -474,5 +538,6 @@ module.exports = {
   listCustomerMobilesDropdown,
   listCustomerNameMobileDropdown,
   listCustomers,
-  generateOnlineCustomerCode
+  generateOnlineCustomerCode,
+  getTopBuyingCustomers,
 };

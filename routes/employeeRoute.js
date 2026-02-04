@@ -7,7 +7,7 @@ const empExpSvc = require("../services/employeeExperienceService");
 // Employee Experiences 
 router.post("/employees/experiences/bulk", empExpSvc.createEmployeeExperiences);
 router.get("/employees/experiences", empExpSvc.getAllEmployeeExperiences);
-router.get("/employees/experiences/dropdown",empExpSvc.listEmployeeExperienceDropdown);
+router.get("/employees/experiences/dropdown", empExpSvc.listEmployeeExperienceDropdown);
 router.get("/employees/experience/:id", empExpSvc.getEmployeeExperienceById);
 router.put("/employees/experience/:id", empExpSvc.updateEmployeeExperience);
 router.delete("/employees/experience/:id", empExpSvc.deleteEmployeeExperience);
@@ -20,6 +20,7 @@ router.get("/employees/dropdown", employeeSvc.listEmployeeDropdown);
 router.get("/employees/billing-dropdown", employeeSvc.searchEmployeeDropdown);
 router.get("/employees/designations/dropdown", employeeSvc.listDesignationDropdown);
 router.get("/employees/departments/dropdown", employeeSvc.listDepartmentDropdown);
+router.get("/employees/top-performers", employeeSvc.getTopEmployeePerformers);
 router.get("/employees/:id", employeeSvc.getEmployeeById);
 router.put("/employees/:id", employeeSvc.updateEmployee);
 router.delete("/employees/:id", employeeSvc.deleteEmployee);
@@ -212,6 +213,49 @@ module.exports = router;
  *       200:
  *         description: OK
  */
+
+/**
+ * @openapi
+ * /api/v1/employees/top-performers:
+ *   get:
+ *     summary: Get top employee performers ranked by cumulative sales invoice value
+ *     tags: [Employee]
+ *     description: Returns employees ranked by the cumulative value of sales invoices raised across all branches or a specific branch. Includes employee ID, name, total weight, and sales amount. Excludes cancelled invoices.
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 10 }
+ *         description: Number of top employees to return
+ *       - in: query
+ *         name: branch_id
+ *         schema: { type: integer }
+ *         description: Optional - Filter by specific branch ID
+ *     responses:
+ *       200:
+ *         description: OK
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 statusCode: { type: integer }
+ *                 message: { type: string }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     top_employee_performers:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           employee_id: { type: integer, description: "Employee ID" }
+ *                           employee_no: { type: string, description: "Employee number" }
+ *                           employee_name: { type: string, description: "Employee name" }
+ *                           weight: { type: string, description: "Total weight of items sold (in grams/kg)" }
+ *                           sales_amount: { type: string, description: "Total sales invoice amount" }
+ *                           total_invoices: { type: integer, description: "Total number of invoices" }
+ */
+
 
 /**
  * @openapi

@@ -12,6 +12,7 @@ router.get("/products/list-details", svc.getAllProductDetails);
 // router.get("/products/list-details", svc.newGetAllProductDetails);
 router.get("/products/addon-list", svc.getProductAddonList);
 router.get("/products/stock/counts", svc.getProductStockCounts);
+router.get("/products/top-selling-subcategories", svc.getTopSellingSubcategories);
 router.get("/product-id-by-sku", svc.getProductIdBySku);
 router.get("/products/deleted", svc.getDeletedProducts);
 router.get("/products/:id", svc.getProductById);
@@ -297,4 +298,48 @@ module.exports = router;
  *               $ref: '#/components/schemas/ProductDetailRowsResponse'
  *       204:
  *         description: No Content
+ */
+
+/**
+ * @openapi
+ * /api/v1/products/top-selling-subcategories:
+ *   get:
+ *     summary: Get top-selling jewelry subcategories based on invoice count
+ *     tags: [Product]
+ *     description: Returns the most sold jewelry subcategories ranked by total number of invoices raised. Each result includes the subcategory image, name, invoice count, and total sales amount.
+ *     parameters:
+ *       - in: query
+ *         name: branch_id
+ *         schema: { type: integer }
+ *         description: Filter by specific branch ID (optional)
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 10 }
+ *         description: Maximum number of subcategories to return
+ *     responses:
+ *       200:
+ *         description: OK
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 statusCode: { type: integer }
+ *                 message: { type: string }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     top_selling_subcategories:
+ *                       type: array
+ *                       description: "Top-selling subcategories ranked by invoice count"
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           rank: { type: integer, description: "Ranking position (1, 2, 3...)" }
+ *                           subcategory_id: { type: integer, description: "Subcategory ID" }
+ *                           subcategory_name: { type: string, description: "Subcategory name" }
+ *                           subcategory_image_url: { type: string, nullable: true, description: "Subcategory image URL" }
+ *                           total_invoices: { type: integer, description: "Total number of invoices" }
+ *                           total_sales_amount: { type: string, description: "Total sales amount" }
+ *                     total_results: { type: integer, description: "Number of results returned" }
  */

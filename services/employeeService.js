@@ -31,12 +31,12 @@ const createEmployee = async (req, res) => {
     } = req.body;
 
     // List and list required fields
-    const requiredFields = { employee_no, employee_name, department_id, role_id};
+    const requiredFields = { employee_no, employee_name, department_id, role_id };
     const missingFields = Object.keys(requiredFields).filter(key => !requiredFields[key]);
 
     if (missingFields.length > 0) {
       await transaction.rollback();
-      return commonService.badRequest(res,`Missing required fields: ${missingFields.join(", ")}`);
+      return commonService.badRequest(res, `Missing required fields: ${missingFields.join(", ")}`);
     }
 
     // Check if employee_no already exists among non-deleted employees
@@ -346,7 +346,7 @@ const listEmployees = async (req, res) => {
 // Lightweight search dropdown: by employee_name/employee_no/mobile_number (joins employee_contacts)
 const searchEmployeeDropdown = async (req, res) => {
   try {
-    const { search = "", limit = 20,branch_id } = req.query || {};
+    const { search = "", limit = 20, branch_id } = req.query || {};
 
     let sql = `
       SELECT 
@@ -455,7 +455,7 @@ const getEmployeeById = async (req, res) => {
       return commonService.notFound(res, enMessage.failure.notFound);
     }
 
-    const [bank_account, kyc_documents, login, billing_login,experiences] = await Promise.all([
+    const [bank_account, kyc_documents, login, billing_login, experiences] = await Promise.all([
       models.BankAccount.findOne({
         where: { entity_type: "employee", entity_id: id },
       }),
@@ -465,7 +465,7 @@ const getEmployeeById = async (req, res) => {
       models.User.findOne({
         where: { entity_type: "employee", entity_id: id },
       }),
-       models.User.findOne({
+      models.User.findOne({
         where: { entity_type: "billing", entity_id: id },
       }),
       models.EmployeeExperience.findAll({
@@ -738,16 +738,83 @@ const deleteEmployee = async (req, res) => {
 
 const generateEmployeeCode = async (req, res) => {
   try {
-    const { prefix} = req.query || {};
+    const { prefix } = req.query || {};
 
     const code = await generateFiscalSeriesCode(
       models.Employee,
       "employee_no",
       String(prefix).toUpperCase(),
-      { pad: 3}
+      { pad: 3 }
     );
     return commonService.okResponse(res, { employee_code: code });
   } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
+// Get top employee performers ranked by cumulative sales invoice value across all branches (or specific branch)
+const getTopEmployeePerformers = async (req, res) => {
+  try {
+    const { limit = 10, branch_id } = req.query;
+
+    // Build WHERE clause for branch filter
+    let branchFilter = '';
+    const replacements = { limit: parseInt(limit, 10) };
+
+    if (branch_id) {
+      branchFilter = 'AND sib.branch_id = :branch_id';
+      replacements.branch_id = parseInt(branch_id, 10);
+    }
+
+    const query = `
+      SELECT 
+        e.id AS employee_id,
+        e.employee_no,
+        e.employee_name,
+        COALESCE(SUM(DISTINCT sib.total_amount), 0) AS sales_amount,
+        COALESCE(SUM(sibi.net_weight), 0) AS total_weight,
+        COUNT(DISTINCT sib.id) AS total_invoices
+      FROM 
+        employees e
+      LEFT JOIN 
+        sales_invoice_bills sib ON sib.employee_id = e.id 
+        AND sib.deleted_at IS NULL
+        AND sib.status != 'Cancelled'
+        ${branchFilter}
+      LEFT JOIN
+        sales_invoice_bill_items sibi ON sibi.invoice_bill_id = sib.id
+        AND sibi.deleted_at IS NULL
+      WHERE 
+        e.deleted_at IS NULL
+      GROUP BY 
+        e.id, e.employee_no, e.employee_name
+      HAVING 
+        COALESCE(SUM(DISTINCT sib.total_amount), 0) > 0
+      ORDER BY 
+        sales_amount DESC
+      LIMIT :limit
+    `;
+
+    const topEmployees = await sequelize.query(query, {
+      replacements,
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    // Format the response
+    const formattedEmployees = topEmployees.map(employee => ({
+      employee_id: employee.employee_id,
+      employee_no: employee.employee_no,
+      employee_name: employee.employee_name,
+      weight: parseFloat(employee.total_weight || 0).toFixed(3),
+      sales_amount: parseFloat(employee.sales_amount || 0).toFixed(2),
+      total_invoices: parseInt(employee.total_invoices, 10),
+    }));
+
+    return commonService.okResponse(res, {
+      top_employee_performers: formattedEmployees
+    });
+  } catch (err) {
+    console.error('Error in getTopEmployeePerformers:', err);
     return commonService.handleError(res, err);
   }
 };
@@ -763,4 +830,5 @@ module.exports = {
   updateEmployee,
   deleteEmployee,
   generateEmployeeCode,
+  getTopEmployeePerformers,
 };

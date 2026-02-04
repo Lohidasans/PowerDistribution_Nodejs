@@ -953,8 +953,8 @@ const getAllProductDetails = async (req, res) => {
 
       const additionalDetails = itemIds.length
         ? await models.ProductAdditionalDetail.findAll({
-            where: { item_detail_id: itemIds },
-          })
+          where: { item_detail_id: itemIds },
+        })
         : [];
 
       const addsByItem = additionalDetails.reduce((acc, add) => {
@@ -1124,7 +1124,7 @@ const newGetAllProductDetails = async (req, res) => {
         LEFT JOIN grns g ON g.id = p.grn_id AND g.deleted_at IS NULL
         LEFT JOIN "grnItems" gi ON gi.grn_id = g.id AND gi.id = p.ref_no_id AND gi.deleted_at IS NULL
       `;
-      
+
       const like = `%${search}%`;
       whereClause += `
         AND (
@@ -1268,8 +1268,8 @@ const newGetAllProductDetails = async (req, res) => {
       ORDER BY p.id DESC
     `;
 
-    const [rows] = await sequelize.query(query, { 
-      replacements: usePagination ? mainReplacements : replacements 
+    const [rows] = await sequelize.query(query, {
+      replacements: usePagination ? mainReplacements : replacements
     });
 
     if (!rows.length) {
@@ -1332,9 +1332,9 @@ const newGetAllProductDetails = async (req, res) => {
     const itemIds = itemDetails.map((it) => it.id);
     const additionalDetails = itemIds.length
       ? await models.ProductAdditionalDetail.findAll({
-          where: { item_detail_id: itemIds },
-          raw: true,
-        })
+        where: { item_detail_id: itemIds },
+        raw: true,
+      })
       : [];
 
     const addsByItem = additionalDetails.reduce((acc, add) => {
@@ -1350,7 +1350,7 @@ const newGetAllProductDetails = async (req, res) => {
     // Batch fetch all material prices once (CRITICAL OPTIMIZATION)
     const materialIds = [...new Set(rows.map(p => p.material_type_id).filter(Boolean))];
     const materialPriceMap = {};
-    
+
     if (materialIds.length) {
       const materials = await models.MaterialType.findAll({
         where: { id: materialIds },
@@ -1365,7 +1365,7 @@ const newGetAllProductDetails = async (req, res) => {
     // Calculate totals and prices
     const products = rows.map((row) => {
       const productItems = itemsByProduct[row.id] || [];
-      
+
       // Calculate aggregations
       let totalQuantity = 0;
       let totalWeight = 0;
@@ -1374,7 +1374,7 @@ const newGetAllProductDetails = async (req, res) => {
       const itemsWithPrices = productItems.map((item) => {
         const netWeight = parseFloat(item.net_weight) || 0;
         const qty = parseFloat(item.quantity) || 0;
-        
+
         totalQuantity += qty;
         totalWeight += qty * netWeight;
 
@@ -1426,7 +1426,7 @@ const calculateSellingPriceSync = (product, item, additionalDetails, materialPri
   try {
     // 1. Get Material Rate Per Gram
     let materialRate;
-    
+
     if (product.product_type === "Piece Rate") {
       const ratePerGram = parseFloat(item.rate_per_gram) || 0;
       materialRate = Math.max(ratePerGram, materialPrice);
@@ -1515,7 +1515,7 @@ const searchProductBySkuNew = async (req, res) => {
     if (!branch_id) {
       return commonService.badRequest(res, "branch_id is required");
     }
-    
+
     // Helper: convert product + item → flat response object
     const formatItem = async (product, item) => {
       const priceDetails = await calculateSellingPrice(product, item, models);
@@ -1566,7 +1566,7 @@ const searchProductBySkuNew = async (req, res) => {
 
     // CASE 2 → SKU provided
     const [directProduct, itemDetail] = await Promise.all([
-      models.Product.findOne({ where: { sku_id: sku, branch_id }, raw: true,}),
+      models.Product.findOne({ where: { sku_id: sku, branch_id }, raw: true, }),
       models.ProductItemDetail.findOne({
         where: {
           sku_id: sku,
@@ -1809,8 +1809,8 @@ const getProductsForWebsiteList = async (req, res) => {
         FROM "product_variants" pv
         WHERE pv.product_id = p.id
           AND pv.variant_type_ids && ARRAY[${variantTypeIds.join(
-            ","
-          )}]::integer[]
+        ","
+      )}]::integer[]
       )`;
     }
 
@@ -2395,7 +2395,7 @@ const getDeletedProducts = async (req, res) => {
 const getProductStockCounts = async (req, res) => {
   try {
     const { branch_id } = req.query;
-    
+
     // Build branch filter condition
     const branchCondition = branch_id ? 'AND p.branch_id = :branch_id' : '';
     const replacements = branch_id ? { branch_id: parseInt(branch_id) } : {};
@@ -2413,7 +2413,7 @@ const getProductStockCounts = async (req, res) => {
       AND pid.deleted_at IS NULL
       ${branchCondition}
     `,
-      { 
+      {
         type: sequelize.QueryTypes.SELECT,
         replacements
       }
@@ -2427,7 +2427,7 @@ const getProductStockCounts = async (req, res) => {
       WHERE p.deleted_at IS NOT NULL
       ${branchCondition}
     `,
-      { 
+      {
         type: sequelize.QueryTypes.SELECT,
         replacements
       }
@@ -2466,7 +2466,7 @@ const getProductStockCounts = async (req, res) => {
           AND sib.branch_id = p.branch_id
       )
     `,
-      { 
+      {
         type: sequelize.QueryTypes.SELECT,
         replacements
       }
@@ -2552,6 +2552,71 @@ const cloneProductAddOns = async (sourceProductId, destinationProductId, transac
   );
 };
 
+// Get top-selling subcategories based on invoice count
+const getTopSellingSubcategories = async (req, res) => {
+  try {
+    const { branch_id, limit = 10 } = req.query;
+
+    const replacements = { limit: parseInt(limit, 10) };
+    let branchFilter = '';
+
+    if (branch_id) {
+      branchFilter = 'AND sib.branch_id = :branch_id';
+      replacements.branch_id = branch_id;
+    }
+
+    const query = `
+      SELECT 
+        s.id AS subcategory_id,
+        s.subcategory_name,
+        s.subcategory_image_url,
+        COUNT(DISTINCT sib.id) AS total_invoices,
+        COALESCE(SUM(sib.total_amount), 0) AS total_sales_amount
+      FROM 
+        subcategories s
+      INNER JOIN 
+        products p ON p.subcategory_id = s.id AND p.deleted_at IS NULL
+      INNER JOIN 
+        sales_invoice_bill_items sibi ON sibi.product_id = p.id AND sibi.deleted_at IS NULL
+      INNER JOIN 
+        sales_invoice_bills sib ON sib.id = sibi.invoice_bill_id 
+        AND sib.deleted_at IS NULL 
+        AND sib.status != 'Cancelled'
+        ${branchFilter}
+      WHERE 
+        s.deleted_at IS NULL
+        AND s.status = 'Active'
+      GROUP BY 
+        s.id, s.subcategory_name, s.subcategory_image_url
+      ORDER BY 
+        total_invoices DESC, total_sales_amount DESC
+      LIMIT :limit
+    `;
+
+    const topSubcategories = await sequelize.query(query, {
+      replacements,
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    // Format the response
+    const formattedData = topSubcategories.map((item, index) => ({
+      rank: index + 1,
+      subcategory_id: item.subcategory_id,
+      subcategory_name: item.subcategory_name,
+      subcategory_image_url: item.subcategory_image_url || null,
+      total_invoices: parseInt(item.total_invoices, 10),
+      total_sales_amount: parseFloat(item.total_sales_amount || 0).toFixed(2),
+    }));
+
+    return commonService.okResponse(res, {
+      top_selling_subcategories: formattedData,
+      total_results: formattedData.length,
+    });
+  } catch (err) {
+    console.error('Error in getTopSellingSubcategories:', err);
+    return commonService.handleError(res, err);
+  }
+};
 
 module.exports = {
   createProductSKUCode,
@@ -2573,5 +2638,6 @@ module.exports = {
   getProductStockCounts,
   createProductInternal,
   cloneProductAddOns,
-  newGetAllProductDetails
+  newGetAllProductDetails,
+  getTopSellingSubcategories,
 };
