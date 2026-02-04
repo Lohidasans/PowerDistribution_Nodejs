@@ -87,6 +87,8 @@ const getAllMaintenanceHistory = async (req, res) => {
         mt.type_name,
         je.journal_no,
         v.vendor_name,
+        b.branch_name,
+        r.role_name,
         CASE 
           WHEN am.status_id = 1 THEN 'Update pending'
           WHEN am.status_id = 2 THEN 'Under maintenance'
@@ -108,6 +110,8 @@ const getAllMaintenanceHistory = async (req, res) => {
       LEFT JOIN maintenance_types mt ON mh.maintenance_type_id = mt.id
       LEFT JOIN journal_entries je ON am.journal_entry_id = je.id
       LEFT JOIN vendors v ON am.vendor_id = v.id
+      LEFT JOIN branches b ON am.branch_id = b.id
+      LEFT JOIN roles r ON am.department_id = r.department_id
       WHERE mh.deleted_at IS NULL
     `;
 
@@ -198,6 +202,8 @@ const getAllMaintenanceHistory = async (req, res) => {
         ledger_account_id,
         asset_created_at,
         asset_updated_at,
+        branch_name,
+        role_name,
       } = row;
 
       maintenanceHistoryArray.push({
@@ -235,7 +241,9 @@ const getAllMaintenanceHistory = async (req, res) => {
           warranty_expiry_date,
           upload_document_url,
           branch_id,
+          branch_name,
           department_id,
+          role_name,
           receipt_id,
           upload_disposal_document_url,
           journal_entry_id,
@@ -251,33 +259,38 @@ const getAllMaintenanceHistory = async (req, res) => {
     // If no maintenance history found
     // -------------------------------
     if (results.length === 0 && asset_management_id) {
-      const assetQuery = `
-        SELECT
-          am.*,
-          v.vendor_name,
-          je.journal_no,
-          CASE 
-            WHEN am.status_id = 1 THEN 'Update pending'
-            WHEN am.status_id = 2 THEN 'Under maintenance'
-            WHEN am.status_id = 3 THEN 'In use'
-            WHEN am.status_id = 4 THEN 'Retired'
-            ELSE NULL
-          END AS status,
-          CASE 
-            WHEN am.maintenance_cycle_id = 1 THEN 'Daily'
-            WHEN am.maintenance_cycle_id = 2 THEN 'Weekly'
-            WHEN am.maintenance_cycle_id = 3 THEN 'Monthly'
-            WHEN am.maintenance_cycle_id = 4 THEN 'Quarterly'
-            WHEN am.maintenance_cycle_id = 5 THEN 'Half yearly'
-            WHEN am.maintenance_cycle_id = 6 THEN 'Yearly'
-            ELSE NULL
-          END AS maintenance_cycle
-        FROM asset_management am
-        LEFT JOIN vendors v ON am.vendor_id = v.id
-        LEFT JOIN journal_entries je ON am.journal_entry_id = je.id
-        WHERE am.id = :asset_management_id
-          AND am.deleted_at IS NULL
-      `;
+const assetQuery = `
+  SELECT
+    am.*,
+    v.vendor_name,
+    je.journal_no,
+    b.branch_name,
+    r.role_name,
+    CASE 
+      WHEN am.status_id = 1 THEN 'Update pending'
+      WHEN am.status_id = 2 THEN 'Under maintenance'
+      WHEN am.status_id = 3 THEN 'In use'
+      WHEN am.status_id = 4 THEN 'Retired'
+      ELSE NULL
+    END AS status,
+    CASE 
+      WHEN am.maintenance_cycle_id = 1 THEN 'Daily'
+      WHEN am.maintenance_cycle_id = 2 THEN 'Weekly'
+      WHEN am.maintenance_cycle_id = 3 THEN 'Monthly'
+      WHEN am.maintenance_cycle_id = 4 THEN 'Quarterly'
+      WHEN am.maintenance_cycle_id = 5 THEN 'Half yearly'
+      WHEN am.maintenance_cycle_id = 6 THEN 'Yearly'
+      ELSE NULL
+    END AS maintenance_cycle
+  FROM asset_management am
+  LEFT JOIN vendors v ON am.vendor_id = v.id
+  LEFT JOIN journal_entries je ON am.journal_entry_id = je.id
+  LEFT JOIN branches b ON am.branch_id = b.id
+  LEFT JOIN roles r ON am.department_id = r.department_id
+  WHERE am.id = :asset_management_id
+    AND am.deleted_at IS NULL
+`;
+
 
       const assetResult = await sequelize.query(assetQuery, {
         type: sequelize.QueryTypes.SELECT,
