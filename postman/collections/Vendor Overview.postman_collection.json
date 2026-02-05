@@ -1,0 +1,119 @@
+{
+  "info": {
+    "_postman_id": "0ac4f9d3-92b9-4921-9747-744339b1a9c7",
+    "name": "Vendor Overview",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Vendor",
+      "id": "9d18af74-136d-43a4-83bc-7b9b11a33496",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/vendor-analytics/dashboard",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "vendor-analytics",
+            "dashboard"
+          ],
+          "query": [
+            {
+              "key": "branch_id",
+              "value": "2",
+              "uuid": "859314b0-a59e-460d-b6a8-958c68d5b1e1",
+              "disabled": true
+            },
+            {
+              "key": "start_date",
+              "value": "2026-02-12",
+              "uuid": "0b4e686c-6b47-4c70-88c7-47dc99a44a6f",
+              "disabled": true
+            },
+            {
+              "key": "end_date",
+              "value": "2026-02-13",
+              "uuid": "186d10ae-35df-4f99-b595-4e28954013c2",
+              "disabled": true
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Top Buying Categories",
+      "id": "8ad56bc5-f6be-41c7-8c7b-8aa829b77752",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}} /api/v1/vendor-analytics/top-buying-categories",
+          "host": [
+            "{{baseUrl}} "
+          ],
+          "path": [
+            "api",
+            "v1",
+            "vendor-analytics",
+            "top-buying-categories"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Transaction History",
+      "id": "2a86d1a1-bfe7-4058-890a-1776eaba2d04",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/vendor-analytics/transaction-history?vendor_id=2",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "vendor-analytics",
+            "transaction-history"
+          ],
+          "query": [
+            {
+              "key": "vendor_id",
+              "value": "2",
+              "uuid": "63e0c77a-1b8a-4a16-9888-9bb1d8f9ed26"
+            },
+            {
+              "key": "start_date",
+              "value": "2025-02-01",
+              "uuid": "f01948ea-15ef-4d35-bc29-7a66747b4c12",
+              "disabled": true
+            },
+            {
+              "key": "end_date",
+              "value": "2025-02-28",
+              "uuid": "7447452d-b929-4871-b35c-a6c5a34003da",
+              "disabled": true
+            }
+          ]
+        }
+      },
+      "response": []
+    }
+  ],
+  "variable": [
+    {
+      "id": "9b3fabac-3f07-48de-87b5-97cfd421021a",
+      "key": "baseUrl",
+      "value": "",
+      "type": "default"
+    }
+  ]
+}

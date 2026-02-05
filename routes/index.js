@@ -64,6 +64,7 @@ const VoucherReceiptRoute = require("./voucherReceiptRoute");
 const JournalEntryRoute = require("./journalEntryRoute");
 const AssetManagementRoute = require("./assetManagementRoute");
 const MaintenanceHistoryRoute = require("./maintenanceHistoryRoute");
+const VendorAnalyticsRoute = require("./vendorAnalyticsRoute");
 module.exports = (app) => {
   app.use("/api/v1", RoleRouter);
   app.use("/api/v1", RolePermissionRouter);
@@ -131,4 +132,6 @@ module.exports = (app) => {
   app.use("/api/v1", JournalEntryRoute);
   app.use("/api/v1", AssetManagementRoute);
   app.use("/api/v1", MaintenanceHistoryRoute);
+  app.use("/api/v1", VendorAnalyticsRoute);
+
 };
