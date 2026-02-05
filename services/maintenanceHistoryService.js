@@ -82,6 +82,7 @@ const getAllMaintenanceHistory = async (req, res) => {
         am.department_id,
         am.receipt_id,
         am.upload_disposal_document_url,
+        am.disposal_reason,
         am.journal_entry_id,
         am.ledger_account_id,
         am.created_at AS asset_created_at,
@@ -111,7 +112,15 @@ const getAllMaintenanceHistory = async (req, res) => {
           WHEN am.maintenance_cycle_id = 5 THEN 'Half yearly'
           WHEN am.maintenance_cycle_id = 6 THEN 'Yearly'
           ELSE NULL
-        END AS maintenance_cycle
+        END AS maintenance_cycle,
+
+        CASE 
+          WHEN mh.machine_performance_id = 1 THEN 'Good'
+          WHEN mh.machine_performance_id = 2 THEN 'Fair'
+          WHEN mh.machine_performance_id = 3 THEN 'Poor'
+          WHEN mh.machine_performance_id = 4 THEN 'Needs Attention'
+          ELSE NULL
+        END AS machine_performance
 
       FROM maintenance_history mh
       LEFT JOIN asset_management am ON mh.asset_management_id = am.id
@@ -175,6 +184,9 @@ const getAllMaintenanceHistory = async (req, res) => {
         asset_management_id,
         maintenance_type_id,
         technician_name,
+        machine_performance_id,
+        machine_performance,
+        remarks,
         cost,
         description,
         next_service_date,
@@ -204,6 +216,7 @@ const getAllMaintenanceHistory = async (req, res) => {
         role_name,
         receipt_id,
         upload_disposal_document_url,
+        disposal_reason,
         journal_entry_id,
         journal_no,
         ledger_account_id,
@@ -218,6 +231,9 @@ const getAllMaintenanceHistory = async (req, res) => {
         asset_management_id,
         maintenance_type_id,
         technician_name,
+        machine_performance_id,
+        machine_performance,
+        remarks,
         cost,
         description,
         next_service_date,
@@ -251,6 +267,7 @@ const getAllMaintenanceHistory = async (req, res) => {
           role_name,
           receipt_id,
           upload_disposal_document_url,
+          disposal_reason,
           journal_entry_id,
           journal_no,
           ledger_account_id,
