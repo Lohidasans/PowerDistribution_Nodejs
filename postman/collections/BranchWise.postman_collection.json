@@ -513,6 +513,42 @@
       "id": "e90ec1ca-d440-47e5-95ae-0fa5f8a6f652"
     },
     {
+      "name": "Employee",
+      "item": [
+        {
+          "name": "Employee List",
+          "id": "44adcdb9-4b1f-41d9-8442-e0507f834db7",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/employees?branch_id=1&status=Active",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "employees"
+              ],
+              "query": [
+                {
+                  "key": "branch_id",
+                  "value": "1",
+                  "uuid": "f6963493-1b69-4186-992f-a5d0c18b6c18"
+                },
+                {
+                  "key": "status",
+                  "value": "Active",
+                  "description": "Inactive"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "id": "6d7e2717-fc54-41c3-a14b-4b90f6031eee"
+    },
+    {
       "name": "Branch Wise",
       "id": "3244d5d6-55b8-45f3-b873-f5a6da4f908d",
       "request": {
