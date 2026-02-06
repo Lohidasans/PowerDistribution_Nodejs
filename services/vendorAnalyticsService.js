@@ -311,6 +311,440 @@ const getTransactionHistory = async (req, res) => {
 };
 
 /**
+ * Get vendor list with purchase and payment summary
+ */
+const getVendorList = async (req, res) => {
+    try {
+        const { page = 1, limit = 10, material_type, search, branch_id } = req.query;
+        const offset = (page - 1) * limit;
+
+        // Build filters
+        let whereConditions = [];
+        const replacements = { limit: parseInt(limit), offset: parseInt(offset) };
+
+        whereConditions.push("v.deleted_at IS NULL");
+
+        if (material_type) {
+            whereConditions.push(":material_type = ANY(v.material_type_ids)");
+            replacements.material_type = parseInt(material_type);
+        }
+
+        if (search) {
+            whereConditions.push("(v.vendor_name ILIKE :search OR v.vendor_code ILIKE :search)");
+            replacements.search = `%${search}%`;
+        }
+
+        if (branch_id) {
+            whereConditions.push(":branch_id = ANY(v.visibilities)");
+            replacements.branch_id = parseInt(branch_id);
+        }
+
+        const whereClause = whereConditions.length > 0 ? "WHERE " + whereConditions.join(" AND ") : "";
+
+        // Get vendor list with purchase and payment summary
+        const query = `
+      SELECT 
+        v.id,
+        v.vendor_code,
+        v.vendor_name,
+        v.vendor_image_url,
+        v.status,
+        v.visibilities,
+        COALESCE(
+          (
+            SELECT SUM(g.total_amount)
+            FROM grns g
+            WHERE g.vendor_id = v.id AND g.deleted_at IS NULL
+          ), 0
+        ) as total_purchase,
+        COALESCE(
+          (
+            SELECT SUM(vp.amount)
+            FROM vendor_payments vp
+            JOIN grns g ON g.grn_no = vp.ref_id
+            WHERE vp.deleted_at IS NULL
+              AND vp.status = 'Completed'
+              AND g.vendor_id = v.id
+              AND g.deleted_at IS NULL
+          ), 0
+        ) as total_paid,
+        (
+          COALESCE(
+            (
+              SELECT SUM(g.total_amount)
+              FROM grns g
+              WHERE g.vendor_id = v.id AND g.deleted_at IS NULL
+            ), 0
+          ) - COALESCE(
+            (
+              SELECT SUM(vp.amount)
+              FROM vendor_payments vp
+              JOIN grns g ON g.grn_no = vp.ref_id
+              WHERE vp.deleted_at IS NULL
+                AND vp.status = 'Completed'
+                AND g.vendor_id = v.id
+                AND g.deleted_at IS NULL
+            ), 0
+          )
+        ) as outstanding
+      FROM vendors v
+      ${whereClause}
+      ORDER BY v.id DESC
+      LIMIT :limit OFFSET :offset
+    `;
+
+        // Get total count for pagination
+        const countQuery = `
+      SELECT COUNT(*) as total
+      FROM vendors v
+      ${whereClause}
+    `;
+
+        const [vendors, [countResult]] = await Promise.all([
+            sequelize.query(query, { replacements }),
+            sequelize.query(countQuery, {
+                replacements: { material_type: replacements.material_type, search: replacements.search, branch_id: replacements.branch_id },
+                type: sequelize.QueryTypes.SELECT,
+            }),
+        ]);
+
+        // Get branch names for visibilities
+        const formattedVendors = await Promise.all(
+            vendors[0].map(async (vendor) => {
+                let branchName = "All Branches";
+                if (vendor.visibilities && vendor.visibilities.length > 0) {
+                    // visibilities is already an array, use it directly
+                    const branchQuery = `
+            SELECT branch_name 
+            FROM branches 
+            WHERE id = ANY($1::int[]) AND deleted_at IS NULL
+            LIMIT 1
+          `;
+                    const [branches] = await sequelize.query(branchQuery, {
+                        bind: [vendor.visibilities],
+                    });
+                    if (branches.length > 0) {
+                        branchName = branches[0].branch_name;
+                    }
+                }
+
+                return {
+                    id: vendor.id,
+                    vendor_code: vendor.vendor_code,
+                    vendor_name: vendor.vendor_name,
+                    vendor_image_url: vendor.vendor_image_url,
+                    status: vendor.status,
+                    total_purchase: parseFloat(vendor.total_purchase).toFixed(2),
+                    total_paid: parseFloat(vendor.total_paid).toFixed(2),
+                    outstanding: parseFloat(vendor.outstanding).toFixed(2),
+                    branch: branchName,
+                };
+            })
+        );
+
+        return commonService.okResponse(res, {
+            vendors: formattedVendors,
+            pagination: {
+                page: parseInt(page),
+                limit: parseInt(limit),
+                total: parseInt(countResult.total),
+                totalPages: Math.ceil(countResult.total / limit),
+            },
+        });
+    } catch (err) {
+        return commonService.handleError(res, err);
+    }
+};
+
+/**
+ * Get vendor overview/details (comprehensive vendor metrics)
+ */
+const getVendorOverview = async (req, res) => {
+    try {
+        const { vendor_id, start_date, end_date } = req.query;
+
+        if (!vendor_id) {
+            return res.status(400).json({
+                statusCode: 400,
+                message: "vendor_id is required",
+            });
+        }
+
+        // Build date filter
+        let dateFilter = "";
+        const replacements = { vendor_id: parseInt(vendor_id) };
+
+        if (start_date && end_date) {
+            dateFilter = " AND DATE BETWEEN CAST(:start_date AS DATE) AND CAST(:end_date AS DATE)";
+            replacements.start_date = start_date;
+            replacements.end_date = end_date;
+        } else if (start_date) {
+            dateFilter = " AND DATE >= CAST(:start_date AS DATE)";
+            replacements.start_date = start_date;
+        } else if (end_date) {
+            dateFilter = " AND DATE <= CAST(:end_date AS DATE)";
+            replacements.end_date = end_date;
+        }
+
+        // Get vendor basic info
+        const vendorQuery = `
+      SELECT id, vendor_code, vendor_name, vendor_image_url, proprietor_name, mobile, address
+      FROM vendors
+      WHERE id = :vendor_id AND deleted_at IS NULL
+    `;
+
+        // Purchase Order metrics (from purchase_orders table if exists, or use GRNs)
+        const purchaseOrderQuery = `
+      SELECT 
+        COALESCE(SUM(gi.gross_wt_in_g), 0) as total_weight
+      FROM grns g
+      JOIN "grnItems" gi ON gi.grn_id = g.id AND gi.deleted_at IS NULL
+      WHERE g.vendor_id = :vendor_id 
+        AND g.deleted_at IS NULL
+        ${dateFilter.replace('DATE', 'g.grn_date')}
+    `;
+
+        // GRN Value (weight)
+        const grnValueQuery = `
+      SELECT 
+        COALESCE(SUM(gi.gross_wt_in_g), 0) as grn_weight
+      FROM grns g
+      JOIN "grnItems" gi ON gi.grn_id = g.id AND gi.deleted_at IS NULL
+      WHERE g.vendor_id = :vendor_id 
+        AND g.deleted_at IS NULL
+        ${dateFilter.replace('DATE', 'g.grn_date')}
+    `;
+
+        // Purchase Order Value (total amount)
+        const purchaseValueQuery = `
+      SELECT 
+        COALESCE(SUM(g.total_amount), 0) as total_value
+      FROM grns g
+      WHERE g.vendor_id = :vendor_id 
+        AND g.deleted_at IS NULL
+        ${dateFilter.replace('DATE', 'g.grn_date')}
+    `;
+
+        // Total Amount Paid
+        const totalPaidQuery = `
+      SELECT 
+        COALESCE(SUM(vp.amount), 0) as total_paid
+      FROM vendor_payments vp
+      JOIN grns g ON g.grn_no = vp.ref_id
+      WHERE g.vendor_id = :vendor_id
+        AND vp.status = 'Completed'
+        AND vp.deleted_at IS NULL
+        AND g.deleted_at IS NULL
+        ${dateFilter.replace('DATE', 'vp.payment_date')}
+    `;
+
+        // Purchase Values for chart - supports monthly, yearly, weekly
+        const { period = 'monthly' } = req.query;
+        let purchaseValuesQuery = '';
+
+        if (period === 'monthly') {
+            // Monthly: JAN to DEC
+            purchaseValuesQuery = `
+        SELECT 
+          TO_CHAR(g.grn_date, 'MON') as label,
+          EXTRACT(MONTH FROM g.grn_date) as sort_order,
+          COALESCE(SUM(g.total_amount), 0) as total_value
+        FROM grns g
+        WHERE g.vendor_id = :vendor_id 
+          AND g.deleted_at IS NULL
+          ${dateFilter.replace('DATE', 'g.grn_date')}
+        GROUP BY TO_CHAR(g.grn_date, 'MON'), EXTRACT(MONTH FROM g.grn_date)
+        ORDER BY sort_order
+      `;
+        } else if (period === 'yearly') {
+            // Yearly: by year
+            purchaseValuesQuery = `
+        SELECT 
+          EXTRACT(YEAR FROM g.grn_date)::text as label,
+          EXTRACT(YEAR FROM g.grn_date) as sort_order,
+          COALESCE(SUM(g.total_amount), 0) as total_value
+        FROM grns g
+        WHERE g.vendor_id = :vendor_id 
+          AND g.deleted_at IS NULL
+          ${dateFilter.replace('DATE', 'g.grn_date')}
+        GROUP BY EXTRACT(YEAR FROM g.grn_date)
+        ORDER BY sort_order
+      `;
+        } else if (period === 'weekly') {
+            // Weekly: SUN to SAT
+            purchaseValuesQuery = `
+        SELECT 
+          TO_CHAR(g.grn_date, 'DY') as label,
+          EXTRACT(DOW FROM g.grn_date) as sort_order,
+          COALESCE(SUM(g.total_amount), 0) as total_value
+        FROM grns g
+        WHERE g.vendor_id = :vendor_id 
+          AND g.deleted_at IS NULL
+          ${dateFilter.replace('DATE', 'g.grn_date')}
+        GROUP BY TO_CHAR(g.grn_date, 'DY'), EXTRACT(DOW FROM g.grn_date)
+        ORDER BY sort_order
+      `;
+        }
+
+        // Execute all queries in parallel
+        const [
+            [vendorInfo],
+            [purchaseOrderResult],
+            [grnValueResult],
+            [purchaseValueResult],
+            [totalPaidResult],
+            purchaseValues,
+        ] = await Promise.all([
+            sequelize.query(vendorQuery, { replacements, type: sequelize.QueryTypes.SELECT }),
+            sequelize.query(purchaseOrderQuery, { replacements, type: sequelize.QueryTypes.SELECT }),
+            sequelize.query(grnValueQuery, { replacements, type: sequelize.QueryTypes.SELECT }),
+            sequelize.query(purchaseValueQuery, { replacements, type: sequelize.QueryTypes.SELECT }),
+            sequelize.query(totalPaidQuery, { replacements, type: sequelize.QueryTypes.SELECT }),
+            sequelize.query(purchaseValuesQuery, { replacements }),
+        ]);
+
+        if (!vendorInfo) {
+            return res.status(404).json({
+                statusCode: 404,
+                message: "Vendor not found",
+            });
+        }
+
+        // Calculate outstanding
+        const totalValue = parseFloat(purchaseValueResult.total_value) || 0;
+        const totalPaid = parseFloat(totalPaidResult.total_paid) || 0;
+        const outstanding = totalValue - totalPaid;
+
+        // Format purchase values based on period
+        let formattedPurchaseValues = [];
+
+        if (period === 'monthly') {
+            // All 12 months
+            const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+            const dataMap = {};
+            purchaseValues[0].forEach(item => {
+                dataMap[item.label.toUpperCase()] = parseFloat(item.total_value).toFixed(2);
+            });
+            formattedPurchaseValues = months.map(month => ({
+                label: month,
+                value: dataMap[month] || "0.00"
+            }));
+        } else if (period === 'weekly') {
+            // All 7 days: SUN to SAT
+            const days = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+            const dataMap = {};
+            purchaseValues[0].forEach(item => {
+                dataMap[item.label.toUpperCase()] = parseFloat(item.total_value).toFixed(2);
+            });
+            formattedPurchaseValues = days.map(day => ({
+                label: day,
+                value: dataMap[day] || "0.00"
+            }));
+        } else if (period === 'yearly') {
+            // Years as returned from query
+            formattedPurchaseValues = purchaseValues[0].map(item => ({
+                label: item.label,
+                value: parseFloat(item.total_value).toFixed(2)
+            }));
+        }
+
+        return commonService.okResponse(res, {
+            vendor_info: {
+                id: vendorInfo.id,
+                vendor_code: vendorInfo.vendor_code,
+                vendor_name: vendorInfo.vendor_name,
+                vendor_image_url: vendorInfo.vendor_image_url,
+                proprietor_name: vendorInfo.proprietor_name,
+                mobile: vendorInfo.mobile,
+                address: vendorInfo.address,
+            },
+            metrics: {
+                purchase_order: parseFloat(purchaseOrderResult.total_weight).toFixed(2) + " g",
+                grn_value: parseFloat(grnValueResult.grn_weight).toFixed(2) + " g",
+                purchase_order_value: parseFloat(purchaseValueResult.total_value).toFixed(2),
+                total_amount_paid: totalPaid.toFixed(2),
+                outstanding_amount: outstanding.toFixed(2),
+            },
+            purchase_values: formattedPurchaseValues,
+            period: period,
+        });
+    } catch (err) {
+        return commonService.handleError(res, err);
+    }
+};
+
+/**
+ * Get vendor purchase by category
+ */
+const getVendorPurchaseByCategory = async (req, res) => {
+    try {
+        const { vendor_id, period = 'monthly', start_date, end_date } = req.query;
+
+        if (!vendor_id) {
+            return res.status(400).json({
+                statusCode: 400,
+                message: "vendor_id is required",
+            });
+        }
+
+        // Build date filter
+        let dateFilter = "";
+        const replacements = { vendor_id: parseInt(vendor_id) };
+
+        if (start_date && end_date) {
+            dateFilter = " AND g.grn_date BETWEEN CAST(:start_date AS DATE) AND CAST(:end_date AS DATE)";
+            replacements.start_date = start_date;
+            replacements.end_date = end_date;
+        } else if (start_date) {
+            dateFilter = " AND g.grn_date >= CAST(:start_date AS DATE)";
+            replacements.start_date = start_date;
+        } else if (end_date) {
+            dateFilter = " AND g.grn_date <= CAST(:end_date AS DATE)";
+            replacements.end_date = end_date;
+        }
+
+        // Query to get purchase by category for the vendor
+        const query = `
+      SELECT 
+        c.id,
+        c.category_name,
+        c.category_image_url,
+        COALESCE(SUM(gi.gross_wt_in_g), 0) as total_weight,
+        COALESCE(SUM(gi.total_amount), 0) as total_value,
+        COUNT(gi.id) as item_count
+      FROM categories c
+      LEFT JOIN "grnItems" gi ON gi.category_id = c.id AND gi.deleted_at IS NULL
+      LEFT JOIN grns g ON g.id = gi.grn_id AND g.deleted_at IS NULL
+      WHERE c.deleted_at IS NULL
+        AND (g.vendor_id = :vendor_id OR g.vendor_id IS NULL)
+        ${dateFilter}
+      GROUP BY c.id, c.category_name, c.category_image_url
+      HAVING COALESCE(SUM(gi.gross_wt_in_g), 0) > 0
+      ORDER BY total_weight DESC
+    `;
+
+        const [categories] = await sequelize.query(query, { replacements });
+
+        const formattedCategories = categories.map((category) => ({
+            id: category.id,
+            category_name: category.category_name,
+            category_image_url: category.category_image_url,
+            weight: parseFloat(category.total_weight).toFixed(2) + " Kg",
+            total_value: parseFloat(category.total_value).toFixed(2),
+            item_count: parseInt(category.item_count),
+        }));
+
+        return commonService.okResponse(res, {
+            categories: formattedCategories,
+            period: period,
+            total_categories: formattedCategories.length,
+        });
+    } catch (err) {
+        return commonService.handleError(res, err);
+    }
+};
+
+/**
  * Get comprehensive vendor dashboard (all metrics in one response)
  * Supports optional filters: branch_id, start_date, end_date
  */
@@ -334,30 +768,28 @@ const getVendorDashboard = async (req, res) => {
         }
 
         // Build branch filter condition
+        // Build branch filter condition
         let branchFilter = "";
-        let branchReplacements = {};
-
+        const replacements = { ...dateReplacements }; // Initialize replacements with dateReplacements
         if (branch_id) {
             branchFilter = " AND :branch_id = ANY(v.visibilities)";
-            branchReplacements = { branch_id: parseInt(branch_id) };
+            replacements.branch_id = parseInt(branch_id);
         }
 
-        const replacements = { ...dateReplacements, ...branchReplacements };
-
-        // 1. Total Vendor Count
-        const totalVendorQuery = `
+        // 1. Total Vendors
+        const totalVendorsQuery = `
       SELECT COUNT(DISTINCT v.id) as total_vendors
       FROM vendors v
       WHERE v.deleted_at IS NULL
       ${branchFilter}
     `;
 
-        // 2. Active Vendor Count
-        const activeVendorQuery = `
+        // 2. Active Vendors
+        const activeVendorsQuery = `
       SELECT COUNT(DISTINCT v.id) as active_vendors
       FROM vendors v
-      WHERE v.status = 'Active' 
-        AND v.deleted_at IS NULL
+      WHERE v.deleted_at IS NULL
+        AND v.status = 'Active'
       ${branchFilter}
     `;
 
@@ -426,17 +858,17 @@ const getVendorDashboard = async (req, res) => {
 
         // Execute all queries in parallel
         const [
-            [totalVendorResult],
-            [activeVendorResult],
-            [outstandingResult],
+            totalVendorResult,
+            activeVendorResult,
+            outstandingResult,
             salesContribution,
             purchaseByMaterial,
         ] = await Promise.all([
-            sequelize.query(totalVendorQuery, {
+            sequelize.query(totalVendorsQuery, {
                 replacements,
                 type: sequelize.QueryTypes.SELECT,
             }),
-            sequelize.query(activeVendorQuery, {
+            sequelize.query(activeVendorsQuery, {
                 replacements,
                 type: sequelize.QueryTypes.SELECT,
             }),
@@ -453,8 +885,8 @@ const getVendorDashboard = async (req, res) => {
         ]);
 
         // Format outstanding payables
-        const totalGrnAmount = parseFloat(outstandingResult.total_grn_amount) || 0;
-        const totalPayments = parseFloat(outstandingResult.total_payments) || 0;
+        const totalGrnAmount = parseFloat(outstandingResult[0].total_grn_amount) || 0;
+        const totalPayments = parseFloat(outstandingResult[0].total_payments) || 0;
         const outstandingPayables = totalGrnAmount - totalPayments;
 
         // Format vendor sales contribution
@@ -469,15 +901,12 @@ const getVendorDashboard = async (req, res) => {
         }));
 
         // Format purchase by material with percentages
-        const totalWeight = purchaseByMaterial[0].reduce(
-            (sum, material) => sum + parseFloat(material.total_weight),
-            0
-        );
+        const materials = purchaseByMaterial[0];
+        const totalWeight = materials.reduce((sum, m) => sum + parseFloat(m.total_weight), 0);
 
-        const formattedMaterials = purchaseByMaterial[0].map((material) => {
+        const formattedMaterials = materials.map((material) => {
             const weight = parseFloat(material.total_weight);
             const percentage = totalWeight > 0 ? (weight / totalWeight) * 100 : 0;
-
             return {
                 id: material.id,
                 material_type: material.material_type,
@@ -490,13 +919,13 @@ const getVendorDashboard = async (req, res) => {
         // Return comprehensive dashboard data
         return commonService.okResponse(res, {
             filters: {
-                branch_id: branch_id || null,
+                branch_id: branch_id ? parseInt(branch_id) : null,
                 start_date: start_date || null,
                 end_date: end_date || null,
             },
             metrics: {
-                total_vendors: parseInt(totalVendorResult.total_vendors),
-                active_vendors: parseInt(activeVendorResult.active_vendors),
+                total_vendors: parseInt(totalVendorResult[0].total_vendors),
+                active_vendors: parseInt(activeVendorResult[0].active_vendors),
                 outstanding_payables: {
                     amount: outstandingPayables.toFixed(2),
                     total_grn_amount: totalGrnAmount.toFixed(2),
@@ -522,5 +951,8 @@ module.exports = {
     getPurchaseByMaterialType,
     getTopBuyingCategories,
     getTransactionHistory,
+    getVendorList,
+    getVendorOverview,
+    getVendorPurchaseByCategory,
     getVendorDashboard,
 };

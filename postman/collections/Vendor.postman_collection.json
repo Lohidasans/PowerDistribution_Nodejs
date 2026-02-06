@@ -1,0 +1,174 @@
+{
+  "info": {
+    "_postman_id": "2fc809ce-2de6-4b22-ba8f-41a0f4805a95",
+    "name": "Vendor",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Vender List",
+      "id": "2eca03a6-5c3b-43f2-ab52-0592701a0569",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/vendor-analytics/vendor-list?page=1&limit=10",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "vendor-analytics",
+            "vendor-list"
+          ],
+          "query": [
+            {
+              "key": "page",
+              "value": "1",
+              "uuid": "69afc1de-5fc9-4676-83f9-6eca4c8d21aa"
+            },
+            {
+              "key": "limit",
+              "value": "10",
+              "uuid": "86e94a64-0abb-4b2b-b88c-d626bf63e563"
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Vender Wise Dashboard",
+      "id": "e989c829-b644-4ede-b7f9-42a415c2e607",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/vendor-analytics/vendor-overview?vendor_id=2&start_date=2025-01-05&end_date=2025-06-30&period=monthly",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "vendor-analytics",
+            "vendor-overview"
+          ],
+          "query": [
+            {
+              "key": "vendor_id",
+              "value": "2",
+              "uuid": "8d8a033b-ae59-40fa-a118-aa8d2c54450f"
+            },
+            {
+              "key": "start_date",
+              "value": "2025-01-05",
+              "uuid": "85cee7f2-a5df-4345-8bbd-491a55bdb562"
+            },
+            {
+              "key": "end_date",
+              "value": "2025-06-30",
+              "uuid": "5eaf84aa-ec72-4d12-a9bb-942c9fb362bf"
+            },
+            {
+              "key": "period",
+              "value": "monthly",
+              "description": "yearly,monthly",
+              "uuid": "6bbb1a83-f85b-49ae-a6ce-f799dc0f7a2d"
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Vendor Purchase By Category",
+      "id": "edb471bf-1ce2-47ce-b1ac-a07961782ae7",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/vendor-analytics/vendor-purchase-by-category?vendor_id=1&period=monthly",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "vendor-analytics",
+            "vendor-purchase-by-category"
+          ],
+          "query": [
+            {
+              "key": "vendor_id",
+              "value": "1",
+              "uuid": "262c7072-9996-46ba-9f6a-c0e105c1a11a"
+            },
+            {
+              "key": "period",
+              "value": "monthly",
+              "description": "yearly,monthly",
+              "uuid": "13a070b1-cb93-4dd3-bff9-39c01a70fcbd"
+            },
+            {
+              "key": "start_date",
+              "value": "2025-01-01",
+              "disabled": true
+            },
+            {
+              "key": "end_date",
+              "value": "2025-12-31",
+              "disabled": true
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Vendor Purchase History",
+      "id": "803054d5-6ee3-4a27-8d56-ee6a5d70b42b",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/vendor-analytics/transaction-history?vendor_id=1&page=1&limit=10",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "vendor-analytics",
+            "transaction-history"
+          ],
+          "query": [
+            {
+              "key": "vendor_id",
+              "value": "1",
+              "uuid": "031eeb7f-2749-4653-bedd-fc5eaba3e424"
+            },
+            {
+              "key": "page",
+              "value": "1"
+            },
+            {
+              "key": "limit",
+              "value": "10"
+            }
+          ]
+        }
+      },
+      "response": []
+    }
+  ],
+  "variable": [
+    {
+      "id": "2558bf8f-0a0d-4048-aedf-14a29f035e48",
+      "key": "baseUrl",
+      "value": "",
+      "type": "default"
+    }
+  ]
+}

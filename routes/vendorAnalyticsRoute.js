@@ -37,6 +37,18 @@ vendorAnalyticsRouter.get(
     "/vendor-analytics/transaction-history",
     vendorAnalyticsService.getTransactionHistory
 );
+vendorAnalyticsRouter.get(
+    "/vendor-analytics/vendor-list",
+    vendorAnalyticsService.getVendorList
+);
+vendorAnalyticsRouter.get(
+    "/vendor-analytics/vendor-overview",
+    vendorAnalyticsService.getVendorOverview
+);
+vendorAnalyticsRouter.get(
+    "/vendor-analytics/vendor-purchase-by-category",
+    vendorAnalyticsService.getVendorPurchaseByCategory
+);
 
 module.exports = vendorAnalyticsRouter;
 
@@ -507,4 +519,294 @@ module.exports = vendorAnalyticsRouter;
  *                         totalPages:
  *                           type: integer
  *                           example: 5
+ */
+
+/**
+ * @openapi
+ * /api/v1/vendor-analytics/vendor-list:
+ *   get:
+ *     summary: Get vendor list
+ *     description: Returns list of vendors with purchase summary (total purchase, total paid, outstanding), with pagination and filters
+ *     tags: [Vendor Analytics]
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Page number for pagination
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *         description: Number of records per page
+ *       - in: query
+ *         name: material_type
+ *         schema:
+ *           type: integer
+ *         description: Filter by material type ID
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Search by vendor name or vendor code
+ *       - in: query
+ *         name: branch_id
+ *         schema:
+ *           type: integer
+ *         description: Filter by branch ID
+ *     responses:
+ *       200:
+ *         description: OK
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 statusCode:
+ *                   type: integer
+ *                   example: 200
+ *                 message:
+ *                   type: string
+ *                   example: "Success"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     vendors:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                             example: 1
+ *                           vendor_code:
+ *                             type: string
+ *                             example: "VEN 01/24-25"
+ *                           vendor_name:
+ *                             type: string
+ *                             example: "Golden Hub Pvt., Ltd."
+ *                           vendor_image_url:
+ *                             type: string
+ *                             example: "https://example.com/logo.png"
+ *                           status:
+ *                             type: string
+ *                             example: "Active"
+ *                           total_purchase:
+ *                             type: string
+ *                             example: "150000.00"
+ *                           total_paid:
+ *                             type: string
+ *                             example: "120000.00"
+ *                           outstanding:
+ *                             type: string
+ *                             example: "30000.00"
+ *                           branch:
+ *                             type: string
+ *                             example: "Chennai"
+ *                     pagination:
+ *                       type: object
+ *                       properties:
+ *                         page:
+ *                           type: integer
+ *                           example: 1
+ *                         limit:
+ *                           type: integer
+ *                           example: 10
+ *                         total:
+ *                           type: integer
+ *                           example: 50
+ *                         totalPages:
+ *                           type: integer
+ *                           example: 5
+ */
+
+/**
+ * @openapi
+ * /api/v1/vendor-analytics/vendor-overview:
+ *   get:
+ *     summary: Get vendor overview/details
+ *     description: Returns comprehensive vendor metrics including purchase orders, GRN values, returns, payments, and monthly purchase chart data
+ *     tags: [Vendor Analytics]
+ *     parameters:
+ *       - in: query
+ *         name: vendor_id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Vendor ID (required)
+ *       - in: query
+ *         name: start_date
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Filter from this date (YYYY-MM-DD)
+ *       - in: query
+ *         name: end_date
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Filter until this date (YYYY-MM-DD)
+ *     responses:
+ *       200:
+ *         description: OK
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 statusCode:
+ *                   type: integer
+ *                   example: 200
+ *                 message:
+ *                   type: string
+ *                   example: "Success"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     vendor_info:
+ *                       type: object
+ *                       properties:
+ *                         id:
+ *                           type: integer
+ *                           example: 1
+ *                         vendor_code:
+ *                           type: string
+ *                           example: "VEN1023"
+ *                         vendor_name:
+ *                           type: string
+ *                           example: "Golden Hub Pvt., Ltd."
+ *                         vendor_image_url:
+ *                           type: string
+ *                           example: "https://example.com/logo.png"
+ *                         proprietor_name:
+ *                           type: string
+ *                           example: "Sarath Kumar"
+ *                         mobile:
+ *                           type: string
+ *                           example: "+91 96358 95968"
+ *                         address:
+ *                           type: string
+ *                           example: "123 Main Street, Bangalore"
+ *                     metrics:
+ *                       type: object
+ *                       properties:
+ *                         purchase_order:
+ *                           type: string
+ *                           example: "2525.00 g"
+ *                         grn_value:
+ *                           type: string
+ *                           example: "2510.00 g"
+ *                         purchase_order_value:
+ *                           type: string
+ *                           example: "1552550.00"
+ *                         total_amount_paid:
+ *                           type: string
+ *                           example: "1245550.00"
+ *                         outstanding_amount:
+ *                           type: string
+ *                           example: "345550.00"
+ *                     purchase_values:
+ *                       type: array
+ *                       description: Chart data grouped by period (all 12 months for monthly, all 7 days for weekly, or years for yearly)
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           label:
+ *                             type: string
+ *                             example: "JAN"
+ *                           value:
+ *                             type: string
+ *                             example: "125000.00"
+ *                     period:
+ *                       type: string
+ *                       example: "monthly"
+ *       400:
+ *         description: Bad Request - vendor_id is required
+ *       404:
+ *         description: Vendor not found
+ */
+
+/**
+ * @openapi
+ * /api/v1/vendor-analytics/vendor-purchase-by-category:
+ *   get:
+ *     summary: Get vendor purchase by category
+ *     description: Returns category-wise purchase breakdown for a specific vendor with weights and values
+ *     tags: [Vendor Analytics]
+ *     parameters:
+ *       - in: query
+ *         name: vendor_id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Vendor ID (required)
+ *       - in: query
+ *         name: period
+ *         schema:
+ *           type: string
+ *           enum: [monthly, yearly, weekly]
+ *           default: monthly
+ *         description: Time period filter (for future use)
+ *       - in: query
+ *         name: start_date
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Filter from this date (YYYY-MM-DD)
+ *       - in: query
+ *         name: end_date
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Filter until this date (YYYY-MM-DD)
+ *     responses:
+ *       200:
+ *         description: OK
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 statusCode:
+ *                   type: integer
+ *                   example: 200
+ *                 message:
+ *                   type: string
+ *                   example: "Success"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     categories:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                             example: 1
+ *                           category_name:
+ *                             type: string
+ *                             example: "Necklace"
+ *                           category_image_url:
+ *                             type: string
+ *                             example: "https://example.com/necklace.png"
+ *                           weight:
+ *                             type: string
+ *                             example: "180.00 Kg"
+ *                           total_value:
+ *                             type: string
+ *                             example: "2500000.00"
+ *                           item_count:
+ *                             type: integer
+ *                             example: 45
+ *                     period:
+ *                       type: string
+ *                       example: "monthly"
+ *                     total_categories:
+ *                       type: integer
+ *                       example: 9
+ *       400:
+ *         description: Bad Request - vendor_id is required
  */
