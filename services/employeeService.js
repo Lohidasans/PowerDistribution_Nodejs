@@ -51,6 +51,10 @@ const createEmployee = async (req, res) => {
       await transaction.rollback();
       return commonService.badRequest(res, "Employee number already exists.");
     }
+
+    // Generate 4-digit random integer for ref_employee_id
+    const ref_employee_id = Math.floor(1000 + Math.random() * 9000);
+
     // Create employee
     const employee = await models.Employee.create(
       {
@@ -65,6 +69,7 @@ const createEmployee = async (req, res) => {
         date_of_birth,
         branch_id,
         status,
+        ref_employee_id,
       },
       { transaction }
     );
