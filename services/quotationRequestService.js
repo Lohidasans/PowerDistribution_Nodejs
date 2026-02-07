@@ -798,6 +798,8 @@ const getVendorQuotationById = async (req, res) => {
         q.remarks AS quotation_remarks,
         v.vendor_name,
         v.vendor_image_url,
+        v.state_id,
+        v.district_id,
         v.address AS vendor_address,
         v.pin_code AS vendor_pincode,
         s.state_name AS vendor_state,
