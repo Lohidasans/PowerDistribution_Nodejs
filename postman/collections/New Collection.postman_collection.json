@@ -1,0 +1,117 @@
+{
+  "info": {
+    "_postman_id": "344c1902-1e86-4f65-8c99-4c087b7f8d71",
+    "name": "Device APIS",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Device Infos",
+      "item": [
+        {
+          "name": "Create Device Info",
+          "id": "c236579a-3401-4816-81b0-29fd7048cff9",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"device_name\": \"Main Gate\",\n  \"mac_address\": \"00:1B:44:11:3A:B7\",\n  \"devices\": \"Face Recognition, Card\",\n  \"ip_address\": \"192.168.1.21\",\n  \"branch_id\": 2\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/device-info",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "device-info"
+              ]
+            },
+            "description": "Create a new device info record. Required fields: device_name and branch_id"
+          },
+          "response": []
+        },
+        {
+          "name": "List Device Infos (All)",
+          "id": "b2d2b019-70d2-4c5c-a840-cef45683e37f",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/device-info?page=1&limit=10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "device-info"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Page number (default: 1)"
+                },
+                {
+                  "key": "limit",
+                  "value": "10",
+                  "description": "Items per page (default: 10)"
+                }
+              ]
+            },
+            "description": "Get all device infos with pagination"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Device Info",
+          "id": "b8e84975-5537-4724-893e-631da24e58b3",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"device_name\": \"Main Gate\",\n  \"mac_address\": \"00:1B:44:11:3A:B7\",\n  \"devices\": \"Face Recognition, Card\",\n  \"ip_address\": \"192.168.1.21\",\n  \"branch_id\": 2\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/device-info/1",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "device-info",
+                "1"
+              ]
+            },
+            "description": "Update an existing device info record"
+          },
+          "response": []
+        }
+      ],
+      "id": "64ef7339-7f68-43e6-9e08-f080aad996c3"
+    }
+  ],
+  "variable": [
+    {
+      "id": "93293d7f-5715-44ec-9df1-b5ecc74d1864",
+      "key": "base_url",
+      "value": "",
+      "type": "default"
+    }
+  ]
+}

@@ -1,0 +1,138 @@
+{
+  "info": {
+    "_postman_id": "a57dbdfc-7529-40db-990e-b44c6903a06b",
+    "name": "Device Enrollment API",
+    "description": "Postman collection for Device Enrollment and Assignment endpoints",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Enroll User to Device",
+      "id": "0d823a73-2a3a-4a51-ac54-1a43e716ed95",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"user_id\": \"EMP001\",\n  \"enroll_type\": \"Face Recognition\",\n  \"device_id\": \"RJT_DEV_001\",\n  \"type\": \"Employee\",\n  \"created_id\": \"ADMIN001\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/enroll-user",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "enroll-user"
+          ]
+        },
+        "description": "Enroll a user (employee) to a device with face recognition or card enrollment"
+      },
+      "response": []
+    },
+    {
+      "name": "Enroll User with Card",
+      "id": "5a7e6294-d7f9-4dda-bf25-7efec13014d2",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"user_id\": \"EMP002\",\n  \"enroll_type\": \"Card\",\n  \"device_id\": \"RJT_DEV_001\",\n  \"type\": \"Employee\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/enroll-user",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "enroll-user"
+          ]
+        },
+        "description": "Enroll a user with card-based enrollment"
+      },
+      "response": []
+    },
+    {
+      "name": "Assign Device to User",
+      "id": "29084d3b-0548-4723-88c1-d218242a32b8",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"employee_id\": \"EMP001\",\n  \"type\": \"Employee\",\n  \"device_id\": [\"RJT_DEV_001\", \"RJT_DEV_002\"],\n  \"ref_employee_id\": \"REF001\",\n  \"name\": \"John Doe\",\n  \"enroll_type\": [\"Face Recognition\", \"Card\"]\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/assign-device",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "assign-device"
+          ]
+        },
+        "description": "Assign multiple devices to a user with multiple enrollment types"
+      },
+      "response": []
+    },
+    {
+      "name": "Assign Single Device",
+      "id": "518d4006-927e-4def-8b52-30a4f6e560ed",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"employee_id\": \"EMP003\",\n  \"type\": \"Employee\",\n  \"device_id\": [\"RJT_DEV_001\"],\n  \"ref_employee_id\": \"REF003\",\n  \"name\": \"Jane Smith\",\n  \"enroll_type\": [\"Face Recognition\"]\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/assign-device",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "assign-device"
+          ]
+        },
+        "description": "Assign a single device to a user with face recognition only"
+      },
+      "response": []
+    }
+  ],
+  "variable": [
+    {
+      "id": "dc10836e-ba13-4a36-a7b6-a0976a2b5ab8",
+      "key": "base_url",
+      "value": "http://localhost:5000",
+      "type": "string"
+    }
+  ]
+}

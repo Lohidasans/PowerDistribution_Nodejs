@@ -91,7 +91,7 @@ const listDeviceInfos = async (req, res) => {
         {
           model: models.Branch,
           as: "branch",
-          attributes: ["id", "branch_name", "branch_code"],
+          attributes: ["id", "branch_name", "branch_no"],
         },
       ],
       limit: parseInt(limit),
@@ -129,7 +129,7 @@ const getDeviceInfoById = async (req, res) => {
         {
           model: models.Branch,
           as: "branch",
-          attributes: ["id", "branch_name", "branch_code"],
+          attributes: ["id", "branch_name", "branch_no"],
         },
       ],
     });
@@ -250,9 +250,9 @@ const deleteDeviceInfo = async (req, res) => {
 const deviceInfoDropdownList = async (req, res) => {
   try {
     const { branch_id } = req.query;
-    
+
     const whereCondition = {};
-    
+
     if (branch_id) {
       whereCondition.branch_id = branch_id;
     }

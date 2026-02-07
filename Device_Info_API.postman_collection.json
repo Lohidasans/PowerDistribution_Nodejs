@@ -1,0 +1,299 @@
+{
+    "info": {
+        "_postman_id": "device-info-api-collection",
+        "name": "Device Info API",
+        "description": "Complete Postman collection for Device Info management endpoints",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+        {
+            "name": "Create Device Info",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"device_name\": \"Main Counter Printer\",\n  \"mac_address\": \"00:1B:44:11:3A:B7\",\n  \"devices\": \"Thermal Printer\",\n  \"ip_address\": \"192.168.1.100\",\n  \"branch_id\": 1\n}"
+                },
+                "url": {
+                    "raw": "{{base_url}}/api/v1/device-info",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "api",
+                        "v1",
+                        "device-info"
+                    ]
+                },
+                "description": "Create a new device info record. Required fields: device_name and branch_id"
+            },
+            "response": []
+        },
+        {
+            "name": "List Device Infos (All)",
+            "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                    "raw": "{{base_url}}/api/v1/device-info?page=1&limit=10",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "api",
+                        "v1",
+                        "device-info"
+                    ],
+                    "query": [
+                        {
+                            "key": "page",
+                            "value": "1",
+                            "description": "Page number (default: 1)"
+                        },
+                        {
+                            "key": "limit",
+                            "value": "10",
+                            "description": "Items per page (default: 10)"
+                        }
+                    ]
+                },
+                "description": "Get all device infos with pagination"
+            },
+            "response": []
+        },
+        {
+            "name": "List Device Infos (With Search)",
+            "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                    "raw": "{{base_url}}/api/v1/device-info?page=1&limit=10&search=printer",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "api",
+                        "v1",
+                        "device-info"
+                    ],
+                    "query": [
+                        {
+                            "key": "page",
+                            "value": "1"
+                        },
+                        {
+                            "key": "limit",
+                            "value": "10"
+                        },
+                        {
+                            "key": "search",
+                            "value": "printer",
+                            "description": "Search by device_name, mac_address, or ip_address"
+                        }
+                    ]
+                },
+                "description": "Search device infos by device name, MAC address, or IP address"
+            },
+            "response": []
+        },
+        {
+            "name": "List Device Infos (By Branch)",
+            "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                    "raw": "{{base_url}}/api/v1/device-info?branch_id=1&page=1&limit=10",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "api",
+                        "v1",
+                        "device-info"
+                    ],
+                    "query": [
+                        {
+                            "key": "branch_id",
+                            "value": "1",
+                            "description": "Filter by branch ID"
+                        },
+                        {
+                            "key": "page",
+                            "value": "1"
+                        },
+                        {
+                            "key": "limit",
+                            "value": "10"
+                        }
+                    ]
+                },
+                "description": "Get device infos filtered by branch ID"
+            },
+            "response": []
+        },
+        {
+            "name": "Get Device Info Dropdown",
+            "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                    "raw": "{{base_url}}/api/v1/device-info/dropdown",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "api",
+                        "v1",
+                        "device-info",
+                        "dropdown"
+                    ]
+                },
+                "description": "Get simplified device info list for dropdowns (id, device_name, ip_address, branch_id)"
+            },
+            "response": []
+        },
+        {
+            "name": "Get Device Info Dropdown (By Branch)",
+            "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                    "raw": "{{base_url}}/api/v1/device-info/dropdown?branch_id=1",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "api",
+                        "v1",
+                        "device-info",
+                        "dropdown"
+                    ],
+                    "query": [
+                        {
+                            "key": "branch_id",
+                            "value": "1",
+                            "description": "Filter dropdown by branch ID"
+                        }
+                    ]
+                },
+                "description": "Get device info dropdown filtered by branch"
+            },
+            "response": []
+        },
+        {
+            "name": "Get Device Info by ID",
+            "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                    "raw": "{{base_url}}/api/v1/device-info/1",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "api",
+                        "v1",
+                        "device-info",
+                        "1"
+                    ]
+                },
+                "description": "Get a specific device info by ID"
+            },
+            "response": []
+        },
+        {
+            "name": "Update Device Info",
+            "request": {
+                "method": "PUT",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"device_name\": \"Updated Counter Printer\",\n  \"mac_address\": \"00:1B:44:11:3A:B8\",\n  \"devices\": \"Thermal Printer - Updated\",\n  \"ip_address\": \"192.168.1.101\",\n  \"branch_id\": 1\n}"
+                },
+                "url": {
+                    "raw": "{{base_url}}/api/v1/device-info/1",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "api",
+                        "v1",
+                        "device-info",
+                        "1"
+                    ]
+                },
+                "description": "Update an existing device info record"
+            },
+            "response": []
+        },
+        {
+            "name": "Update Device Info (Partial)",
+            "request": {
+                "method": "PUT",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"ip_address\": \"192.168.1.105\"\n}"
+                },
+                "url": {
+                    "raw": "{{base_url}}/api/v1/device-info/1",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "api",
+                        "v1",
+                        "device-info",
+                        "1"
+                    ]
+                },
+                "description": "Partial update - only update specific fields"
+            },
+            "response": []
+        },
+        {
+            "name": "Delete Device Info",
+            "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                    "raw": "{{base_url}}/api/v1/device-info/1",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "api",
+                        "v1",
+                        "device-info",
+                        "1"
+                    ]
+                },
+                "description": "Soft delete a device info record"
+            },
+            "response": []
+        }
+    ],
+    "variable": [
+        {
+            "key": "base_url",
+            "value": "http://localhost:5000",
+            "type": "string"
+        }
+    ]
+}

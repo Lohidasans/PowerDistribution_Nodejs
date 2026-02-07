@@ -1,6 +1,6 @@
 module.exports = (sequelize, DataTypes) => {
-    const DeviceInfo = sequelize.define(
-        "device_infos",
+    const EnrollDeviceDetails = sequelize.define(
+        "enroll_device_details",
         {
             id: {
                 allowNull: false,
@@ -8,33 +8,25 @@ module.exports = (sequelize, DataTypes) => {
                 primaryKey: true,
                 type: DataTypes.INTEGER,
             },
-            device_name: {
-                type: DataTypes.STRING,
-                allowNull: false,
-            },
-            mac_address: {
+            device_id: {
                 type: DataTypes.STRING,
                 allowNull: true,
             },
-            devices: {
+            user_id: {
                 type: DataTypes.STRING,
                 allowNull: true,
             },
-            ip_address: {
+            user_type: {
                 type: DataTypes.STRING,
                 allowNull: true,
             },
-            branch_id: {
-                type: DataTypes.INTEGER,
-                allowNull: false,
-            },
-            devices_id: {
+            enroll_type: {
                 type: DataTypes.STRING,
                 allowNull: true,
             },
         },
         {
-            tableName: "device_infos",
+            tableName: "enroll_device_details",
             timestamps: true,
             createdAt: "created_at",
             updatedAt: "updated_at",
@@ -43,12 +35,5 @@ module.exports = (sequelize, DataTypes) => {
         }
     );
 
-    DeviceInfo.associate = (models) => {
-        DeviceInfo.belongsTo(models.Branch, {
-            foreignKey: "branch_id",
-            as: "branch",
-        });
-    };
-
-    return DeviceInfo;
+    return EnrollDeviceDetails;
 };

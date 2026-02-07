@@ -178,6 +178,11 @@ const JournalEntryItem = require("./journalEntryItems")(sequelize, Sequelize.Dat
 const AssetManagement = require("./assetManagement")(sequelize, Sequelize.DataTypes);
 const MaintenanceHistory = require("./maintenanceHistory")(sequelize, Sequelize.DataTypes);
 
+const DeviceInfo = require("./deviceInfos")(sequelize, Sequelize.DataTypes);
+const EmployeeTracking = require("./employeeTracking")(sequelize, Sequelize.DataTypes);
+const EnrollDeviceDetails = require("./enrollDeviceDetails")(sequelize, Sequelize.DataTypes);
+const UserNotification = require("./userNotifications")(sequelize, Sequelize.DataTypes);
+
 const models = {
   Permission,
   Role,
@@ -259,7 +264,7 @@ const models = {
   PaymentMode,
   VendorPayment,
   EmployeePermission,
-  Order, 
+  Order,
   OrderItem,
   CartWishlistItem,
   CustomerAddress,
@@ -276,7 +281,11 @@ const models = {
   JournalEntry,
   JournalEntryItem,
   AssetManagement,
-  MaintenanceHistory
+  MaintenanceHistory,
+  DeviceInfo,
+  EmployeeTracking,
+  EnrollDeviceDetails,
+  UserNotification
 };
 
 Object.values(models).forEach((model) => {
