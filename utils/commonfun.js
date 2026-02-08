@@ -79,9 +79,8 @@ const insertRecords = async (records, deviceId, role) => {
     const values = [];
     const valuePlaceholders = records.map((_, i) => {
       values.push(_.detail1, _.seqNo, _.date, _.time, deviceId);
-      return `($${values.length - 4}, $${values.length - 3}, $${
-        values.length - 2
-      }, $${values.length - 1}, $${values.length})`;
+      return `($${values.length - 4}, $${values.length - 3}, $${values.length - 2
+        }, $${values.length - 1}, $${values.length})`;
     });
 
     query += valuePlaceholders.join(", ") + " RETURNING *;";
@@ -159,15 +158,20 @@ const parseData = (data) => {
 };
 
 const getDeviceInfo = async (deviceId) => {
+  console.log("[getDeviceInfo] Querying device info for device_id:", deviceId);
   try {
     const res = await pgClient.query(
       "SELECT * FROM device_infos WHERE device_id = $1",
       [deviceId]
     );
-    // console.log(res.rows);
+    console.log("[getDeviceInfo] Query result:", res.rows);
+    console.log("[getDeviceInfo] Number of rows returned:", res.rowCount);
     return res.rows;
   } catch (err) {
-    console.error(err);
+    console.error("[getDeviceInfo] ERROR in database query:", err);
+    console.error("[getDeviceInfo] Error message:", err.message);
+    console.error("[getDeviceInfo] Error stack:", err.stack);
+    throw err; // Re-throw the error so caller can handle it
   }
 };
 
@@ -332,7 +336,7 @@ const updateUserProfileOnDevices = async (
   deviceIds,
   type
 ) => {
- 
+
   try {
     const updatePromises = deviceIds.map(async (deviceId) => {
       const deviceInfo = await getDeviceInfo(deviceId);

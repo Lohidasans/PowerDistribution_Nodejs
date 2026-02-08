@@ -47,16 +47,26 @@ const matrixDeviceApi = async (bashUrl) => {
     username: "admin",
     password: "1234",
   };
+  console.log("[matrixDeviceApi] Making request to:", bashUrl);
+  console.log("[matrixDeviceApi] Using auth credentials:", { username: auth.username, password: "****" });
+
   try {
     const response = await axios.get(bashUrl, {
       auth,
     });
+    console.log("[matrixDeviceApi] Request successful, status:", response.status);
     // console.log(response, "response");
     return {
       statusCode: 200,
       data: response.data,
     };
   } catch (error) {
+    console.error("[matrixDeviceApi] Request failed");
+    console.error("[matrixDeviceApi] Error status:", error.response ? error.response.status : "No response");
+    console.error("[matrixDeviceApi] Error message:", error.message);
+    if (error.response && error.response.status === 401) {
+      console.error("[matrixDeviceApi] 401 Unauthorized - Check device credentials (username/password)");
+    }
     return {
       statusCode: error.response ? error.response.status : 500,
       error: error.response ? error.response.data : error.message,

@@ -12,48 +12,83 @@ const { downloadS3Image } = require("../utils/downloadS3Image");
 
 const enrollUsers = async (req, res) => {
   try {
-    const { user_id, enroll_type, device_id, type, created_id } = req.body;
-    //user_id- employee_id , enroll_type -face recognition, card, device_id
-    const deviceInfo = await getDeviceInfo(device_id);
-    if (!deviceInfo?.length) {
-      return res.status(REST_API_STATUSCODE.notFound).send({
-        statusCode: REST_API_STATUSCODE.notFound,
-        message: "Device not found",
-      });
-    }
+    const { user_id, enroll_type, type, created_id } = req.body;
+    console.log("[enrollUsers] Starting enrollment process");
+    console.log("[enrollUsers] Request body:", { user_id, enroll_type, type, created_id });
 
-    const deviceIp = deviceInfo[0]?.ip_address;
+    //user_id- employee_id , enroll_type -face recognition, card, device_id
+    let device_id = "CJ_DEV_001"
+    console.log("[enrollUsers] Device ID:", device_id);
+
+    // TEMPORARILY SKIPPING getDeviceInfo for testing - database query appears to be hanging
+    console.log("[enrollUsers] Skipping getDeviceInfo call for testing purposes");
+    // console.log("[enrollUsers] Calling getDeviceInfo...");
+    // let deviceInfo;
+    // try {
+    //   deviceInfo = await getDeviceInfo(device_id);
+    //   console.log("[enrollUsers] Device info retrieved:", deviceInfo);
+    // } catch (error) {
+    //   console.error("[enrollUsers] ERROR in getDeviceInfo:", error);
+    //   console.error("[enrollUsers] Error details:", error.message);
+    //   console.error("[enrollUsers] Error stack:", error.stack);
+    //   throw error; // Re-throw to be caught by outer catch
+    // }
+    // if (!deviceInfo?.length) {
+    //   console.log("[enrollUsers] ERROR: Device not found");
+    //   return res.status(REST_API_STATUSCODE.notFound).send({
+    //     statusCode: REST_API_STATUSCODE.notFound,
+    //     message: "Device not found",
+    //   });
+    // }
+
+    // Hardcoded IP for testing purposes
+    const deviceIp = "192.168.1.23";
+    console.log("[enrollUsers] Device IP address (hardcoded for testing):", deviceIp);
 
     const createUserProfile = async (userDetails, refId) => {
+      console.log("[createUserProfile] Creating user profile:", { userDetails, refId });
       const createProfileUrl =
         deviceIp === "192.168.0.107"
           ? `http://${deviceIp}/device.cgi/users?action=set&user-id=${userDetails.id}&ref-user-id=${refId}&enable-fr=1&name=${userDetails.name}&user-active=0`
           : `http://${deviceIp}/device.cgi/users?action=set&user-id=${userDetails.id}&ref-user-id=${refId}&enable-fr=1&name=${userDetails.name}&user-active=1`;
-      return await matrixDeviceApi(createProfileUrl);
+      console.log("[createUserProfile] Profile URL:", createProfileUrl);
+      const result = await matrixDeviceApi(createProfileUrl);
+      console.log("[createUserProfile] API response:", result);
+      return result;
     };
 
     //Enroll user
     const enrollUser = async (userType, enrollParams) => {
+      console.log("[enrollUser] Starting enrollment:", { userType, enrollParams });
       const url = `http://${deviceIp}/device.cgi/enrolluser?action=enroll&user-id=${user_id}&${enrollParams}`;
+      console.log("[enrollUser] Enrollment URL:", url);
       const response = await matrixDeviceApi(url);
+      console.log("[enrollUser] Enrollment API response:", response);
       if (response.statusCode === REST_API_STATUSCODE.ok) {
+        console.log("[enrollUser] Enrollment successful, checking database records");
         // Check and insert enrollment details if not present
         const getEnrollDetails = await pgClient.query(
           `SELECT * FROM enroll_device_details WHERE user_id = $1 AND device_id = $2 AND enroll_type = $3`,
           [user_id, device_id, enroll_type]
         );
+        console.log("[enrollUser] Existing enrollment records:", getEnrollDetails.rowCount);
 
         if (getEnrollDetails.rowCount === 0) {
+          console.log("[enrollUser] Inserting new enrollment record");
           await pgClient.query(
-            `INSERT INTO enroll_device_details (device_id, user_id, user_type, enroll_type) VALUES ($1, $2, $3, $4)`,
+            `INSERT INTO enroll_device_details (device_id, user_id, user_type, enroll_type, created_at) VALUES ($1, $2, $3, $4, NOW())`,
             [device_id, user_id, userType, enroll_type]
           );
+          console.log("[enrollUser] Enrollment record inserted successfully");
+        } else {
+          console.log("[enrollUser] Enrollment record already exists, skipping insert");
         }
         if (type === "Employee") {
+          console.log("[enrollUser] Updating employee record");
           const updateQuery = await pgClient.query(
             `UPDATE employees 
    SET device_id = $1, is_enrolled = $2, enroll_type = $3
-   WHERE employee_id = $4
+   WHERE employee_no = $4
    RETURNING *`,
             [
               `{${Array.isArray(device_id) ? device_id.join(",") : device_id}}`,
@@ -63,70 +98,17 @@ const enrollUsers = async (req, res) => {
               user_id,
             ]
           );
+          console.log("[enrollUser] Employee record updated:", updateQuery.rowCount, "rows affected");
         }
-        //       } else if (type === "AdminUser") {
-        //         const updateQuery = await pgClient.query(
-        //           `UPDATE users 
-        //  SET device_id = $1, is_enrolled = $2, enroll_type = $3
-        //  WHERE user_id = $4
-        //  RETURNING *`,
-        //           [
-        //             `{${Array.isArray(device_id) ? device_id.join(",") : device_id}}`,
-        //             true,
-        //             `{${Array.isArray(enroll_type) ? enroll_type.join(",") : enroll_type
-        //             }}`,
-        //             user_id,
-        //           ]
-        //         );
-        //       } else if (type === "Guest") {
-        //         const updateQuery = await pgClient.query(
-        //           `UPDATE guests
-        //  SET device_id = $1, is_enrolled = $2, enroll_type = $3
-        //  WHERE guest_id = $4
-        //  RETURNING *`,
-        //           [
-        //             `{${Array.isArray(device_id) ? device_id.join(",") : device_id}}`,
-        //             true,
-        //             `{${Array.isArray(enroll_type) ? enroll_type.join(",") : enroll_type
-        //             }}`,
-        //             user_id,
-        //           ]
-        //         );
-        //       } else if (type === "Relations") {
-        //         const updateQuery = await pgClient.query(
-        //           `UPDATE relations
-        //  SET device_id = $1, is_enrolled = $2, enroll_type = $3
-        //  WHERE relation_id = $4
-        //  RETURNING *`,
-        //           [
-        //             `{${Array.isArray(device_id) ? device_id.join(",") : device_id}}`,
-        //             true,
-        //             `{${Array.isArray(enroll_type) ? enroll_type.join(",") : enroll_type
-        //             }}`,
-        //             user_id,
-        //           ]
-        //         );
-        //       } else if (type === "GuestCard") {
-        //         const updateQuery = await pgClient.query(
-        //           `UPDATE guest_cards
-        //  SET device_id = $1, is_enrolled = $2, enroll_type = $3
-        //  WHERE guest_id = $4
-        //  RETURNING *`,
-        //           [
-        //             `{${Array.isArray(device_id) ? device_id.join(",") : device_id}}`,
-        //             true,
-        //             `{${Array.isArray(enroll_type) ? enroll_type.join(",") : enroll_type
-        //             }}`,
-        //             user_id,
-        //           ]
-        //         );
-        //       }
 
+
+        console.log("[enrollUser] Enrollment process completed successfully");
         return res.status(response.statusCode).send({
           statusCode: response.statusCode,
           message: "Successfully enrolled user in the device",
         });
       } else {
+        console.log("[enrollUser] ERROR: Enrollment failed with status:", response.statusCode);
         return res.status(response.statusCode).send({
           statusCode: response.statusCode,
           message: "Failed to enroll user in the device",
@@ -135,37 +117,73 @@ const enrollUsers = async (req, res) => {
     };
 
     const uploadProfile = async (userId, imageUrl, deviceIP) => {
+      console.log("[uploadProfile] Uploading profile image:", { userId, imageUrl, deviceIP });
       await uploadProfileImage({
         employeeId: userId,
         fileName: `${imageUrl}.jpg`,
         deviceIP,
       });
+      console.log("[uploadProfile] Profile image uploaded successfully");
     };
 
     // Fetch user details and process based on type
     let userDetails;
+    console.log("[enrollUsers] Processing user type:", type);
     switch (type.toLowerCase()) {
       case "employee":
-        // console.log("executing uploadProfileImage");
-        userDetails = await pgClient.query(
-          `SELECT * FROM employees WHERE employee_id = $1`,
-          [user_id]
-        );
-        await downloadS3Image(
-          userDetails.rows[0].image_url,
-          `${userDetails.rows[0].employee_id}.jpg`
-        );
+        console.log("[enrollUsers] Fetching employee details for user_id:", user_id);
+        try {
+          console.log("[enrollUsers] Executing employee query...");
+          userDetails = await pgClient.query(
+            `SELECT * FROM employees WHERE employee_no = $1`,
+            [user_id]
+          );
+          console.log("[enrollUsers] Employee query completed successfully");
+          console.log("[enrollUsers] Employee query result:", userDetails.rowCount, "rows found");
+
+          if (userDetails.rowCount === 0) {
+            console.log("[enrollUsers] ERROR: No employee found with ID:", user_id);
+            return res.status(REST_API_STATUSCODE.notFound).send({
+              statusCode: REST_API_STATUSCODE.notFound,
+              message: "Employee not found",
+            });
+          }
+
+          console.log("[enrollUsers] Employee data:", userDetails.rows[0]);
+          console.log("[enrollUsers] Downloading S3 image:", userDetails.rows[0].image_url);
+        } catch (error) {
+          console.error("[enrollUsers] ERROR in employee query:", error);
+          console.error("[enrollUsers] Error message:", error.message);
+          console.error("[enrollUsers] Error stack:", error.stack);
+          return res.status(REST_API_STATUSCODE.serverError).send({
+            statusCode: REST_API_STATUSCODE.serverError,
+            message: "Database error while fetching employee details",
+            error: error.message
+          });
+        }
+
+        // Commented out for testing - no image processing needed
+        // await downloadS3Image(
+        //   userDetails.rows[0].image_url,
+        //   `${userDetails.rows[0].employee_no}.jpg`
+        // );
+        console.log("[enrollUsers] Skipping S3 image download for testing");
         if (!userDetails.rows.length) {
+          console.log("[enrollUsers] ERROR: Employee not found");
           return res.status(REST_API_STATUSCODE.notFound).send({
             statusCode: REST_API_STATUSCODE.notFound,
             message: "Employee not found",
           });
         }
         const employee = userDetails.rows[0];
+        console.log("[enrollUsers] Employee details:", { id: employee.employee_no, name: employee.employee_name });
         // imageUrl = employee.imageUrl;
-        await uploadProfile(user_id, user_id, device_id);
+        // Commented out for testing - no image upload needed
+        // await uploadProfile(user_id, user_id, device_id);
+        console.log("[enrollUsers] Skipping profile image upload for testing");
+        console.log("[enrollUsers] Creating user profile on device");
         await createUserProfile(
-          { id: employee.employee_id, name: employee.name },
+          { id: employee.employee_no, name: employee.employee_name },
           employee.ref_employee_id
         );
         // if (created_id) {
@@ -176,148 +194,25 @@ const enrollUsers = async (req, res) => {
         //     `Employee ${employee.name} has been enrolled successfully.`
         //   );
         // }
-        if (enroll_type === "Face Recognition") {
+        if (enroll_type === "face_recognition") {
+          console.log("[enrollUsers] Enrolling with Face Recognition");
           await enrollUser("Employee", "type=7&face-count=5");
         } else {
+          console.log("[enrollUsers] Enrolling with Card");
           await enrollUser("Employee", "type=0&card-count=0");
         }
         break;
 
-      // case "guest":
-      //   userDetails = await pgClient.query(
-      //     `SELECT * FROM guests WHERE guest_id = $1`,
-      //     [user_id]
-      //   );
-      //   if (!userDetails.rows.length) {
-      //     return res.status(REST_API_STATUSCODE.notFound).send({
-      //       statusCode: REST_API_STATUSCODE.notFound,
-      //       message: "Guest not found",
-      //     });
-      //   }
-      //   const guest = userDetails.rows[0];
-      //   await createUserProfile(
-      //     { id: guest.guest_id, name: guest.name },
-      //     guest.ref_guest_id
-      //   );
-      //   if (created_id) {
-      //     await sendUserNotification(
-      //       "Guest enrollment ",
-      //       created_id,
-      //       1,
-      //       `Guest ${guest.name} has been enrolled successfully.`
-      //     );
-      //   }
-      //   if (enroll_type === "Face Recognition") {
-      //     await enrollUser("Guest", "type=7&face-count=5");
-      //   } else {
-      //     await enrollUser("Guest", "type=0&card-count=0");
-      //   }
-      //   break;
-      // case "guestcard":
-      //   userDetails = await pgClient.query(
-      //     `SELECT * FROM guest_cards WHERE guest_id = $1`,
-      //     [user_id]
-      //   );
-      //   if (!userDetails.rows.length) {
-      //     return res.status(REST_API_STATUSCODE.notFound).send({
-      //       statusCode: REST_API_STATUSCODE.notFound,
-      //       message: "Guest not found",
-      //     });
-      //   }
-      //   const guestCard = userDetails.rows[0];
-      //   await createUserProfile(
-      //     { id: guestCard.guest_id, name: guestCard.name },
-      //     guestCard.ref_guest_id
-      //   );
-      //   if (created_id) {
-      //     await sendUserNotification(
-      //       "Guest Card enrollment ",
-      //       created_id,
-      //       1,
-      //       `Guest Card ${guestCard.name} has been enrolled successfully.`
-      //     );
-      //   }
-      //   if (enroll_type === "Face Recognition") {
-      //     await enrollUser("guestcard", "type=7&face-count=5");
-      //   } else {
-      //     await enrollUser("guestcard", "type=0&card-count=0");
-      //   }
-      //   break;
-
-      // case "relations":
-      //   userDetails = await pgClient.query(
-      //     `SELECT * FROM relations WHERE relation_id = $1`,
-      //     [user_id]
-      //   );
-      //   if (!userDetails.rows.length) {
-      //     return res.status(REST_API_STATUSCODE.notFound).send({
-      //       statusCode: REST_API_STATUSCODE.notFound,
-      //       message: "Relation not found",
-      //     });
-      //   }
-      //   const relation = userDetails.rows[0];
-      //   await createUserProfile(
-      //     { id: relation.relation_id, name: relation.name },
-      //     relation.ref_relation_id
-      //   );
-      //   if (created_id) {
-      //     await sendUserNotification(
-      //       "Relation enrollment ",
-      //       created_id,
-      //       1,
-      //       `Relation ${relation.name} has been enrolled in successfully.`
-      //     );
-      //   }
-      //   if (enroll_type === "Face Recognition") {
-      //     await enrollUser("Relations", "type=7&face-count=5");
-      //   } else {
-      //     await enrollUser("Relations", "type=0&card-count=0");
-      //   }
-      //   break;
-
-      // case "adminuser":
-      // userDetails = await pgClient.query(`SELECT * FROM users WHERE user_id = $1`, [
-      //   user_id,
-      // ]);
-      // downloadS3Image(
-      //   userDetails.rows[0].image_url,
-      //   `${userDetails.rows[0].user_id}.jpg`
-      // );
-      // if (!userDetails.rows.length) {
-      //   return res.status(REST_API_STATUSCODE.notFound).send({
-      //     statusCode: REST_API_STATUSCODE.notFound,
-      //     message: "Admin not found",
-      //   });
-      // }
-      // const admin = userDetails.rows[0];
-      // await uploadProfile(user_id, user_id, device_id);
-      // await createUserProfile(
-      //   { id: admin.user_id, name: admin.name },
-      //   admin.user_ref_id
-      // );
-      // if (created_id) {
-      //   await sendUserNotification(
-      //     "Admin User enrollment ",
-      //     created_id,
-      //     1,
-      //     `Admin User ${admin.name} has been enrolled successfully.`
-      //   );
-      // }
-      // if (enroll_type === "Face Recognition") {
-      //   await enrollUser("AdminUser", "type=7&face-count=5");
-      // } else {
-      //   await enrollUser("AdminUser", "type=0&card-count=0");
-      // }
-      // break;
-
       default:
+        console.log("[enrollUsers] ERROR: Invalid user type:", type);
         return res.status(REST_API_STATUSCODE.badRequest).send({
           statusCode: REST_API_STATUSCODE.badRequest,
           message: "Invalid user type",
         });
     }
   } catch (err) {
-    console.error("Error in enrollUsers:", err);
+    console.error("[enrollUsers] ERROR: Exception caught:", err);
+    console.error("[enrollUsers] Error stack:", err.stack);
     res.status(REST_API_STATUSCODE.serverError).send({
       statusCode: REST_API_STATUSCODE.serverError,
       message: "Internal server error",
@@ -340,12 +235,12 @@ const assignDevice = async (req, res) => {
       await pgClient.query(
         `UPDATE employee_profiles 
      SET device_id = $1 
-     WHERE employee_id = $2 
+     WHERE employee_no = $2 
      RETURNING *`,
         [`{${device_id.join(",")}}`, employee_id]
       );
       const employeeDevices = await pgClient.query(
-        `SELECT * FROM employee_profiles WHERE employee_id = $1`,
+        `SELECT * FROM employee_profiles WHERE employee_no = $1`,
         [employee_id]
       );
       // console.log(
@@ -377,170 +272,7 @@ const assignDevice = async (req, res) => {
         }
       }
     }
-    // } else if (type == "Guest") {
-    //   // console.log("Guest");
-    //   await pgClient.query(
-    //     `UPDATE guests 
-    //  SET device_id = $1 
-    //  WHERE guest_id = $2 
-    //  RETURNING *`,
-    //     [`{${device_id.join(",")}}`, employee_id]
-    //   );
-    //   const guestDevices = await pgClient.query(
-    //     `SELECT * FROM guests WHERE guest_id = $1`,
-    //     [employee_id]
-    //   );
-    //   // console.log(
-    //   //   guestDevices.rows[0].device_id,
-    //   //   "employeeDevices.rows[0].device_id"
-    //   // );
-    //   const deletedGuestDevicesIds = guestDevices.rows[0].device_id.filter(
-    //     (item) => !device_id.includes(item)
-    //   );
-    //   if (deletedGuestDevicesIds.length) {
-    //     for (const deviceId of deletedGuestDevicesIds) {
-    //       const deviceInfo = await getDeviceInfo(deviceId);
-    //       if (deviceInfo.length > 0) {
-    //         const deviceIp = deviceInfo[0].ip_address;
-    //         const deleteProfileUrl = `http://${deviceIp}/device.cgi/users?action=delete&user-id=${employee_id}`;
-    //         try {
-    //           const response = await matrixDeviceApi(deleteProfileUrl);
-    //           // console.log(
-    //           //   `Deleted user profile from device: ${deviceId}, response:`,
-    //           //   response.data
-    //           // );
-    //         } catch (err) {
-    //           console.error(
-    //             `Failed to delete profile from device: ${deviceId}`,
-    //             err
-    //           );
-    //         }
-    //       }
-    //     }
-    //   }
-    // } else if (type == "Relations") {
-    //   // console.log("Relations");
-    //   await pgClient.query(
-    //     `UPDATE relations 
-    //  SET device_id = $1 
-    //  WHERE relation_id = $2 
-    //  RETURNING *`,
-    //     [`{${device_id.join(",")}}`, employee_id]
-    //   );
-    //   const relationDevices = await pgClient.query(
-    //     `SELECT * FROM relations WHERE relation_id = $1`,
-    //     [employee_id]
-    //   );
-    //   // console.log(
-    //   //   relationDevices.rows[0].device_id,
-    //   //   "relationDevices.rows[0].device_id"
-    //   // );
-    //   const deletedRelationDevicesIds =
-    //     relationDevices.rows[0].device_id.filter(
-    //       (item) => !device_id.includes(item)
-    //     );
-    //   if (deletedRelationDevicesIds.length) {
-    //     for (const deviceId of deletedRelationDevicesIds) {
-    //       const deviceInfo = await getDeviceInfo(deviceId);
-    //       if (deviceInfo.length > 0) {
-    //         const deviceIp = deviceInfo[0].ip_address;
-    //         const deleteProfileUrl = `http://${deviceIp}/device.cgi/users?action=delete&user-id=${employee_id}`;
-    //         try {
-    //           const response = await matrixDeviceApi(deleteProfileUrl);
-    //           // console.log(
-    //           //   `Deleted user profile from device: ${deviceId}, response:`,
-    //           //   response.data
-    //           // );
-    //         } catch (err) {
-    //           console.error(
-    //             `Failed to delete profile from device: ${deviceId}`,
-    //             err
-    //           );
-    //         }
-    //       }
-    //     }
-    //   }
-    // } else if (type == "GuestCard") {
-    //   // console.log("GuestCard");
-    //   await pgClient.query(
-    //     `UPDATE guest_cards 
-    //  SET device_id = $1 
-    //  WHERE guest_id = $2 
-    //  RETURNING *`,
-    //     [`{${device_id.join(",")}}`, employee_id]
-    //   );
-    //   const guestCardDevices = await pgClient.query(
-    //     `SELECT * FROM guest_cards WHERE guest_id = $1`,
-    //     [employee_id]
-    //   );
-    //   // console.log(
-    //   //   guestCardDevices.rows[0].device_id,
-    //   //   "employeeDevices.rows[0].device_id"
-    //   // );
-    //   const deletedGuestDevicesIds = guestCardDevices.rows[0].device_id.filter(
-    //     (item) => !device_id.includes(item)
-    //   );
-    //   if (deletedGuestDevicesIds.length) {
-    //     for (const deviceId of deletedGuestDevicesIds) {
-    //       const deviceInfo = await getDeviceInfo(deviceId);
-    //       if (deviceInfo.length > 0) {
-    //         const deviceIp = deviceInfo[0].ip_address;
-    //         const deleteProfileUrl = `http://${deviceIp}/device.cgi/users?action=delete&user-id=${employee_id}`;
-    //         try {
-    //           const response = await matrixDeviceApi(deleteProfileUrl);
-    //           // console.log(
-    //           //   `Deleted user profile from device: ${deviceId}, response:`,
-    //           //   response.data
-    //           // );
-    //         } catch (err) {
-    //           console.error(
-    //             `Failed to delete profile from device: ${deviceId}`,
-    //             err
-    //           );
-    //         }
-    //       }
-    //     }
-    //   }
-    // } else if (type == "AdminUser") {
-    //   // console.log("Admin");
-    //   await pgClient.query(
-    //     `UPDATE users 
-    //  SET device_id = $1 
-    //  WHERE user_id = $2 
-    //  RETURNING *`,
-    //     [`{${device_id.join(",")}}`, employee_id]
-    //   );
-    //   const adminDevices = await pgClient.query(
-    //     `SELECT * FROM users WHERE user_id = $1`,
-    //     [employee_id]
-    //   );
 
-    //   const deletedAdminDevicesIds = adminDevices.rows[0].device_id.filter(
-    //     (item) => !device_id.includes(item)
-    //   );
-    //   if (deletedAdminDevicesIds.length) {
-    //     for (const deviceId of deletedAdminDevicesIds) {
-    //       const deviceInfo = await getDeviceInfo(deviceId);
-    //       if (deviceInfo.length > 0) {
-    //         const deviceIp = deviceInfo[0].ip_address;
-    //         const deleteProfileUrl = `http://${deviceIp}/device.cgi/users?action=delete&user-id=${employee_id}`;
-    //         try {
-    //           const response = await matrixDeviceApi(deleteProfileUrl);
-    //           // console.log(
-    //           //   `Deleted user profile from device: ${deviceId}, response:`,
-    //           //   response.data
-    //           // );
-    //         } catch (err) {
-    //           console.error(
-    //             `Failed to delete profile from device: ${deviceId}`,
-    //             err
-    //           );
-    //         }
-    //       }
-    //     }
-    //   }
-    // }
-    // Function to get enrollment details based on type
     const getEnrollDetails = async (userId, enrollType) => {
       return pgClient.query(
         `SELECT * FROM enroll_device_details WHERE user_id = $1 AND enroll_type = $2`,
@@ -569,13 +301,13 @@ const assignDevice = async (req, res) => {
           const url = `http://${ip}/device.cgi/users?action=set&user-id=${userId}&name=${name}&ref-user-id=${refId}&card1=${cardNumber}&user-active=1`;
           return matrixDeviceApi(url);
         }
-      } else if (enrollType === "Face Recognition") {
+      } else if (enrollType === "face_recognition") {
         // console.log("Processing face recognition enrollment...");
         let url;
 
         if (type === "Employee") {
           const employeeDetails = await pgClient.query(
-            `SELECT * FROM employee_profiles WHERE employee_id = $1`,
+            `SELECT * FROM employee_profiles WHERE employee_no = $1`,
             [employee_id]
           );
 

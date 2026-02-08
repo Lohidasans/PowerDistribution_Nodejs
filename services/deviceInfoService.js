@@ -2,6 +2,8 @@ const { models, sequelize } = require("../models/index");
 const message = require("../constants/en.json");
 const { Op } = require("sequelize");
 const { buildSearchCondition } = require("../helpers/queryHelper");
+const { getMaxSeqNumber, getDeviceInfo, parseData, insertRecords } = require("../utils/commonfun");
+const { matrixDeviceApi } = require("../utils/commonApi");
 
 // Create a new Device Info
 const createDeviceInfo = async (req, res) => {
@@ -276,7 +278,32 @@ const deviceInfoDropdownList = async (req, res) => {
     });
   }
 };
-
+const employeePunInPunOut = async (deviceId, role) => {
+  try {
+    const maxSeqNumber = await getMaxSeqNumber(deviceId, role);
+    console.log(maxSeqNumber, "maxSeqNumber");
+    const deviceInfo = await getDeviceInfo(deviceId);
+    console.log(deviceInfo, "deviceInfo");
+    const seqNumber = maxSeqNumber + 1;
+    const url = `http://${deviceInfo[0]?.ip_address}/device.cgi/events?action=getevent&roll-over-count=0&seq-number=${seqNumber}&no-of-events=100&format=text`;
+    // console.log(url, "url");
+    const response = await matrixDeviceApi(url);
+    const filteredRecords = parseData(response.data);
+    // console.log(filteredRecords, "filteredRecords");
+    await insertRecords(filteredRecords, deviceId, role);
+    return {
+      statusCode: RestAPI.STATUSCODE.ok,
+      data: response.data,
+    };
+  } catch (err) {
+    console.log(err);
+    return {
+      statusCode: RestAPI.STATUSCODE.internalServerError,
+      message: "Error while getting device info",
+      error: err,
+    };
+  }
+};
 module.exports = {
   createDeviceInfo,
   listDeviceInfos,
@@ -284,4 +311,5 @@ module.exports = {
   updateDeviceInfo,
   deleteDeviceInfo,
   deviceInfoDropdownList,
+  employeePunInPunOut
 };
