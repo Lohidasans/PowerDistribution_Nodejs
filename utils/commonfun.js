@@ -93,7 +93,7 @@ const insertRecords = async (records, deviceId, role) => {
 
 const getMaxSeqNumber = async (deviceId, role) => {
   const roleTableMap = {
-    Employee: "employee_trackings",
+    Employee: "employee_tracking",
     Admin: "office_user_trackings",
     AdminOUT: "office_user_out_trackings",
     Security: "security_trackings",
@@ -161,7 +161,7 @@ const getDeviceInfo = async (deviceId) => {
   console.log("[getDeviceInfo] Querying device info for device_id:", deviceId);
   try {
     const res = await pgClient.query(
-      "SELECT * FROM device_infos WHERE device_id = $1",
+      "SELECT * FROM device_infos WHERE devices_id = $1",
       [deviceId]
     );
     console.log("[getDeviceInfo] Query result:", res.rows);

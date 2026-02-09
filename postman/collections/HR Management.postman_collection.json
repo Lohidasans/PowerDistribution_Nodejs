@@ -1,0 +1,117 @@
+{
+  "info": {
+    "_postman_id": "473cb310-39aa-482a-bbc9-fd7e49405df0",
+    "name": "HR Management",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Employees Attendance",
+      "id": "b96438dd-9ca4-4554-a51d-964638dc156f",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:5000/api/v1/employees/attendance?status=Absent&branch_id=1&department_id&role_id&from_date&to_date&Search",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "5000",
+          "path": [
+            "api",
+            "v1",
+            "employees",
+            "attendance"
+          ],
+          "query": [
+            {
+              "key": "date",
+              "value": "2024-02-09",
+              "uuid": "5b0057e0-f23b-4a5b-9592-1cddcc13a89a",
+              "disabled": true
+            },
+            {
+              "key": "status",
+              "value": "Absent",
+              "description": "Present, Absent, Overtime",
+              "uuid": "94752073-e283-4cb6-b374-4b1f142484af"
+            },
+            {
+              "key": "branch_id",
+              "value": "1",
+              "uuid": "0bfc3af4-a5d6-4d55-ba94-2d2c2e33d60a"
+            },
+            {
+              "key": "department_id",
+              "value": null,
+              "uuid": "ded93c2e-bbee-4089-b12c-b7ca1114ada9"
+            },
+            {
+              "key": "role_id",
+              "value": null,
+              "uuid": "b6ff5582-58e0-431b-8547-8a72cd6af2b8"
+            },
+            {
+              "key": "from_date",
+              "value": null,
+              "uuid": "dec2f245-de8d-4614-9bc6-f5c569a2abe5"
+            },
+            {
+              "key": "to_date",
+              "value": null,
+              "uuid": "42c31555-9fc3-4213-9fe2-a0a93e70247d"
+            },
+            {
+              "key": "Search",
+              "value": null,
+              "uuid": "8038e2d4-88f1-4b15-88ed-71d345e0722b"
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Attendance History",
+      "id": "affa7d4b-2a0f-4c30-b0e0-d86ab44f787b",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/v1/employees/1/attendance/history?start_date=2026-02-07&end_date=2026-02-09&status=Present",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "employees",
+            "1",
+            "attendance",
+            "history"
+          ],
+          "query": [
+            {
+              "key": "start_date",
+              "value": "2026-02-07",
+              "uuid": "f48ba4ad-e7a0-4255-a7d8-6652d2f213de"
+            },
+            {
+              "key": "end_date",
+              "value": "2026-02-09",
+              "uuid": "913e33e0-0c46-45fa-8407-78719d57b75d"
+            },
+            {
+              "key": "status",
+              "value": "Present",
+              "description": "Absent",
+              "uuid": "0a29fe26-b8d5-4a99-ac4b-776d066b3563"
+            }
+          ]
+        }
+      },
+      "response": []
+    }
+  ]
+}

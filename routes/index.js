@@ -67,6 +67,8 @@ const MaintenanceHistoryRoute = require("./maintenanceHistoryRoute");
 const VendorAnalyticsRoute = require("./vendorAnalyticsRoute");
 const DeviceInfoRoute = require("./deviceInfoRoute");
 const DevEnrollRoute = require("./devEnrollRoute");
+const EmployeeAttendanceRoute = require("./employeeAttendanceRoute");
+
 module.exports = (app) => {
   app.use("/api/v1", RoleRouter);
   app.use("/api/v1", RolePermissionRouter);
@@ -89,6 +91,7 @@ module.exports = (app) => {
   app.use("/api/v1", CountryRoute);
   app.use("/api/v1", StateRoute);
   app.use("/api/v1", DistrictRoute);
+  app.use("/api/v1", EmployeeAttendanceRoute); // Must be before EmployeeRouter to avoid route conflict
   app.use("/api/v1", EmployeeRouter);
   app.use("/api/v1", InvoiceSettingsRouter);
   app.use("/api/v1", SchemeRoute);
@@ -138,3 +141,4 @@ module.exports = (app) => {
   app.use("/api/v1", DeviceInfoRoute);
   app.use("/api/v1", DevEnrollRoute);
 };
+

@@ -292,13 +292,13 @@ const employeePunInPunOut = async (deviceId, role) => {
     // console.log(filteredRecords, "filteredRecords");
     await insertRecords(filteredRecords, deviceId, role);
     return {
-      statusCode: RestAPI.STATUSCODE.ok,
+      statusCode: 200,
       data: response.data,
     };
   } catch (err) {
     console.log(err);
     return {
-      statusCode: RestAPI.STATUSCODE.internalServerError,
+      statusCode: 500,
       message: "Error while getting device info",
       error: err,
     };
