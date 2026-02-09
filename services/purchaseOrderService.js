@@ -145,7 +145,7 @@ const deletePurchaseOrder = async (req, res) => {
 // List POs with pagination and filters (raw SQL)
 const listPurchaseOrders = async (req, res) => {
   try {
-    const { page = 1, limit = 10, vendor_id, start_date, end_date, search } = req.query;
+    const { page = 1, limit = 10, vendor_id, start_date, end_date, search, branch_id, status_id } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
     let whereSql = "WHERE p.deleted_at IS NULL";
@@ -155,8 +155,25 @@ const listPurchaseOrders = async (req, res) => {
     if (start_date) { whereSql += " AND p.po_date >= :start_date"; replacements.start_date = start_date; }
     if (end_date) { whereSql += " AND p.po_date <= :end_date"; replacements.end_date = end_date; }
     if (search) { whereSql += " AND (p.po_no ILIKE :search OR v.vendor_name ILIKE :search)"; replacements.search = `%${search}%`; }
+    if (branch_id) { whereSql += " AND p.branch_id = :branch_id"; replacements.branch_id = branch_id; }
+    if (status_id) { whereSql += " AND p.status_id = :status_id"; replacements.status_id = status_id; }
 
     const joinVendors = "LEFT JOIN vendors v ON v.id = p.vendor_id";
+    const joinBranches = "LEFT JOIN branches b ON b.id = p.branch_id";
+
+    // Get status counts
+    const statusCountQuery = `
+      SELECT 
+        COUNT(CASE WHEN p.status_id = 1 THEN 1 END) AS approval_pending,
+        COUNT(CASE WHEN p.status_id = 2 THEN 1 END) AS approved,
+        COUNT(CASE WHEN p.status_id = 3 THEN 1 END) AS completed
+      FROM purchase_orders p
+      ${joinVendors}
+      ${joinBranches}
+      ${whereSql.replace(/LIMIT.*|OFFSET.*/g, '')};
+    `;
+    const [statusCountRows] = await sequelize.query(statusCountQuery, { replacements });
+    const statusCounts = statusCountRows?.[0] || { approval_pending: 0, approved: 0, completed: 0 };
 
     const countQuery = `
       SELECT COUNT(*) AS total
@@ -164,6 +181,7 @@ const listPurchaseOrders = async (req, res) => {
         SELECT p.id
         FROM purchase_orders p
         ${joinVendors}
+        ${joinBranches}
         ${whereSql}
         GROUP BY p.id
       ) t;
@@ -177,6 +195,9 @@ const listPurchaseOrders = async (req, res) => {
         p.po_no,
         p.po_date AS date,
         p.status_id,
+        p.branch_id,
+        p.entity_type,
+        b.branch_name,
         v.id AS vendor_id,
         v.vendor_name,
         v.vendor_image_url,
@@ -184,16 +205,22 @@ const listPurchaseOrders = async (req, res) => {
         COALESCE(SUM(poi.ordered_weight), 0) AS ordered_weight
       FROM purchase_orders p
       ${joinVendors}
+      ${joinBranches}
       LEFT JOIN purchase_order_items poi ON poi.po_id = p.id AND poi.deleted_at IS NULL
       LEFT JOIN users u ON u.id = p.order_by_user_id
       ${whereSql}
-      GROUP BY p.id, v.vendor_name, v.id, v.vendor_image_url, u.email
+      GROUP BY p.id, v.vendor_name, v.id, v.vendor_image_url, u.email, b.branch_name
       ORDER BY p.po_date DESC, p.id DESC
       LIMIT :limit OFFSET :offset;
     `;
     const [rows] = await sequelize.query(dataQuery, { replacements });
 
     return commonService.okResponse(res, {
+      status_counts: {
+        approval_pending: parseInt(statusCounts.approval_pending || 0, 10),
+        approved: parseInt(statusCounts.approved || 0, 10),
+        completed: parseInt(statusCounts.completed || 0, 10),
+      },
       total,
       page: parseInt(page),
       totalPages: Math.ceil(total / parseInt(limit)),
@@ -305,7 +332,7 @@ const generatePoCode = async (req, res) => {
       models.PurchaseOrder,
       "po_no",
       String(prefix).toUpperCase(),
-      { pad: 3}
+      { pad: 3 }
     );
     return commonService.okResponse(res, { po_no: code });
   } catch (err) {

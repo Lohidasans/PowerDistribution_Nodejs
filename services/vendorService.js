@@ -168,11 +168,26 @@ const listVendors = async (req, res) => {
 
 const listVendorDropdown = async (req, res) => {
   try {
-    const vendors = await models.Vendor.findAll({
-      attributes: ["id", "vendor_name", "vendor_code", "state_id"],
-      where: { deleted_at: null },
-      order: [["vendor_name", "ASC"]],
-    });
+    const query = `
+      SELECT
+        v.id,
+        v.vendor_name,
+        v.vendor_code,
+        v.state_id,
+        v.address,
+        v.district_id,
+        v.pin_code,
+        v.gst_no,
+        s.state_name,
+        d.district_name
+      FROM vendors v
+      LEFT JOIN states s ON v.state_id = s.id
+      LEFT JOIN districts d ON v.district_id = d.id
+      WHERE v.deleted_at IS NULL
+      ORDER BY v.vendor_name ASC
+    `;
+
+    const [vendors] = await sequelize.query(query);
     return commonService.okResponse(res, { vendors });
   } catch (err) {
     return commonService.handleError(res, err);

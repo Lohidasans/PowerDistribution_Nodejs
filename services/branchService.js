@@ -424,12 +424,26 @@ const deleteBranch = async (req, res) => {
 
 const branchDropdownList = async (req, res) => {
   try {
-    const rows = await models.Branch.findAll({
-      attributes: ["id", "branch_name", "branch_no"], // Only the fields needed for dropdown
-      order: [["branch_name", "ASC"]],
-    });
+    const query = `
+      SELECT
+        b.id,
+        b.branch_name,
+        b.branch_no,
+        b.address,
+        b.state_id,
+        b.district_id,
+        b.pin_code,
+        s.state_name,
+        d.district_name
+      FROM branches b
+      LEFT JOIN states s ON b.state_id = s.id
+      LEFT JOIN districts d ON b.district_id = d.id
+      WHERE b.deleted_at IS NULL
+      ORDER BY b.branch_name ASC
+    `;
 
-    return commonService.okResponse(res, { branches: rows });
+    const [branches] = await sequelize.query(query);
+    return commonService.okResponse(res, { branches });
   } catch (err) {
     return commonService.handleError(res, err);
   }
