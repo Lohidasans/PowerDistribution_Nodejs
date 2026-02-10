@@ -13,6 +13,10 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.INTEGER,
         allowNull: false,
       },
+      ref_no: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
       // From other master tables (store only IDs)
       material_type_id: {
         type: DataTypes.INTEGER,

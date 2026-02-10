@@ -6,7 +6,7 @@ const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
 // Create Purchase Return with items
 const createPurchaseReturn = async (req, res) => {
   const transaction = await sequelize.transaction();
-  
+
   try {
     const { items = [], ...prData } = req.body;
 
@@ -45,11 +45,11 @@ const getPurchaseReturnById = async (req, res) => {
   try {
     const { id } = req.params;
     const pr = await getPurchaseReturnWithItems(id);
-    
+
     if (!pr) {
       return commonService.notFound(res, "Purchase Return not found");
     }
-    
+
     return commonService.okResponse(res, pr);
   } catch (error) {
     return commonService.handleError(res, error);
@@ -69,7 +69,18 @@ const getPurchaseReturnWithItems = async (prId) => {
     // Get Purchase Return items with related data using raw queries
     const items = await sequelize.query(`
       SELECT 
-        pri.*,
+        pri.id,
+        pri.pr_id,
+        pri.ref_no,
+        pri.material_type_id,
+        pri.category_id,
+        pri.subcategory_id,
+        pri.description,
+        pri.purity,
+        pri.weight,
+        pri.quantity,
+        pri.rate,
+        pri.amount,
         mt.material_type as material_type_name,
         c.category_name as category_name,
         sc.subcategory_name as subcategory_name
@@ -172,11 +183,11 @@ const updatePurchaseReturn = async (req, res) => {
 // Delete Purchase Return (soft delete)
 const deletePurchaseReturn = async (req, res) => {
   const transaction = await sequelize.transaction();
-  
+
   try {
     const { id } = req.params;
     const pr = await models.PurchaseReturn.findByPk(id, { transaction });
-    
+
     if (!pr) {
       await transaction.rollback();
       return commonService.notFound(res, "Purchase Return not found");
@@ -185,9 +196,9 @@ const deletePurchaseReturn = async (req, res) => {
     // Soft delete Purchase Return and its items
     await Promise.all([
       pr.destroy({ transaction }),
-      models.PurchaseReturnItem.destroy({ 
+      models.PurchaseReturnItem.destroy({
         where: { pr_id: id },
-        transaction 
+        transaction
       })
     ]);
 
@@ -202,11 +213,11 @@ const deletePurchaseReturn = async (req, res) => {
 // List all Purchase Returns with pagination and filters (raw SQL, joins only)
 const getAllPurchaseReturns = async (req, res) => {
   try {
-    const { 
-      page = 1, 
-      limit = 10, 
-      vendor_id, 
-      start_date, 
+    const {
+      page = 1,
+      limit = 10,
+      vendor_id,
+      start_date,
       end_date,
       search
     } = req.query;
@@ -308,7 +319,7 @@ const generatePurchaseReturnCode = async (req, res) => {
       models.PurchaseReturn,
       "pr_no",
       String(prefix).toUpperCase(),
-      { pad: 3}
+      { pad: 3 }
     );
     return commonService.okResponse(res, { pr_no: code });
   } catch (err) {
@@ -364,6 +375,7 @@ const getPurchaseReturnView = async (req, res) => {
     const [items] = await sequelize.query(`
         SELECT 
           pri.id,
+          pri.ref_no,
           pri.description,
           pri.purity,
           pri.weight,
