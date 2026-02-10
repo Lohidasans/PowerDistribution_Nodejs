@@ -21,7 +21,7 @@ const generateReceiptNumber = async (req, res) => {
 
 const createVoucherReceipt = async (req, res) => {
   const t = await sequelize.transaction();
-  try {    
+  try {
     const {
       receipt_no,
       receipt_date,
@@ -33,6 +33,7 @@ const createVoucherReceipt = async (req, res) => {
       reference_no,
       amount,
       amount_in_words,
+      user_type_id,
       remarks,
     } = req.body;
 
@@ -64,6 +65,7 @@ const createVoucherReceipt = async (req, res) => {
         reference_no: reference_no ?? null,
         amount,
         amount_in_words,
+        user_type_id,
         remarks,
       },
       { transaction: t },
@@ -89,7 +91,18 @@ const getVoucherReceiptById = async (req, res) => {
           vr.*,
           bt.bill_type,
           pm.payment_mode,
-          v.customer_name AS account_name,
+          CASE 
+            WHEN vr.bill_type_id IN (2, 3) THEN l.ledger_name
+            WHEN vr.user_type_id = 1 THEN v.vendor_name
+            WHEN vr.user_type_id = 2 THEN c.customer_name
+            ELSE NULL
+          END AS account_name,
+          CASE 
+            WHEN vr.bill_type_id IN (2, 3) THEN l.ledger_no
+            WHEN vr.user_type_id = 1 THEN v.mobile
+            WHEN vr.user_type_id = 2 THEN c.mobile_number
+            ELSE NULL
+          END AS account_mobile,
           b.branch_name,
           b.address AS branch_address,
           b.gst_no AS branch_gst_no,
@@ -100,7 +113,9 @@ const getVoucherReceiptById = async (req, res) => {
       FROM voucher_receipts vr
       LEFT JOIN bill_types bt ON bt.id = vr.bill_type_id AND bt.deleted_at IS NULL
       LEFT JOIN payment_modes pm ON pm.id = vr.payment_mode_id AND pm.deleted_at IS NULL
-      LEFT JOIN customers v ON v.id = vr.account_id AND v.deleted_at IS NULL
+      LEFT JOIN ledger l ON l.id = vr.account_id AND vr.bill_type_id IN (2, 3) AND l.deleted_at IS NULL
+      LEFT JOIN vendors v ON v.id = vr.account_id AND vr.user_type_id = 1 AND vr.bill_type_id NOT IN (2, 3) AND v.deleted_at IS NULL
+      LEFT JOIN customers c ON c.id = vr.account_id AND vr.user_type_id = 2 AND vr.bill_type_id NOT IN (2, 3) AND c.deleted_at IS NULL
       LEFT JOIN branches b ON b.id = vr.branch_id AND b.deleted_at IS NULL
       LEFT JOIN districts d ON d.id = b.district_id AND d.deleted_at IS NULL
       LEFT JOIN states s ON s.id = b.state_id AND s.deleted_at IS NULL
@@ -152,7 +167,9 @@ const getVoucherReceipts = async (req, res) => {
       whereSql += `
         AND (
           vr.receipt_no ILIKE :search
-          OR a.customer_name ILIKE :search
+          OR l.ledger_name ILIKE :search
+          OR v.vendor_name ILIKE :search
+          OR c.customer_name ILIKE :search
         )
       `;
       replacements.search = `%${search}%`;
@@ -178,9 +195,24 @@ const getVoucherReceipts = async (req, res) => {
         vr.receipt_date,
         vr.amount,
         vr.account_id,
-        a.customer_name AS account_name
+        vr.user_type_id,
+        vr.bill_type_id,
+        CASE 
+          WHEN vr.bill_type_id IN (2, 3) THEN l.ledger_name
+          WHEN vr.user_type_id = 1 THEN v.vendor_name
+          WHEN vr.user_type_id = 2 THEN c.customer_name
+          ELSE NULL
+        END AS account_name,
+        CASE 
+          WHEN vr.bill_type_id IN (2, 3) THEN l.ledger_no
+          WHEN vr.user_type_id = 1 THEN v.mobile
+          WHEN vr.user_type_id = 2 THEN c.mobile_number
+          ELSE NULL
+        END AS account_mobile
       FROM voucher_receipts vr
-      LEFT JOIN customers a ON a.id = vr.account_id
+      LEFT JOIN ledger l ON l.id = vr.account_id AND vr.bill_type_id IN (2, 3) AND l.deleted_at IS NULL
+      LEFT JOIN vendors v ON v.id = vr.account_id AND vr.user_type_id = 1 AND vr.bill_type_id NOT IN (2, 3) AND v.deleted_at IS NULL
+      LEFT JOIN customers c ON c.id = vr.account_id AND vr.user_type_id = 2 AND vr.bill_type_id NOT IN (2, 3) AND c.deleted_at IS NULL
       ${whereSql}
       ORDER BY vr.receipt_no DESC
       ${paginationSql}
@@ -198,7 +230,9 @@ const getVoucherReceipts = async (req, res) => {
       const countQuery = `
         SELECT COUNT(*)::int AS count
         FROM voucher_receipts vr
-        LEFT JOIN customers a ON a.id = vr.account_id
+        LEFT JOIN ledger l ON l.id = vr.account_id AND vr.bill_type_id IN (2, 3) AND l.deleted_at IS NULL
+        LEFT JOIN vendors v ON v.id = vr.account_id AND vr.user_type_id = 1 AND vr.bill_type_id NOT IN (2, 3) AND v.deleted_at IS NULL
+        LEFT JOIN customers c ON c.id = vr.account_id AND vr.user_type_id = 2 AND vr.bill_type_id NOT IN (2, 3) AND c.deleted_at IS NULL
         ${whereSql}
       `;
 
@@ -279,6 +313,7 @@ const updateVoucherReceipt = async (req, res) => {
       reference_no,
       amount,
       amount_in_words,
+      user_type_id,
       remarks,
     } = req.body;
 
@@ -312,6 +347,7 @@ const updateVoucherReceipt = async (req, res) => {
       reference_no: reference_no ?? entity.reference_no,
       amount: amount ?? entity.amount,
       amount_in_words: amount_in_words ?? entity.amount_in_words,
+      user_type_id: user_type_id ?? entity.user_type_id,
       remarks: remarks ?? entity.remarks,
     };
 

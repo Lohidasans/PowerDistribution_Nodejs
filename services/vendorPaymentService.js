@@ -61,94 +61,124 @@ const getVendorPayments = async (req, res) => {
       payment_date
     } = req.query;
 
-    const whereClause = {};
+    const replacements = {};
+    let whereSql = "WHERE vp.deleted_at IS NULL";
 
     // Filters
-    if (bill_type_id) whereClause.bill_type_id = bill_type_id;
-    if (branch_id) whereClause.branch_id = branch_id; 
-    if (payment_mode) whereClause.payment_mode = payment_mode;
+    if (bill_type_id) {
+      whereSql += " AND vp.bill_type_id = :bill_type_id";
+      replacements.bill_type_id = bill_type_id;
+    }
+
+    if (branch_id) {
+      whereSql += " AND vp.branch_id = :branch_id";
+      replacements.branch_id = branch_id;
+    }
+
+    if (payment_mode) {
+      whereSql += " AND vp.payment_mode = :payment_mode";
+      replacements.payment_mode = payment_mode;
+    }
+
     if (payment_date) {
-      whereClause.payment_date = { [Op.eq]: payment_date };
+      whereSql += " AND vp.payment_date = :payment_date";
+      replacements.payment_date = payment_date;
     }
-    // Search (payment_no + vendor_name)
+
+    // Search across payment_no, ledger_name, vendor_name, customer_name
     if (search) {
-      const vendors = await models.Vendor.findAll({
-        where: {
-          vendor_name: { [Op.like]: `%${search}%` }
-        },
-        attributes: ['id']
-      });
-
-      const vendorIds = vendors.map(v => v.id);
-
-      whereClause[Op.or] = [
-        { payment_no: { [Op.like]: `%${search}%` } },
-        ...(vendorIds.length
-          ? [{ account_name_id: { [Op.in]: vendorIds } }]
-          : [])
-      ];
+      whereSql += `
+        AND (
+          vp.payment_no ILIKE :search
+          OR l.ledger_name ILIKE :search
+          OR v.vendor_name ILIKE :search
+          OR c.customer_name ILIKE :search
+        )
+      `;
+      replacements.search = `%${search}%`;
     }
 
-    // Pagination (page/pageSize based)
-    const shouldPaginate = page || pageSize;
+    // Pagination
+    let paginationSql = "";
+    let offset = 0;
 
-    const limit = shouldPaginate ? parseInt(pageSize || 10) : undefined;
-    const offset = shouldPaginate
-      ? ((parseInt(page || 1) - 1) * limit)
-      : undefined;
+    if (pageSize) {
+      const limit = parseInt(pageSize);
+      offset = ((parseInt(page || 1) - 1) * limit);
+      paginationSql = " LIMIT :limit OFFSET :offset";
+      replacements.limit = limit;
+      replacements.offset = offset;
+    }
 
-    const queryOptions = {
-      where: whereClause,
-      order: [['created_at', 'DESC']],
-      ...(shouldPaginate && { limit, offset })
-    };
+    const dataQuery = `
+      SELECT
+        vp.id,
+        vp.payment_no,
+        vp.payment_date,
+        vp.bill_type_id,
+        vp.branch_id,
+        vp.payment_mode,
+        vp.account_name_id,
+        vp.user_type_id,
+        vp.amount,
+        vp.status,
+        CASE 
+          WHEN vp.bill_type_id IN (2, 3) THEN l.ledger_name
+          WHEN vp.user_type_id = 1 THEN v.vendor_name
+          WHEN vp.user_type_id = 2 THEN c.customer_name
+          ELSE NULL
+        END AS account_name,
+        CASE 
+          WHEN vp.bill_type_id IN (2, 3) THEN l.ledger_no
+          WHEN vp.user_type_id = 1 THEN v.mobile
+          WHEN vp.user_type_id = 2 THEN c.mobile_number
+          ELSE NULL
+        END AS account_mobile
+      FROM vendor_payments vp
+      LEFT JOIN ledger l ON l.id = vp.account_name_id AND vp.bill_type_id IN (2, 3) AND l.deleted_at IS NULL
+      LEFT JOIN vendors v ON v.id = vp.account_name_id AND vp.user_type_id = 1 AND vp.bill_type_id NOT IN (2, 3) AND v.deleted_at IS NULL
+      LEFT JOIN customers c ON c.id = vp.account_name_id AND vp.user_type_id = 2 AND vp.bill_type_id NOT IN (2, 3) AND c.deleted_at IS NULL
+      ${whereSql}
+      ORDER BY vp.created_at DESC
+      ${paginationSql}
+    `;
 
-    // Fetch Payments
-
-    const result = shouldPaginate
-      ? await models.VendorPayment.findAndCountAll(queryOptions)
-      : {
-        count: await models.VendorPayment.count({ where: whereClause }),
-        rows: await models.VendorPayment.findAll(queryOptions)
-      };
-
-    // Fetch Vendors
-
-    const vendorIds = [...new Set(
-      result.rows.map(p => p.account_name_id).filter(Boolean)
-    )];
-
-    const vendors = vendorIds.length
-      ? await models.Vendor.findAll({
-        where: { id: vendorIds },
-        attributes: ['id', 'vendor_name']
-      })
-      : [];
-
-    const vendorMap = {};
-    vendors.forEach(v => {
-      vendorMap[v.id] = v.vendor_name;
+    const data = await sequelize.query(dataQuery, {
+      replacements,
+      type: sequelize.QueryTypes.SELECT,
     });
 
-    // Attach vendor_name
+    // Count query (for pagination only)
+    let total = data.length;
 
-    const formattedRows = result.rows.map(p => ({
-      ...p.toJSON(),
-      vendor_name: vendorMap[p.account_name_id] || null
-    }));
+    if (pageSize) {
+      const countQuery = `
+        SELECT COUNT(*)::int AS count
+        FROM vendor_payments vp
+        LEFT JOIN ledger l ON l.id = vp.account_name_id AND vp.bill_type_id IN (2, 3) AND l.deleted_at IS NULL
+        LEFT JOIN vendors v ON v.id = vp.account_name_id AND vp.user_type_id = 1 AND vp.bill_type_id NOT IN (2, 3) AND v.deleted_at IS NULL
+        LEFT JOIN customers c ON c.id = vp.account_name_id AND vp.user_type_id = 2 AND vp.bill_type_id NOT IN (2, 3) AND c.deleted_at IS NULL
+        ${whereSql}
+      `;
 
-    // Response
+      const countResult = await sequelize.query(countQuery, {
+        replacements,
+        type: sequelize.QueryTypes.SELECT,
+      });
+
+      total = countResult[0]?.count || 0;
+    }
 
     return commonService.okResponse(res, {
-      data: formattedRows,
-      ...(shouldPaginate && {
+      data,
+      ...(pageSize && {
         pagination: {
-          total: result.count,
-          page: parseInt(page || 1),
-          pageSize: limit,
-          totalPages: Math.ceil(result.count / limit)
-        }
-      })
+          total,
+          page: Number(page || 1),
+          pageSize: Number(pageSize),
+          totalPages: Math.ceil(total / pageSize),
+        },
+      }),
     });
 
   } catch (error) {
@@ -163,7 +193,18 @@ const getVendorPaymentById = async (req, res) => {
           vp.*,
           bt.bill_type,
           pm.payment_mode,
-          v.vendor_name AS account_name,
+          CASE 
+            WHEN vp.bill_type_id IN (2, 3) THEN l.ledger_name
+            WHEN vp.user_type_id = 1 THEN v.vendor_name
+            WHEN vp.user_type_id = 2 THEN c.customer_name
+            ELSE NULL
+          END AS account_name,
+          CASE 
+            WHEN vp.bill_type_id IN (2, 3) THEN l.ledger_no
+            WHEN vp.user_type_id = 1 THEN v.mobile
+            WHEN vp.user_type_id = 2 THEN c.mobile_number
+            ELSE NULL
+          END AS account_mobile,
           b.branch_name,
           b.address AS branch_address,
           b.gst_no AS branch_gst_no,
@@ -175,7 +216,9 @@ const getVendorPaymentById = async (req, res) => {
       FROM vendor_payments vp
       LEFT JOIN bill_types bt ON bt.id = vp.bill_type_id AND bt.deleted_at IS NULL
       LEFT JOIN payment_modes pm ON pm.id = vp.payment_mode AND pm.deleted_at IS NULL
-      LEFT JOIN vendors v ON v.id = vp.account_name_id AND v.deleted_at IS NULL
+      LEFT JOIN ledger l ON l.id = vp.account_name_id AND vp.bill_type_id IN (2, 3) AND l.deleted_at IS NULL
+      LEFT JOIN vendors v ON v.id = vp.account_name_id AND vp.user_type_id = 1 AND vp.bill_type_id NOT IN (2, 3) AND v.deleted_at IS NULL
+      LEFT JOIN customers c ON c.id = vp.account_name_id AND vp.user_type_id = 2 AND vp.bill_type_id NOT IN (2, 3) AND c.deleted_at IS NULL
       LEFT JOIN branches b ON b.id = vp.branch_id AND b.deleted_at IS NULL
       LEFT JOIN districts d ON d.id = b.district_id AND d.deleted_at IS NULL
       LEFT JOIN states s ON s.id = b.state_id AND s.deleted_at IS NULL
@@ -276,7 +319,7 @@ const getInvoiceDropdown = async (req, res) => {
   try {
     const rows = await models.SalesInvoiceBill.findAll({
       order: [["id", "ASC"]],
-    }); 
+    });
     const items = rows.map((r) => ({ id: r.id, number: r.invoice_no }));
     return commonService.okResponse(res, { items });
   } catch (err) {
