@@ -60,6 +60,10 @@ module.exports = (sequelize, DataTypes) => {
                 type: DataTypes.ENUM('Pending', 'Completed', 'Failed', 'Cancelled'),
                 defaultValue: 'Completed',
             },
+            user_type_id:{
+                type: DataTypes.INTEGER, // user_types table
+                allowNull: true,
+            }
         },
         {
             timestamps: true,
