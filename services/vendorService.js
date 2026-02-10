@@ -176,6 +176,7 @@ const listVendorDropdown = async (req, res) => {
         v.state_id,
         v.address,
         v.district_id,
+        v.mobile,
         v.pin_code,
         v.gst_no,
         s.state_name,

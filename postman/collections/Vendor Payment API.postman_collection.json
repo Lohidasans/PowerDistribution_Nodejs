@@ -54,7 +54,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"payment_no\": \"VP-2026-001\",\n  \"payment_date\": \"2026-02-01\",\n  \"bill_type_id\": 1,\n  \"branch_id\": 1,\n  \"payment_mode\": 1,\n  \"account_name_id\": 5,\n  \"amount\": 50000,\n  \"amount_in_words\": \"Fifty Thousand Only\",\n  \"invoice_id\": 10,\n  \"purchase_id\": 15,\n  \"ref_id\": \"REF-001\",\n  \"remarks\": \"Payment for purchase order\"\n}"
+              "raw": "{\n  \"payment_no\": \"VP-2026-001\",\n  \"payment_date\": \"2026-02-01\",\n  \"bill_type_id\": 1,\n  \"branch_id\": 1,\n  \"payment_mode\": 1,\n  \"account_name_id\": 5,\n  \"amount\": 50000,\n  \"amount_in_words\": \"Fifty Thousand Only\",\n  \"invoice_id\": 10,\n  \"purchase_id\": 15,\n  \"user_type_id\":1,//1.Vendor 2. Customer\n  \"ref_id\": \"REF-001\",\n  \"remarks\": \"Payment for purchase order\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/vendor-payments",

@@ -17,7 +17,7 @@ const { Op } = require("sequelize");
 const generateSalesInvoiceNo = async (req, res) => {
   try {
     const { prefix = "INV" } = req.query || {};
-    
+
     const code = await generateFiscalSeriesCode(
       models.SalesInvoiceBill,
       "invoice_no",
@@ -458,10 +458,10 @@ const listSalesInvoices = async (req, res) => {
 
     // Fetch current stock from ProductItemDetails
     const productItems = productItemDetailIds.length ? await sequelize.query(`SELECT id, sku_id, quantity FROM "productItemDetails" WHERE id IN (:ids)`,
-    {
-      replacements: { ids: productItemDetailIds },
-      type: sequelize.QueryTypes.SELECT
-    }) : [];
+      {
+        replacements: { ids: productItemDetailIds },
+        type: sequelize.QueryTypes.SELECT
+      }) : [];
 
     // Create lookup map
     const productItemMap = productItems.reduce((acc, row) => {
@@ -604,7 +604,7 @@ const searchInvoices = async (req, res) => {
     }
 
     if (status) {
-      whereCondition.status = status; 
+      whereCondition.status = status;
     }
 
     // Find all matching invoices
@@ -943,7 +943,7 @@ const createSalesInvoice = async (req, res) => {
         amount_due: header.amount_due,
         refund_amount: header.refund_amount,
         amount_in_words: header.amount_in_words,
-        
+
         total_quantity: header.total_quantity,
         hasBillAdjustment: header.hasBillAdjustment || false,
         status: header.status,
@@ -1233,6 +1233,284 @@ const updateSalesInvoice = async (req, res) => {
   }
 };
 
+// Get sales invoices by customer_id with optional filters
+const getSalesInvoicesByCustomerId = async (req, res) => {
+  try {
+    const { customer_id } = req.params;
+    const { from, to, status, branch_id } = req.query || {};
+
+    if (!customer_id) {
+      return commonService.badRequest(res, 'customer_id is required');
+    }
+
+    let sql = `
+      WITH invoice_items AS (
+        SELECT
+          invoice_bill_id,
+          JSON_AGG(
+            JSON_BUILD_OBJECT(
+              'id', id,
+              'invoice_bill_id', invoice_bill_id,
+              'product_id', product_id,
+              'product_item_detail_id', product_item_detail_id,
+              'hsn_code', hsn_code,
+              'product_name_snapshot', product_name_snapshot,
+              'gross_weight', gross_weight,
+              'net_weight', net_weight,
+              'wastage', wastage,
+              'quantity', quantity,
+              'rate', rate,
+              'discount_amount', discount_amount,
+              'amount', amount,
+              'created_at', created_at,
+              'updated_at', updated_at
+            )
+            ORDER BY id ASC
+          ) AS items,
+          SUM(quantity) AS total_quantity,
+          SUM(amount) AS total_amount
+        FROM sales_invoice_bill_items
+        WHERE deleted_at IS NULL
+        GROUP BY invoice_bill_id
+      )
+      SELECT
+        i.*,
+        e.employee_name as sales_person_name,
+        e.employee_no as sales_person_code,
+
+        -- Customer details
+        c.customer_name,
+        c.address AS customer_address,
+        c.mobile_number AS customer_mobile_number,
+        c.pin_code AS customer_pincode,
+        c.pan_no AS customer_pan_no,
+        c.gst_no AS customer_gst_no,
+        ct.country_name AS customer_country_name,
+        d.district_name AS customer_district_name,
+        s.state_name AS customer_state_name,
+
+        -- Branch details
+        b.branch_name,
+        b.address AS branch_address,
+        b.mobile AS branch_mobile_number,
+        b.pin_code AS branch_pincode,
+        b.gst_no AS branch_gst_no,
+        bd.district_name AS branch_district_name,
+        bs.state_name AS branch_state_name,
+
+        -- Items
+        COALESCE(ii.items, '[]'::json) AS invoice_items,
+        COALESCE(ii.total_quantity, 0) AS total_items_quantity,
+        COALESCE(ii.total_amount, 0) AS total_items_amount,
+
+        -- Get adjustments as a JSON array
+        (
+          SELECT COALESCE(JSON_AGG(
+            JSON_BUILD_OBJECT(
+              'id', a.id,
+              'adjustment_type_id', a.adjustment_type_id,
+              'adjustment_type_name', bat.type_name,
+              'reference_id', a.reference_id,
+              'reference_no', a.reference_no,
+              'adjustment_amount', a.adjustment_amount,
+              'created_at', a.created_at,
+              'updated_at', a.updated_at
+            )
+            ORDER BY a.created_at DESC
+          ), '[]'::json)
+          FROM sales_invoice_adjustments a
+          LEFT JOIN bill_adjustment_types bat ON bat.id = a.adjustment_type_id::integer
+          WHERE a.sales_invoice_id = i.id
+          AND a.deleted_at IS NULL
+        ) AS bill_adjustments,
+
+        -- Total adjustment amount
+        (
+          SELECT COALESCE(SUM(a.adjustment_amount), 0)
+          FROM sales_invoice_adjustments a
+          WHERE a.sales_invoice_id = i.id
+          AND a.deleted_at IS NULL
+        ) AS total_adjustment_amount,
+
+        -- Payment details
+        (
+          SELECT COALESCE(JSON_AGG(
+            JSON_BUILD_OBJECT(
+              'id', p.id,
+              'payment_mode', p.payment_mode,
+              'amount_received', p.amount_received,
+              'payment_date', p.payment_date,
+              'transaction_id', p.transaction_id,
+              'status', p.status,
+              'created_at', p.created_at,
+              'updated_at', p.updated_at
+            )
+            ORDER BY p.created_at DESC
+          ), '[]'::json)
+          FROM payments p
+          WHERE p.invoice_bill_id = i.id
+          AND p.deleted_at IS NULL
+        ) AS payment_details,
+
+        -- Calculate total paid amount
+        (
+          SELECT COALESCE(SUM(p.amount_received), 0)
+          FROM payments p
+          WHERE p.invoice_bill_id = i.id
+          AND p.deleted_at IS NULL
+        ) AS total_paid_amount
+
+      FROM sales_invoice_bills i
+      LEFT JOIN employees e ON e.id = i.employee_id
+
+      -- Customer joins
+      LEFT JOIN customers c ON c.id = i.customer_id
+      LEFT JOIN districts d ON d.id = c.district_id
+      LEFT JOIN states s ON s.id = c.state_id
+      LEFT JOIN countries ct ON ct.id = c.country_id
+
+      -- Branch joins
+      LEFT JOIN branches b ON b.id = i.branch_id
+      LEFT JOIN districts bd ON bd.id = b.district_id
+      LEFT JOIN states bs ON bs.id = b.state_id
+
+      -- Items join
+      LEFT JOIN invoice_items ii ON ii.invoice_bill_id = i.id
+
+      WHERE i.deleted_at IS NULL
+      AND i.customer_id = :customer_id
+    `;
+
+    const replacements = { customer_id };
+
+    if (from) {
+      sql += ` AND i.invoice_date >= :from`;
+      replacements.from = from;
+    }
+
+    if (to) {
+      sql += ` AND i.invoice_date <= :to`;
+      replacements.to = to;
+    }
+
+    if (status) {
+      sql += ` AND i.status = :status`;
+      replacements.status = status;
+    }
+
+    if (branch_id) {
+      sql += ` AND i.branch_id = :branch_id`;
+      replacements.branch_id = branch_id;
+    }
+
+    sql += ` ORDER BY i.invoice_date DESC, i.created_at DESC`;
+
+    // Execute the query
+    const invoices = await sequelize.query(sql, {
+      replacements,
+      type: sequelize.QueryTypes.SELECT
+    });
+
+    // Extract all product_item_detail_ids for stock lookup
+    const productItemDetailIds = invoices
+      .flatMap(inv =>
+        (typeof inv.invoice_items === "string"
+          ? JSON.parse(inv.invoice_items)
+          : inv.invoice_items || [])
+          .map(item => item.product_item_detail_id)
+      )
+      .filter(Boolean);
+
+    // Fetch current stock from ProductItemDetails
+    const productItems = productItemDetailIds.length ? await sequelize.query(
+      `SELECT id, sku_id, quantity FROM "productItemDetails" WHERE id IN (:ids)`,
+      {
+        replacements: { ids: productItemDetailIds },
+        type: sequelize.QueryTypes.SELECT
+      }
+    ) : [];
+
+    // Create lookup map
+    const productItemMap = productItems.reduce((acc, row) => {
+      acc[row.id] = {
+        sku_id: row.sku_id,
+        quantity: row.quantity
+      };
+      return acc;
+    }, {});
+
+    // Format the response
+    const formattedInvoices = invoices.map(invoice => {
+      // Parse numeric fields safely
+      const subtotal = parseFloat(invoice.subtotal_amount || 0);
+      const cgst = parseFloat(invoice.cgst_amount || 0);
+      const sgst = parseFloat(invoice.sgst_amount || 0);
+      const igst = parseFloat(invoice.igst_amount || 0);
+
+      const discountAmount = parseFloat(invoice.discount_amount || 0);
+      const totalAfterAdjustment = parseFloat(invoice.total_amount || 0);
+      const totalAdjustment = parseFloat(invoice.total_adjustment_amount || 0);
+      const totalPaid = parseFloat(invoice.total_paid_amount || 0);
+
+      // Correct total before discount
+      const totalBeforeAdjustment = subtotal + cgst + sgst + igst;
+
+      // Amount due (can be negative → refund)
+      const amountDue = totalAfterAdjustment - totalPaid;
+
+      // Parse JSON safely
+      const invoiceItems =
+        typeof invoice.invoice_items === "string"
+          ? JSON.parse(invoice.invoice_items)
+          : invoice.invoice_items || [];
+
+      const billAdjustments =
+        typeof invoice.bill_adjustments === "string"
+          ? JSON.parse(invoice.bill_adjustments)
+          : invoice.bill_adjustments || [];
+
+      const paymentDetails =
+        typeof invoice.payment_details === "string"
+          ? JSON.parse(invoice.payment_details)
+          : invoice.payment_details || [];
+
+      return {
+        ...invoice,
+
+        // Totals
+        total_amount_before_adjustment: totalBeforeAdjustment.toFixed(2),
+        total_amount_after_adjustment: totalAfterAdjustment.toFixed(2),
+        total_paid_amount: totalPaid.toFixed(2),
+        amount_due: amountDue.toFixed(2),
+
+        // Line items with remaining stock & SKU
+        invoice_items: invoiceItems.map(item => ({
+          ...item,
+          remaining_quantity:
+            productItemMap[item.product_item_detail_id]?.quantity ?? 0,
+          product_item_sku_id:
+            productItemMap[item.product_item_detail_id]?.sku_id ?? null
+        })),
+
+        bill_adjustments: billAdjustments,
+        payment_details: paymentDetails,
+
+        total_items_quantity: parseInt(invoice.total_items_quantity) || 0,
+        total_items_amount: parseFloat(invoice.total_items_amount) || 0
+      };
+    });
+
+    return commonService.okResponse(res, {
+      customer_id: parseInt(customer_id),
+      count: formattedInvoices.length,
+      invoices: formattedInvoices
+    });
+
+  } catch (err) {
+    console.error("Error in getSalesInvoicesByCustomerId:", err);
+    return commonService.handleError(res, err);
+  }
+};
 
 
 module.exports = {
@@ -1240,6 +1518,7 @@ module.exports = {
   createSalesInvoice,
   getSalesInvoiceById,
   listSalesInvoices,
+  getSalesInvoicesByCustomerId,
   deleteSalesInvoice,
   searchInvoices,
   updateSalesInvoice

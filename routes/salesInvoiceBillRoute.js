@@ -7,6 +7,7 @@ router.post("/sales-invoice-bills", svc.createSalesInvoice);
 router.put("/sales-invoice-bills/:id", svc.updateSalesInvoice);
 router.get("/sales-invoice-bills", svc.listSalesInvoices);
 router.get("/sales-invoice-bills/search", svc.searchInvoices);
+router.get("/sales-invoice-bills/customer/:customer_id", svc.getSalesInvoicesByCustomerId);
 router.get("/sales-invoice-bills/:id", svc.getSalesInvoiceById);
 router.delete("/sales-invoice-bills/:id", svc.deleteSalesInvoice);
 
@@ -87,4 +88,47 @@ module.exports = router;
  *     responses:
  *       204:
  *         description: No Content
+ */
+/**
+ * @openapi
+ * /api/v1/sales-invoice-bills/customer/{customer_id}:
+ *   get:
+ *     summary: Get all sales invoices for a specific customer
+ *     tags: [SalesInvoiceBill]
+ *     parameters:
+ *       - in: path
+ *         name: customer_id
+ *         required: true
+ *         schema: { type: integer }
+ *         description: The customer ID
+ *       - in: query
+ *         name: from
+ *         schema: { type: string, format: date }
+ *         description: Filter by invoice date from
+ *       - in: query
+ *         name: to
+ *         schema: { type: string, format: date }
+ *         description: Filter by invoice date to
+ *       - in: query
+ *         name: status
+ *         schema: { type: string, enum: [Draft, Printed, Invoice, Cancelled, On Hold] }
+ *         description: Filter by invoice status
+ *       - in: query
+ *         name: branch_id
+ *         schema: { type: integer }
+ *         description: Filter by branch ID
+ *     responses:
+ *       200:
+ *         description: OK
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 customer_id:
+ *                   type: integer
+ *                 count:
+ *                   type: integer
+ *                 invoices:
+ *                   type: array
  */
