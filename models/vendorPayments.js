@@ -67,6 +67,10 @@ module.exports = (sequelize, DataTypes) => {
             user_type_id: {
                 type: DataTypes.INTEGER, // user_types table
                 allowNull: true,
+            },
+            branch_id: {
+                type: DataTypes.INTEGER, // branches table
+                allowNull: true,
             }
         },
         {
