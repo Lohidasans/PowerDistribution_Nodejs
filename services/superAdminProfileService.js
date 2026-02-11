@@ -205,8 +205,42 @@ const listSuperAdminDropdown = async (req, res) => {
 const getSuperAdminProfileById = async (req, res) => {
   try {
     const { id } = req.params;
-    const profile = await commonService.findById(models.SuperAdminProfile, id, res);
-    if (!profile) return;
+
+    // Fetch profile with district_name and state_name
+    const query = `
+      SELECT 
+        sap.id,
+        sap.company_name,
+        sap.proprietor,
+        sap.mobile_number,
+        sap.email_id,
+        sap.address,
+        sap.district_id,
+        sap.state_id,
+        sap.pin_code,
+        sap.branch_sequence_type,
+        sap.branch_sequence_value,
+        sap.joining_date,
+        sap.created_at,
+        sap.updated_at,
+        s.state_name,
+        d.district_name
+      FROM superadmin_profiles sap
+      LEFT JOIN states s ON s.id = sap.state_id
+      LEFT JOIN districts d ON d.id = sap.district_id
+      WHERE sap.id = :id AND sap.deleted_at IS NULL
+    `;
+
+    const profiles = await sequelize.query(query, {
+      replacements: { id: Number(id) },
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    if (!profiles.length) {
+      return commonService.notFound(res, message.failure.notFound);
+    }
+
+    const profile = profiles[0];
 
     const [bank_account, kyc_documents, logins] = await Promise.all([
       models.BankAccount.findOne({ where: { entity_type: "superadmin", entity_id: id } }),
