@@ -153,32 +153,155 @@ const getEmployeePermissionsWithRole = async (req, res) => {
     const moduleMap = Object.fromEntries(modules.map((m) => [m.id, m]));
     const groupMap = Object.fromEntries(moduleGroups.map((g) => [g.id, g]));
 
-    // 7️⃣ Define access levels (can come from DB later)
-    const ACCESS_LEVELS = [1, 2, 3];
-
-    // 8️⃣ Transform to REQUIRED response format
+    // 7️⃣ Transform to REQUIRED response format
     const modulesResponse = [];
 
     permissions.forEach((perm) => {
       const module = moduleMap[perm.module_id];
       if (!module) return;
 
-      ACCESS_LEVELS.forEach((level) => {
-        modulesResponse.push({
-          id: perm.id, // employee_permission id
-          module_id: module.id,
-          module_name: module.module_name,
-          module_group_id: module.module_group_id,
-          module_group_name:
-            groupMap[module.module_group_id]?.module_group_name || null,
-          access_level_id: level,
-        });
+      modulesResponse.push({
+        id: perm.id, // employee_permission id
+        module_id: module.id,
+        module_name: module.module_name,
+        module_group_id: module.module_group_id,
+        module_group_name:
+          groupMap[module.module_group_id]?.module_group_name || null,
+        access_level_id: perm.access_level_id,
       });
     });
 
-    // 9️⃣ Final response (SECOND UPLOAD FORMAT)
+    // 8️⃣ Final response (SECOND UPLOAD FORMAT)
     return commonService.okResponse(res, {
       message: "Role Permissions Fetched",
+      data: {
+        modules: modulesResponse,
+      },
+    });
+  } catch (err) {
+    console.error(err);
+    return commonService.handleError(res, err);
+  }
+};
+
+const getEmployeePermissionsOrRolePermissions = async (req, res) => {
+  try {
+    const { employee_id } = req.query;
+
+    // 1️⃣ Validation
+    if (!employee_id) {
+      return commonService.badRequest(res, "employee_id is required");
+    }
+
+    // 2️⃣ Check employee exists and get their details
+    const employee = await models.Employee.findByPk(employee_id, { raw: true });
+
+    if (!employee) {
+      return commonService.notFound(res, "Employee not found");
+    }
+
+    // 3️⃣ Try to fetch employee-specific permissions first
+    let permissions = await models.EmployeePermission.findAll({
+      where: { employee_id },
+      raw: true,
+    });
+
+    let source = "employee_permissions";
+
+    // 4️⃣ If no employee permissions found, fallback to role permissions
+    if (!permissions || permissions.length === 0) {
+      if (!employee.role_id || !employee.department_id) {
+        return commonService.okResponse(res, {
+          message: "No permissions found - employee has no role or department assigned",
+          source: "none",
+          data: {
+            modules: [],
+          },
+        });
+      }
+
+      // Fetch role details
+      const role = await models.Role.findByPk(employee.role_id, { raw: true });
+      
+      if (!role) {
+        return commonService.okResponse(res, {
+          message: "No permissions found - employee role not found",
+          source: "none",
+          data: {
+            modules: [],
+          },
+        });
+      }
+
+      // Fetch role permissions based on employee's role and department
+      const rolePermissions = await models.RolePermission.findAll({
+        where: {
+          role_name: role.role_name,
+          department_id: employee.department_id,
+        },
+        raw: true,
+      });
+
+      if (!rolePermissions || rolePermissions.length === 0) {
+        return commonService.okResponse(res, {
+          message: "No permissions found for this role and department",
+          source: "none",
+          data: {
+            modules: [],
+          },
+        });
+      }
+
+      permissions = rolePermissions;
+      source = "role_permissions";
+    }
+
+    // 5️⃣ Collect module IDs
+    const moduleIds = [...new Set(permissions.map((p) => p.module_id))];
+
+    // 6️⃣ Fetch modules & module groups
+    const [modules, moduleGroups, department, role] = await Promise.all([
+      models.Module.findAll({
+        where: { id: moduleIds },
+        raw: true,
+      }),
+      models.ModuleGroup.findAll({ raw: true }),
+      models.EmployeeDepartment.findByPk(employee.department_id, { raw: true }),
+      employee.role_id ? models.Role.findByPk(employee.role_id, { raw: true }) : null,
+    ]);
+
+    // 7️⃣ Create lookup maps
+    const moduleMap = Object.fromEntries(modules.map((m) => [m.id, m]));
+    const groupMap = Object.fromEntries(moduleGroups.map((g) => [g.id, g]));
+
+    // 8️⃣ Transform to required response format
+    const modulesResponse = [];
+
+    permissions.forEach((perm) => {
+      const module = moduleMap[perm.module_id];
+      if (!module) return;
+
+      modulesResponse.push({
+        id: perm.id,
+        module_id: module.id,
+        module_name: module.module_name,
+        module_group_id: module.module_group_id,
+        module_group_name:
+          groupMap[module.module_group_id]?.module_group_name || null,
+        access_level_id: perm.access_level_id,
+      });
+    });
+
+    // 9️⃣ Final response with source indicator
+    return commonService.okResponse(res, {
+      message: `Permissions fetched from ${source}`,
+      source: source,
+      employee: {
+        id: employee.id,
+        name: employee.employee_name,
+        department: department?.department_name || null,
+        role: role?.role_name || null,
+      },
       data: {
         modules: modulesResponse,
       },
@@ -193,4 +316,5 @@ module.exports = {
   updateEmployeePermissions,
   getEmployeePermissions,
   getEmployeePermissionsWithRole,
+  getEmployeePermissionsOrRolePermissions,
 };

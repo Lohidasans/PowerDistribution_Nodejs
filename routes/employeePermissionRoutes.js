@@ -3,6 +3,7 @@ var router = express.Router();
 const svc = require("../services/employeePermissionService");
 
 router.get("/employee-permissions", svc.getEmployeePermissionsWithRole);
+router.get("/employee-permissions-with-fallback", svc.getEmployeePermissionsOrRolePermissions);
 router.put("/employee-permissions/:employee_id", svc.updateEmployeePermissions);
 
 module.exports = router;
