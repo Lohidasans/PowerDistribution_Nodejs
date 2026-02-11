@@ -22,7 +22,7 @@ module.exports = (sequelize, DataTypes) => {
             },
             branch_id: { // branches table
                 type: DataTypes.INTEGER,
-                allowNull: true,   
+                allowNull: true,
             },
             payment_mode: { // payment_modes table
                 type: DataTypes.INTEGER,
@@ -56,11 +56,15 @@ module.exports = (sequelize, DataTypes) => {
                 type: DataTypes.TEXT,
                 allowNull: true,
             },
+            transaction_no: {
+                type: DataTypes.STRING,
+                allowNull: true,
+            },
             status: {
                 type: DataTypes.ENUM('Pending', 'Completed', 'Failed', 'Cancelled'),
                 defaultValue: 'Completed',
             },
-            user_type_id:{
+            user_type_id: {
                 type: DataTypes.INTEGER, // user_types table
                 allowNull: true,
             }

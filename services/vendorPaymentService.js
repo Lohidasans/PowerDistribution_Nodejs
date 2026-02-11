@@ -6,7 +6,7 @@ const { Op } = require('sequelize');
 const createVendorPayment = async (req, res) => {
   const t = await sequelize.transaction();
   try {
-    const { payment_no, payment_date, bill_type_id, branch_id, payment_mode, account_name_id, amount, amount_in_words, invoice_id, purchase_id, ref_id, remarks, user_type_id } = req.body;
+    const { payment_no, payment_date, bill_type_id, branch_id, payment_mode, account_name_id, amount, amount_in_words, invoice_id, purchase_id, ref_id, remarks, transaction_no, user_type_id } = req.body;
 
     // Check if a non-deleted payment no already uses this code
     if (payment_no) {
@@ -37,6 +37,7 @@ const createVendorPayment = async (req, res) => {
       purchase_id,
       ref_id,
       remarks,
+      transaction_no,
       user_type_id,
       status: 'Completed'
     }, { transaction: t });
@@ -121,6 +122,7 @@ const getVendorPayments = async (req, res) => {
         vp.account_name_id,
         vp.user_type_id,
         vp.amount,
+        vp.transaction_no,
         vp.status,
         CASE 
           WHEN vp.bill_type_id IN (2, 3) THEN l.ledger_name
