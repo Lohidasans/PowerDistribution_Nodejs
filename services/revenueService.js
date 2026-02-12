@@ -89,18 +89,18 @@ const getBranchwiseRevenue = async (req, res) => {
       ORDER BY total_amount DESC
     `;
 
-    if (hasPagination) {
-        rowsQuery += ` LIMIT :limit OFFSET :offset`;
-        dateReplacements.limit = limitNum;
-        dateReplacements.offset = offset;
-    }
+        if (hasPagination) {
+            rowsQuery += ` LIMIT :limit OFFSET :offset`;
+            dateReplacements.limit = limitNum;
+            dateReplacements.offset = offset;
+        }
 
-    const rows = await sequelize.query(rowsQuery, {
-        replacements: { ...dateReplacements, ...replacements },
-        type: sequelize.QueryTypes.SELECT
-    });
+        const rows = await sequelize.query(rowsQuery, {
+            replacements: { ...dateReplacements, ...replacements },
+            type: sequelize.QueryTypes.SELECT
+        });
 
-    const summaryQuery = `
+        const summaryQuery = `
       SELECT
         COALESCE(SUM(p.amount_received),0) AS total_collection,
         COALESCE(SUM(CASE WHEN p.payment_mode = 'Cash' THEN p.amount_received ELSE 0 END),0) AS cash,
@@ -220,21 +220,39 @@ const getBranchRevenueDetails = async (req, res) => {
             replacements.payment_mode = payment_mode;
         }
 
+        // Refund deduction logic: Refunds are cash transactions
+        // Deduct from total and cash, but not from UPI/Card
+        // Only skip deduction if explicitly filtering by UPI or Card
+        // Use MAX instead of SUM to avoid counting the same refund multiple times
+        // when an invoice has multiple payment records
+        const shouldDeductRefunds = !payment_mode || payment_mode === 'Cash';
+        const refundDeduction = shouldDeductRefunds
+            ? `- COALESCE(MAX(sib.refund_amount), 0)`
+            : '';
+
         const hasPagination = page && limit;
         const limitNum = hasPagination ? Number(limit) : null;
         const offset = hasPagination ? (Number(page) - 1) * limitNum : null;
+
+        // For rows: only deduct refunds if no payment_mode filter or if payment_mode is Cash
+        const rowRefundDeduction = shouldDeductRefunds ? '- COALESCE(MAX(sib.refund_amount), 0)' : '';
+
+        // Always include refund column, but show 0 for UPI/Card filters
+        const refundColumn = shouldDeductRefunds
+            ? 'COALESCE(MAX(CASE WHEN sib.id IS NOT NULL THEN sib.refund_amount ELSE 0 END), 0)'
+            : '0';
 
         let rowsQuery = `
             SELECT
                 COALESCE(sib.invoice_no, jr.repair_code) AS description,
 
-                COALESCE(MAX(CASE WHEN sib.id IS NOT NULL THEN sib.refund_amount ELSE 0 END), 0) AS refund,
+                ${refundColumn} AS refund,
 
                 ROUND(SUM(CASE WHEN p.payment_mode = 'Cash' THEN p.amount_received ELSE 0 END), 2) AS cash,
                 ROUND(SUM(CASE WHEN p.payment_mode = 'UPI' THEN p.amount_received ELSE 0 END), 2) AS upi,
                 ROUND(SUM(CASE WHEN p.payment_mode = 'Card' THEN p.amount_received ELSE 0 END), 2) AS card,
 
-                ROUND(SUM(p.amount_received)- COALESCE(MAX(sib.refund_amount), 0), 2) AS total_amount,
+                ROUND(SUM(p.amount_received) ${rowRefundDeduction}, 2) AS total_amount,
 
                 MAX(p.created_at) AS payment_date
 
@@ -254,24 +272,57 @@ const getBranchRevenueDetails = async (req, res) => {
                 ${paymentModeConditionForRows}
 
             GROUP BY description
+            ${payment_mode ? 'HAVING ROUND(SUM(p.amount_received) ' + rowRefundDeduction + ', 2) > 0' : ''}
             ORDER BY total_amount DESC
             `;
 
-                if (hasPagination) {
-                    rowsQuery += ` LIMIT :limit OFFSET :offset`;
-                    replacements.limit = limitNum;
-                    replacements.offset = offset;
-                }
+        if (hasPagination) {
+            rowsQuery += ` LIMIT :limit OFFSET :offset`;
+            replacements.limit = limitNum;
+            replacements.offset = offset;
+        }
 
-                const rows = await sequelize.query(rowsQuery, {
-                    replacements,
-                    type: sequelize.QueryTypes.SELECT
-                });
+        const rows = await sequelize.query(rowsQuery, {
+            replacements,
+            type: sequelize.QueryTypes.SELECT
+        });
 
-            const summaryQuery = `
+        const summaryQuery = `
             SELECT
-                COALESCE(SUM(p.amount_received), 0) AS total_collection,
-                COALESCE(SUM(CASE WHEN p.payment_mode = 'Cash' THEN p.amount_received ELSE 0 END), 0) AS cash,
+                COALESCE(SUM(p.amount_received), 0) ${shouldDeductRefunds ? `- COALESCE((
+                    SELECT SUM(DISTINCT sib_inner.refund_amount) 
+                    FROM payments p_inner
+                    LEFT JOIN sales_invoice_bills sib_inner
+                        ON sib_inner.id = p_inner.invoice_bill_id
+                        AND sib_inner.deleted_at IS NULL
+                    LEFT JOIN jewel_repairs jr_inner
+                        ON jr_inner.id = p_inner.jewel_repair_id
+                        AND jr_inner.deleted_at IS NULL
+                    WHERE p_inner.deleted_at IS NULL
+                        AND p_inner.status = 'Completed'
+                        AND COALESCE(sib_inner.branch_id, jr_inner.branch_id) = :branch_id
+                        AND sib_inner.id IS NOT NULL
+                        ${paymentDateCondition.replace(/p\./g, 'p_inner.')}
+                        ${searchCondition.replace(/sib\./g, 'sib_inner.').replace(/jr\./g, 'jr_inner.')}
+                        ${paymentModeConditionForRows.replace(/p\./g, 'p_inner.')}
+                ), 0)` : ''} AS total_collection,
+                COALESCE(SUM(CASE WHEN p.payment_mode = 'Cash' THEN p.amount_received ELSE 0 END), 0) ${shouldDeductRefunds ? `- COALESCE((
+                    SELECT SUM(DISTINCT sib_inner.refund_amount) 
+                    FROM payments p_inner
+                    LEFT JOIN sales_invoice_bills sib_inner
+                        ON sib_inner.id = p_inner.invoice_bill_id
+                        AND sib_inner.deleted_at IS NULL
+                    LEFT JOIN jewel_repairs jr_inner
+                        ON jr_inner.id = p_inner.jewel_repair_id
+                        AND jr_inner.deleted_at IS NULL
+                    WHERE p_inner.deleted_at IS NULL
+                        AND p_inner.status = 'Completed'
+                        AND COALESCE(sib_inner.branch_id, jr_inner.branch_id) = :branch_id
+                        AND sib_inner.id IS NOT NULL
+                        ${paymentDateCondition.replace(/p\./g, 'p_inner.')}
+                        ${searchCondition.replace(/sib\./g, 'sib_inner.').replace(/jr\./g, 'jr_inner.')}
+                        ${paymentModeConditionForRows.replace(/p\./g, 'p_inner.')}
+                ), 0)` : ''} AS cash,
                 COALESCE(SUM(CASE WHEN p.payment_mode = 'UPI' THEN p.amount_received ELSE 0 END), 0) AS upi,
                 COALESCE(SUM(CASE WHEN p.payment_mode = 'Card' THEN p.amount_received ELSE 0 END), 0) AS card
             FROM payments p
@@ -286,6 +337,7 @@ const getBranchRevenueDetails = async (req, res) => {
                 AND COALESCE(sib.branch_id, jr.branch_id) = :branch_id
                 ${paymentDateCondition}
                 ${searchCondition}
+                ${paymentModeConditionForRows}
             `;
 
         const [summaryResult] = await sequelize.query(summaryQuery, {
