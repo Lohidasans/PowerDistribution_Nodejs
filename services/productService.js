@@ -7,7 +7,99 @@ const {
   generateUniqueCode,
   generateProductSKUCode,
 } = require("../helpers/codeGeneration");
+
 const GST_PERCENT = 3;
+
+/* =========================================================
+   FAST (SYNC) PRICE CALC — NO DB QUERIES
+   (Used in LIST endpoints to avoid N+1 queries)
+   Response shape stays SAME as your calculateSellingPrice()
+========================================================= */
+const calculateSellingPriceSync = (
+  product,
+  item,
+  additionalDetails = [],
+  materialPrice = 0
+) => {
+  try {
+    let materialRate = Number(materialPrice || 0);
+
+    if (product.product_type === "Piece Rate") {
+      const ratePerGram = Number(item.rate_per_gram || 0);
+      materialRate = Math.max(ratePerGram, materialRate);
+    }
+
+    const netWeight = Number(item.net_weight || 0);
+    const materialContribution = materialRate * netWeight;
+
+    const stoneValue = Number(item.stone_value || 0);
+
+    const additionalDetailsSum = (additionalDetails || []).reduce((sum, d) => {
+      return sum + (Number(d.value) || 0);
+    }, 0);
+
+    let makingCharge = 0;
+    const makingChargeValue = Number(item.making_charge || 0);
+    switch (item.making_charge_type) {
+      case "Per Gram":
+        makingCharge = makingChargeValue * netWeight;
+        break;
+      case "Percentage":
+        makingCharge = (makingChargeValue / 100) * materialContribution;
+        break;
+      case "Amount":
+        makingCharge = makingChargeValue;
+        break;
+      default:
+        makingCharge = 0;
+    }
+
+    let wastage = 0;
+    const wastageValue = Number(item.wastage || 0);
+    switch (item.wastage_type) {
+      case "Per Gram":
+        wastage = wastageValue * netWeight;
+        break;
+      case "Percentage":
+        wastage = (wastageValue / 100) * materialContribution;
+        break;
+      case "Amount":
+        wastage = wastageValue;
+        break;
+      default:
+        wastage = 0;
+    }
+
+    const sellingPrice =
+      materialContribution +
+      makingCharge +
+      wastage +
+      stoneValue +
+      additionalDetailsSum;
+
+    return {
+      material_rate_per_gram: materialRate,
+      material_contribution: materialContribution,
+      making_charge: makingCharge,
+      wastage: wastage,
+      stone_value: stoneValue,
+      additional_details_value: additionalDetailsSum,
+      selling_price: sellingPrice,
+    };
+  } catch (error) {
+    console.error("Error in calculateSellingPriceSync:", error);
+    return {
+      material_rate_per_gram: 0,
+      material_contribution: 0,
+      making_charge: 0,
+      wastage: 0,
+      stone_value: 0,
+      additional_details_value: 0,
+      selling_price: 0,
+      error: "Error calculating price",
+    };
+  }
+};
 
 const createProductSKUCode = async (req, res) => {
   const t = await sequelize.transaction();
@@ -206,6 +298,7 @@ const getAllProducts = async (req, res) => {
       sort_by = "created_at",
       sort_order = "DESC",
     } = req.query;
+
     const searchConditions = buildSearchCondition(search, [
       "product_name",
       "description",
@@ -234,11 +327,7 @@ const getAllProducts = async (req, res) => {
       distinct: true,
     });
 
-    const response = {
-      products,
-    };
-
-    return commonService.okResponse(res, response);
+    return commonService.okResponse(res, { products });
   } catch (err) {
     return commonService.handleError(res, err);
   }
@@ -298,17 +387,15 @@ const getProductAddonList = async (req, res) => {
       )`;
       replacements.like = like;
     }
+
     // Product IDs filter (supports multiple IDs)
     if (product_ids) {
       let ids = product_ids;
 
-      // Parse JSON array string like "[1,2,3]"
       if (typeof ids === "string") {
-        // Try JSON parse ONLY if it's an array like "[1,2,3]"
         if (ids.trim().startsWith("[") && ids.trim().endsWith("]")) {
           ids = JSON.parse(ids);
         } else {
-          // treat as simple comma separated values
           ids = ids
             .split(",")
             .map((n) => Number(n.trim()))
@@ -316,10 +403,7 @@ const getProductAddonList = async (req, res) => {
         }
       }
 
-      // convert single number to array
-      if (typeof ids === "number") {
-        ids = [ids];
-      }
+      if (typeof ids === "number") ids = [ids];
 
       if (Array.isArray(ids) && ids.length > 0) {
         base += ` AND p.id IN (:product_ids)`;
@@ -378,7 +462,7 @@ const getProductById = async (req, res) => {
       materialPrice = Number(material?.material_price || 0);
     }
 
-    // etch product item details & additional details
+    // fetch product item details & additional details
     const [itemDetails, additionalDetails] = await Promise.all([
       models.ProductItemDetail.findAll({
         where: { product_id: row.id },
@@ -409,7 +493,6 @@ const getProductById = async (req, res) => {
 
     // Build lookup map by product_item_id
     const itemStateMap = {};
-
     userItems.forEach((ui) => {
       itemStateMap[ui.product_item_id] = {
         is_wishlisted: Boolean(ui.is_wishlisted),
@@ -422,13 +505,13 @@ const getProductById = async (req, res) => {
       itemDetails.map(async (it) => {
         const plainItem = it.get({ plain: true });
 
+        // Keep your async function for single product view (response stays same)
         const priceDetails = await calculateSellingPrice(
           row.get({ plain: true }),
           plainItem,
           models
         );
 
-        // Inject price_details before final price calc
         plainItem.price_details = priceDetails;
 
         const finalPrice = calculateFinalPriceRate(
@@ -502,7 +585,6 @@ const getProductById = async (req, res) => {
       { replacements: { pid: row.id } }
     );
 
-    // Final response
     return commonService.okResponse(res, {
       product: {
         ...row.get({ plain: true }),
@@ -546,6 +628,7 @@ const updateProduct = async (req, res) => {
       transaction: t,
       force: true,
     });
+
     await models.ProductAddOn.destroy({
       where: { product_id: id },
       force: true,
@@ -616,18 +699,14 @@ const deleteProduct = async (req, res) => {
     const productId = req.params.id;
 
     // Get product
-    const product = await commonService.findById(
-      models.Product,
-      productId,
-      res
-    );
+    const product = await commonService.findById(models.Product, productId, res);
     if (!product) {
       await t.rollback();
       return;
     }
 
     // Get all item details of the product
-    const itemDetails = await models.ProductItemDetail.findAll({
+    await models.ProductItemDetail.findAll({
       where: { product_id: productId },
       transaction: t,
     });
@@ -638,13 +717,13 @@ const deleteProduct = async (req, res) => {
       transaction: t,
     });
 
-    //  Delete Item Details (soft)
+    // Delete Item Details (soft)
     await models.ProductItemDetail.destroy({
       where: { product_id: productId },
       transaction: t,
     });
 
-    //  Delete Add Ons (soft)
+    // Delete Add Ons (soft)
     await models.ProductAddOn.destroy({
       where: { product_id: productId },
       transaction: t,
@@ -656,7 +735,7 @@ const deleteProduct = async (req, res) => {
       transaction: t,
     });
 
-    //  Finally delete the product (soft)
+    // Finally delete the product (soft)
     await product.destroy({ transaction: t });
 
     await t.commit();
@@ -667,7 +746,8 @@ const deleteProduct = async (req, res) => {
   }
 };
 
-// Get details for Web list page (with filters and search)
+// Get details for Web list page (with filters and search)  (RESPONSE UNCHANGED)
+// Internal optimized: batch load material + additional details and use sync price calc
 const getAllProductDetails = async (req, res) => {
   try {
     const {
@@ -679,7 +759,7 @@ const getAllProductDetails = async (req, res) => {
       search,
       branch_id,
       variant_type_ids,
-      stock, // NEW PARAM
+      stock,
       page,
       limit,
     } = req.query;
@@ -731,16 +811,19 @@ const getAllProductDetails = async (req, res) => {
     if (variant_type_ids) {
       const typeIds = variant_type_ids
         .split(",")
-        .map((id) => parseInt(id.trim()));
+        .map((id) => parseInt(id.trim(), 10))
+        .filter(Boolean);
 
-      whereClause += `
-        AND EXISTS (
-          SELECT 1
-          FROM product_variants pv
-          WHERE pv.product_id = p.id
-          AND pv.variant_type_ids && ARRAY[${typeIds.join(",")}]::integer[]
-        )
-      `;
+      if (typeIds.length) {
+        whereClause += `
+          AND EXISTS (
+            SELECT 1
+            FROM product_variants pv
+            WHERE pv.product_id = p.id
+            AND pv.variant_type_ids && ARRAY[${typeIds.join(",")}]::integer[]
+          )
+        `;
+      }
     }
 
     // Add stock filtering to WHERE clause
@@ -925,36 +1008,25 @@ const getAllProductDetails = async (req, res) => {
     if (products.length) {
       const productIds = products.map((p) => p.id);
 
-      // Fetch item details with correct stock behavior
-      const itemWhere = {
-        product_id: productIds,
-      };
+      const itemWhere = { product_id: productIds };
 
-      // DEFAULT behavior (no stock param → hide quantity = 0)
-      if (!stock) {
-        itemWhere.quantity = { [Op.gt]: 0 };
-      }
-
-      // EXISTING behavior (unchanged)
-      if (stock === "stock_in_hand") {
-        itemWhere.quantity = { [Op.gt]: 0 };
-      }
-
-      if (stock === "out_of_stock") {
-        itemWhere.quantity = 0;
-      }
+      if (!stock) itemWhere.quantity = { [Op.gt]: 0 };
+      if (stock === "stock_in_hand") itemWhere.quantity = { [Op.gt]: 0 };
+      if (stock === "out_of_stock") itemWhere.quantity = 0;
 
       const itemDetails = await models.ProductItemDetail.findAll({
-        where: itemWhere,   // USE THE FILTER YOU BUILT
+        where: itemWhere,
         order: [["id", "ASC"]],
+        raw: true,
       });
 
       const itemIds = itemDetails.map((it) => it.id);
 
       const additionalDetails = itemIds.length
         ? await models.ProductAdditionalDetail.findAll({
-          where: { item_detail_id: itemIds },
-        })
+            where: { item_detail_id: itemIds },
+            raw: true,
+          })
         : [];
 
       const addsByItem = additionalDetails.reduce((acc, add) => {
@@ -967,33 +1039,47 @@ const getAllProductDetails = async (req, res) => {
         return acc;
       }, {});
 
-      const itemsWithPrices = await Promise.all(
-        products.map(async (product) => {
-          const productItems = itemsByProduct[product.id] || [];
+      // Material prices map (batch)
+      const materialIds = [
+        ...new Set(products.map((p) => p.material_type_id).filter(Boolean)),
+      ];
 
-          const enrichedItems = await Promise.all(
-            productItems.map(async (item) => {
-              const itemData = item.get({ plain: true });
-              const priceDetails = await calculateSellingPrice(
-                product,
-                itemData,
-                models
-              );
+      const materialPriceMap = {};
+      if (materialIds.length) {
+        const materials = await models.MaterialType.findAll({
+          where: { id: materialIds },
+          attributes: ["id", "material_price"],
+          raw: true,
+        });
 
-              return {
-                ...itemData,
-                additional_details: addsByItem[item.id] || [],
-                price_details: priceDetails,
-              };
-            })
+        materials.forEach((m) => {
+          materialPriceMap[m.id] = Number(m.material_price || 0);
+        });
+      }
+
+      const itemsWithPrices = products.map((product) => {
+        const productItems = itemsByProduct[product.id] || [];
+
+        const enrichedItems = productItems.map((item) => {
+          const priceDetails = calculateSellingPriceSync(
+            product,
+            item,
+            addsByItem[item.id] || [],
+            materialPriceMap[product.material_type_id] || 0
           );
 
           return {
-            ...product,
-            item_details: enrichedItems,
+            ...item,
+            additional_details: addsByItem[item.id] || [],
+            price_details: priceDetails,
           };
-        })
-      );
+        });
+
+        return {
+          ...product,
+          item_details: enrichedItems,
+        };
+      });
 
       products = itemsWithPrices;
     }
@@ -1015,7 +1101,7 @@ const getAllProductDetails = async (req, res) => {
   }
 };
 
-// Get details for Web list page (with filters and search) - OPTIMIZED
+// Get details for Web list page (with filters and search) - OPTIMIZED (RESPONSE UNCHANGED)
 const newGetAllProductDetails = async (req, res) => {
   try {
     const {
@@ -1076,18 +1162,24 @@ const newGetAllProductDetails = async (req, res) => {
     }
 
     if (variant_type_ids) {
-      const typeIds = variant_type_ids.split(",").map((id) => +id.trim());
-      whereClause += `
-        AND EXISTS (
-          SELECT 1
-          FROM product_variants pv
-          WHERE pv.product_id = p.id
-          AND pv.variant_type_ids && ARRAY[${typeIds.join(",")}]::integer[]
-        )
-      `;
+      const typeIds = variant_type_ids
+        .split(",")
+        .map((id) => +id.trim())
+        .filter(Boolean);
+
+      if (typeIds.length) {
+        whereClause += `
+          AND EXISTS (
+            SELECT 1
+            FROM product_variants pv
+            WHERE pv.product_id = p.id
+            AND pv.variant_type_ids && ARRAY[${typeIds.join(",")}]::integer[]
+          )
+        `;
+      }
     }
 
-    // Stock filtering - optimized to run on products table directly
+    // Stock filtering
     if (stock === "stock_in_hand") {
       whereClause += `
         AND EXISTS (
@@ -1116,7 +1208,7 @@ const newGetAllProductDetails = async (req, res) => {
     }
 
     // Only add search JOINs if search is provided
-    let searchJoins = '';
+    let searchJoins = "";
     if (search) {
       searchJoins = `
         LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
@@ -1148,7 +1240,7 @@ const newGetAllProductDetails = async (req, res) => {
     let paginatedProductIds = [];
 
     if (usePagination) {
-      // Optimized COUNT query - no JOINs unless search requires it
+      // COUNT query
       const countQuery = `
         SELECT COUNT(DISTINCT p.id) AS total
         FROM products p
@@ -1162,12 +1254,7 @@ const newGetAllProductDetails = async (req, res) => {
       if (total === 0) {
         return commonService.okResponse(res, {
           products: [],
-          pagination: {
-            total: 0,
-            page: pageNum,
-            limit: limitNum,
-            totalPages: 0,
-          },
+          pagination: { total: 0, page: pageNum, limit: limitNum, totalPages: 0 },
         });
       }
 
@@ -1208,12 +1295,10 @@ const newGetAllProductDetails = async (req, res) => {
       mainWhereClause += ` AND p.id IN (:productIds)`;
       mainReplacements.productIds = paginatedProductIds;
     } else if (!usePagination) {
-      // Apply all filters for non-paginated query
       Object.assign(mainReplacements, replacements);
       mainWhereClause = whereClause;
     }
 
-    // Simplified main query without aggregations
     const query = `
       SELECT
         p.id,
@@ -1269,7 +1354,7 @@ const newGetAllProductDetails = async (req, res) => {
     `;
 
     const [rows] = await sequelize.query(query, {
-      replacements: usePagination ? mainReplacements : replacements
+      replacements: usePagination ? mainReplacements : replacements,
     });
 
     if (!rows.length) {
@@ -1307,7 +1392,7 @@ const newGetAllProductDetails = async (req, res) => {
     );
 
     const variantMap = {};
-    variantRows.forEach(row => {
+    variantRows.forEach((row) => {
       variantMap[row.product_id] = row.variants || [];
     });
 
@@ -1317,7 +1402,6 @@ const newGetAllProductDetails = async (req, res) => {
     if (!stock || stock === "stock_in_hand") {
       itemWhere.quantity = { [Op.gt]: 0 };
     }
-
     if (stock === "out_of_stock") {
       itemWhere.quantity = 0;
     }
@@ -1332,9 +1416,9 @@ const newGetAllProductDetails = async (req, res) => {
     const itemIds = itemDetails.map((it) => it.id);
     const additionalDetails = itemIds.length
       ? await models.ProductAdditionalDetail.findAll({
-        where: { item_detail_id: itemIds },
-        raw: true,
-      })
+          where: { item_detail_id: itemIds },
+          raw: true,
+        })
       : [];
 
     const addsByItem = additionalDetails.reduce((acc, add) => {
@@ -1347,26 +1431,27 @@ const newGetAllProductDetails = async (req, res) => {
       return acc;
     }, {});
 
-    // Batch fetch all material prices once (CRITICAL OPTIMIZATION)
-    const materialIds = [...new Set(rows.map(p => p.material_type_id).filter(Boolean))];
+    // Batch fetch all material prices once
+    const materialIds = [
+      ...new Set(rows.map((p) => p.material_type_id).filter(Boolean)),
+    ];
     const materialPriceMap = {};
 
     if (materialIds.length) {
       const materials = await models.MaterialType.findAll({
         where: { id: materialIds },
-        attributes: ['id', 'material_price'],
+        attributes: ["id", "material_price"],
         raw: true,
       });
-      materials.forEach(m => {
+      materials.forEach((m) => {
         materialPriceMap[m.id] = parseFloat(m.material_price) || 0;
       });
     }
 
-    // Calculate totals and prices
+    // Calculate totals and prices (RESPONSE SAME)
     const products = rows.map((row) => {
       const productItems = itemsByProduct[row.id] || [];
 
-      // Calculate aggregations
       let totalQuantity = 0;
       let totalWeight = 0;
       let variationCount = productItems.length;
@@ -1378,7 +1463,6 @@ const newGetAllProductDetails = async (req, res) => {
         totalQuantity += qty;
         totalWeight += qty * netWeight;
 
-        // Calculate price without additional DB query
         const priceDetails = calculateSellingPriceSync(
           row,
           item,
@@ -1421,93 +1505,6 @@ const newGetAllProductDetails = async (req, res) => {
   }
 };
 
-// OPTIMIZED: Synchronous price calculation without DB queries
-const calculateSellingPriceSync = (product, item, additionalDetails, materialPrice) => {
-  try {
-    // 1. Get Material Rate Per Gram
-    let materialRate;
-
-    if (product.product_type === "Piece Rate") {
-      const ratePerGram = parseFloat(item.rate_per_gram) || 0;
-      materialRate = Math.max(ratePerGram, materialPrice);
-    } else {
-      materialRate = materialPrice;
-    }
-
-    // 2. Material Contribution
-    const netWeight = parseFloat(item.net_weight) || 0;
-    const materialContribution = materialRate * netWeight;
-
-    // 3. Stone Value
-    const stoneValue = parseFloat(item.stone_value) || 0;
-
-    // 4. Additional Details Sum (already fetched)
-    const additionalDetailsSum = additionalDetails.reduce((sum, detail) => {
-      return sum + (parseFloat(detail.value) || 0);
-    }, 0);
-
-    // 5. Making Charge Calculation
-    let makingCharge = 0;
-    const makingChargeValue = parseFloat(item.making_charge) || 0;
-    switch (item.making_charge_type) {
-      case "Per Gram":
-        makingCharge = makingChargeValue * netWeight;
-        break;
-      case "Percentage":
-        makingCharge = (makingChargeValue / 100) * materialContribution;
-        break;
-      case "Amount":
-        makingCharge = makingChargeValue;
-        break;
-    }
-
-    // 6. Wastage Calculation
-    let wastage = 0;
-    const wastageValue = parseFloat(item.wastage) || 0;
-    switch (item.wastage_type) {
-      case "Per Gram":
-        wastage = wastageValue * netWeight;
-        break;
-      case "Percentage":
-        wastage = (wastageValue / 100) * materialContribution;
-        break;
-      case "Amount":
-        wastage = wastageValue;
-        break;
-    }
-
-    // 7. Final Selling Price
-    const sellingPrice =
-      materialContribution +
-      makingCharge +
-      wastage +
-      stoneValue +
-      additionalDetailsSum;
-
-    return {
-      material_rate_per_gram: materialRate,
-      material_contribution: materialContribution,
-      making_charge: makingCharge,
-      wastage: wastage,
-      stone_value: stoneValue,
-      additional_details_value: additionalDetailsSum,
-      selling_price: sellingPrice,
-    };
-  } catch (error) {
-    console.error("Error in calculateSellingPriceSync:", error);
-    return {
-      material_rate_per_gram: 0,
-      material_contribution: 0,
-      making_charge: 0,
-      wastage: 0,
-      stone_value: 0,
-      additional_details_value: 0,
-      selling_price: 0,
-      error: "Error calculating price",
-    };
-  }
-};
-
 const searchProductBySkuNew = async (req, res) => {
   try {
     const { sku, branch_id } = req.query;
@@ -1516,63 +1513,80 @@ const searchProductBySkuNew = async (req, res) => {
       return commonService.badRequest(res, "branch_id is required");
     }
 
-    // Helper: convert product + item → flat response object
-    const formatItem = async (product, item) => {
-      const priceDetails = await calculateSellingPrice(product, item, models);
-      return {
-        sku_id: item.sku_id || product.sku_id,
-        product_name: product.product_name,
-        product_variations: product.product_variations,
-        purity: product.purity,
-        branch_id: product.branch_id,
-        product_id: product.id,
-        product_item_details_id: item.id,
-        quantity: item.quantity,
-        hsn_code: product.hsn_code,
-        base_price: item.base_price,
-        gross_weight: item.gross_weight,
-        net_weight: item.net_weight,
-        product_item_wastage: item.wastage,
-        ...priceDetails,
-      };
-    };
-
     // CASE 1 → No SKU
     if (!sku || sku.trim() === "") {
       const [allProducts, allItems] = await Promise.all([
-        models.Product.findAll({
-          where: { branch_id },
-          raw: true,
-        }),
+        models.Product.findAll({ where: { branch_id }, raw: true }),
         models.ProductItemDetail.findAll({
-          where: {
-            quantity: { [Op.gt]: 0 },
-            is_visible: true,
-          },
+          where: { quantity: { [Op.gt]: 0 }, is_visible: true },
           raw: true,
         }),
       ]);
 
-      const output = await Promise.all(
-        allItems.map(async (item) => {
-          const product = allProducts.find(p => p.id === item.product_id);
-          return product ? formatItem(product, item) : null;
-        })
-      );
+      // Batch material prices
+      const materialIds = [
+        ...new Set(allProducts.map((p) => p.material_type_id).filter(Boolean)),
+      ];
+      const materials = materialIds.length
+        ? await models.MaterialType.findAll({
+            where: { id: materialIds },
+            attributes: ["id", "material_price"],
+            raw: true,
+          })
+        : [];
+      const materialPriceMap = {};
+      materials.forEach((m) => (materialPriceMap[m.id] = Number(m.material_price || 0)));
 
-      // Filter out any null items (in case product wasn't found)
-      return commonService.okResponse(res, output.filter(Boolean));
+      // Batch additional details
+      const itemIds = allItems.map((i) => i.id);
+      const allAdds = itemIds.length
+        ? await models.ProductAdditionalDetail.findAll({
+            where: { item_detail_id: itemIds },
+            raw: true,
+          })
+        : [];
+      const addsByItem = {};
+      allAdds.forEach((a) => ((addsByItem[a.item_detail_id] ??= []).push(a)));
+
+      const output = allItems
+        .map((item) => {
+          const product = allProducts.find((p) => p.id === item.product_id);
+          if (!product) return null;
+
+          const priceDetails = calculateSellingPriceSync(
+            product,
+            item,
+            addsByItem[item.id] || [],
+            materialPriceMap[product.material_type_id] || 0
+          );
+
+          return {
+            sku_id: item.sku_id || product.sku_id,
+            product_name: product.product_name,
+            product_variations: product.product_variations,
+            purity: product.purity,
+            branch_id: product.branch_id,
+            product_id: product.id,
+            product_item_details_id: item.id,
+            quantity: item.quantity,
+            hsn_code: product.hsn_code,
+            base_price: item.base_price,
+            gross_weight: item.gross_weight,
+            net_weight: item.net_weight,
+            product_item_wastage: item.wastage,
+            ...priceDetails,
+          };
+        })
+        .filter(Boolean);
+
+      return commonService.okResponse(res, output);
     }
 
     // CASE 2 → SKU provided
     const [directProduct, itemDetail] = await Promise.all([
-      models.Product.findOne({ where: { sku_id: sku, branch_id }, raw: true, }),
+      models.Product.findOne({ where: { sku_id: sku, branch_id }, raw: true }),
       models.ProductItemDetail.findOne({
-        where: {
-          sku_id: sku,
-          quantity: { [Op.gt]: 0 },
-          is_visible: true,
-        },
+        where: { sku_id: sku, quantity: { [Op.gt]: 0 }, is_visible: true },
         raw: true,
       }),
     ]);
@@ -1581,19 +1595,12 @@ const searchProductBySkuNew = async (req, res) => {
     let items = [];
 
     if (directProduct) {
-      // If product SKU matched, return all its item variations
       product = directProduct;
       items = await models.ProductItemDetail.findAll({
-        where: {
-          product_id: directProduct.id,
-          quantity: { [Op.gt]: 0 },
-          is_visible: true,
-        },
+        where: { product_id: directProduct.id, quantity: { [Op.gt]: 0 }, is_visible: true },
         raw: true,
       });
-    }
-    else if (itemDetail) {
-      // If item SKU matched, fetch its parent product
+    } else if (itemDetail) {
       product = await models.Product.findOne({
         where: { id: itemDetail.product_id, branch_id },
         raw: true,
@@ -1601,17 +1608,51 @@ const searchProductBySkuNew = async (req, res) => {
       items = product ? [itemDetail] : [];
     }
 
-    // Nothing found or all items out of stock
     if (!product || items.length === 0) {
       return commonService.notFound(res, "No in-stock product found for given SKU");
     }
 
-    // Convert to flat response with price calculations
-    const flatResponse = await Promise.all(
-      items
-        .filter(item => item.quantity > 0)
-        .map(item => formatItem(product, item))
-    );
+    // Batch material + adds for this one product
+    const material = await models.MaterialType.findByPk(product.material_type_id, { raw: true });
+    const materialPrice = Number(material?.material_price || 0);
+
+    const itemIds = items.map((i) => i.id);
+    const adds = itemIds.length
+      ? await models.ProductAdditionalDetail.findAll({
+          where: { item_detail_id: itemIds },
+          raw: true,
+        })
+      : [];
+    const addsByItem = {};
+    adds.forEach((a) => ((addsByItem[a.item_detail_id] ??= []).push(a)));
+
+    const flatResponse = items
+      .filter((it) => Number(it.quantity || 0) > 0)
+      .map((item) => {
+        const priceDetails = calculateSellingPriceSync(
+          product,
+          item,
+          addsByItem[item.id] || [],
+          materialPrice
+        );
+
+        return {
+          sku_id: item.sku_id || product.sku_id,
+          product_name: product.product_name,
+          product_variations: product.product_variations,
+          purity: product.purity,
+          branch_id: product.branch_id,
+          product_id: product.id,
+          product_item_details_id: item.id,
+          quantity: item.quantity,
+          hsn_code: product.hsn_code,
+          base_price: item.base_price,
+          gross_weight: item.gross_weight,
+          net_weight: item.net_weight,
+          product_item_wastage: item.wastage,
+          ...priceDetails,
+        };
+      });
 
     return commonService.okResponse(res, flatResponse);
   } catch (error) {
@@ -1620,6 +1661,7 @@ const searchProductBySkuNew = async (req, res) => {
   }
 };
 
+// ORIGINAL async function kept (response unchanged)
 const calculateSellingPrice = async (product, item, models) => {
   try {
     // 1. Get Material Rate Per Gram
@@ -1632,21 +1674,16 @@ const calculateSellingPrice = async (product, item, models) => {
 
     if (product.product_type === "Piece Rate") {
       const ratePerGram = parseFloat(item.rate_per_gram) || 0;
-      // For Piece Rate, take the higher value between rate_per_gram and material_price
       materialRate = Math.max(ratePerGram, materialPrice);
     } else {
-      // Weight based
       materialRate = materialPrice;
     }
 
-    // 2. Material Contribution
     const netWeight = parseFloat(item.net_weight) || 0;
     const materialContribution = materialRate * netWeight;
 
-    // 3. Stone Value
     const stoneValue = parseFloat(item.stone_value) || 0;
 
-    // 4. Additional Details Sum
     const additionalDetails = await models.ProductAdditionalDetail.findAll({
       where: { item_detail_id: item.id },
       raw: true,
@@ -1656,7 +1693,6 @@ const calculateSellingPrice = async (product, item, models) => {
       return sum + (parseFloat(detail.value) || 0);
     }, 0);
 
-    // 5. Making Charge Calculation
     let makingCharge = 0;
     const makingChargeValue = parseFloat(item.making_charge) || 0;
     switch (item.making_charge_type) {
@@ -1671,7 +1707,6 @@ const calculateSellingPrice = async (product, item, models) => {
         break;
     }
 
-    // 6. Wastage Calculation
     let wastage = 0;
     const wastageValue = parseFloat(item.wastage) || 0;
     switch (item.wastage_type) {
@@ -1686,7 +1721,6 @@ const calculateSellingPrice = async (product, item, models) => {
         break;
     }
 
-    // 7. Final Selling Price
     const sellingPrice =
       materialContribution +
       makingCharge +
@@ -1724,18 +1758,15 @@ const updateProductStatus = async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
 
-    // Validate status
     if (status === undefined) {
       return commonService.badRequest(res, "Status is required");
     }
 
     const productData = await models.Product.findByPk(id);
-
     if (!productData) {
       return commonService.notFound(res, "Product not found");
     }
 
-    // Update product status
     await models.Product.update({ status }, { where: { id } });
 
     return commonService.okResponse(res, {
@@ -1747,7 +1778,7 @@ const updateProductStatus = async (req, res) => {
   }
 };
 
-// List products for Website List (lightweight)
+// List products for Website List (lightweight) (RESPONSE UNCHANGED)
 const getProductsForWebsiteList = async (req, res) => {
   try {
     const userId = req.user?.id || 0;
@@ -1762,7 +1793,6 @@ const getProductsForWebsiteList = async (req, res) => {
       variant_type_id,
     } = req.query;
 
-    // Build WHERE clause
     let whereConditions = `
       WHERE
         p.is_published = true
@@ -1808,16 +1838,12 @@ const getProductsForWebsiteList = async (req, res) => {
         SELECT 1
         FROM "product_variants" pv
         WHERE pv.product_id = p.id
-          AND pv.variant_type_ids && ARRAY[${variantTypeIds.join(
-        ","
-      )}]::integer[]
+          AND pv.variant_type_ids && ARRAY[${variantTypeIds.join(",")}]::integer[]
       )`;
     }
 
     let orderByClause = "ORDER BY p.created_at DESC";
-    if (sort_by === "newest") {
-      orderByClause = "ORDER BY p.created_at DESC";
-    }
+    if (sort_by === "newest") orderByClause = "ORDER BY p.created_at DESC";
 
     const dynamicQuery = `
       SELECT
@@ -1865,7 +1891,7 @@ const getProductsForWebsiteList = async (req, res) => {
 
     const productIds = [...new Set(rows.map((r) => r.product_id))];
 
-    // Fetch material prices in bulk (for final_price calculation)
+    // Fetch material prices in bulk
     const materialPrices = {};
     const uniqueMaterialIds = [...new Set(rows.map((r) => r.material_type_id))];
     if (uniqueMaterialIds.length > 0) {
@@ -1882,6 +1908,17 @@ const getProductsForWebsiteList = async (req, res) => {
         materialPrices[m.id] = Number(m.material_price || 0);
       });
     }
+
+    // Batch additional details for all items in this list
+    const allItemIds = rows.map((r) => r.item_id);
+    const allAdds = allItemIds.length
+      ? await models.ProductAdditionalDetail.findAll({
+          where: { item_detail_id: allItemIds },
+          raw: true,
+        })
+      : [];
+    const addsByItem = {};
+    allAdds.forEach((a) => ((addsByItem[a.item_detail_id] ??= []).push(a)));
 
     // Cart/Wishlist flag
     const userCartWishlistItems = await models.CartWishlistItem.findAll({
@@ -1977,9 +2014,16 @@ const getProductsForWebsiteList = async (req, res) => {
         stone_value: row.stone_value,
       };
 
-      const priceResult = await calculateSellingPrice(product, item, models);
-      const sellingPrice = priceResult.selling_price;
+      // FAST: no await + no DB calls
+      const materialPrice = materialPrices[row.material_type_id] || 0;
+      const priceResult = calculateSellingPriceSync(
+        product,
+        item,
+        addsByItem[row.item_id] || [],
+        materialPrice
+      );
 
+      const sellingPrice = priceResult.selling_price;
       if (!sellingPrice || sellingPrice <= 0) continue;
 
       if (min_price && sellingPrice < parseFloat(min_price)) continue;
@@ -1987,8 +2031,6 @@ const getProductsForWebsiteList = async (req, res) => {
 
       const basePriceDisplay = Number(sellingPrice.toFixed(2));
 
-      // === NEW: Calculate final_price (with GST) as extra field ===
-      const materialPrice = materialPrices[row.material_type_id] || 0;
       const finalCalc = calculateFinalPriceRate(
         product,
         { ...item, price_details: priceResult },
@@ -2023,7 +2065,6 @@ const getProductsForWebsiteList = async (req, res) => {
         variants: variantMap[product.id] || [],
       };
 
-      // Still use base selling_price to pick highest per product
       if (
         !productMap.has(product.id) ||
         productMap.get(product.id).selling_price < basePriceDisplay
@@ -2034,7 +2075,6 @@ const getProductsForWebsiteList = async (req, res) => {
 
     let result = Array.from(productMap.values());
 
-    // Sorting based on base selling_price
     if (sort_by === "price_low_to_high") {
       result.sort((a, b) => a.selling_price - b.selling_price);
     } else if (sort_by === "price_high_to_low") {
@@ -2090,13 +2130,10 @@ const getProductIdBySku = async (req, res) => {
     });
 
     if (itemDetail) {
-      const parentProduct = await models.Product.findByPk(
-        itemDetail.product_id,
-        {
-          attributes: ["id", "sku_id", "product_name"],
-          raw: true,
-        }
-      );
+      const parentProduct = await models.Product.findByPk(itemDetail.product_id, {
+        attributes: ["id", "sku_id", "product_name"],
+        raw: true,
+      });
 
       return commonService.okResponse(res, {
         product_id: itemDetail.product_id,
@@ -2109,12 +2146,11 @@ const getProductIdBySku = async (req, res) => {
     }
 
     // Step 3: Check if SKU has suffix pattern (_XX) and remove it
-    const suffixPattern = /_\d+$/; // Matches _01, _02, _123, etc.
+    const suffixPattern = /_\d+$/;
 
     if (suffixPattern.test(skuToSearch)) {
       const baseSku = skuToSearch.replace(suffixPattern, "");
 
-      // Try finding base SKU in Product table
       product = await models.Product.findOne({
         where: { sku_id: baseSku },
         attributes: ["id", "sku_id", "product_name"],
@@ -2131,7 +2167,6 @@ const getProductIdBySku = async (req, res) => {
         });
       }
 
-      // Try finding base SKU in ProductItemDetail table
       itemDetail = await models.ProductItemDetail.findOne({
         where: { sku_id: baseSku },
         attributes: ["id", "product_id", "sku_id"],
@@ -2139,13 +2174,10 @@ const getProductIdBySku = async (req, res) => {
       });
 
       if (itemDetail) {
-        const parentProduct = await models.Product.findByPk(
-          itemDetail.product_id,
-          {
-            attributes: ["id", "sku_id", "product_name"],
-            raw: true,
-          }
-        );
+        const parentProduct = await models.Product.findByPk(itemDetail.product_id, {
+          attributes: ["id", "sku_id", "product_name"],
+          raw: true,
+        });
 
         return commonService.okResponse(res, {
           product_id: itemDetail.product_id,
@@ -2159,11 +2191,7 @@ const getProductIdBySku = async (req, res) => {
       }
     }
 
-    // Step 4: Not found
-    return commonService.notFound(
-      res,
-      `No product found for SKU: ${skuToSearch}`
-    );
+    return commonService.notFound(res, `No product found for SKU: ${skuToSearch}`);
   } catch (err) {
     return commonService.handleError(res, err);
   }
@@ -2187,11 +2215,7 @@ const calculateFinalPriceRate = (product, item, materialPrice) => {
     tax = (subtotal * GST_PERCENT) / 100;
     finalPrice = subtotal + tax;
 
-    return {
-      base_price: subtotal,
-      tax,
-      final_price_rate: finalPrice,
-    };
+    return { base_price: subtotal, tax, final_price_rate: finalPrice };
   }
 
   // WEIGHT BASED
@@ -2217,12 +2241,8 @@ const calculateFinalPriceRate = (product, item, materialPrice) => {
     wastageValue = gm * materialPrice;
   }
 
-  // Subtotal
   subtotal = materialValue + makingChargeValue + wastageValue + stoneValue;
-
-  // Tax
   tax = (subtotal * GST_PERCENT) / 100;
-
   finalPrice = subtotal + tax;
 
   return {
@@ -2254,23 +2274,18 @@ const getDeletedProducts = async (req, res) => {
     const parsedLimit = parseInt(limit, 10);
     const offset = (parsedPage - 1) * parsedLimit;
 
-    // Parameters for bindings
     let bindings = [];
     let paramIndex = 1;
 
-    // Build WHERE clauses
     const whereClauses = ["p.deleted_at IS NOT NULL"];
 
     if (branch_id) whereClauses.push(`p.branch_id = $${paramIndex++}`);
     if (grn_id) whereClauses.push(`p.grn_id = $${paramIndex++}`);
     if (category_id) whereClauses.push(`p.category_id = $${paramIndex++}`);
-    if (subcategory_id)
-      whereClauses.push(`p.subcategory_id = $${paramIndex++}`);
-    if (material_type_id)
-      whereClauses.push(`p.material_type_id = $${paramIndex++}`);
+    if (subcategory_id) whereClauses.push(`p.subcategory_id = $${paramIndex++}`);
+    if (material_type_id) whereClauses.push(`p.material_type_id = $${paramIndex++}`);
     if (ref_no_id) whereClauses.push(`p.ref_no_id = $${paramIndex++}`);
 
-    // Add bindings for filters
     if (branch_id) bindings.push(branch_id);
     if (grn_id) bindings.push(grn_id);
     if (category_id) bindings.push(category_id);
@@ -2278,14 +2293,12 @@ const getDeletedProducts = async (req, res) => {
     if (material_type_id) bindings.push(material_type_id);
     if (ref_no_id) bindings.push(ref_no_id);
 
-    // Search handling with single parameter reused
-    let searchClause = "";
     if (search) {
       const searchParam = `%${search.trim()}%`;
-      bindings.push(searchParam); // This will be $n where n = current paramIndex
+      bindings.push(searchParam);
       const searchPlaceholder = `$${paramIndex++}`;
 
-      searchClause = `
+      const searchClause = `
         (
           p.product_name ILIKE ${searchPlaceholder} OR
           p.description ILIKE ${searchPlaceholder} OR
@@ -2303,7 +2316,6 @@ const getDeletedProducts = async (req, res) => {
     const whereSql =
       whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
 
-    // Queries
     const countQuery = `
       SELECT COUNT(*) AS total
       FROM products p
@@ -2328,13 +2340,11 @@ const getDeletedProducts = async (req, res) => {
       LIMIT $${paramIndex++} OFFSET $${paramIndex++}
     `;
 
-    // Add limit and offset to bindings
     bindings.push(parsedLimit, offset);
 
-    // Execute queries with proper bindings
     const [[{ total }], productsResult] = await Promise.all([
       sequelize.query(countQuery, {
-        bind: bindings.slice(0, -2), // exclude limit/offset from count query
+        bind: bindings.slice(0, -2),
         type: sequelize.QueryTypes.SELECT,
       }),
       sequelize.query(dataQuery, {
@@ -2380,7 +2390,7 @@ const getDeletedProducts = async (req, res) => {
     return commonService.okResponse(res, {
       products: response,
       pagination: {
-        total: parseInt(total),
+        total: parseInt(total, 10),
         page: parsedPage,
         limit: parsedLimit,
         total_pages: Math.ceil(total / parsedLimit),
@@ -2394,11 +2404,94 @@ const getDeletedProducts = async (req, res) => {
 
 const getProductStockCounts = async (req, res) => {
   try {
-    const { branch_id } = req.query;
+    const {
+      branch_id,
+      material_type_id,
+      category_id,
+      subcategory_id,
+      grn_id,
+      ref_no_id,
+      variant_type_ids,
+      search,
+    } = req.query;
 
-    // Build branch filter condition
-    const branchCondition = branch_id ? 'AND p.branch_id = :branch_id' : '';
-    const replacements = branch_id ? { branch_id: parseInt(branch_id) } : {};
+    // Build common WHERE clause for all queries
+    let whereClause = 'WHERE p.deleted_at IS NULL';
+    const replacements = {};
+
+    if (branch_id) {
+      whereClause += ' AND p.branch_id = :branch_id';
+      replacements.branch_id = parseInt(branch_id);
+    }
+
+    if (material_type_id) {
+      whereClause += ' AND p.material_type_id = :material_type_id';
+      replacements.material_type_id = parseInt(material_type_id);
+    }
+
+    if (category_id) {
+      whereClause += ' AND p.category_id = :category_id';
+      replacements.category_id = parseInt(category_id);
+    }
+
+    if (subcategory_id) {
+      whereClause += ' AND p.subcategory_id = :subcategory_id';
+      replacements.subcategory_id = parseInt(subcategory_id);
+    }
+
+    if (grn_id) {
+      whereClause += ' AND p.grn_id = :grn_id';
+      replacements.grn_id = parseInt(grn_id);
+    }
+
+    if (ref_no_id) {
+      whereClause += ' AND p.ref_no_id = :ref_no_id';
+      replacements.ref_no_id = parseInt(ref_no_id);
+    }
+
+    if (variant_type_ids) {
+      const typeIds = variant_type_ids
+        .split(',')
+        .map((id) => parseInt(id.trim()));
+
+      whereClause += `
+        AND EXISTS (
+          SELECT 1
+          FROM product_variants pv
+          WHERE pv.product_id = p.id
+          AND pv.variant_type_ids && ARRAY[${typeIds.join(',')}]::integer[]
+        )
+      `;
+    }
+
+    // Add search JOINs and conditions if search is provided
+    let searchJoins = '';
+    if (search) {
+      searchJoins = `
+        LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
+        LEFT JOIN branches b ON b.id = p.branch_id
+        LEFT JOIN grns g ON g.id = p.grn_id AND g.deleted_at IS NULL
+        LEFT JOIN "grnItems" gi ON gi.grn_id = g.id AND gi.id = p.ref_no_id AND gi.deleted_at IS NULL
+      `;
+
+      const like = `%${search}%`;
+      whereClause += `
+        AND (
+          p.product_name ILIKE :like OR
+          p.product_code ILIKE :like OR
+          p.sku_id ILIKE :like OR
+          p.description ILIKE :like OR
+          p.hsn_code ILIKE :like OR
+          p.product_type::text ILIKE :like OR
+          p.variation_type::text ILIKE :like OR
+          mt.material_type ILIKE :like OR
+          b.branch_name ILIKE :like OR
+          g.grn_no ILIKE :like OR
+          gi.ref_no ILIKE :like
+        )
+      `;
+      replacements.like = like;
+    }
 
     // Get count of products with at least one item in stock (quantity > 0) and total quantity
     const [stockInHandResult] = await sequelize.query(
@@ -2407,11 +2500,11 @@ const getProductStockCounts = async (req, res) => {
         COUNT(DISTINCT p.id) as product_count,
         COALESCE(SUM(pid.quantity), 0) as total_quantity
       FROM "products" p
+      ${searchJoins}
       INNER JOIN "productItemDetails" pid ON p.id = pid.product_id
-      WHERE p.deleted_at IS NULL
+      ${whereClause}
       AND pid.quantity > 0
       AND pid.deleted_at IS NULL
-      ${branchCondition}
     `,
       {
         type: sequelize.QueryTypes.SELECT,
@@ -2420,12 +2513,13 @@ const getProductStockCounts = async (req, res) => {
     );
 
     // Get count of soft-deleted products
+    const deletedWhereClause = whereClause.replace('WHERE p.deleted_at IS NULL', 'WHERE p.deleted_at IS NOT NULL');
     const [deletedResult] = await sequelize.query(
       `
-      SELECT COUNT(*) as count
+      SELECT COUNT(DISTINCT p.id) as count
       FROM "products" p
-      WHERE p.deleted_at IS NOT NULL
-      ${branchCondition}
+      ${searchJoins}
+      ${deletedWhereClause}
     `,
       {
         type: sequelize.QueryTypes.SELECT,
@@ -2438,8 +2532,8 @@ const getProductStockCounts = async (req, res) => {
       `
       SELECT COUNT(DISTINCT p.id) as count
       FROM "products" p
-      WHERE p.deleted_at IS NULL
-      ${branchCondition}
+      ${searchJoins}
+      ${whereClause}
       AND NOT EXISTS (
         SELECT 1
         FROM "productItemDetails" pid
@@ -2501,10 +2595,10 @@ const createProductInternal = async (payload, transaction) => {
 
     if (additional_details.length) {
       await models.ProductAdditionalDetail.bulkCreate(
-        additional_details.map(a => ({
+        additional_details.map((a) => ({
           ...a,
           product_id: product.id,
-          item_detail_id: item.id
+          item_detail_id: item.id,
         })),
         { transaction }
       );
@@ -2513,16 +2607,20 @@ const createProductInternal = async (payload, transaction) => {
 
   const items = await models.ProductItemDetail.findAll({
     where: { product_id: product.id },
-    transaction
+    transaction,
   });
 
   const summary = computeSummaries(items, product.product_type);
   await product.update(summary, { transaction });
 
   return product;
-}
+};
 
-const cloneProductAddOns = async (sourceProductId, destinationProductId, transaction) => {
+const cloneProductAddOns = async (
+  sourceProductId,
+  destinationProductId,
+  transaction
+) => {
   const addons = await models.ProductAddOn.findAll({
     where: { product_id: sourceProductId, deleted_at: null },
     transaction,
@@ -2530,13 +2628,11 @@ const cloneProductAddOns = async (sourceProductId, destinationProductId, transac
 
   if (!addons.length) return;
 
-  // Mark destination product as addon enabled
   await models.Product.update(
     { is_addOn: true },
     { where: { id: destinationProductId }, transaction }
   );
 
-  // Remove old add-ons to prevent duplicates
   await models.ProductAddOn.destroy({
     where: { product_id: destinationProductId },
     force: true,
@@ -2544,7 +2640,7 @@ const cloneProductAddOns = async (sourceProductId, destinationProductId, transac
   });
 
   await models.ProductAddOn.bulkCreate(
-    addons.map(a => ({
+    addons.map((a) => ({
       product_id: destinationProductId,
       addon_product_id: a.addon_product_id,
     })),
@@ -2558,10 +2654,10 @@ const getTopSellingSubcategories = async (req, res) => {
     const { branch_id, limit = 10 } = req.query;
 
     const replacements = { limit: parseInt(limit, 10) };
-    let branchFilter = '';
+    let branchFilter = "";
 
     if (branch_id) {
-      branchFilter = 'AND sib.branch_id = :branch_id';
+      branchFilter = "AND sib.branch_id = :branch_id";
       replacements.branch_id = branch_id;
     }
 
@@ -2598,7 +2694,6 @@ const getTopSellingSubcategories = async (req, res) => {
       type: sequelize.QueryTypes.SELECT,
     });
 
-    // Format the response
     const formattedData = topSubcategories.map((item, index) => ({
       rank: index + 1,
       subcategory_id: item.subcategory_id,
@@ -2613,7 +2708,7 @@ const getTopSellingSubcategories = async (req, res) => {
       total_results: formattedData.length,
     });
   } catch (err) {
-    console.error('Error in getTopSellingSubcategories:', err);
+    console.error("Error in getTopSellingSubcategories:", err);
     return commonService.handleError(res, err);
   }
 };
@@ -2624,10 +2719,10 @@ const getStockUpdates = async (req, res) => {
     const { branch_id, limit = 10 } = req.query;
 
     const replacements = { limit: parseInt(limit, 10) };
-    let branchFilter = '';
+    let branchFilter = "";
 
     if (branch_id) {
-      branchFilter = 'AND p.branch_id = :branch_id';
+      branchFilter = "AND p.branch_id = :branch_id";
       replacements.branch_id = branch_id;
     }
 
@@ -2660,8 +2755,7 @@ const getStockUpdates = async (req, res) => {
       type: sequelize.QueryTypes.SELECT,
     });
 
-    // Format the response
-    const formattedData = stockUpdates.map(item => ({
+    const formattedData = stockUpdates.map((item) => ({
       date: item.date,
       material_type: item.material_type,
       category: item.category,
@@ -2674,7 +2768,7 @@ const getStockUpdates = async (req, res) => {
       total_records: formattedData.length,
     });
   } catch (err) {
-    console.error('Error in getStockUpdates:', err);
+    console.error("Error in getStockUpdates:", err);
     return commonService.handleError(res, err);
   }
 };
