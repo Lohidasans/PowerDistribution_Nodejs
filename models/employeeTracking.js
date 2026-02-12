@@ -14,7 +14,8 @@ module.exports = (sequelize, DataTypes) => {
             },
             status_id: {
                 type: DataTypes.INTEGER,
-                allowNull: false,
+                allowNull: true,
+                defaultValue: 1, // 1 = IN, 2 = OUT
             },
             date: {
                 type: DataTypes.DATEONLY,

@@ -26,12 +26,12 @@ module.exports = (sequelize) => {
         type: DataTypes.INTEGER,
         allowNull: false,
       },
-      payment_mode_id: {
+      payment_mode_id: { // cash, card, bank transfer, cheque, upi, other
         type: DataTypes.INTEGER,
         allowNull: false,
       },
       account_id: {
-        type: DataTypes.INTEGER, // vendor_id
+        type: DataTypes.INTEGER, // vendor_id or customer_id
         allowNull: false,
       },
       transaction_no: {
@@ -50,7 +50,7 @@ module.exports = (sequelize) => {
         type: DataTypes.STRING(255),
         allowNull: false,
       },
-      user_type_id: {
+      user_type_id: { // customer_id/vendor_id
         type: DataTypes.INTEGER,
         allowNull: true,
       },

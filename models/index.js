@@ -18,6 +18,7 @@ const RolePermission = require("./rolePermissions")(
 );
 const Scheme = require("./schemes")(sequelize, Sequelize.DataTypes);
 const SchemeType = require("./schemeTypes")(sequelize, Sequelize.DataTypes);
+const CustomerSchemePayment = require("./customerSchemePayments")(sequelize, Sequelize.DataTypes);
 const SchemeDuration = require("./schemeDurations")(sequelize, Sequelize.DataTypes);
 const PaymentFrequency = require("./paymentFrequencies")(sequelize, Sequelize.DataTypes);
 const RedemptionType = require("./redemptionTypes")(sequelize, Sequelize.DataTypes);
@@ -229,6 +230,7 @@ const models = {
   Ledger,
   Scheme,
   SchemeType,
+  CustomerSchemePayment,
   SchemeDuration,
   PaymentFrequency,
   RedemptionType,
