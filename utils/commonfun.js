@@ -45,7 +45,7 @@ const insertRecords = async (records, deviceId, role) => {
     let query;
     switch (role) {
       case "Employee":
-        query = `INSERT INTO employee_trackings (ref_employee_id, seq_number, date, time, device_id) VALUES `;
+        query = `INSERT INTO employee_tracking (ref_employee_id, seq_number, date, time, device_id) VALUES `;
         break;
       case "Admin":
         query = `INSERT INTO office_user_trackings (ref_user_id, seq_number, date, time, device_id) VALUES `;

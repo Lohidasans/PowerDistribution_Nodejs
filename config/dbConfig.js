@@ -3,11 +3,11 @@ const { Client } = require("pg");
 const { Sequelize } = require("sequelize");
 
 const pgClient = new Client({
-  host: "46.202.160.46",
-  user: "etsuser",
-  port: "5432",
-  password: "Ets@1234",
-  database: "retailERPDemo2026",
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  port: process.env.DB_PORT,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
 });
 
 // Connect to the database
