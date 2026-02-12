@@ -161,7 +161,15 @@ const listPurchaseOrders = async (req, res) => {
     const joinVendors = "LEFT JOIN vendors v ON v.id = p.vendor_id";
     const joinBranches = "LEFT JOIN branches b ON b.id = p.branch_id";
 
-    // Get status counts
+    // Get status counts - exclude status_id filter to get all counts
+    // Build whereSql for status counts (without status_id filter)
+    let statusCountWhereSql = "WHERE p.deleted_at IS NULL";
+    if (vendor_id) statusCountWhereSql += " AND p.vendor_id = :vendor_id";
+    if (start_date) statusCountWhereSql += " AND p.po_date >= :start_date";
+    if (end_date) statusCountWhereSql += " AND p.po_date <= :end_date";
+    if (search) statusCountWhereSql += " AND (p.po_no ILIKE :search OR v.vendor_name ILIKE :search)";
+    if (branch_id) statusCountWhereSql += " AND p.branch_id = :branch_id";
+
     const statusCountQuery = `
       SELECT 
         COUNT(CASE WHEN p.status_id = 1 THEN 1 END) AS approval_pending,
@@ -170,7 +178,7 @@ const listPurchaseOrders = async (req, res) => {
       FROM purchase_orders p
       ${joinVendors}
       ${joinBranches}
-      ${whereSql.replace(/LIMIT.*|OFFSET.*/g, '')};
+      ${statusCountWhereSql};
     `;
     const [statusCountRows] = await sequelize.query(statusCountQuery, { replacements });
     const statusCounts = statusCountRows?.[0] || { approval_pending: 0, approved: 0, completed: 0 };
