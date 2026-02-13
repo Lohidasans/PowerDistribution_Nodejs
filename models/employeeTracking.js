@@ -36,11 +36,8 @@ module.exports = (sequelize, DataTypes) => {
         },
         {
             tableName: "employee_tracking",
-            timestamps: true,
-            createdAt: "created_at",
-            updatedAt: "updated_at",
-            paranoid: true,
-            deletedAt: "deleted_at",
+            timestamps: false,
+            paranoid: false 
         }
     );
     return EmployeeTracking;
