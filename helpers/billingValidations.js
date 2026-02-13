@@ -66,9 +66,7 @@ const validateProducts = async (items, transaction) => {
     }
 };
 
-const reduceStockForInvoice = async (items, status, payments, transaction) => {
-    if (status !== "Invoice" || !payments || payments.length === 0) return;
-
+const reduceStockForInvoice = async (items, transaction) => {
     for (const item of items) {
         if (!item.product_item_detail_id || item.quantity <= 0) continue;
 
@@ -93,7 +91,7 @@ const reduceStockForInvoice = async (items, status, payments, transaction) => {
             {
                 quantity: newQuantity,
                 stock_out_reason: newQuantity === 0 ? "SOLD" : null,
-             },
+            },
             { transaction }
         );
     }

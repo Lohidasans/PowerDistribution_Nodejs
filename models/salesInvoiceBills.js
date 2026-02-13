@@ -124,6 +124,11 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
         defaultValue: "Offline",
       },
+      stock_deducted: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+      },
     },
     {
       timestamps: true,

@@ -992,7 +992,21 @@ const createSalesInvoice = async (req, res) => {
       );
     }
 
-    await reduceStockForInvoice(items, header.status, savedPayments, t);
+    //Create Invoice - Status - Invoice	✅ Reduce stock
+    //Create Hold Invoice	-	Status - On Hold	❌ No stock change
+    //Create Invoice with amount due=0 - Status - Invoice	✅ Reduce stock
+    //Create Invoice with amount due>0 - Status - Invoice	✅ Reduce stock    
+
+    const shouldReduceStock = header.status === "Invoice" && savedPayments.length > 0 && Number(header.amount_due || 0) === 0;
+
+    if (shouldReduceStock) {
+      await reduceStockForInvoice(items, t);
+
+      await bill.update(
+        { stock_deducted: true },
+        { transaction: t }
+      );
+    }
 
     if (estimateBill) {
       await markEstimateAsConverted(estimateBill, { transaction: t });
@@ -1030,7 +1044,11 @@ const updateSalesInvoice = async (req, res) => {
       excludeInvoiceId: invoiceId,
     });
 
-    const status = header.status ?? invoice.status;
+    const status = header.status ?? invoice.status;  
+    const previousStatus = invoice.status; //onhold - hold - invoice
+    const newStatus = status; // invoice   
+    
+    //const shouldReduceStock =  previousStatus !== "Invoice" && newStatus === "Invoice" && invoice.stock_deducted === false; // true for holded → invoice
 
     // Validate products and stock
     await validateProducts(items, t);
@@ -1208,14 +1226,31 @@ const updateSalesInvoice = async (req, res) => {
       );
     }
 
-    // FINALIZE SIDE EFFECTS (ONLY IF STATUS = "Invoice")
-    if (status === "Invoice") {
-      // Reduce stock
-      await reduceStockForInvoice(items, status, allPayments, t);
+    // Update Holded Invoice	- Status - On Hold to Invoice	✅ Reduce stock
+    // Update Invoice	- Status will always be Invoice	❌ No stock change
+    // Update Invoice	when amountdue is 0 when create- Status - Invoice	✅ Reduce stock
+
+    const hasPayment = allPayments.length > 0;
+    const isFullyPaid = Number(header.amount_due ?? invoice.amount_due) === 0;
+    const isInvoice = newStatus === "Invoice";
+
+    const shouldReduceStock =
+      isInvoice &&
+      invoice.stock_deducted === false &&
+      hasPayment &&
+      isFullyPaid;
+
+    if (shouldReduceStock) {
+      await reduceStockForInvoice(items, t);
+
+      await invoice.update(
+        { stock_deducted: true },
+        { transaction: t }
+      );
+    }
 
       // Lock adjustments
-      await updateBillAdjustmentFlags(adjustments, t);
-    }
+    await updateBillAdjustmentFlags(adjustments, t);
 
     await t.commit();
     return commonService.okResponse(res, {
