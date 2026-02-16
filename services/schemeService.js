@@ -23,6 +23,8 @@ const buildSchemePayload = (req, existing = null) => ({
       : existing?.material_type_id,
 
   scheme_name: req.body.scheme_name ?? existing?.scheme_name,
+  
+  scheme_code: req.body.scheme_code ?? existing?.scheme_code,
 
   scheme_type_id:
     req.body.scheme_type_id !== undefined
@@ -68,6 +70,7 @@ const buildSchemePayload = (req, existing = null) => ({
 const createScheme = async (req, res) => {
   try {
     const required = [
+      "scheme_code",
       "material_type_id",
       "scheme_name",
       "scheme_type_id",

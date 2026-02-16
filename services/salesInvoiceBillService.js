@@ -992,10 +992,10 @@ const createSalesInvoice = async (req, res) => {
       );
     }
 
-    //Create Invoice - Status - Invoice	✅ Reduce stock
+    //Create Invoice      - Status - Invoice	✅ Reduce stock
     //Create Hold Invoice	-	Status - On Hold	❌ No stock change
     //Create Invoice with amount due=0 - Status - Invoice	✅ Reduce stock
-    //Create Invoice with amount due>0 - Status - Invoice	✅ Reduce stock    
+    //Create Invoice with amount due>0 - Status - Invoice	❌ No stock change
 
     const shouldReduceStock = header.status === "Invoice" && savedPayments.length > 0 && Number(header.amount_due || 0) === 0;
 

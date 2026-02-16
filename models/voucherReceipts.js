@@ -22,7 +22,7 @@ module.exports = (sequelize) => {
         type: DataTypes.INTEGER,
         allowNull: true,
       },
-      bill_type_id: {
+      bill_type_id: { // Bill by bill, On Account, Advance, Others, Scheme
         type: DataTypes.INTEGER,
         allowNull: false,
       },
