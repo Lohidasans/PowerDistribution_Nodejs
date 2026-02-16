@@ -1,0 +1,1597 @@
+{
+  "info": {
+    "_postman_id": "4bfa8ee7-c206-45e8-a240-3d5773c98d7e",
+    "name": "Multi-Vendor Quotation System",
+    "description": "Complete API collection for multi-vendor quotation management system",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "31820701",
+    "_collection_link": "https://go.postman.co/collection/31820701-4bfa8ee7-c206-45e8-a240-3d5773c98d7e?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "Super Admin - Quotations",
+      "item": [
+        {
+          "name": "1. Generate Quotation Code",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/quotation-requests/code?prefix=QR",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "quotation-requests",
+                "code"
+              ],
+              "query": [
+                {
+                  "key": "prefix",
+                  "value": "QR"
+                }
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "1. Generate Quotation Code",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/quotation-requests/code?prefix=QR",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "quotation-requests",
+                    "code"
+                  ],
+                  "query": [
+                    {
+                      "key": "prefix",
+                      "value": "QR"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": null,
+              "header": [
+                {
+                  "key": "X-Powered-By",
+                  "value": "Express"
+                },
+                {
+                  "key": "Access-Control-Allow-Origin",
+                  "value": "*"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                },
+                {
+                  "key": "Content-Length",
+                  "value": "63"
+                },
+                {
+                  "key": "ETag",
+                  "value": "W/\"3f-CFNtKEx/wkYxPYGxcY9RzNL6FGo\""
+                },
+                {
+                  "key": "Date",
+                  "value": "Sat, 31 Jan 2026 11:29:48 GMT"
+                },
+                {
+                  "key": "Connection",
+                  "value": "keep-alive"
+                },
+                {
+                  "key": "Keep-Alive",
+                  "value": "timeout=5"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n    \"statusCode\": 200,\n    \"message\": \"Success\",\n    \"data\": {\n        \"qr_id\": \"QR001\"\n    }\n}"
+            }
+          ]
+        },
+        {
+          "name": "2. Create Quotation Request",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"qr_id\": \"QR007\",\n  \"request_date\": \"2025-01-31\",\n  \"expiry_date\": \"2025-02-19\",\n  \"vendor_ids\": [13],\n  \"remarks\": \"Urgent requirement for gold items\",\n  \"items\": [\n    {\n      \"material_type_id\": 1,\n      \"category_id\": 1,\n      \"subcategory_id\": 1,\n      \"product_description\": \"Gold Ring - 22K\",\n      \"purity\": 91.6,\n      \"weight\": 10.5,\n      \"quantity\": 50\n    },\n    {\n      \"material_type_id\": 1,\n      \"category_id\": 1,\n      \"subcategory_id\": 2,\n      \"product_description\": \"Gold Necklace - Designer\",\n      \"purity\": 91.6,\n      \"weight\": 30.8,\n      \"quantity\": 20\n    }\n  ],\n  \"created_by\": 1\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/quotation-requests",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "quotation-requests"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "2. Create Quotation Request",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"qr_id\": \"QR-003\",\n  \"request_date\": \"2025-01-31\",\n  \"expiry_date\": \"2025-02-19\",\n  \"vendor_ids\": [7],\n  \"remarks\": \"Urgent requirement for gold items\",\n  \"items\": [\n    {\n      \"material_type_id\": 1,\n      \"category_id\": 1,\n      \"subcategory_id\": 1,\n      \"product_description\": \"Gold Ring - 22K\",\n      \"purity\": 91.6,\n      \"weight\": 10.5,\n      \"quantity\": 50\n    },\n    {\n      \"material_type_id\": 1,\n      \"category_id\": 1,\n      \"subcategory_id\": 2,\n      \"product_description\": \"Gold Necklace - Designer\",\n      \"purity\": 91.6,\n      \"weight\": 30.8,\n      \"quantity\": 20\n    }\n  ],\n  \"created_by\": 1\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/quotation-requests",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "quotation-requests"
+                  ]
+                }
+              },
+              "status": "Created",
+              "code": 201,
+              "_postman_previewlanguage": null,
+              "header": [
+                {
+                  "key": "X-Powered-By",
+                  "value": "Express"
+                },
+                {
+                  "key": "Access-Control-Allow-Origin",
+                  "value": "*"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                },
+                {
+                  "key": "Content-Length",
+                  "value": "1945"
+                },
+                {
+                  "key": "ETag",
+                  "value": "W/\"799-W9s5yOeMiFIWrBaV4fghZjyrc+0\""
+                },
+                {
+                  "key": "Date",
+                  "value": "Sat, 31 Jan 2026 11:32:43 GMT"
+                },
+                {
+                  "key": "Connection",
+                  "value": "keep-alive"
+                },
+                {
+                  "key": "Keep-Alive",
+                  "value": "timeout=5"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n    \"statusCode\": 201,\n    \"message\": \"Success\",\n    \"data\": {\n        \"id\": 3,\n        \"qr_id\": \"QR-003\",\n        \"request_date\": \"2025-01-31\",\n        \"expiry_date\": \"2025-02-19\",\n        \"remarks\": \"Urgent requirement for gold items\",\n        \"vendor_ids\": [\n            7\n        ],\n        \"status_id\": 1,\n        \"created_by\": 1,\n        \"updated_by\": null,\n        \"created_at\": \"2026-01-31T11:32:43.173Z\",\n        \"updated_at\": \"2026-01-31T11:32:43.173Z\",\n        \"deleted_at\": null,\n        \"items\": [\n            {\n                \"id\": 5,\n                \"quotation_id\": 3,\n                \"material_type_id\": 1,\n                \"category_id\": 1,\n                \"subcategory_id\": 1,\n                \"product_description\": \"Gold Ring - 22K\",\n                \"purity\": \"91.600\",\n                \"weight\": \"10.500\",\n                \"quantity\": 50,\n                \"created_by\": null,\n                \"updated_by\": null,\n                \"created_at\": \"2026-01-31T11:32:43.223Z\",\n                \"updated_at\": \"2026-01-31T11:32:43.223Z\",\n                \"deleted_at\": null,\n                \"vendor_quotation_id\": null,\n                \"rate\": null,\n                \"amount\": null,\n                \"vendor_remarks\": null,\n                \"material_type_name\": \"Silver\",\n                \"category_name\": \"Chain\",\n                \"subcategory_name\": \"Fancy Chain\"\n            },\n            {\n                \"id\": 6,\n                \"quotation_id\": 3,\n                \"material_type_id\": 1,\n                \"category_id\": 1,\n                \"subcategory_id\": 2,\n                \"product_description\": \"Gold Necklace - Designer\",\n                \"purity\": \"91.600\",\n                \"weight\": \"30.800\",\n                \"quantity\": 20,\n                \"created_by\": null,\n                \"updated_by\": null,\n                \"created_at\": \"2026-01-31T11:32:43.223Z\",\n                \"updated_at\": \"2026-01-31T11:32:43.223Z\",\n                \"deleted_at\": null,\n                \"vendor_quotation_id\": null,\n                \"rate\": null,\n                \"amount\": null,\n                \"vendor_remarks\": null,\n                \"material_type_name\": \"Silver\",\n                \"category_name\": \"Chain\",\n                \"subcategory_name\": \"Rose Gold Pearl Chain\"\n            }\n        ],\n        \"vendor_quotations\": [\n            {\n                \"id\": 7,\n                \"quotation_id\": 3,\n                \"vendor_id\": 7,\n                \"status\": \"pending\",\n                \"response_date\": null,\n                \"remarks\": null,\n                \"sub_total\": null,\n                \"sgst_percentage\": null,\n                \"sgst_amount\": null,\n                \"cgst_percentage\": null,\n                \"cgst_amount\": null,\n                \"discount_percentage\": null,\n                \"discount_amount\": null,\n                \"total_amount\": null,\n                \"created_by\": 1,\n                \"updated_by\": null,\n                \"created_at\": \"2026-01-31T11:32:43.269Z\",\n                \"updated_at\": \"2026-01-31T11:32:43.269Z\",\n                \"deleted_at\": null,\n                \"vendor_name\": \"Arun\",\n                \"vendor_image_url\": \"https://retailerpimages.s3.ap-south-1.amazonaws.com/Ruby__Diamond_Ring_Silver_925_Real_18K_Gold_Filled_-_Etsy.jpg\",\n                \"vendor_email\": \"arun@gmail.com\",\n                \"vendor_phone\": \"7878856776\",\n                \"items\": []\n            }\n        ]\n    }\n}"
+            }
+          ]
+        },
+        {
+          "name": "3. Get All Quotations",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/quotation-requests?type=received",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "quotation-requests"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "10",
+                  "disabled": true
+                },
+                {
+                  "key": "search",
+                  "value": "QR-001",
+                  "disabled": true
+                },
+                {
+                  "key": "vendor_id",
+                  "value": "7",
+                  "disabled": true
+                },
+                {
+                  "key": "status_id",
+                  "value": "1",
+                  "disabled": true
+                },
+                {
+                  "key": "type",
+                  "value": "sent",
+                  "disabled": true
+                },
+                {
+                  "key": "type",
+                  "value": "received"
+                }
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "3. Get All Quotations",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/quotation-requests?type=sent",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "quotation-requests"
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "disabled": true
+                    },
+                    {
+                      "key": "limit",
+                      "value": "10",
+                      "disabled": true
+                    },
+                    {
+                      "key": "search",
+                      "value": "QR-001",
+                      "disabled": true
+                    },
+                    {
+                      "key": "vendor_id",
+                      "value": "7",
+                      "disabled": true
+                    },
+                    {
+                      "key": "status_id",
+                      "value": "1",
+                      "disabled": true
+                    },
+                    {
+                      "key": "type",
+                      "value": "sent"
+                    },
+                    {
+                      "key": "type",
+                      "value": "received",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": null,
+              "header": [
+                {
+                  "key": "X-Powered-By",
+                  "value": "Express"
+                },
+                {
+                  "key": "Access-Control-Allow-Origin",
+                  "value": "*"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                },
+                {
+                  "key": "Content-Length",
+                  "value": "2546"
+                },
+                {
+                  "key": "ETag",
+                  "value": "W/\"9f2-XPfJGjezXQ0zvYb2KWn5TLxTQRQ\""
+                },
+                {
+                  "key": "Date",
+                  "value": "Mon, 02 Feb 2026 09:26:10 GMT"
+                },
+                {
+                  "key": "Connection",
+                  "value": "keep-alive"
+                },
+                {
+                  "key": "Keep-Alive",
+                  "value": "timeout=5"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n    \"statusCode\": 200,\n    \"message\": \"Success\",\n    \"data\": {\n        \"score_cards\": {\n            \"sent\": 5,\n            \"received\": 3\n        },\n        \"total\": 5,\n        \"page\": null,\n        \"totalPages\": 1,\n        \"data\": [\n            {\n                \"id\": 6,\n                \"qr_id\": \"QR005\",\n                \"request_date\": \"2026-02-02\",\n                \"expiry_date\": \"2026-02-05\",\n                \"status_id\": 1,\n                \"remarks\": \"Urgent requirement for silver items\",\n                \"vendor_ids\": [\n                    35\n                ],\n                \"vendor_names\": [\n                    \"Vignesh Silver Works\"\n                ],\n                \"vendor_images\": [\n                    \"https://retailerpimages.s3.ap-south-1.amazonaws.com/images.png\"\n                ],\n                \"item_details\": \"chain\",\n                \"total_quantity\": \"10\",\n                \"created_by\": \"kumar@gmail.com\",\n                \"pending_vendors\": \"1\",\n                \"received_vendors\": \"0\",\n                \"total_vendors\": \"1\"\n            },\n            {\n                \"id\": 5,\n                \"qr_id\": \"QR004\",\n                \"request_date\": \"2025-01-31\",\n                \"expiry_date\": \"2025-02-19\",\n                \"status_id\": 1,\n                \"remarks\": \"Urgent requirement for gold items\",\n                \"vendor_ids\": [\n                    7\n                ],\n                \"vendor_names\": [\n                    \"Arun\"\n                ],\n                \"vendor_images\": [\n                    \"https://retailerpimages.s3.ap-south-1.amazonaws.com/Ruby__Diamond_Ring_Silver_925_Real_18K_Gold_Filled_-_Etsy.jpg\"\n                ],\n                \"item_details\": \"Gold Necklace - Designer, Gold Ring - 22K\",\n                \"total_quantity\": \"70\",\n                \"created_by\": \"kumar@gmail.com\",\n                \"pending_vendors\": \"0\",\n                \"received_vendors\": \"0\",\n                \"total_vendors\": \"0\"\n            },\n            {\n                \"id\": 3,\n                \"qr_id\": \"QR003\",\n                \"request_date\": \"2025-01-31\",\n                \"expiry_date\": \"2025-02-20\",\n                \"status_id\": 3,\n                \"remarks\": \"Extended deadline\",\n                \"vendor_ids\": [\n                    7,\n                    8\n                ],\n                \"vendor_names\": [\n                    \"Arun\",\n                    \"GRT Jewellers\"\n                ],\n                \"vendor_images\": [\n                    \"https://retailerpimages.s3.ap-south-1.amazonaws.com/Ruby__Diamond_Ring_Silver_925_Real_18K_Gold_Filled_-_Etsy.jpg\",\n                    \"https://retailerpimages.s3.ap-south-1.amazonaws.com/download.jfif\"\n                ],\n                \"item_details\": \"Gold Necklace - Designer, Gold Ring - 22K Updated\",\n                \"total_quantity\": \"320\",\n                \"created_by\": \"kumar@gmail.com\",\n                \"pending_vendors\": \"0\",\n                \"received_vendors\": \"0\",\n                \"total_vendors\": \"2\"\n            },\n            {\n                \"id\": 2,\n                \"qr_id\": \"QR002\",\n                \"request_date\": \"2025-01-31\",\n                \"expiry_date\": \"2025-02-15\",\n                \"status_id\": 4,\n                \"remarks\": \"Urgent requirement for gold items\",\n                \"vendor_ids\": [\n                    4,\n                    5,\n                    6\n                ],\n                \"vendor_names\": [\n                    \"Aura\",\n                    \"Kiran Jewels\",\n                    \"shalini\"\n                ],\n                \"vendor_images\": [\n                    \"\",\n                    \"https://retailerpimages.s3.ap-south-1.amazonaws.com/images_3.jfif\"\n                ],\n                \"item_details\": \"Gold Necklace - Designer, Gold Ring - 22K\",\n                \"total_quantity\": \"630\",\n                \"created_by\": \"kumar@gmail.com\",\n                \"pending_vendors\": \"0\",\n                \"received_vendors\": \"0\",\n                \"total_vendors\": \"3\"\n            },\n            {\n                \"id\": 1,\n                \"qr_id\": \"QR001\",\n                \"request_date\": \"2025-01-31\",\n                \"expiry_date\": \"2025-02-15\",\n                \"status_id\": 2,\n                \"remarks\": \"Urgent requirement for gold items\",\n                \"vendor_ids\": [\n                    1,\n                    2,\n                    3\n                ],\n                \"vendor_names\": [\n                    \"Heritage Silver Artisans\",\n                    \"Nakoda Silver Creations\",\n                    \"Royal Silver Works\"\n                ],\n                \"vendor_images\": [\n                    \"\"\n                ],\n                \"item_details\": \"Gold Necklace - Designer, Gold Ring - 22K\",\n                \"total_quantity\": \"630\",\n                \"created_by\": \"kumar@gmail.com\",\n                \"pending_vendors\": \"0\",\n                \"received_vendors\": \"0\",\n                \"total_vendors\": \"3\"\n            }\n        ]\n    }\n}"
+            }
+          ]
+        },
+        {
+          "name": "4. Get Quotation by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/quotation-requests/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "quotation-requests",
+                "1"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "4. Get Quotation by ID",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/quotation-requests/1",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "quotation-requests",
+                    "1"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": null,
+              "header": [
+                {
+                  "key": "X-Powered-By",
+                  "value": "Express"
+                },
+                {
+                  "key": "Access-Control-Allow-Origin",
+                  "value": "*"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                },
+                {
+                  "key": "Content-Length",
+                  "value": "2914"
+                },
+                {
+                  "key": "ETag",
+                  "value": "W/\"b62-Ja7NE3MIQyswj/DE17wfB/WvgUk\""
+                },
+                {
+                  "key": "Date",
+                  "value": "Sat, 31 Jan 2026 11:29:16 GMT"
+                },
+                {
+                  "key": "Connection",
+                  "value": "keep-alive"
+                },
+                {
+                  "key": "Keep-Alive",
+                  "value": "timeout=5"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n    \"statusCode\": 200,\n    \"message\": \"Success\",\n    \"data\": {\n        \"id\": 1,\n        \"qr_id\": \"QR-001\",\n        \"request_date\": \"2025-01-31\",\n        \"expiry_date\": \"2025-02-15\",\n        \"remarks\": \"Urgent requirement for gold items\",\n        \"vendor_ids\": [\n            1,\n            2,\n            3\n        ],\n        \"status_id\": 1,\n        \"created_by\": 1,\n        \"updated_by\": null,\n        \"created_at\": \"2026-01-31T11:15:02.498Z\",\n        \"updated_at\": \"2026-01-31T11:15:02.498Z\",\n        \"deleted_at\": null,\n        \"items\": [\n            {\n                \"id\": 1,\n                \"quotation_id\": 1,\n                \"material_type_id\": 1,\n                \"category_id\": 1,\n                \"subcategory_id\": 1,\n                \"product_description\": \"Gold Ring - 22K\",\n                \"purity\": \"91.600\",\n                \"weight\": \"10.500\",\n                \"quantity\": 50,\n                \"created_by\": null,\n                \"updated_by\": null,\n                \"created_at\": \"2026-01-31T11:15:02.606Z\",\n                \"updated_at\": \"2026-01-31T11:15:02.606Z\",\n                \"deleted_at\": null,\n                \"vendor_quotation_id\": null,\n                \"rate\": null,\n                \"amount\": null,\n                \"vendor_remarks\": null,\n                \"material_type_name\": \"Silver\",\n                \"category_name\": \"Chain\",\n                \"subcategory_name\": \"Fancy Chain\"\n            },\n            {\n                \"id\": 2,\n                \"quotation_id\": 1,\n                \"material_type_id\": 1,\n                \"category_id\": 1,\n                \"subcategory_id\": 2,\n                \"product_description\": \"Gold Necklace - Designer\",\n                \"purity\": \"91.600\",\n                \"weight\": \"30.800\",\n                \"quantity\": 20,\n                \"created_by\": null,\n                \"updated_by\": null,\n                \"created_at\": \"2026-01-31T11:15:02.606Z\",\n                \"updated_at\": \"2026-01-31T11:15:02.606Z\",\n                \"deleted_at\": null,\n                \"vendor_quotation_id\": null,\n                \"rate\": null,\n                \"amount\": null,\n                \"vendor_remarks\": null,\n                \"material_type_name\": \"Silver\",\n                \"category_name\": \"Chain\",\n                \"subcategory_name\": \"Rose Gold Pearl Chain\"\n            }\n        ],\n        \"vendor_quotations\": [\n            {\n                \"id\": 1,\n                \"quotation_id\": 1,\n                \"vendor_id\": 1,\n                \"status\": \"pending\",\n                \"response_date\": null,\n                \"remarks\": null,\n                \"sub_total\": null,\n                \"sgst_percentage\": null,\n                \"sgst_amount\": null,\n                \"cgst_percentage\": null,\n                \"cgst_amount\": null,\n                \"discount_percentage\": null,\n                \"discount_amount\": null,\n                \"total_amount\": null,\n                \"created_by\": 1,\n                \"updated_by\": null,\n                \"created_at\": \"2026-01-31T11:15:02.654Z\",\n                \"updated_at\": \"2026-01-31T11:15:02.654Z\",\n                \"deleted_at\": null,\n                \"vendor_name\": \"Royal Silver Works\",\n                \"vendor_image_url\": \"\",\n                \"vendor_email\": \"kannan@gmail.com\",\n                \"vendor_phone\": \"9595959595\",\n                \"items\": []\n            },\n            {\n                \"id\": 2,\n                \"quotation_id\": 1,\n                \"vendor_id\": 2,\n                \"status\": \"pending\",\n                \"response_date\": null,\n                \"remarks\": null,\n                \"sub_total\": null,\n                \"sgst_percentage\": null,\n                \"sgst_amount\": null,\n                \"cgst_percentage\": null,\n                \"cgst_amount\": null,\n                \"discount_percentage\": null,\n                \"discount_amount\": null,\n                \"total_amount\": null,\n                \"created_by\": 1,\n                \"updated_by\": null,\n                \"created_at\": \"2026-01-31T11:15:02.654Z\",\n                \"updated_at\": \"2026-01-31T11:15:02.654Z\",\n                \"deleted_at\": null,\n                \"vendor_name\": \"Heritage Silver Artisans\",\n                \"vendor_image_url\": \"\",\n                \"vendor_email\": \"bijoy@gmail.com\",\n                \"vendor_phone\": \"5896589658\",\n                \"items\": []\n            },\n            {\n                \"id\": 3,\n                \"quotation_id\": 1,\n                \"vendor_id\": 3,\n                \"status\": \"pending\",\n                \"response_date\": null,\n                \"remarks\": null,\n                \"sub_total\": null,\n                \"sgst_percentage\": null,\n                \"sgst_amount\": null,\n                \"cgst_percentage\": null,\n                \"cgst_amount\": null,\n                \"discount_percentage\": null,\n                \"discount_amount\": null,\n                \"total_amount\": null,\n                \"created_by\": 1,\n                \"updated_by\": null,\n                \"created_at\": \"2026-01-31T11:15:02.654Z\",\n                \"updated_at\": \"2026-01-31T11:15:02.654Z\",\n                \"deleted_at\": null,\n                \"vendor_name\": \"Nakoda Silver Creations\",\n                \"vendor_image_url\": \"\",\n                \"vendor_email\": \"ajay@gmail.com\",\n                \"vendor_phone\": \"5252652568\",\n                \"items\": []\n            }\n        ]\n    }\n}"
+            }
+          ]
+        },
+        {
+          "name": "5. Update Quotation Request",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"expiry_date\": \"2025-02-20\",\n  \"remarks\": \"Extended deadline\",\n  \"vendor_ids\": [7,8],\n  \"items\": [\n    {\n      \"id\": 5,\n      \"material_type_id\": 1,\n      \"category_id\": 2,\n      \"subcategory_id\": 11,\n      \"product_description\": \"Gold Ring - 22K Updated\",\n      \"purity\": 91.6,\n      \"weight\": 12.0,\n      \"quantity\": 60\n    }\n  ],\n  \"updated_by\": 1\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/quotation-requests/3",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "quotation-requests",
+                "3"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "5. Update Quotation Request",
+              "originalRequest": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"expiry_date\": \"2025-02-20\",\n  \"remarks\": \"Extended deadline\",\n  \"vendor_ids\": [7,8],\n  \"items\": [\n    {\n      \"id\": 5,\n      \"material_type_id\": 1,\n      \"category_id\": 2,\n      \"subcategory_id\": 11,\n      \"product_description\": \"Gold Ring - 22K Updated\",\n      \"purity\": 91.6,\n      \"weight\": 12.0,\n      \"quantity\": 60\n    }\n  ],\n  \"updated_by\": 1\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/quotation-requests/3",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "quotation-requests",
+                    "3"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": null,
+              "header": [
+                {
+                  "key": "X-Powered-By",
+                  "value": "Express"
+                },
+                {
+                  "key": "Access-Control-Allow-Origin",
+                  "value": "*"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                },
+                {
+                  "key": "Content-Length",
+                  "value": "2523"
+                },
+                {
+                  "key": "ETag",
+                  "value": "W/\"9db-zz+tVQtYCvOhYpxwKgmGBMGDGu0\""
+                },
+                {
+                  "key": "Date",
+                  "value": "Sat, 31 Jan 2026 12:08:49 GMT"
+                },
+                {
+                  "key": "Connection",
+                  "value": "keep-alive"
+                },
+                {
+                  "key": "Keep-Alive",
+                  "value": "timeout=5"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n    \"statusCode\": 200,\n    \"message\": \"Success\",\n    \"data\": {\n        \"id\": 3,\n        \"qr_id\": \"QR-003\",\n        \"request_date\": \"2025-01-31\",\n        \"expiry_date\": \"2025-02-20\",\n        \"remarks\": \"Extended deadline\",\n        \"vendor_ids\": [\n            7,\n            8\n        ],\n        \"status_id\": 1,\n        \"created_by\": 1,\n        \"updated_by\": 1,\n        \"created_at\": \"2026-01-31T11:32:43.173Z\",\n        \"updated_at\": \"2026-01-31T12:08:49.273Z\",\n        \"deleted_at\": null,\n        \"items\": [\n            {\n                \"id\": 5,\n                \"quotation_id\": 3,\n                \"material_type_id\": 1,\n                \"category_id\": 2,\n                \"subcategory_id\": 11,\n                \"product_description\": \"Gold Ring - 22K Updated\",\n                \"purity\": \"91.600\",\n                \"weight\": \"12.000\",\n                \"quantity\": 60,\n                \"created_by\": null,\n                \"updated_by\": null,\n                \"created_at\": \"2026-01-31T11:32:43.223Z\",\n                \"updated_at\": \"2026-01-31T12:08:49.363Z\",\n                \"deleted_at\": null,\n                \"vendor_quotation_id\": null,\n                \"rate\": null,\n                \"amount\": null,\n                \"vendor_remarks\": null,\n                \"material_type_name\": \"Silver\",\n                \"category_name\": \"Bangle\",\n                \"subcategory_name\": \"Baby Bangle\"\n            },\n            {\n                \"id\": 6,\n                \"quotation_id\": 3,\n                \"material_type_id\": 1,\n                \"category_id\": 1,\n                \"subcategory_id\": 2,\n                \"product_description\": \"Gold Necklace - Designer\",\n                \"purity\": \"91.600\",\n                \"weight\": \"30.800\",\n                \"quantity\": 20,\n                \"created_by\": null,\n                \"updated_by\": null,\n                \"created_at\": \"2026-01-31T11:32:43.223Z\",\n                \"updated_at\": \"2026-01-31T11:32:43.223Z\",\n                \"deleted_at\": null,\n                \"vendor_quotation_id\": null,\n                \"rate\": null,\n                \"amount\": null,\n                \"vendor_remarks\": null,\n                \"material_type_name\": \"Silver\",\n                \"category_name\": \"Chain\",\n                \"subcategory_name\": \"Rose Gold Pearl Chain\"\n            }\n        ],\n        \"vendor_quotations\": [\n            {\n                \"id\": 7,\n                \"quotation_id\": 3,\n                \"vendor_id\": 7,\n                \"status\": \"pending\",\n                \"response_date\": null,\n                \"remarks\": null,\n                \"sub_total\": null,\n                \"sgst_percentage\": null,\n                \"sgst_amount\": null,\n                \"cgst_percentage\": null,\n                \"cgst_amount\": null,\n                \"discount_percentage\": null,\n                \"discount_amount\": null,\n                \"total_amount\": null,\n                \"created_by\": 1,\n                \"updated_by\": null,\n                \"created_at\": \"2026-01-31T11:32:43.269Z\",\n                \"updated_at\": \"2026-01-31T11:32:43.269Z\",\n                \"deleted_at\": null,\n                \"vendor_name\": \"Arun\",\n                \"vendor_image_url\": \"https://retailerpimages.s3.ap-south-1.amazonaws.com/Ruby__Diamond_Ring_Silver_925_Real_18K_Gold_Filled_-_Etsy.jpg\",\n                \"vendor_email\": \"arun@gmail.com\",\n                \"vendor_phone\": \"7878856776\",\n                \"items\": []\n            },\n            {\n                \"id\": 8,\n                \"quotation_id\": 3,\n                \"vendor_id\": 8,\n                \"status\": \"pending\",\n                \"response_date\": null,\n                \"remarks\": null,\n                \"sub_total\": null,\n                \"sgst_percentage\": null,\n                \"sgst_amount\": null,\n                \"cgst_percentage\": null,\n                \"cgst_amount\": null,\n                \"discount_percentage\": null,\n                \"discount_amount\": null,\n                \"total_amount\": null,\n                \"created_by\": 1,\n                \"updated_by\": null,\n                \"created_at\": \"2026-01-31T12:08:49.229Z\",\n                \"updated_at\": \"2026-01-31T12:08:49.229Z\",\n                \"deleted_at\": null,\n                \"vendor_name\": \"GRT Jewellers\",\n                \"vendor_image_url\": \"https://retailerpimages.s3.ap-south-1.amazonaws.com/download.jfif\",\n                \"vendor_email\": \"suresh@grt.com\",\n                \"vendor_phone\": \"5215442125\",\n                \"items\": []\n            }\n        ]\n    }\n}"
+            }
+          ]
+        },
+        {
+          "name": "6. Delete Quotation Request",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/quotation-requests/{{quotation_id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "quotation-requests",
+                "{{quotation_id}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "VendorComparision",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/quotation-requests/3/compare",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "quotation-requests",
+                "3",
+                "compare"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "VendorComparision",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/quotation-requests/3/compare",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "quotation-requests",
+                    "3",
+                    "compare"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": null,
+              "header": [
+                {
+                  "key": "X-Powered-By",
+                  "value": "Express"
+                },
+                {
+                  "key": "Access-Control-Allow-Origin",
+                  "value": "*"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                },
+                {
+                  "key": "Content-Length",
+                  "value": "780"
+                },
+                {
+                  "key": "ETag",
+                  "value": "W/\"30c-Qtt0Xkvl0iQ1mlbwk2BIovk7Px0\""
+                },
+                {
+                  "key": "Date",
+                  "value": "Mon, 02 Feb 2026 14:16:12 GMT"
+                },
+                {
+                  "key": "Connection",
+                  "value": "keep-alive"
+                },
+                {
+                  "key": "Keep-Alive",
+                  "value": "timeout=5"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n    \"statusCode\": 200,\n    \"message\": \"Success\",\n    \"data\": {\n        \"quotation\": {\n            \"id\": 3,\n            \"qr_id\": \"QR003\",\n            \"request_date\": \"2025-01-31\",\n            \"expiry_date\": \"2025-02-20\"\n        },\n        \"items\": [\n            {\n                \"material_type_id\": 1,\n                \"category_id\": 1,\n                \"subcategory_id\": 2,\n                \"product_description\": \"Gold Necklace - Designer\",\n                \"purity\": \"91.600\",\n                \"weight\": \"30.800\",\n                \"quantity\": 20\n            },\n            {\n                \"material_type_id\": 1,\n                \"category_id\": 2,\n                \"subcategory_id\": 11,\n                \"product_description\": \"Gold Ring - 22K Updated\",\n                \"purity\": \"91.600\",\n                \"weight\": \"12.000\",\n                \"quantity\": 60\n            }\n        ],\n        \"vendors\": [\n            {\n                \"vendor_id\": 7,\n                \"vendor_name\": \"Arun\",\n                \"items\": [\n                    {\n                        \"rate\": \"2000.00\",\n                        \"amount\": \"2000.00\"\n                    },\n                    {\n                        \"rate\": \"2000.00\",\n                        \"amount\": \"2000.00\"\n                    }\n                ],\n                \"total_amount\": \"4030.00\"\n            },\n            {\n                \"vendor_id\": 8,\n                \"vendor_name\": \"GRT Jewellers\",\n                \"items\": [\n                    {\n                        \"rate\": \"3000.00\",\n                        \"amount\": \"3000.00\"\n                    },\n                    {\n                        \"rate\": \"2500.00\",\n                        \"amount\": \"2500.00\"\n                    }\n                ],\n                \"total_amount\": \"5530.00\"\n            }\n        ]\n    }\n}"
+            },
+            {
+              "name": "VendorComparision",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/quotation-requests/3/compare",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "quotation-requests",
+                    "3",
+                    "compare"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": null,
+              "header": [
+                {
+                  "key": "X-Powered-By",
+                  "value": "Express"
+                },
+                {
+                  "key": "Access-Control-Allow-Origin",
+                  "value": "*"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                },
+                {
+                  "key": "Content-Length",
+                  "value": "1925"
+                },
+                {
+                  "key": "ETag",
+                  "value": "W/\"785-7cENv42Zn8wYZECivozffrOCqy0\""
+                },
+                {
+                  "key": "Date",
+                  "value": "Tue, 03 Feb 2026 11:25:20 GMT"
+                },
+                {
+                  "key": "Connection",
+                  "value": "keep-alive"
+                },
+                {
+                  "key": "Keep-Alive",
+                  "value": "timeout=5"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n    \"statusCode\": 200,\n    \"message\": \"Success\",\n    \"data\": {\n        \"quotation\": {\n            \"id\": 3,\n            \"qr_id\": \"QR003\",\n            \"request_date\": \"2025-01-31\",\n            \"expiry_date\": \"2025-02-20\"\n        },\n        \"items\": [\n            {\n                \"material_type_id\": 1,\n                \"material_type\": \"Silver\",\n                \"category_id\": 2,\n                \"category_name\": \"Bangle\",\n                \"subcategory_id\": 11,\n                \"subcategory_name\": \"Baby Bangle\",\n                \"product_description\": \"Gold Ring - 22K Updated\",\n                \"purity\": \"91.600\",\n                \"weight\": \"12.000\",\n                \"quantity\": 60\n            },\n            {\n                \"material_type_id\": 1,\n                \"material_type\": \"Silver\",\n                \"category_id\": 1,\n                \"category_name\": \"Chain\",\n                \"subcategory_id\": 2,\n                \"subcategory_name\": \"Rose Gold Pearl Chain\",\n                \"product_description\": \"Gold Necklace - Designer\",\n                \"purity\": \"91.600\",\n                \"weight\": \"30.800\",\n                \"quantity\": 20\n            }\n        ],\n        \"vendors\": [\n            {\n                \"vendor_id\": 7,\n                \"vendor_name\": \"Arun\",\n                \"items\": [\n                    {\n                        \"material_type_id\": 1,\n                        \"material_type\": \"Silver\",\n                        \"category_id\": 2,\n                        \"category_name\": \"Bangle\",\n                        \"subcategory_id\": 11,\n                        \"subcategory_name\": \"Baby Bangle\",\n                        \"product_description\": \"Gold Ring - 22K Updated\",\n                        \"purity\": \"91.600\",\n                        \"weight\": \"12.000\",\n                        \"quantity\": 60,\n                        \"rate\": \"2000.00\",\n                        \"amount\": \"2000.00\"\n                    },\n                    {\n                        \"material_type_id\": 1,\n                        \"material_type\": \"Silver\",\n                        \"category_id\": 1,\n                        \"category_name\": \"Chain\",\n                        \"subcategory_id\": 2,\n                        \"subcategory_name\": \"Rose Gold Pearl Chain\",\n                        \"product_description\": \"Gold Necklace - Designer\",\n                        \"purity\": \"91.600\",\n                        \"weight\": \"30.800\",\n                        \"quantity\": 20,\n                        \"rate\": \"2000.00\",\n                        \"amount\": \"2000.00\"\n                    }\n                ],\n                \"total_amount\": \"4030.00\"\n            },\n            {\n                \"vendor_id\": 8,\n                \"vendor_name\": \"GRT Jewellers\",\n                \"items\": [\n                    {\n                        \"material_type_id\": 1,\n                        \"material_type\": \"Silver\",\n                        \"category_id\": 2,\n                        \"category_name\": \"Bangle\",\n                        \"subcategory_id\": 11,\n                        \"subcategory_name\": \"Baby Bangle\",\n                        \"product_description\": \"Gold Ring - 22K Updated\",\n                        \"purity\": \"91.600\",\n                        \"weight\": \"12.000\",\n                        \"quantity\": 60,\n                        \"rate\": \"3000.00\",\n                        \"amount\": \"3000.00\"\n                    },\n                    {\n                        \"material_type_id\": 1,\n                        \"material_type\": \"Silver\",\n                        \"category_id\": 1,\n                        \"category_name\": \"Chain\",\n                        \"subcategory_id\": 2,\n                        \"subcategory_name\": \"Rose Gold Pearl Chain\",\n                        \"product_description\": \"Gold Necklace - Designer\",\n                        \"purity\": \"91.600\",\n                        \"weight\": \"30.800\",\n                        \"quantity\": 20,\n                        \"rate\": \"2500.00\",\n                        \"amount\": \"2500.00\"\n                    }\n                ],\n                \"total_amount\": \"5530.00\"\n            }\n        ]\n    }\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Vendor - Quotations",
+      "item": [
+        {
+          "name": "Generate Vednor Quotation Code",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/vendor-quotations/code?prefix=QUT",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vendor-quotations",
+                "code"
+              ],
+              "query": [
+                {
+                  "key": "prefix",
+                  "value": "QUT"
+                }
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "Generate Vednor Quotation Code",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/vendor-quotations/code?prefix=QUT",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "vendor-quotations",
+                    "code"
+                  ],
+                  "query": [
+                    {
+                      "key": "prefix",
+                      "value": "QUT"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": null,
+              "header": [
+                {
+                  "key": "X-Powered-By",
+                  "value": "Express"
+                },
+                {
+                  "key": "Access-Control-Allow-Origin",
+                  "value": "*"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                },
+                {
+                  "key": "Content-Length",
+                  "value": "82"
+                },
+                {
+                  "key": "ETag",
+                  "value": "W/\"52-+66xelH2ZGNKfJGSak+SvI+5a0k\""
+                },
+                {
+                  "key": "Date",
+                  "value": "Mon, 02 Feb 2026 07:02:53 GMT"
+                },
+                {
+                  "key": "Connection",
+                  "value": "keep-alive"
+                },
+                {
+                  "key": "Keep-Alive",
+                  "value": "timeout=5"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n    \"statusCode\": 200,\n    \"message\": \"Success\",\n    \"data\": {\n        \"vendor_quotation_number\": \"QUT001\"\n    }\n}"
+            }
+          ]
+        },
+        {
+          "name": "7. Get Vendor Quotation by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/vendor-quotations/7",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vendor-quotations",
+                "7"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "7. Get Vendor Quotation by ID",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/vendor-quotations/7",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "vendor-quotations",
+                    "7"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": null,
+              "header": [
+                {
+                  "key": "X-Powered-By",
+                  "value": "Express"
+                },
+                {
+                  "key": "Access-Control-Allow-Origin",
+                  "value": "*"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                },
+                {
+                  "key": "Content-Length",
+                  "value": "2963"
+                },
+                {
+                  "key": "ETag",
+                  "value": "W/\"b93-7as4Dbb+yELav+Udk2lZrZLVA0U\""
+                },
+                {
+                  "key": "Date",
+                  "value": "Mon, 02 Feb 2026 10:56:02 GMT"
+                },
+                {
+                  "key": "Connection",
+                  "value": "keep-alive"
+                },
+                {
+                  "key": "Keep-Alive",
+                  "value": "timeout=5"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n    \"statusCode\": 200,\n    \"message\": \"Success\",\n    \"data\": {\n        \"id\": 7,\n        \"quotation_id\": 3,\n        \"vendor_id\": 7,\n        \"status\": \"accepted\",\n        \"response_date\": \"2026-02-02\",\n        \"remarks\": \"We can fulfill this order within the timeline\",\n        \"sub_total\": \"4000.00\",\n        \"sgst_percentage\": \"1.50\",\n        \"sgst_amount\": \"15.00\",\n        \"cgst_percentage\": \"1.50\",\n        \"cgst_amount\": \"15.00\",\n        \"discount_percentage\": null,\n        \"discount_amount\": null,\n        \"total_amount\": \"4030.00\",\n        \"created_by\": 1,\n        \"updated_by\": null,\n        \"created_at\": \"2026-01-31T11:32:43.269Z\",\n        \"updated_at\": \"2026-02-02T08:00:37.965Z\",\n        \"deleted_at\": null,\n        \"vendor_quotation_number\": \"QUT007\",\n        \"terms_and_conditions\": \"loreum epsum\",\n        \"attachment_url\": \"www.url.com\",\n        \"qr_id\": \"QR003\",\n        \"request_date\": \"2025-01-31\",\n        \"expiry_date\": \"2025-02-20\",\n        \"quotation_remarks\": \"Extended deadline\",\n        \"vendor_name\": \"Arun\",\n        \"vendor_image_url\": \"https://retailerpimages.s3.ap-south-1.amazonaws.com/Ruby__Diamond_Ring_Silver_925_Real_18K_Gold_Filled_-_Etsy.jpg\",\n        \"vendor_address\": \"23\",\n        \"vendor_pincode\": \"600002\",\n        \"vendor_state\": \"Tamil Nadu\",\n        \"vendor_city\": \"Madurai\",\n        \"base_items\": [\n            {\n                \"id\": 5,\n                \"quotation_id\": 3,\n                \"material_type_id\": 1,\n                \"category_id\": 2,\n                \"subcategory_id\": 11,\n                \"product_description\": \"Gold Ring - 22K Updated\",\n                \"purity\": \"91.600\",\n                \"weight\": \"12.000\",\n                \"quantity\": 60,\n                \"created_by\": null,\n                \"updated_by\": null,\n                \"created_at\": \"2026-01-31T11:32:43.223Z\",\n                \"updated_at\": \"2026-01-31T12:08:49.363Z\",\n                \"deleted_at\": null,\n                \"vendor_quotation_id\": null,\n                \"rate\": null,\n                \"amount\": null,\n                \"vendor_remarks\": null,\n                \"material_type_name\": \"Silver\",\n                \"category_name\": \"Bangle\",\n                \"subcategory_name\": \"Baby Bangle\"\n            },\n            {\n                \"id\": 6,\n                \"quotation_id\": 3,\n                \"material_type_id\": 1,\n                \"category_id\": 1,\n                \"subcategory_id\": 2,\n                \"product_description\": \"Gold Necklace - Designer\",\n                \"purity\": \"91.600\",\n                \"weight\": \"30.800\",\n                \"quantity\": 20,\n                \"created_by\": null,\n                \"updated_by\": null,\n                \"created_at\": \"2026-01-31T11:32:43.223Z\",\n                \"updated_at\": \"2026-01-31T11:32:43.223Z\",\n                \"deleted_at\": null,\n                \"vendor_quotation_id\": null,\n                \"rate\": null,\n                \"amount\": null,\n                \"vendor_remarks\": null,\n                \"material_type_name\": \"Silver\",\n                \"category_name\": \"Chain\",\n                \"subcategory_name\": \"Rose Gold Pearl Chain\"\n            }\n        ],\n        \"vendor_items\": [\n            {\n                \"id\": 11,\n                \"quotation_id\": 3,\n                \"material_type_id\": 1,\n                \"category_id\": 2,\n                \"subcategory_id\": 11,\n                \"product_description\": \"Gold Ring - 22K Updated\",\n                \"purity\": \"91.600\",\n                \"weight\": \"12.000\",\n                \"quantity\": 60,\n                \"created_by\": null,\n                \"updated_by\": null,\n                \"created_at\": \"2026-02-02T06:42:22.811Z\",\n                \"updated_at\": \"2026-02-02T06:42:22.811Z\",\n                \"deleted_at\": null,\n                \"vendor_quotation_id\": 7,\n                \"rate\": \"2000.00\",\n                \"amount\": \"2000.00\",\n                \"vendor_remarks\": null,\n                \"material_type_name\": \"Silver\",\n                \"category_name\": \"Bangle\",\n                \"subcategory_name\": \"Baby Bangle\"\n            },\n            {\n                \"id\": 12,\n                \"quotation_id\": 3,\n                \"material_type_id\": 1,\n                \"category_id\": 1,\n                \"subcategory_id\": 2,\n                \"product_description\": \"Gold Necklace - Designer\",\n                \"purity\": \"91.600\",\n                \"weight\": \"30.800\",\n                \"quantity\": 20,\n                \"created_by\": null,\n                \"updated_by\": null,\n                \"created_at\": \"2026-02-02T06:42:22.811Z\",\n                \"updated_at\": \"2026-02-02T06:42:22.811Z\",\n                \"deleted_at\": null,\n                \"vendor_quotation_id\": 7,\n                \"rate\": \"2000.00\",\n                \"amount\": \"2000.00\",\n                \"vendor_remarks\": null,\n                \"material_type_name\": \"Silver\",\n                \"category_name\": \"Chain\",\n                \"subcategory_name\": \"Rose Gold Pearl Chain\"\n            }\n        ]\n    }\n}"
+            }
+          ]
+        },
+        {
+          "name": "8. Accept Quotation",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"accepted\",\n  \"remarks\": \"We can fulfill this order within the timeline\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/vendor-quotations/8/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vendor-quotations",
+                "8",
+                "status"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "8. Accept Quotation",
+              "originalRequest": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"status\": \"accepted\",\n  \"remarks\": \"We can fulfill this order within the timeline\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/vendor-quotations/8/status",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "vendor-quotations",
+                    "8",
+                    "status"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": null,
+              "header": [
+                {
+                  "key": "X-Powered-By",
+                  "value": "Express"
+                },
+                {
+                  "key": "Access-Control-Allow-Origin",
+                  "value": "*"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                },
+                {
+                  "key": "Content-Length",
+                  "value": "2788"
+                },
+                {
+                  "key": "ETag",
+                  "value": "W/\"ae4-NIxMAdpAeqrBwdw0X6IqVI9cyD8\""
+                },
+                {
+                  "key": "Date",
+                  "value": "Mon, 02 Feb 2026 06:35:09 GMT"
+                },
+                {
+                  "key": "Connection",
+                  "value": "keep-alive"
+                },
+                {
+                  "key": "Keep-Alive",
+                  "value": "timeout=5"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n    \"statusCode\": 200,\n    \"message\": \"Success\",\n    \"data\": {\n        \"id\": 3,\n        \"qr_id\": \"QR003\",\n        \"request_date\": \"2025-01-31\",\n        \"expiry_date\": \"2025-02-20\",\n        \"remarks\": \"Extended deadline\",\n        \"vendor_ids\": [\n            7,\n            8\n        ],\n        \"status_id\": 1,\n        \"created_by\": 1,\n        \"updated_by\": 1,\n        \"created_at\": \"2026-01-31T11:32:43.173Z\",\n        \"updated_at\": \"2026-02-02T06:35:09.681Z\",\n        \"deleted_at\": null,\n        \"items\": [\n            {\n                \"id\": 5,\n                \"quotation_id\": 3,\n                \"material_type_id\": 1,\n                \"category_id\": 2,\n                \"subcategory_id\": 11,\n                \"product_description\": \"Gold Ring - 22K Updated\",\n                \"purity\": \"91.600\",\n                \"weight\": \"12.000\",\n                \"quantity\": 60,\n                \"created_by\": null,\n                \"updated_by\": null,\n                \"created_at\": \"2026-01-31T11:32:43.223Z\",\n                \"updated_at\": \"2026-01-31T12:08:49.363Z\",\n                \"deleted_at\": null,\n                \"vendor_quotation_id\": null,\n                \"rate\": null,\n                \"amount\": null,\n                \"vendor_remarks\": null,\n                \"material_type_name\": \"Silver\",\n                \"category_name\": \"Bangle\",\n                \"subcategory_name\": \"Baby Bangle\"\n            },\n            {\n                \"id\": 6,\n                \"quotation_id\": 3,\n                \"material_type_id\": 1,\n                \"category_id\": 1,\n                \"subcategory_id\": 2,\n                \"product_description\": \"Gold Necklace - Designer\",\n                \"purity\": \"91.600\",\n                \"weight\": \"30.800\",\n                \"quantity\": 20,\n                \"created_by\": null,\n                \"updated_by\": null,\n                \"created_at\": \"2026-01-31T11:32:43.223Z\",\n                \"updated_at\": \"2026-01-31T11:32:43.223Z\",\n                \"deleted_at\": null,\n                \"vendor_quotation_id\": null,\n                \"rate\": null,\n                \"amount\": null,\n                \"vendor_remarks\": null,\n                \"material_type_name\": \"Silver\",\n                \"category_name\": \"Chain\",\n                \"subcategory_name\": \"Rose Gold Pearl Chain\"\n            }\n        ],\n        \"vendor_quotations\": [\n            {\n                \"id\": 7,\n                \"quotation_id\": 3,\n                \"vendor_id\": 7,\n                \"status\": \"accepted\",\n                \"response_date\": \"2026-02-02\",\n                \"remarks\": \"We can fulfill this order within the timeline\",\n                \"sub_total\": null,\n                \"sgst_percentage\": null,\n                \"sgst_amount\": null,\n                \"cgst_percentage\": null,\n                \"cgst_amount\": null,\n                \"discount_percentage\": null,\n                \"discount_amount\": null,\n                \"total_amount\": null,\n                \"created_by\": 1,\n                \"updated_by\": null,\n                \"created_at\": \"2026-01-31T11:32:43.269Z\",\n                \"updated_at\": \"2026-02-02T06:34:56.409Z\",\n                \"deleted_at\": null,\n                \"vendor_quotation_number\": null,\n                \"terms_and_conditions\": null,\n                \"attachment_url\": null,\n                \"vendor_name\": \"Arun\",\n                \"vendor_image_url\": \"https://retailerpimages.s3.ap-south-1.amazonaws.com/Ruby__Diamond_Ring_Silver_925_Real_18K_Gold_Filled_-_Etsy.jpg\",\n                \"vendor_email\": \"arun@gmail.com\",\n                \"vendor_phone\": \"7878856776\",\n                \"items\": []\n            },\n            {\n                \"id\": 8,\n                \"quotation_id\": 3,\n                \"vendor_id\": 8,\n                \"status\": \"accepted\",\n                \"response_date\": \"2026-02-02\",\n                \"remarks\": \"We can fulfill this order within the timeline\",\n                \"sub_total\": null,\n                \"sgst_percentage\": null,\n                \"sgst_amount\": null,\n                \"cgst_percentage\": null,\n                \"cgst_amount\": null,\n                \"discount_percentage\": null,\n                \"discount_amount\": null,\n                \"total_amount\": null,\n                \"created_by\": 1,\n                \"updated_by\": null,\n                \"created_at\": \"2026-01-31T12:08:49.229Z\",\n                \"updated_at\": \"2026-02-02T06:35:09.599Z\",\n                \"deleted_at\": null,\n                \"vendor_quotation_number\": null,\n                \"terms_and_conditions\": null,\n                \"attachment_url\": null,\n                \"vendor_name\": \"GRT Jewellers\",\n                \"vendor_image_url\": \"https://retailerpimages.s3.ap-south-1.amazonaws.com/download.jfif\",\n                \"vendor_email\": \"suresh@grt.com\",\n                \"vendor_phone\": \"5215442125\",\n                \"items\": []\n            }\n        ]\n    }\n}"
+            }
+          ]
+        },
+        {
+          "name": "8. Reject Quotation",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"rejected\",\n  \"remarks\": \"Cannot meet the delivery timeline\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/vendor-quotations/6/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vendor-quotations",
+                "6",
+                "status"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "8. Reject Quotation",
+              "originalRequest": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"status\": \"rejected\",\n  \"remarks\": \"Cannot meet the delivery timeline\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/vendor-quotations/6/status",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "vendor-quotations",
+                    "6",
+                    "status"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": null,
+              "header": [
+                {
+                  "key": "X-Powered-By",
+                  "value": "Express"
+                },
+                {
+                  "key": "Access-Control-Allow-Origin",
+                  "value": "*"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                },
+                {
+                  "key": "Content-Length",
+                  "value": "3291"
+                },
+                {
+                  "key": "ETag",
+                  "value": "W/\"cdb-3M5owGNxAKm0LEOW5xRwhC+xPqg\""
+                },
+                {
+                  "key": "Date",
+                  "value": "Mon, 02 Feb 2026 06:22:21 GMT"
+                },
+                {
+                  "key": "Connection",
+                  "value": "keep-alive"
+                },
+                {
+                  "key": "Keep-Alive",
+                  "value": "timeout=5"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n    \"statusCode\": 200,\n    \"message\": \"Success\",\n    \"data\": {\n        \"id\": 2,\n        \"qr_id\": \"QR002\",\n        \"request_date\": \"2025-01-31\",\n        \"expiry_date\": \"2025-02-15\",\n        \"remarks\": \"Urgent requirement for gold items\",\n        \"vendor_ids\": [\n            4,\n            5,\n            6\n        ],\n        \"status_id\": 1,\n        \"created_by\": 1,\n        \"updated_by\": null,\n        \"created_at\": \"2026-01-31T11:26:31.881Z\",\n        \"updated_at\": \"2026-02-02T06:22:20.833Z\",\n        \"deleted_at\": null,\n        \"items\": [\n            {\n                \"id\": 3,\n                \"quotation_id\": 2,\n                \"material_type_id\": 1,\n                \"category_id\": 1,\n                \"subcategory_id\": 1,\n                \"product_description\": \"Gold Ring - 22K\",\n                \"purity\": \"91.600\",\n                \"weight\": \"10.500\",\n                \"quantity\": 50,\n                \"created_by\": null,\n                \"updated_by\": null,\n                \"created_at\": \"2026-01-31T11:26:31.933Z\",\n                \"updated_at\": \"2026-01-31T11:26:31.933Z\",\n                \"deleted_at\": null,\n                \"vendor_quotation_id\": null,\n                \"rate\": null,\n                \"amount\": null,\n                \"vendor_remarks\": null,\n                \"material_type_name\": \"Silver\",\n                \"category_name\": \"Chain\",\n                \"subcategory_name\": \"Fancy Chain\"\n            },\n            {\n                \"id\": 4,\n                \"quotation_id\": 2,\n                \"material_type_id\": 1,\n                \"category_id\": 1,\n                \"subcategory_id\": 2,\n                \"product_description\": \"Gold Necklace - Designer\",\n                \"purity\": \"91.600\",\n                \"weight\": \"30.800\",\n                \"quantity\": 20,\n                \"created_by\": null,\n                \"updated_by\": null,\n                \"created_at\": \"2026-01-31T11:26:31.933Z\",\n                \"updated_at\": \"2026-01-31T11:26:31.933Z\",\n                \"deleted_at\": null,\n                \"vendor_quotation_id\": null,\n                \"rate\": null,\n                \"amount\": null,\n                \"vendor_remarks\": null,\n                \"material_type_name\": \"Silver\",\n                \"category_name\": \"Chain\",\n                \"subcategory_name\": \"Rose Gold Pearl Chain\"\n            }\n        ],\n        \"vendor_quotations\": [\n            {\n                \"id\": 4,\n                \"quotation_id\": 2,\n                \"vendor_id\": 4,\n                \"status\": \"rejected\",\n                \"response_date\": \"2026-02-02\",\n                \"remarks\": \"Cannot meet the delivery timeline\",\n                \"sub_total\": null,\n                \"sgst_percentage\": null,\n                \"sgst_amount\": null,\n                \"cgst_percentage\": null,\n                \"cgst_amount\": null,\n                \"discount_percentage\": null,\n                \"discount_amount\": null,\n                \"total_amount\": null,\n                \"created_by\": 1,\n                \"updated_by\": null,\n                \"created_at\": \"2026-01-31T11:26:31.981Z\",\n                \"updated_at\": \"2026-02-02T06:22:12.459Z\",\n                \"deleted_at\": null,\n                \"vendor_quotation_number\": null,\n                \"terms_and_conditions\": null,\n                \"attachment_url\": null,\n                \"vendor_name\": \"Kiran Jewels\",\n                \"vendor_image_url\": \"\",\n                \"vendor_email\": \"kiran@gmail.com\",\n                \"vendor_phone\": \"9578595785\",\n                \"items\": []\n            },\n            {\n                \"id\": 5,\n                \"quotation_id\": 2,\n                \"vendor_id\": 5,\n                \"status\": \"rejected\",\n                \"response_date\": \"2026-02-02\",\n                \"remarks\": \"Cannot meet the delivery timeline\",\n                \"sub_total\": null,\n                \"sgst_percentage\": null,\n                \"sgst_amount\": null,\n                \"cgst_percentage\": null,\n                \"cgst_amount\": null,\n                \"discount_percentage\": null,\n                \"discount_amount\": null,\n                \"total_amount\": null,\n                \"created_by\": 1,\n                \"updated_by\": null,\n                \"created_at\": \"2026-01-31T11:26:31.981Z\",\n                \"updated_at\": \"2026-02-02T06:22:16.353Z\",\n                \"deleted_at\": null,\n                \"vendor_quotation_number\": null,\n                \"terms_and_conditions\": null,\n                \"attachment_url\": null,\n                \"vendor_name\": \"Aura\",\n                \"vendor_image_url\": \"\",\n                \"vendor_email\": \"mario@gmail.com\",\n                \"vendor_phone\": \"8946043489\",\n                \"items\": []\n            },\n            {\n                \"id\": 6,\n                \"quotation_id\": 2,\n                \"vendor_id\": 6,\n                \"status\": \"rejected\",\n                \"response_date\": \"2026-02-02\",\n                \"remarks\": \"Cannot meet the delivery timeline\",\n                \"sub_total\": null,\n                \"sgst_percentage\": null,\n                \"sgst_amount\": null,\n                \"cgst_percentage\": null,\n                \"cgst_amount\": null,\n                \"discount_percentage\": null,\n                \"discount_amount\": null,\n                \"total_amount\": null,\n                \"created_by\": 1,\n                \"updated_by\": null,\n                \"created_at\": \"2026-01-31T11:26:31.981Z\",\n                \"updated_at\": \"2026-02-02T06:22:20.746Z\",\n                \"deleted_at\": null,\n                \"vendor_quotation_number\": null,\n                \"terms_and_conditions\": null,\n                \"attachment_url\": null,\n                \"vendor_name\": \"shalini\",\n                \"vendor_image_url\": \"https://retailerpimages.s3.ap-south-1.amazonaws.com/images_3.jfif\",\n                \"vendor_email\": \"shalini\",\n                \"vendor_phone\": \"8248275440\",\n                \"items\": []\n            }\n        ]\n    }\n}"
+            }
+          ]
+        },
+        {
+          "name": "9. Submit Vendor Rates",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    {\n      \"base_item_id\": 5,  // Quotation_item_id - comes from the 7. Get Vendor Quotation by ID- baseItem- Id\n      \"rate\":2000.00,\n      \"amount\": 2000.00\n    },\n    {\n      \"base_item_id\": 6,  // Quotation_item_id\n      \"rate\": 2000.00,\n      \"amount\": 2000.00\n    }\n  ],\n  \"sub_total\": 4000.00,\n  \"sgst_percentage\": 1.5,       \n  \"sgst_amount\": 15.00,\n  \"cgst_percentage\": 1.5,\n  \"cgst_amount\": 15.00,\n  \"vendor_quotation_number\":\"QUT003\",  // comes from this api {{baseUrl}}/vendor-quotations/code?prefix=QUT \n  \"total_amount\": 4030.00,\n  \"terms_and_conditions\":\"loreum epsum\",\n  \"attachment_url\": \"www.url.com\",\n  \"remarks\":\"All items are BIS hallmarked. Delivery within 7 days. Payment terms: 50% advance, 50% on delivery.\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/vendor-quotations/{{vendor_quotation_id}}/rates",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vendor-quotations",
+                "{{vendor_quotation_id}}",
+                "rates"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "10.Gets - Score card",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/vendor-quotations?vendor_id=7",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vendor-quotations"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "pending",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "rejected",
+                  "disabled": true
+                },
+                {
+                  "key": "search",
+                  "value": "",
+                  "type": "text",
+                  "disabled": true
+                },
+                {
+                  "key": "page",
+                  "value": "1",
+                  "type": "text",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "1",
+                  "type": "text",
+                  "disabled": true
+                },
+                {
+                  "key": "vendor_id",
+                  "value": "7"
+                }
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "10.Gets - Score card",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/vendor-quotations?status=rejected",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "vendor-quotations"
+                  ],
+                  "query": [
+                    {
+                      "key": "status",
+                      "value": "pending",
+                      "disabled": true
+                    },
+                    {
+                      "key": "status",
+                      "value": "rejected"
+                    },
+                    {
+                      "key": "search",
+                      "value": null,
+                      "type": "text",
+                      "disabled": true
+                    },
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "type": "text",
+                      "disabled": true
+                    },
+                    {
+                      "key": "limit",
+                      "value": "1",
+                      "type": "text",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": null,
+              "header": [
+                {
+                  "key": "X-Powered-By",
+                  "value": "Express"
+                },
+                {
+                  "key": "Access-Control-Allow-Origin",
+                  "value": "*"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                },
+                {
+                  "key": "Content-Length",
+                  "value": "1926"
+                },
+                {
+                  "key": "ETag",
+                  "value": "W/\"786-tixNMd1/5S6whLiGmr741JyjxEI\""
+                },
+                {
+                  "key": "Date",
+                  "value": "Mon, 02 Feb 2026 07:52:34 GMT"
+                },
+                {
+                  "key": "Connection",
+                  "value": "keep-alive"
+                },
+                {
+                  "key": "Keep-Alive",
+                  "value": "timeout=5"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n    \"statusCode\": 200,\n    \"message\": \"Success\",\n    \"data\": {\n        \"score_cards\": {\n            \"received\": 3,\n            \"sent\": 0,\n            \"rejected\": 5\n        },\n        \"total\": 5,\n        \"page\": null,\n        \"totalPages\": 1,\n        \"data\": [\n            {\n                \"id\": 6,\n                \"quotation_id\": 2,\n                \"vendor_id\": 6,\n                \"status\": \"rejected\",\n                \"response_date\": \"2026-02-02\",\n                \"total_amount\": null,\n                \"vendor_quotation_number\": \"QUT006\",\n                \"qr_id\": \"QR002\",\n                \"request_date\": \"2025-01-31\",\n                \"expiry_date\": \"2025-02-15\",\n                \"vendor_name\": \"shalini\",\n                \"vendor_image_url\": \"https://retailerpimages.s3.ap-south-1.amazonaws.com/images_3.jfif\",\n                \"item_details\": \"Gold Necklace - Designer, Gold Ring - 22K\",\n                \"quantity\": \"70\"\n            },\n            {\n                \"id\": 5,\n                \"quotation_id\": 2,\n                \"vendor_id\": 5,\n                \"status\": \"rejected\",\n                \"response_date\": \"2026-02-02\",\n                \"total_amount\": null,\n                \"vendor_quotation_number\": \"QUT005\",\n                \"qr_id\": \"QR002\",\n                \"request_date\": \"2025-01-31\",\n                \"expiry_date\": \"2025-02-15\",\n                \"vendor_name\": \"Aura\",\n                \"vendor_image_url\": \"\",\n                \"item_details\": \"Gold Necklace - Designer, Gold Ring - 22K\",\n                \"quantity\": \"70\"\n            },\n            {\n                \"id\": 4,\n                \"quotation_id\": 2,\n                \"vendor_id\": 4,\n                \"status\": \"rejected\",\n                \"response_date\": \"2026-02-02\",\n                \"total_amount\": null,\n                \"vendor_quotation_number\": \"QUT004\",\n                \"qr_id\": \"QR002\",\n                \"request_date\": \"2025-01-31\",\n                \"expiry_date\": \"2025-02-15\",\n                \"vendor_name\": \"Kiran Jewels\",\n                \"vendor_image_url\": \"\",\n                \"item_details\": \"Gold Necklace - Designer, Gold Ring - 22K\",\n                \"quantity\": \"70\"\n            },\n            {\n                \"id\": 3,\n                \"quotation_id\": 1,\n                \"vendor_id\": 3,\n                \"status\": \"rejected\",\n                \"response_date\": \"2026-02-02\",\n                \"total_amount\": null,\n                \"vendor_quotation_number\": \"QUT003\",\n                \"qr_id\": \"QR001\",\n                \"request_date\": \"2025-01-31\",\n                \"expiry_date\": \"2025-02-15\",\n                \"vendor_name\": \"Nakoda Silver Creations\",\n                \"vendor_image_url\": \"\",\n                \"item_details\": \"Gold Necklace - Designer, Gold Ring - 22K\",\n                \"quantity\": \"140\"\n            },\n            {\n                \"id\": 2,\n                \"quotation_id\": 1,\n                \"vendor_id\": 2,\n                \"status\": \"rejected\",\n                \"response_date\": \"2026-02-02\",\n                \"total_amount\": null,\n                \"vendor_quotation_number\": \"QUT002\",\n                \"qr_id\": \"QR001\",\n                \"request_date\": \"2025-01-31\",\n                \"expiry_date\": \"2025-02-15\",\n                \"vendor_name\": \"Heritage Silver Artisans\",\n                \"vendor_image_url\": \"\",\n                \"item_details\": \"Gold Necklace - Designer, Gold Ring - 22K\",\n                \"quantity\": \"140\"\n            }\n        ]\n    }\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Testing Flow - Complete Sequence",
+      "item": [
+        {
+          "name": "Step 1 - Create Quotation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"qr_id\": \"QR-TEST-001\",\n  \"request_date\": \"2025-01-31\",\n  \"expiry_date\": \"2025-02-15\",\n  \"vendor_ids\": [1, 2, 3],\n  \"items\": [\n    {\n      \"material_type_id\": 1,\n      \"category_id\": 1,\n      \"subcategory_id\": 1,\n      \"product_description\": \"Test Item\",\n      \"quantity\": 10,\n      \"weight\": 5.0\n    }\n  ],\n  \"created_by\": 1\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/quotation-requests",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "quotation-requests"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Step 2 - Vendor 1 Views Quotation",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/vendor-quotations/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vendor-quotations",
+                "1"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "Step 2 - Vendor 1 Views Quotation",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/vendor-quotations/1",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "vendor-quotations",
+                    "1"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": null,
+              "header": [
+                {
+                  "key": "X-Powered-By",
+                  "value": "Express"
+                },
+                {
+                  "key": "Access-Control-Allow-Origin",
+                  "value": "*"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                },
+                {
+                  "key": "Content-Length",
+                  "value": "1747"
+                },
+                {
+                  "key": "ETag",
+                  "value": "W/\"6d3-YmGf0hBak0JlIY0vQMxIrJL3yNI\""
+                },
+                {
+                  "key": "Date",
+                  "value": "Mon, 02 Feb 2026 06:36:42 GMT"
+                },
+                {
+                  "key": "Connection",
+                  "value": "keep-alive"
+                },
+                {
+                  "key": "Keep-Alive",
+                  "value": "timeout=5"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n    \"statusCode\": 200,\n    \"message\": \"Success\",\n    \"data\": {\n        \"id\": 1,\n        \"quotation_id\": 1,\n        \"vendor_id\": 1,\n        \"status\": \"accepted\",\n        \"response_date\": \"2026-02-02\",\n        \"remarks\": \"We can fulfill this order within the timeline\",\n        \"sub_total\": null,\n        \"sgst_percentage\": null,\n        \"sgst_amount\": null,\n        \"cgst_percentage\": null,\n        \"cgst_amount\": null,\n        \"discount_percentage\": null,\n        \"discount_amount\": null,\n        \"total_amount\": null,\n        \"created_by\": 1,\n        \"updated_by\": null,\n        \"created_at\": \"2026-01-31T11:15:02.654Z\",\n        \"updated_at\": \"2026-02-02T06:17:42.498Z\",\n        \"deleted_at\": null,\n        \"vendor_quotation_number\": null,\n        \"terms_and_conditions\": null,\n        \"attachment_url\": null,\n        \"qr_id\": \"QR001\",\n        \"request_date\": \"2025-01-31\",\n        \"expiry_date\": \"2025-02-15\",\n        \"quotation_remarks\": \"Urgent requirement for gold items\",\n        \"vendor_name\": \"Royal Silver Works\",\n        \"vendor_image_url\": \"\",\n        \"base_items\": [\n            {\n                \"id\": 1,\n                \"quotation_id\": 1,\n                \"material_type_id\": 1,\n                \"category_id\": 1,\n                \"subcategory_id\": 1,\n                \"product_description\": \"Gold Ring - 22K\",\n                \"purity\": \"91.600\",\n                \"weight\": \"10.500\",\n                \"quantity\": 50,\n                \"created_by\": null,\n                \"updated_by\": null,\n                \"created_at\": \"2026-01-31T11:15:02.606Z\",\n                \"updated_at\": \"2026-01-31T11:15:02.606Z\",\n                \"deleted_at\": null,\n                \"vendor_quotation_id\": null,\n                \"rate\": null,\n                \"amount\": null,\n                \"vendor_remarks\": null,\n                \"material_type_name\": \"Silver\",\n                \"category_name\": \"Chain\",\n                \"subcategory_name\": \"Fancy Chain\"\n            },\n            {\n                \"id\": 2,\n                \"quotation_id\": 1,\n                \"material_type_id\": 1,\n                \"category_id\": 1,\n                \"subcategory_id\": 2,\n                \"product_description\": \"Gold Necklace - Designer\",\n                \"purity\": \"91.600\",\n                \"weight\": \"30.800\",\n                \"quantity\": 20,\n                \"created_by\": null,\n                \"updated_by\": null,\n                \"created_at\": \"2026-01-31T11:15:02.606Z\",\n                \"updated_at\": \"2026-01-31T11:15:02.606Z\",\n                \"deleted_at\": null,\n                \"vendor_quotation_id\": null,\n                \"rate\": null,\n                \"amount\": null,\n                \"vendor_remarks\": null,\n                \"material_type_name\": \"Silver\",\n                \"category_name\": \"Chain\",\n                \"subcategory_name\": \"Rose Gold Pearl Chain\"\n            }\n        ],\n        \"vendor_items\": []\n    }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Step 3 - Vendor 1 Submits Rates",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    {\n      \"base_item_id\": 5,  // Quotation_item_id \n      \"rate\":2000.00,\n      \"amount\": 2000.00\n    },\n    {\n      \"base_item_id\": 6,  // Quotation_item_id\n      \"rate\": 2000.00,\n      \"amount\": 2000.00\n    }\n  ],\n  \"sub_total\": 4000.00,\n  \"sgst_percentage\": 1.5,       \n  \"sgst_amount\": 15.00,\n  \"cgst_percentage\": 1.5,\n  \"cgst_amount\": 15.00,\n  \"vendor_quotation_number\":\"QUT003\",  // comes from this api {{baseUrl}}/vendor-quotations/code?prefix=QUT \n  \"total_amount\": 4030.00,\n  \"terms_and_conditions\":\"loreum epsum\",\n  \"attachment_url\": \"www.url.com\",\n  \"remarks\":\"All items are BIS hallmarked. Delivery within 7 days. Payment terms: 50% advance, 50% on delivery.\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/vendor-quotations/7/rates",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vendor-quotations",
+                "7",
+                "rates"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "Step 3 - Vendor 1 Submits Rates",
+              "originalRequest": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"items\": [\n    {\n      \"base_item_id\": 5,  // Quotation_item_id \n      \"rate\":2000.00,\n      \"amount\": 2000.00\n    },\n    {\n      \"base_item_id\": 6,  // Quotation_item_id\n      \"rate\": 2000.00,\n      \"amount\": 2000.00\n    }\n  ],\n  \"sub_total\": 4000.00,\n  \"sgst_percentage\": 1.5,       \n  \"sgst_amount\": 15.00,\n  \"cgst_percentage\": 1.5,\n  \"cgst_amount\": 15.00,\n  \"vendor_quotation_number\":\"QR003\",\n  \"total_amount\": 4030.00,\n  \"terms_and_conditions\":\"loreum epsum\",\n  \"attachment_url\": \"www.url.com\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/vendor-quotations/7/rates",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "vendor-quotations",
+                    "7",
+                    "rates"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": null,
+              "header": [
+                {
+                  "key": "X-Powered-By",
+                  "value": "Express"
+                },
+                {
+                  "key": "Access-Control-Allow-Origin",
+                  "value": "*"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                },
+                {
+                  "key": "Content-Length",
+                  "value": "3810"
+                },
+                {
+                  "key": "ETag",
+                  "value": "W/\"ee2-kwWFZmWdlSwAC0nWPLYg+sPfICY\""
+                },
+                {
+                  "key": "Date",
+                  "value": "Mon, 02 Feb 2026 06:42:23 GMT"
+                },
+                {
+                  "key": "Connection",
+                  "value": "keep-alive"
+                },
+                {
+                  "key": "Keep-Alive",
+                  "value": "timeout=5"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n    \"statusCode\": 200,\n    \"message\": \"Success\",\n    \"data\": {\n        \"id\": 3,\n        \"qr_id\": \"QR003\",\n        \"request_date\": \"2025-01-31\",\n        \"expiry_date\": \"2025-02-20\",\n        \"remarks\": \"Extended deadline\",\n        \"vendor_ids\": [\n            7,\n            8\n        ],\n        \"status_id\": 2,\n        \"created_by\": 1,\n        \"updated_by\": 1,\n        \"created_at\": \"2026-01-31T11:32:43.173Z\",\n        \"updated_at\": \"2026-02-02T06:42:22.942Z\",\n        \"deleted_at\": null,\n        \"items\": [\n            {\n                \"id\": 5,\n                \"quotation_id\": 3,\n                \"material_type_id\": 1,\n                \"category_id\": 2,\n                \"subcategory_id\": 11,\n                \"product_description\": \"Gold Ring - 22K Updated\",\n                \"purity\": \"91.600\",\n                \"weight\": \"12.000\",\n                \"quantity\": 60,\n                \"created_by\": null,\n                \"updated_by\": null,\n                \"created_at\": \"2026-01-31T11:32:43.223Z\",\n                \"updated_at\": \"2026-01-31T12:08:49.363Z\",\n                \"deleted_at\": null,\n                \"vendor_quotation_id\": null,\n                \"rate\": null,\n                \"amount\": null,\n                \"vendor_remarks\": null,\n                \"material_type_name\": \"Silver\",\n                \"category_name\": \"Bangle\",\n                \"subcategory_name\": \"Baby Bangle\"\n            },\n            {\n                \"id\": 6,\n                \"quotation_id\": 3,\n                \"material_type_id\": 1,\n                \"category_id\": 1,\n                \"subcategory_id\": 2,\n                \"product_description\": \"Gold Necklace - Designer\",\n                \"purity\": \"91.600\",\n                \"weight\": \"30.800\",\n                \"quantity\": 20,\n                \"created_by\": null,\n                \"updated_by\": null,\n                \"created_at\": \"2026-01-31T11:32:43.223Z\",\n                \"updated_at\": \"2026-01-31T11:32:43.223Z\",\n                \"deleted_at\": null,\n                \"vendor_quotation_id\": null,\n                \"rate\": null,\n                \"amount\": null,\n                \"vendor_remarks\": null,\n                \"material_type_name\": \"Silver\",\n                \"category_name\": \"Chain\",\n                \"subcategory_name\": \"Rose Gold Pearl Chain\"\n            }\n        ],\n        \"vendor_quotations\": [\n            {\n                \"id\": 7,\n                \"quotation_id\": 3,\n                \"vendor_id\": 7,\n                \"status\": \"received\",\n                \"response_date\": \"2026-02-02\",\n                \"remarks\": \"We can fulfill this order within the timeline\",\n                \"sub_total\": \"4000.00\",\n                \"sgst_percentage\": \"1.50\",\n                \"sgst_amount\": \"15.00\",\n                \"cgst_percentage\": \"1.50\",\n                \"cgst_amount\": \"15.00\",\n                \"discount_percentage\": null,\n                \"discount_amount\": null,\n                \"total_amount\": \"4030.00\",\n                \"created_by\": 1,\n                \"updated_by\": null,\n                \"created_at\": \"2026-01-31T11:32:43.269Z\",\n                \"updated_at\": \"2026-02-02T06:42:22.855Z\",\n                \"deleted_at\": null,\n                \"vendor_quotation_number\": \"QR003\",\n                \"terms_and_conditions\": \"loreum epsum\",\n                \"attachment_url\": \"www.url.com\",\n                \"vendor_name\": \"Arun\",\n                \"vendor_image_url\": \"https://retailerpimages.s3.ap-south-1.amazonaws.com/Ruby__Diamond_Ring_Silver_925_Real_18K_Gold_Filled_-_Etsy.jpg\",\n                \"vendor_email\": \"arun@gmail.com\",\n                \"vendor_phone\": \"7878856776\",\n                \"items\": [\n                    {\n                        \"id\": 11,\n                        \"quotation_id\": 3,\n                        \"material_type_id\": 1,\n                        \"category_id\": 2,\n                        \"subcategory_id\": 11,\n                        \"product_description\": \"Gold Ring - 22K Updated\",\n                        \"purity\": \"91.600\",\n                        \"weight\": \"12.000\",\n                        \"quantity\": 60,\n                        \"created_by\": null,\n                        \"updated_by\": null,\n                        \"created_at\": \"2026-02-02T06:42:22.811Z\",\n                        \"updated_at\": \"2026-02-02T06:42:22.811Z\",\n                        \"deleted_at\": null,\n                        \"vendor_quotation_id\": 7,\n                        \"rate\": \"2000.00\",\n                        \"amount\": \"2000.00\",\n                        \"vendor_remarks\": null,\n                        \"material_type_name\": \"Silver\",\n                        \"category_name\": \"Bangle\",\n                        \"subcategory_name\": \"Baby Bangle\"\n                    },\n                    {\n                        \"id\": 12,\n                        \"quotation_id\": 3,\n                        \"material_type_id\": 1,\n                        \"category_id\": 1,\n                        \"subcategory_id\": 2,\n                        \"product_description\": \"Gold Necklace - Designer\",\n                        \"purity\": \"91.600\",\n                        \"weight\": \"30.800\",\n                        \"quantity\": 20,\n                        \"created_by\": null,\n                        \"updated_by\": null,\n                        \"created_at\": \"2026-02-02T06:42:22.811Z\",\n                        \"updated_at\": \"2026-02-02T06:42:22.811Z\",\n                        \"deleted_at\": null,\n                        \"vendor_quotation_id\": 7,\n                        \"rate\": \"2000.00\",\n                        \"amount\": \"2000.00\",\n                        \"vendor_remarks\": null,\n                        \"material_type_name\": \"Silver\",\n                        \"category_name\": \"Chain\",\n                        \"subcategory_name\": \"Rose Gold Pearl Chain\"\n                    }\n                ]\n            },\n            {\n                \"id\": 8,\n                \"quotation_id\": 3,\n                \"vendor_id\": 8,\n                \"status\": \"accepted\",\n                \"response_date\": \"2026-02-02\",\n                \"remarks\": \"We can fulfill this order within the timeline\",\n                \"sub_total\": null,\n                \"sgst_percentage\": null,\n                \"sgst_amount\": null,\n                \"cgst_percentage\": null,\n                \"cgst_amount\": null,\n                \"discount_percentage\": null,\n                \"discount_amount\": null,\n                \"total_amount\": null,\n                \"created_by\": 1,\n                \"updated_by\": null,\n                \"created_at\": \"2026-01-31T12:08:49.229Z\",\n                \"updated_at\": \"2026-02-02T06:35:09.599Z\",\n                \"deleted_at\": null,\n                \"vendor_quotation_number\": null,\n                \"terms_and_conditions\": null,\n                \"attachment_url\": null,\n                \"vendor_name\": \"GRT Jewellers\",\n                \"vendor_image_url\": \"https://retailerpimages.s3.ap-south-1.amazonaws.com/download.jfif\",\n                \"vendor_email\": \"suresh@grt.com\",\n                \"vendor_phone\": \"5215442125\",\n                \"items\": []\n            }\n        ]\n    }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Step 4 - Vendor 2 Submits Rates",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    {\n      \"base_item_id\": 5,  // Quotation_item_id \n      \"rate\":3000.00,\n      \"amount\": 3000.00\n    },\n    {\n      \"base_item_id\": 6,  // Quotation_item_id\n      \"rate\": 2500.00,\n      \"amount\": 2500.00\n    }\n  ],\n  \"sub_total\": 5500.00,\n  \"sgst_percentage\": 1.5,       \n  \"sgst_amount\": 15.00,\n  \"cgst_percentage\": 1.5,\n  \"cgst_amount\": 15.00,\n  \"vendor_quotation_number\":\"QR003\",\n  \"total_amount\": 5530.00,\n  \"terms_and_conditions\":\"loreum epsum\",\n  \"attachment_url\": \"www.url.com\",\n  \"remarks\":\"All items are BIS hallmarked. Delivery within 7 days. Payment terms: 50% advance, 50% on delivery.\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/vendor-quotations/8/rates",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vendor-quotations",
+                "8",
+                "rates"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "Step 4 - Vendor 2 Submits Rates",
+              "originalRequest": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"items\": [\n    {\n      \"base_item_id\": 5,  // Quotation_item_id \n      \"rate\":3000.00,\n      \"amount\": 3000.00\n    },\n    {\n      \"base_item_id\": 6,  // Quotation_item_id\n      \"rate\": 2500.00,\n      \"amount\": 2500.00\n    }\n  ],\n  \"sub_total\": 5500.00,\n  \"sgst_percentage\": 1.5,       \n  \"sgst_amount\": 15.00,\n  \"cgst_percentage\": 1.5,\n  \"cgst_amount\": 15.00,\n  \"vendor_quotation_number\":\"QR003\",\n  \"total_amount\": 5530.00,\n  \"terms_and_conditions\":\"loreum epsum\",\n  \"attachment_url\": \"www.url.com\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/vendor-quotations/8/rates",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "vendor-quotations",
+                    "8",
+                    "rates"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": null,
+              "header": [
+                {
+                  "key": "X-Powered-By",
+                  "value": "Express"
+                },
+                {
+                  "key": "Access-Control-Allow-Origin",
+                  "value": "*"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                },
+                {
+                  "key": "Content-Length",
+                  "value": "4832"
+                },
+                {
+                  "key": "ETag",
+                  "value": "W/\"12e0-0QlMwzacT58pIGtIW83Bfyrb6Fg\""
+                },
+                {
+                  "key": "Date",
+                  "value": "Mon, 02 Feb 2026 06:43:20 GMT"
+                },
+                {
+                  "key": "Connection",
+                  "value": "keep-alive"
+                },
+                {
+                  "key": "Keep-Alive",
+                  "value": "timeout=5"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n    \"statusCode\": 200,\n    \"message\": \"Success\",\n    \"data\": {\n        \"id\": 3,\n        \"qr_id\": \"QR003\",\n        \"request_date\": \"2025-01-31\",\n        \"expiry_date\": \"2025-02-20\",\n        \"remarks\": \"Extended deadline\",\n        \"vendor_ids\": [\n            7,\n            8\n        ],\n        \"status_id\": 3,\n        \"created_by\": 1,\n        \"updated_by\": 1,\n        \"created_at\": \"2026-01-31T11:32:43.173Z\",\n        \"updated_at\": \"2026-02-02T06:43:20.429Z\",\n        \"deleted_at\": null,\n        \"items\": [\n            {\n                \"id\": 5,\n                \"quotation_id\": 3,\n                \"material_type_id\": 1,\n                \"category_id\": 2,\n                \"subcategory_id\": 11,\n                \"product_description\": \"Gold Ring - 22K Updated\",\n                \"purity\": \"91.600\",\n                \"weight\": \"12.000\",\n                \"quantity\": 60,\n                \"created_by\": null,\n                \"updated_by\": null,\n                \"created_at\": \"2026-01-31T11:32:43.223Z\",\n                \"updated_at\": \"2026-01-31T12:08:49.363Z\",\n                \"deleted_at\": null,\n                \"vendor_quotation_id\": null,\n                \"rate\": null,\n                \"amount\": null,\n                \"vendor_remarks\": null,\n                \"material_type_name\": \"Silver\",\n                \"category_name\": \"Bangle\",\n                \"subcategory_name\": \"Baby Bangle\"\n            },\n            {\n                \"id\": 6,\n                \"quotation_id\": 3,\n                \"material_type_id\": 1,\n                \"category_id\": 1,\n                \"subcategory_id\": 2,\n                \"product_description\": \"Gold Necklace - Designer\",\n                \"purity\": \"91.600\",\n                \"weight\": \"30.800\",\n                \"quantity\": 20,\n                \"created_by\": null,\n                \"updated_by\": null,\n                \"created_at\": \"2026-01-31T11:32:43.223Z\",\n                \"updated_at\": \"2026-01-31T11:32:43.223Z\",\n                \"deleted_at\": null,\n                \"vendor_quotation_id\": null,\n                \"rate\": null,\n                \"amount\": null,\n                \"vendor_remarks\": null,\n                \"material_type_name\": \"Silver\",\n                \"category_name\": \"Chain\",\n                \"subcategory_name\": \"Rose Gold Pearl Chain\"\n            }\n        ],\n        \"vendor_quotations\": [\n            {\n                \"id\": 7,\n                \"quotation_id\": 3,\n                \"vendor_id\": 7,\n                \"status\": \"received\",\n                \"response_date\": \"2026-02-02\",\n                \"remarks\": \"We can fulfill this order within the timeline\",\n                \"sub_total\": \"4000.00\",\n                \"sgst_percentage\": \"1.50\",\n                \"sgst_amount\": \"15.00\",\n                \"cgst_percentage\": \"1.50\",\n                \"cgst_amount\": \"15.00\",\n                \"discount_percentage\": null,\n                \"discount_amount\": null,\n                \"total_amount\": \"4030.00\",\n                \"created_by\": 1,\n                \"updated_by\": null,\n                \"created_at\": \"2026-01-31T11:32:43.269Z\",\n                \"updated_at\": \"2026-02-02T06:42:22.855Z\",\n                \"deleted_at\": null,\n                \"vendor_quotation_number\": \"QR003\",\n                \"terms_and_conditions\": \"loreum epsum\",\n                \"attachment_url\": \"www.url.com\",\n                \"vendor_name\": \"Arun\",\n                \"vendor_image_url\": \"https://retailerpimages.s3.ap-south-1.amazonaws.com/Ruby__Diamond_Ring_Silver_925_Real_18K_Gold_Filled_-_Etsy.jpg\",\n                \"vendor_email\": \"arun@gmail.com\",\n                \"vendor_phone\": \"7878856776\",\n                \"items\": [\n                    {\n                        \"id\": 11,\n                        \"quotation_id\": 3,\n                        \"material_type_id\": 1,\n                        \"category_id\": 2,\n                        \"subcategory_id\": 11,\n                        \"product_description\": \"Gold Ring - 22K Updated\",\n                        \"purity\": \"91.600\",\n                        \"weight\": \"12.000\",\n                        \"quantity\": 60,\n                        \"created_by\": null,\n                        \"updated_by\": null,\n                        \"created_at\": \"2026-02-02T06:42:22.811Z\",\n                        \"updated_at\": \"2026-02-02T06:42:22.811Z\",\n                        \"deleted_at\": null,\n                        \"vendor_quotation_id\": 7,\n                        \"rate\": \"2000.00\",\n                        \"amount\": \"2000.00\",\n                        \"vendor_remarks\": null,\n                        \"material_type_name\": \"Silver\",\n                        \"category_name\": \"Bangle\",\n                        \"subcategory_name\": \"Baby Bangle\"\n                    },\n                    {\n                        \"id\": 12,\n                        \"quotation_id\": 3,\n                        \"material_type_id\": 1,\n                        \"category_id\": 1,\n                        \"subcategory_id\": 2,\n                        \"product_description\": \"Gold Necklace - Designer\",\n                        \"purity\": \"91.600\",\n                        \"weight\": \"30.800\",\n                        \"quantity\": 20,\n                        \"created_by\": null,\n                        \"updated_by\": null,\n                        \"created_at\": \"2026-02-02T06:42:22.811Z\",\n                        \"updated_at\": \"2026-02-02T06:42:22.811Z\",\n                        \"deleted_at\": null,\n                        \"vendor_quotation_id\": 7,\n                        \"rate\": \"2000.00\",\n                        \"amount\": \"2000.00\",\n                        \"vendor_remarks\": null,\n                        \"material_type_name\": \"Silver\",\n                        \"category_name\": \"Chain\",\n                        \"subcategory_name\": \"Rose Gold Pearl Chain\"\n                    }\n                ]\n            },\n            {\n                \"id\": 8,\n                \"quotation_id\": 3,\n                \"vendor_id\": 8,\n                \"status\": \"received\",\n                \"response_date\": \"2026-02-02\",\n                \"remarks\": \"We can fulfill this order within the timeline\",\n                \"sub_total\": \"5500.00\",\n                \"sgst_percentage\": \"1.50\",\n                \"sgst_amount\": \"15.00\",\n                \"cgst_percentage\": \"1.50\",\n                \"cgst_amount\": \"15.00\",\n                \"discount_percentage\": null,\n                \"discount_amount\": null,\n                \"total_amount\": \"5530.00\",\n                \"created_by\": 1,\n                \"updated_by\": null,\n                \"created_at\": \"2026-01-31T12:08:49.229Z\",\n                \"updated_at\": \"2026-02-02T06:43:20.338Z\",\n                \"deleted_at\": null,\n                \"vendor_quotation_number\": \"QR003\",\n                \"terms_and_conditions\": \"loreum epsum\",\n                \"attachment_url\": \"www.url.com\",\n                \"vendor_name\": \"GRT Jewellers\",\n                \"vendor_image_url\": \"https://retailerpimages.s3.ap-south-1.amazonaws.com/download.jfif\",\n                \"vendor_email\": \"suresh@grt.com\",\n                \"vendor_phone\": \"5215442125\",\n                \"items\": [\n                    {\n                        \"id\": 13,\n                        \"quotation_id\": 3,\n                        \"material_type_id\": 1,\n                        \"category_id\": 2,\n                        \"subcategory_id\": 11,\n                        \"product_description\": \"Gold Ring - 22K Updated\",\n                        \"purity\": \"91.600\",\n                        \"weight\": \"12.000\",\n                        \"quantity\": 60,\n                        \"created_by\": null,\n                        \"updated_by\": null,\n                        \"created_at\": \"2026-02-02T06:43:20.292Z\",\n                        \"updated_at\": \"2026-02-02T06:43:20.292Z\",\n                        \"deleted_at\": null,\n                        \"vendor_quotation_id\": 8,\n                        \"rate\": \"3000.00\",\n                        \"amount\": \"3000.00\",\n                        \"vendor_remarks\": null,\n                        \"material_type_name\": \"Silver\",\n                        \"category_name\": \"Bangle\",\n                        \"subcategory_name\": \"Baby Bangle\"\n                    },\n                    {\n                        \"id\": 14,\n                        \"quotation_id\": 3,\n                        \"material_type_id\": 1,\n                        \"category_id\": 1,\n                        \"subcategory_id\": 2,\n                        \"product_description\": \"Gold Necklace - Designer\",\n                        \"purity\": \"91.600\",\n                        \"weight\": \"30.800\",\n                        \"quantity\": 20,\n                        \"created_by\": null,\n                        \"updated_by\": null,\n                        \"created_at\": \"2026-02-02T06:43:20.292Z\",\n                        \"updated_at\": \"2026-02-02T06:43:20.292Z\",\n                        \"deleted_at\": null,\n                        \"vendor_quotation_id\": 8,\n                        \"rate\": \"2500.00\",\n                        \"amount\": \"2500.00\",\n                        \"vendor_remarks\": null,\n                        \"material_type_name\": \"Silver\",\n                        \"category_name\": \"Chain\",\n                        \"subcategory_name\": \"Rose Gold Pearl Chain\"\n                    }\n                ]\n            }\n        ]\n    }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Step 5 - Vendor 3 Rejects",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"rejected\",\n  \"remarks\": \"Cannot meet delivery timeline\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/vendor-quotations/2/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vendor-quotations",
+                "2",
+                "status"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Step 6 - View Final Quotation",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/quotation-requests/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "quotation-requests",
+                "1"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "Step 6 - View Final Quotation",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/quotation-requests/1",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "quotation-requests",
+                    "1"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": null,
+              "header": [
+                {
+                  "key": "X-Powered-By",
+                  "value": "Express"
+                },
+                {
+                  "key": "Access-Control-Allow-Origin",
+                  "value": "*"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                },
+                {
+                  "key": "Content-Length",
+                  "value": "4291"
+                },
+                {
+                  "key": "ETag",
+                  "value": "W/\"10c3-2qv8B5OTtgYNsi96IWWdv0LSXNo\""
+                },
+                {
+                  "key": "Date",
+                  "value": "Mon, 02 Feb 2026 06:43:29 GMT"
+                },
+                {
+                  "key": "Connection",
+                  "value": "keep-alive"
+                },
+                {
+                  "key": "Keep-Alive",
+                  "value": "timeout=5"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n    \"statusCode\": 200,\n    \"message\": \"Success\",\n    \"data\": {\n        \"id\": 1,\n        \"qr_id\": \"QR001\",\n        \"request_date\": \"2025-01-31\",\n        \"expiry_date\": \"2025-02-15\",\n        \"remarks\": \"Urgent requirement for gold items\",\n        \"vendor_ids\": [\n            1,\n            2,\n            3\n        ],\n        \"status_id\": 2,\n        \"created_by\": 1,\n        \"updated_by\": null,\n        \"created_at\": \"2026-01-31T11:15:02.498Z\",\n        \"updated_at\": \"2026-02-02T06:37:08.853Z\",\n        \"deleted_at\": null,\n        \"items\": [\n            {\n                \"id\": 1,\n                \"quotation_id\": 1,\n                \"material_type_id\": 1,\n                \"category_id\": 1,\n                \"subcategory_id\": 1,\n                \"product_description\": \"Gold Ring - 22K\",\n                \"purity\": \"91.600\",\n                \"weight\": \"10.500\",\n                \"quantity\": 50,\n                \"created_by\": null,\n                \"updated_by\": null,\n                \"created_at\": \"2026-01-31T11:15:02.606Z\",\n                \"updated_at\": \"2026-01-31T11:15:02.606Z\",\n                \"deleted_at\": null,\n                \"vendor_quotation_id\": null,\n                \"rate\": null,\n                \"amount\": null,\n                \"vendor_remarks\": null,\n                \"material_type_name\": \"Silver\",\n                \"category_name\": \"Chain\",\n                \"subcategory_name\": \"Fancy Chain\"\n            },\n            {\n                \"id\": 2,\n                \"quotation_id\": 1,\n                \"material_type_id\": 1,\n                \"category_id\": 1,\n                \"subcategory_id\": 2,\n                \"product_description\": \"Gold Necklace - Designer\",\n                \"purity\": \"91.600\",\n                \"weight\": \"30.800\",\n                \"quantity\": 20,\n                \"created_by\": null,\n                \"updated_by\": null,\n                \"created_at\": \"2026-01-31T11:15:02.606Z\",\n                \"updated_at\": \"2026-01-31T11:15:02.606Z\",\n                \"deleted_at\": null,\n                \"vendor_quotation_id\": null,\n                \"rate\": null,\n                \"amount\": null,\n                \"vendor_remarks\": null,\n                \"material_type_name\": \"Silver\",\n                \"category_name\": \"Chain\",\n                \"subcategory_name\": \"Rose Gold Pearl Chain\"\n            }\n        ],\n        \"vendor_quotations\": [\n            {\n                \"id\": 1,\n                \"quotation_id\": 1,\n                \"vendor_id\": 1,\n                \"status\": \"received\",\n                \"response_date\": \"2026-02-02\",\n                \"remarks\": \"We can fulfill this order within the timeline\",\n                \"sub_total\": \"3000.00\",\n                \"sgst_percentage\": \"1.50\",\n                \"sgst_amount\": \"15.00\",\n                \"cgst_percentage\": \"1.50\",\n                \"cgst_amount\": \"15.00\",\n                \"discount_percentage\": null,\n                \"discount_amount\": null,\n                \"total_amount\": \"1030.00\",\n                \"created_by\": 1,\n                \"updated_by\": null,\n                \"created_at\": \"2026-01-31T11:15:02.654Z\",\n                \"updated_at\": \"2026-02-02T06:37:08.771Z\",\n                \"deleted_at\": null,\n                \"vendor_quotation_number\": \"QR001\",\n                \"terms_and_conditions\": \"loreum epsum\",\n                \"attachment_url\": \"www.url.com\",\n                \"vendor_name\": \"Royal Silver Works\",\n                \"vendor_image_url\": \"\",\n                \"vendor_email\": \"kannan@gmail.com\",\n                \"vendor_phone\": \"9595959595\",\n                \"items\": [\n                    {\n                        \"id\": 9,\n                        \"quotation_id\": 1,\n                        \"material_type_id\": 1,\n                        \"category_id\": 1,\n                        \"subcategory_id\": 1,\n                        \"product_description\": \"Gold Ring - 22K\",\n                        \"purity\": \"91.600\",\n                        \"weight\": \"10.500\",\n                        \"quantity\": 50,\n                        \"created_by\": null,\n                        \"updated_by\": null,\n                        \"created_at\": \"2026-02-02T06:37:08.726Z\",\n                        \"updated_at\": \"2026-02-02T06:37:08.726Z\",\n                        \"deleted_at\": null,\n                        \"vendor_quotation_id\": 1,\n                        \"rate\": \"1000.00\",\n                        \"amount\": \"1000.00\",\n                        \"vendor_remarks\": null,\n                        \"material_type_name\": \"Silver\",\n                        \"category_name\": \"Chain\",\n                        \"subcategory_name\": \"Fancy Chain\"\n                    },\n                    {\n                        \"id\": 10,\n                        \"quotation_id\": 1,\n                        \"material_type_id\": 1,\n                        \"category_id\": 1,\n                        \"subcategory_id\": 2,\n                        \"product_description\": \"Gold Necklace - Designer\",\n                        \"purity\": \"91.600\",\n                        \"weight\": \"30.800\",\n                        \"quantity\": 20,\n                        \"created_by\": null,\n                        \"updated_by\": null,\n                        \"created_at\": \"2026-02-02T06:37:08.726Z\",\n                        \"updated_at\": \"2026-02-02T06:37:08.726Z\",\n                        \"deleted_at\": null,\n                        \"vendor_quotation_id\": 1,\n                        \"rate\": \"2000.00\",\n                        \"amount\": \"2000.00\",\n                        \"vendor_remarks\": null,\n                        \"material_type_name\": \"Silver\",\n                        \"category_name\": \"Chain\",\n                        \"subcategory_name\": \"Rose Gold Pearl Chain\"\n                    }\n                ]\n            },\n            {\n                \"id\": 2,\n                \"quotation_id\": 1,\n                \"vendor_id\": 2,\n                \"status\": \"rejected\",\n                \"response_date\": \"2026-02-02\",\n                \"remarks\": \"Cannot meet delivery timeline\",\n                \"sub_total\": null,\n                \"sgst_percentage\": null,\n                \"sgst_amount\": null,\n                \"cgst_percentage\": null,\n                \"cgst_amount\": null,\n                \"discount_percentage\": null,\n                \"discount_amount\": null,\n                \"total_amount\": null,\n                \"created_by\": 1,\n                \"updated_by\": null,\n                \"created_at\": \"2026-01-31T11:15:02.654Z\",\n                \"updated_at\": \"2026-02-02T06:17:19.636Z\",\n                \"deleted_at\": null,\n                \"vendor_quotation_number\": null,\n                \"terms_and_conditions\": null,\n                \"attachment_url\": null,\n                \"vendor_name\": \"Heritage Silver Artisans\",\n                \"vendor_image_url\": \"\",\n                \"vendor_email\": \"bijoy@gmail.com\",\n                \"vendor_phone\": \"5896589658\",\n                \"items\": []\n            },\n            {\n                \"id\": 3,\n                \"quotation_id\": 1,\n                \"vendor_id\": 3,\n                \"status\": \"rejected\",\n                \"response_date\": \"2026-02-02\",\n                \"remarks\": \"Cannot meet delivery timeline\",\n                \"sub_total\": null,\n                \"sgst_percentage\": null,\n                \"sgst_amount\": null,\n                \"cgst_percentage\": null,\n                \"cgst_amount\": null,\n                \"discount_percentage\": null,\n                \"discount_amount\": null,\n                \"total_amount\": null,\n                \"created_by\": 1,\n                \"updated_by\": null,\n                \"created_at\": \"2026-01-31T11:15:02.654Z\",\n                \"updated_at\": \"2026-02-02T06:15:02.617Z\",\n                \"deleted_at\": null,\n                \"vendor_quotation_number\": null,\n                \"terms_and_conditions\": null,\n                \"attachment_url\": null,\n                \"vendor_name\": \"Nakoda Silver Creations\",\n                \"vendor_image_url\": \"\",\n                \"vendor_email\": \"ajay@gmail.com\",\n                \"vendor_phone\": \"5252652568\",\n                \"items\": []\n            }\n        ]\n    }\n}"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "quotation_id",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "vendor_quotation_id",
+      "value": "1",
+      "type": "string"
+    }
+  ]
+}
