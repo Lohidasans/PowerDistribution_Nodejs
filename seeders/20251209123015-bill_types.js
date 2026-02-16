@@ -7,19 +7,31 @@ module.exports = {
       [
         {
           id: 1,
-          bill_type: "Invoice",
+          bill_type: "Bill by bill",
           created_at: new Date(),
           updated_at: new Date(),
         },
         {
           id: 2,
-          bill_type: "Salary",
+          bill_type: "On Account",
           created_at: new Date(),
           updated_at: new Date(),
         },
         {
           id: 3,
-          bill_type: "Purchase",
+          bill_type: "Advance",
+          created_at: new Date(),
+          updated_at: new Date(),
+        },
+        {
+          id: 4,
+          bill_type: "Others",
+          created_at: new Date(),
+          updated_at: new Date(),
+        },
+        {
+          id: 5,
+          bill_type: "Scheme",
           created_at: new Date(),
           updated_at: new Date(),
         }
