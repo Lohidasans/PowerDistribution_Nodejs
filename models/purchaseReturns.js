@@ -74,6 +74,11 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.TEXT,
         allowNull: true,
       },
+      branch_id:{
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        defaultValue: 1,
+      },
       status_id: {
         type: DataTypes.INTEGER,
         allowNull: false,

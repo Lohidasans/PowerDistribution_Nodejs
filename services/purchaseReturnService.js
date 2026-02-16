@@ -217,6 +217,7 @@ const getAllPurchaseReturns = async (req, res) => {
       page = 1,
       limit = 10,
       vendor_id,
+      branch_id,
       start_date,
       end_date,
       search
@@ -232,6 +233,10 @@ const getAllPurchaseReturns = async (req, res) => {
     if (vendor_id) {
       whereSql += " AND pr.vendor_id = :vendor_id";
       replacements.vendor_id = vendor_id;
+    }
+    if (branch_id) {
+      whereSql += " AND pr.branch_id = :branch_id";
+      replacements.branch_id = branch_id;
     }
     if (start_date) {
       whereSql += " AND pr.pr_date >= :start_date";
@@ -267,6 +272,8 @@ const getAllPurchaseReturns = async (req, res) => {
         pr.pr_no,
         pr.pr_date AS date,
         pr.status_id,
+        pr.branch_id,
+        b.branch_name,
         v.id as vendor_id,
         v.vendor_name,
         v.vendor_image_url,
@@ -276,10 +283,11 @@ const getAllPurchaseReturns = async (req, res) => {
         u.email_id as created_by
       FROM purchase_returns pr
       ${joinVendors}
+      LEFT JOIN branches b ON b.id = pr.branch_id
       LEFT JOIN purchase_return_items pri ON pri.pr_id = pr.id AND pri.deleted_at IS NULL
       LEFT JOIN superadmin_profiles u ON u.id = pr.order_by_user_id
       ${whereSql}
-      GROUP BY pr.id, v.vendor_name, v.id, v.vendor_image_url, u.email_id
+      GROUP BY pr.id, b.branch_name, v.vendor_name, v.id, v.vendor_image_url, u.email_id
       ORDER BY pr.pr_date DESC, pr.id DESC
       LIMIT :limit OFFSET :offset;
     `;
@@ -347,6 +355,7 @@ const getPurchaseReturnView = async (req, res) => {
           pr.gst_no,
           pr.billing_address,
           pr.shipping_address,
+          pr.branch_id,
           g.grn_no,
           g.grn_date,
           v.id               AS vendor_id,
