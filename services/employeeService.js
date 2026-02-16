@@ -651,7 +651,15 @@ const updateEmployee = async (req, res) => {
        7. Login (Employee User)
     ======================== */
     let upsertedUser = null;
-    if (login && typeof login === "object") {
+    if (login === null) {
+      // Explicitly removing employee login - soft delete the user account
+      await models.User.destroy({
+        where: { entity_type: "employee", entity_id: employee.id },
+        transaction
+      });
+      upsertedUser = null;
+    } else if (login && typeof login === "object") {
+      // Update or create employee login
       upsertedUser = await userSvc.updateUserByEntity(
         transaction,
         "employee",
@@ -664,7 +672,15 @@ const updateEmployee = async (req, res) => {
        8. Billing Login (Billing User)
     ======================== */
     let upsertedBillingUser = null;
-    if (billing_login && typeof billing_login === "object") {
+    if (billing_login === null) {
+      // Explicitly removing billing login - soft delete the user account
+      await models.User.destroy({
+        where: { entity_type: "billing", entity_id: employee.id },
+        transaction
+      });
+      upsertedBillingUser = null;
+    } else if (billing_login && typeof billing_login === "object") {
+      // Update or create billing login
       upsertedBillingUser = await userSvc.updateUserByEntity(
         transaction,
         "billing",

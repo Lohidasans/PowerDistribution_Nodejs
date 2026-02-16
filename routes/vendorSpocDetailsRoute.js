@@ -4,6 +4,7 @@ const vendorContactService = require("../services/vendorSpocDetailsService");
 
 // CRUD
 router.post("/vendor-SpocDetails", vendorContactService.createVendorContact);
+router.put("/vendor-SpocDetails", vendorContactService.updateVendorContacts);
 router.put(
   "/vendor-SpocDetails/vendor/:vendor_id",
   vendorContactService.updateVendorContactsByVendor

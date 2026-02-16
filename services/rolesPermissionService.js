@@ -345,20 +345,20 @@ const listAccess = async (req, res) => {
         d.id AS department_id,
         d.department_name AS department,
         rp.role_name AS role,
-        COALESCE(COUNT(DISTINCT u.id), 0) AS members,
+        COALESCE(COUNT(DISTINCT e.id), 0) AS members,
         COALESCE(STRING_AGG(DISTINCT mg.module_group_name, ', ' ORDER BY mg.module_group_name), '') AS access_control
       FROM role_permissions rp
       LEFT JOIN employee_departments d ON d.id = rp.department_id
       LEFT JOIN modules m ON m.id = rp.module_id
       LEFT JOIN module_groups mg ON mg.id = m.module_group_id
-      LEFT JOIN users u ON u.role_id IS NOT NULL AND u.entity_type = 'employee'
-      LEFT JOIN employees e ON e.id = u.entity_id AND e.department_id = rp.department_id
+      LEFT JOIN roles r ON r.role_name = rp.role_name AND r.department_id = rp.department_id AND r.deleted_at IS NULL
+      LEFT JOIN employees e ON e.role_id = r.id AND e.department_id = rp.department_id AND e.deleted_at IS NULL
       WHERE rp.deleted_at IS NULL
        ${filterClause}
       GROUP BY d.id, d.department_name, rp.role_name
       ORDER BY d.department_name, rp.role_name;
     `;
-    const [rows] = await sequelize.query(query, {replacements});
+    const [rows] = await sequelize.query(query, { replacements });
     return commonService.okResponse(res, { items: rows });
   } catch (err) {
     return commonService.handleError(res, err);
@@ -443,9 +443,9 @@ const getRolePermissions = async (req, res) => {
 
 
 module.exports = {
-  deleteRolePermissions, 
-  createRolePermissionsBulk, 
-  updateRolePermissionsBulk, 
+  deleteRolePermissions,
+  createRolePermissionsBulk,
+  updateRolePermissionsBulk,
   getRolePermissionById,
   listAccess,
   getRolePermissions

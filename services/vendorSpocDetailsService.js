@@ -51,6 +51,38 @@ const getVendorContactById = async (req, res) => {
   return commonService.okResponse(res, { VendorSpocDetails: entity });
 };
 
+// Update vendor contacts with vendor_id in body (alternative to URL param)
+const updateVendorContacts = async (req, res) => {
+  const { vendor_id, contacts } = req.body || {};
+  if (!vendor_id || !Array.isArray(contacts)) {
+    return commonService.badRequest(res, enMessage.failure.requiredFields);
+  }
+
+  const tx = await sequelize.transaction();
+  try {
+    // Upsert incoming only (no deletions)
+    const payloads = contacts.map((c) => ({
+      id: c.id ?? undefined,
+      vendor_id,
+      contact_name: c.contact_name ?? null,
+      designation: c.designation ?? null,
+      mobile: c.mobile ?? null,
+    }));
+
+    const rows = payloads.length
+      ? await models.VendorSpocDetails.bulkCreate(payloads, {
+        updateOnDuplicate: ["contact_name", "designation", "mobile", "vendor_id", "updated_at"],
+        transaction: tx,
+      })
+      : [];
+    await tx.commit();
+    return commonService.okResponse(res, { VendorSpocDetails: rows });
+  } catch (err) {
+    await tx.rollback();
+    return commonService.handleError(res, err);
+  }
+};
+
 // Replace all contacts for a vendor (update-by-vendor, upsert by id)
 const updateVendorContactsByVendor = async (req, res) => {
   const { vendor_id } = req.params;
@@ -72,9 +104,9 @@ const updateVendorContactsByVendor = async (req, res) => {
 
     const rows = payloads.length
       ? await models.VendorSpocDetails.bulkCreate(payloads, {
-          updateOnDuplicate: ["contact_name", "designation", "mobile", "vendor_id", "updated_at"],
-          transaction: tx,
-        })
+        updateOnDuplicate: ["contact_name", "designation", "mobile", "vendor_id", "updated_at"],
+        transaction: tx,
+      })
       : [];
     await tx.commit();
     return commonService.okResponse(res, { VendorSpocDetails: rows });
@@ -104,7 +136,7 @@ const deleteVendorContact = async (req, res) => {
 const createVendorSpocsByVendor = async (transaction, vendor_id, contacts) => {
   if (!Array.isArray(contacts) || contacts.length === 0)
     return [];
-  
+
   const payloads = contacts
     .filter(c => c && typeof c === 'object')
     .map((c) => ({
@@ -115,7 +147,7 @@ const createVendorSpocsByVendor = async (transaction, vendor_id, contacts) => {
     }));
 
   if (payloads.length === 0) {
-    return []; 
+    return [];
   }
   return models.VendorSpocDetails.bulkCreate(payloads, { transaction, returning: true });
 };
@@ -146,6 +178,7 @@ module.exports = {
   listVendorContacts,
   getVendorContactById,
   deleteVendorContact,
+  updateVendorContacts,
   updateVendorContactsByVendor,
   createVendorSpocsByVendor,
   updateVendorSpocsByVendor,
