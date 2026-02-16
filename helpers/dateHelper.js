@@ -45,7 +45,7 @@ const dateFilter = (
     if (finalFromDate && finalToDate) {
         replacements.from_date = finalFromDate;
         replacements.to_date = finalToDate;
-        return ` AND ${columnAlias} BETWEEN :from_date AND :to_date`;
+        return ` AND DATE(${columnAlias}) BETWEEN :from_date AND :to_date`;
     }
 
     return "";

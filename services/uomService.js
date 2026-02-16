@@ -2,6 +2,7 @@ const { models } = require("../models/index");
 const { Op } = require("sequelize");
 const commonService = require("../services/commonService");
 const message = require("../constants/en.json");
+const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
 
 // Create UOM
 const create = async (req, res) => {
@@ -234,6 +235,21 @@ const getActiveUoms = async (req, res) => {
   }
 };
 
+// Generate UOM Code
+const generateUomCode = async (req, res) => {
+  try {
+    const code = await generateFiscalSeriesCode(
+      models.Uom,
+      "uom_code",
+      "UOM",
+      { pad: 3 }
+    );
+    return commonService.okResponse(res, { uom_code: code });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
 module.exports = {
   create,
   list,
@@ -243,4 +259,5 @@ module.exports = {
   remove,
   toggleStatus,
   getActiveUoms,
+  generateUomCode,
 };

@@ -5,6 +5,7 @@ const uomService = require("../services/uomService");
 uomRouter.post("/uoms", uomService.create);
 uomRouter.get("/uoms", uomService.list);
 uomRouter.get("/uoms/active", uomService.getActiveUoms);
+uomRouter.get("/uoms/code", uomService.generateUomCode);
 uomRouter.get("/uoms/:id", uomService.getById);
 uomRouter.get("/uoms/code/:code", uomService.getByCode);
 uomRouter.put("/uoms/:id", uomService.update);
@@ -18,6 +19,28 @@ module.exports = uomRouter;
  * tags:
  *   - name: UOM
  *     description: Unit of Measure management
+ */
+/**
+ * @openapi
+ * /api/v1/uoms/code:
+ *   get:
+ *     summary: Generate next UOM code
+ *     tags: [UOM]
+ *     description: Auto-generate the next UOM code in sequence (UOM001, UOM002, etc.)
+ *     responses:
+ *       200:
+ *         description: OK
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 statusCode: { type: integer, example: 200 }
+ *                 message: { type: string, example: "Success" }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     uom_code: { type: string, example: "UOM001" }
  */
 /**
  * @openapi
