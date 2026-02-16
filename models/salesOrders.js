@@ -76,8 +76,14 @@ module.exports = (sequelize, DataTypes) => {
                 allowNull: true,
             },
 
-            created_by: DataTypes.INTEGER,
-            updated_by: DataTypes.INTEGER,
+            created_by: {
+                type: DataTypes.STRING,
+                allowNull: true,
+            },
+            updated_by: {
+                type: DataTypes.STRING,
+                allowNull: true,
+            },
         },
         {
             timestamps: true,

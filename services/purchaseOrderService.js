@@ -8,38 +8,62 @@ const createPurchaseOrder = async (req, res) => {
   try {
     const { items = [], ...header } = req.body || {};
 
-    // Basic validation
-    const required = ["po_no", "po_date", "vendor_id"];
+    // Validation
+    const required = ["po_no", "po_date", "vendor_id", "order_by_user_id"];
     for (const f of required) {
       if (!header[f]) {
         await t.rollback();
         return commonService.badRequest(res, `${f} is required`);
       }
     }
-    if (header.po_no) {
-      const existing = await models.PurchaseOrder.findOne({
-        where: {
-          po_no: header.po_no,
-          deleted_at: null,     // only check active (non-deleted) records
-        },
-      });
 
-      if (existing) {
-        await t.rollback();
-        return commonService.badRequest(res, {
-          message: "Purchase order number already exists",
-        });
-      }
+    // Duplicate check
+    const existing = await models.PurchaseOrder.findOne({
+      where: {
+        po_no: header.po_no,
+        deleted_at: null,
+      },
+    });
+
+    if (existing) {
+      await t.rollback();
+      return commonService.badRequest(res, {
+        message: "Purchase order number already exists",
+      });
     }
 
-    const po = await models.PurchaseOrder.create(header, { transaction: t });
+    // Decide status
+    const status_id = header.entity_type === "superadmin" ? 2 : 1;
 
+    // ✅ CREATE PO FIRST
+    const po = await models.PurchaseOrder.create(
+      {
+        ...header,
+        status_id,
+      },
+      { transaction: t }
+    );
+
+    // Create PO Items
     if (Array.isArray(items) && items.length > 0) {
       const rows = items.map((it) => ({ ...it, po_id: po.id }));
       await models.PurchaseOrderItem.bulkCreate(rows, { transaction: t });
     }
 
+    // ✅ Now create Sales Order if approved
+    if (Number(status_id) === 2) {
+      const existingSO = await models.SalesOrder.findOne({
+        where: { po_id: po.id },
+        transaction: t,
+      });
+
+      if (!existingSO) {
+        await createSalesOrderFromPO(po, t);
+      }
+    }
+
     await t.commit();
+
     const result = await getPOWithItems(po.id);
     return commonService.createdResponse(res, result);
   } catch (err) {
@@ -47,6 +71,7 @@ const createPurchaseOrder = async (req, res) => {
     return commonService.handleError(res, err);
   }
 };
+
 
 // Helper: fetch PO with items via raw joins to master names
 const getPOWithItems = async (poId) => {
@@ -174,7 +199,7 @@ const listPurchaseOrders = async (req, res) => {
       SELECT 
         COUNT(CASE WHEN p.status_id = 1 THEN 1 END) AS approval_pending,
         COUNT(CASE WHEN p.status_id = 2 THEN 1 END) AS approved,
-        COUNT(CASE WHEN p.status_id = 3 THEN 1 END) AS completed
+        COUNT(CASE WHEN p.status_id = 3 THEN 1 END) AS rejected
       FROM purchase_orders p
       ${joinVendors}
       ${joinBranches}
@@ -225,9 +250,9 @@ const listPurchaseOrders = async (req, res) => {
 
     return commonService.okResponse(res, {
       status_counts: {
-        approval_pending: parseInt(statusCounts.approval_pending || 0, 10),
-        approved: parseInt(statusCounts.approved || 0, 10),
-        completed: parseInt(statusCounts.completed || 0, 10),
+        approval_pending: Number(statusCounts.approval_pending || 0),
+        approved: Number(statusCounts.approved || 0),
+        rejected: Number(statusCounts.rejected || 0),
       },
       total,
       page: parseInt(page),
@@ -348,6 +373,90 @@ const generatePoCode = async (req, res) => {
   }
 };
 
+// Update PO status (approve/reject)
+const updatePurchaseOrderStatus = async (req, res) => {
+  const t = await sequelize.transaction();
+  try {
+    const { id } = req.params;
+    const { status_id, remarks } = req.body;
+
+    if (![2, 3].includes(Number(status_id))) {
+      await t.rollback();
+      return commonService.badRequest(
+        res,
+        "Invalid status. Only Approved or Rejected allowed"
+      );
+    }
+
+    const po = await models.PurchaseOrder.findByPk(id, { transaction: t });
+    if (!po) {
+      await t.rollback();
+      return commonService.notFound(res, "Purchase order not found");
+    }
+
+    // ❗ Only pending PO can be acted on
+    if (po.status_id !== 1) {
+      await t.rollback();
+      return commonService.badRequest(
+        res,
+        "Only approval pending PO can be updated"
+      );
+    }
+
+    await po.update(
+      {
+        status_id,
+        remarks,
+      },
+      { transaction: t }
+    );
+
+    // vendor should get notification only after PO is approved.
+    if (Number(status_id) === 2) {
+      // Safety check
+      const existingSO = await models.SalesOrder.findOne({
+        where: { po_id: po.id },
+        transaction: t,
+      });
+
+      if (!existingSO) {
+        await createSalesOrderFromPO(po, t);
+      }
+    }
+
+    await t.commit();
+    return commonService.okResponse(res, po);
+  } catch (err) {
+    await t.rollback();
+    return commonService.handleError(res, err);
+  }
+};
+
+const createSalesOrderFromPO = async (po, t) => {
+  return models.SalesOrder.create(
+    {
+      po_id: po.id,
+      vendor_id: po.vendor_id,
+
+      status: "pending",
+
+      // copy finalised amounts from PO
+      sub_total: po.subtotal_amount,
+      sgst_percentage: po.sgst_percent,
+      sgst_amount: po.sgst_amount,
+      cgst_percentage: po.cgst_percent,
+      cgst_amount: po.cgst_amount,
+      discount_percentage: po.discount_percent,
+      discount_amount: po.discount_amount,
+      total_amount: po.total_amount,
+
+      created_by: po.entity_type,
+    },
+    { transaction: t }
+  );
+};
+
+
 module.exports = {
   createPurchaseOrder,
   getPurchaseOrderById,
@@ -357,6 +466,7 @@ module.exports = {
   getPurchaseOrderView,
   listPurchaseOrderNumbers,
   generatePoCode,
+  updatePurchaseOrderStatus
 };
 
 

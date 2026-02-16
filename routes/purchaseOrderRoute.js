@@ -9,6 +9,7 @@ router.get("/purchase-orders/dropdown", svc.listPurchaseOrderNumbers);
 router.get("/purchase-orders/:id", svc.getPurchaseOrderById);
 router.get("/purchase-orders/:id/view", svc.getPurchaseOrderView);
 router.put("/purchase-orders/:id", svc.updatePurchaseOrder);
+router.put("/purchase-orders/:id/status", svc.updatePurchaseOrderStatus);
 router.delete("/purchase-orders/:id", svc.deletePurchaseOrder);
 router.post("/purchase-orders/code", svc.generatePoCode);
 
