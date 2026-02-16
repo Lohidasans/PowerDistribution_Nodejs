@@ -424,6 +424,20 @@ const deleteBranch = async (req, res) => {
 
 const branchDropdownList = async (req, res) => {
   try {
+    const { status } = req.query;
+
+    // Build WHERE conditions
+    const whereConditions = ['b.deleted_at IS NULL'];
+    const replacements = {};
+
+    // Add status filter if provided
+    if (status) {
+      whereConditions.push('b.status = :status');
+      replacements.status = status;
+    }
+
+    const whereClause = whereConditions.join(' AND ');
+
     const query = `
       SELECT
         b.id,
@@ -433,16 +447,21 @@ const branchDropdownList = async (req, res) => {
         b.state_id,
         b.district_id,
         b.pin_code,
+        b.status,
         s.state_name,
         d.district_name
       FROM branches b
       LEFT JOIN states s ON b.state_id = s.id
       LEFT JOIN districts d ON b.district_id = d.id
-      WHERE b.deleted_at IS NULL
+      WHERE ${whereClause}
       ORDER BY b.branch_name ASC
     `;
 
-    const [branches] = await sequelize.query(query);
+    const branches = await sequelize.query(query, {
+      replacements,
+      type: sequelize.QueryTypes.SELECT,
+    });
+
     return commonService.okResponse(res, { branches });
   } catch (err) {
     return commonService.handleError(res, err);

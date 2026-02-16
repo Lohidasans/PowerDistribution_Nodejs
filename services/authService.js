@@ -18,7 +18,7 @@ const login = async (req, res) => {
 
         // Find user in users table
         const user = await models.User.findOne({
-            where: { email,  deleted_at: null },
+            where: { email, deleted_at: null },
             transaction: t
         });
 
@@ -52,12 +52,24 @@ const login = async (req, res) => {
                         where: { id: entityId, deleted_at: null },
                         transaction: t
                     });
+
+                    // Check if branch is Active
+                    if (entityDetails && entityDetails.status !== 'Active') {
+                        await t.rollback();
+                        return commonService.notFound(res, 'Your branch account is inactive. Please contact administrator.');
+                    }
                     break;
                 case 'employee':
                     entityDetails = await models.Employee.findOne({
                         where: { id: entityId, deleted_at: null },
                         transaction: t
                     });
+
+                    // Check if employee is Active
+                    if (entityDetails && entityDetails.status !== 'Active') {
+                        await t.rollback();
+                        return commonService.notFound(res, 'Your employee account is inactive. Please contact administrator.');
+                    }
                     break;
                 case 'vendor':
                     entityDetails = await models.Vendor.findOne({
@@ -73,10 +85,16 @@ const login = async (req, res) => {
                     break;
                 default:
                     // No entity details for unknown types
-                       entityDetails = await models.Employee.findOne({
+                    entityDetails = await models.Employee.findOne({
                         where: { id: entityId, deleted_at: null },
                         transaction: t
                     });
+
+                    // Check if employee is Active for default case
+                    if (entityDetails && entityDetails.status !== 'Active') {
+                        await t.rollback();
+                        return commonService.unauthorized(res, 'Your employee account is inactive. Please contact administrator.');
+                    }
                     break;
             }
         }
@@ -253,8 +271,8 @@ const customerSendOTP = async (req, res) => {
         }
 
         // generate 4 digit otp
-    //   const otp = Math.floor(1000 + Math.random() * 9000);
-const otp = '1234'; // for testing purpose, use a fixed OTP
+        //   const otp = Math.floor(1000 + Math.random() * 9000);
+        const otp = '1234'; // for testing purpose, use a fixed OTP
 
         // store in memory cache
         otpCache.setOTP(mobile, otp);

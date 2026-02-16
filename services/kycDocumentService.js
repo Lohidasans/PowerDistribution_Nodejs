@@ -131,16 +131,29 @@ module.exports = {
   updateKycDocumentsByEntity,
   deleteKycDocument,
   updateKycByEntity: async (sequelizeOrT, entity_type, entity_id, documents) => {
-    // Update-only semantics: require id, ignore items without id
+    // Update-only semantics: match by id OR doc_type
     const transaction = sequelizeOrT?.commit ? sequelizeOrT : undefined;
     const updated = [];
     if (!Array.isArray(documents) || documents.length === 0) return updated;
+
     for (const doc of documents) {
-      if (!doc.id) {
-        // Ignore rows without id to avoid accidental creates during update
-        continue;
+      let row = null;
+
+      // Try to find by id first, then fall back to doc_type
+      if (doc.id) {
+        row = await models.KycDocument.findOne({
+          where: { id: doc.id, entity_type, entity_id },
+          transaction
+        });
+      } else if (doc.doc_type) {
+        row = await models.KycDocument.findOne({
+          where: { doc_type: doc.doc_type, entity_type, entity_id, deleted_at: null },
+          transaction
+        });
+      } else {
+        continue; // Skip documents without id or doc_type
       }
-      const row = await models.KycDocument.findOne({ where: { id: doc.id, entity_type, entity_id }, transaction });
+
       if (row) {
         await row.update({
           doc_type: doc.doc_type ?? row.doc_type,
@@ -150,6 +163,7 @@ module.exports = {
         updated.push(row);
       }
     }
+
     return updated;
   },
   createKycByEntity: async (sequelizeOrT, entity_type, entity_id, documents) => {
