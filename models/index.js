@@ -42,6 +42,11 @@ const VendorSpocDetails = require("./vendorSpocDetails")(
   sequelize,
   Sequelize.DataTypes
 );
+const SalesOrder = require("./salesOrders")(sequelize, Sequelize.DataTypes);
+const SalesOrderAdditionalCharge = require("./salesOrderAdditionalCharges")(
+  sequelize,
+  Sequelize.DataTypes
+);
 
 // Employee related models
 const Employee = require("./employees")(sequelize, Sequelize.DataTypes);
@@ -287,7 +292,9 @@ const models = {
   DeviceInfo,
   EmployeeTracking,
   EnrollDeviceDetails,
-  UserNotification
+  UserNotification,
+  SalesOrder,
+  SalesOrderAdditionalCharge,
 };
 
 Object.values(models).forEach((model) => {

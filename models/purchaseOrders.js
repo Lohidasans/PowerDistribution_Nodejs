@@ -52,6 +52,14 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.DECIMAL(5, 2),
         allowNull: true,
       },
+      total_amount: {
+        type: DataTypes.DECIMAL(15, 2),
+        allowNull: true,
+      },
+      amount_in_words: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
       remarks: {
         type: DataTypes.TEXT,
         allowNull: true,
