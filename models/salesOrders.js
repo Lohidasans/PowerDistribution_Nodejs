@@ -19,17 +19,17 @@ module.exports = (sequelize, DataTypes) => {
             },
 
             // NEW (from UI)
-            sales_order_date: {
+            sales_order_date: { // ✅ vendor fills later
                 type: DataTypes.DATEONLY,
-                allowNull: false,
+                allowNull: true,
             },
-            consignment_date: {
+            consignment_date: { // ✅ vendor fills later
                 type: DataTypes.DATEONLY,
-                allowNull: false,
+                allowNull: true,
             },
-            credit_terms: {
+            credit_terms: { // ✅ vendor fills later
                 type: DataTypes.STRING,
-                allowNull: false,
+                allowNull: true,
             },
 
             status: {
