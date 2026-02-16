@@ -6,7 +6,7 @@ const db = require("../config/dbConfig");
 const createVariant = async (req, res) => {
   const transaction = await sequelize.transaction();
   try {
-    const { variant_type, values } = req.body;
+    const { variant_type, values, branch_id } = req.body;
 
     if (!variant_type) {
       await transaction.rollback();
@@ -18,7 +18,7 @@ const createVariant = async (req, res) => {
 
     // Create variant
     const variant = await models.Variant.create(
-      { variant_type },
+      { variant_type, branch_id: branch_id || 1 },
       { transaction }
     );
 
@@ -53,17 +53,19 @@ const createVariant = async (req, res) => {
 // List variants with values as array items and optional variant_type filter
 const listVariantsDetailed = async (req, res) => {
   try {
-    const { variant_type } = req.query;
+    const { variant_type, branch_id } = req.query;
 
     const whereClause = `
       WHERE v.deleted_at IS NULL
       ${variant_type ? 'AND v.variant_type = :vt' : ''}
+      ${branch_id ? 'AND v.branch_id = :branch_id' : ''}
     `;
 
     const sql = `
       SELECT
         v.id AS id,
         v.variant_type AS "Variant Type",
+        v.branch_id,
         COALESCE(
           json_agg(
             json_build_object('id', vv.id, 'value', vv.value)
@@ -75,12 +77,13 @@ const listVariantsDetailed = async (req, res) => {
       LEFT JOIN "variantValues" vv
         ON vv.variant_id = v.id AND vv.deleted_at IS NULL
       ${whereClause}
-      GROUP BY v.id, v.variant_type
+      GROUP BY v.id, v.variant_type, v.branch_id
       ORDER BY v.id ASC`;
 
     const replacements = {};
     //if (variant_type) replacements.vt = `%${variant_type}%`;
     if (variant_type) replacements.vt = variant_type.trim();
+    if (branch_id) replacements.branch_id = branch_id;
     const [rows] = await sequelize.query(sql, { replacements });
     return commonService.okResponse(res, { variants: rows });
   } catch (err) {
@@ -144,12 +147,14 @@ const deleteVariant = async (req, res) => {
 const listVariantWithValues = async (req, res) => {
   try {
     const search = (req.query.search || "").trim();
+    const { branch_id } = req.query;
 
     // Build SQL with LEFT JOIN (keep variants without values) and optional search
     const sql = `
       SELECT
         v.id AS "id",
         v.variant_type,
+        v.branch_id,
         COALESCE(STRING_AGG(vv.value, ', ' ORDER BY vv.id), '') AS "Values"
       FROM
         variants v
@@ -159,6 +164,7 @@ const listVariantWithValues = async (req, res) => {
          AND vv.deleted_at IS NULL
       WHERE
         v.deleted_at IS NULL
+        ${branch_id ? 'AND v.branch_id = :branch_id' : ''}
         ${search ? `AND (
             v.variant_type ILIKE :search
             OR EXISTS (
@@ -166,10 +172,12 @@ const listVariantWithValues = async (req, res) => {
                WHERE vv2.variant_id = v.id AND vv2.deleted_at IS NULL AND vv2.value ILIKE :search
             )
         )` : ''}
-      GROUP BY v.id, v.variant_type
+      GROUP BY v.id, v.variant_type, v.branch_id
       ORDER BY v.id ASC`;
 
-    const replacements = search ? { search: `%${search}%` } : {};
+    const replacements = {};
+    if (search) replacements.search = `%${search}%`;
+    if (branch_id) replacements.branch_id = branch_id;
     const [rows] = await sequelize.query(sql, { replacements });
     return commonService.okResponse(res, { variants: rows });
   } catch (err) {

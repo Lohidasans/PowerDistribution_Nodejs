@@ -33,6 +33,11 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: true,
         defaultValue: 0,
       },
+      branch_id:{
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        defaultValue: 1, // default branch_id to 1 for all categories
+      },
       status: {
         type: DataTypes.ENUM("Active", "Inactive"),
         allowNull: false,

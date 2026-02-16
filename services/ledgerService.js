@@ -7,7 +7,7 @@ const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
 // Create Ledger
 const create = async (req, res) => {
   try {
-    const { ledger_group_id, ledger_name, ledger_no } = req.body;
+    const { ledger_group_id, ledger_name, ledger_no, branch_id } = req.body;
 
     // Check if ledger group exists
     const ledgerGroup = await models.LedgerGroup.findByPk(ledger_group_id);
@@ -20,6 +20,7 @@ const create = async (req, res) => {
       ledger_no,
       ledger_group_id,
       ledger_name,
+      branch_id: branch_id || 1, // default to 1 if not provided
     });
 
     // Get the created ledger with the ledger group details using raw query
@@ -96,7 +97,7 @@ const bulkCreate = async (req, res) => {
 // List all Ledgers with optional search and filters
 const list = async (req, res) => {
   try {
-    const { page = 1, limit = 10, search, ledger_group_id } = req.query;
+    const { page = 1, limit = 10, search, ledger_group_id, branch_id } = req.query;
     const offset = (page - 1) * limit;
 
     let whereConditions = ["l.deleted_at IS NULL"];
@@ -110,6 +111,11 @@ const list = async (req, res) => {
     if (ledger_group_id) {
       whereConditions.push("l.ledger_group_id = :ledger_group_id");
       replacements.ledger_group_id = ledger_group_id;
+    }
+
+    if (branch_id) {
+      whereConditions.push("l.branch_id = :branch_id");
+      replacements.branch_id = branch_id;
     }
 
     const whereClause = whereConditions.join(" AND ");
@@ -208,7 +214,7 @@ const getById = async (req, res) => {
 const getByLedgerGroupId = async (req, res) => {
   try {
     const { ledgerGroupId } = req.params;
-    const { page = 1, limit = 10 } = req.query;
+    const { page = 1, limit = 10, branch_id } = req.query;
     const offset = (page - 1) * limit;
 
     // Check if ledger group exists
@@ -217,8 +223,13 @@ const getByLedgerGroupId = async (req, res) => {
       return commonService.notFound(res, "Ledger group not found");
     }
 
+    const where = { ledger_group_id: ledgerGroupId };
+    if (branch_id) {
+      where.branch_id = branch_id;
+    }
+
     const { count, rows: ledgers } = await models.Ledger.findAndCountAll({
-      where: { ledger_group_id: ledgerGroupId },
+      where,
       limit: parseInt(limit),
       offset: parseInt(offset),
       order: [["id", "ASC"]],

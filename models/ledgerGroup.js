@@ -21,6 +21,11 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.ENUM("Debit", "Credit"),
       allowNull: true,
     },
+    branch_id:{
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        defaultValue: 1, // default branch_id to 1 for all ledger groups
+    },
       status_id: {
         type: DataTypes.INTEGER,
         allowNull: false,

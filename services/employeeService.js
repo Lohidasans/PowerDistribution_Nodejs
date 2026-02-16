@@ -824,6 +824,36 @@ const getTopEmployeePerformers = async (req, res) => {
   }
 };
 
+const updateEmployeeStatus = async (req, res) => {
+  const transaction = await sequelize.transaction();
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!status) {
+      await transaction.rollback();
+      return commonService.badRequest(res, "Status is required");
+    }
+
+    // Capitalize first letter to match enum values (Active/Inactive)
+    const formattedStatus = status.charAt(0).toUpperCase() + status.slice(1).toLowerCase();
+
+    const employee = await models.Employee.findByPk(id);
+    if (!employee) {
+      await transaction.rollback();
+      return commonService.badRequest(res, "Employee not found");
+    }
+
+    await employee.update({ status: formattedStatus }, { transaction });
+    await transaction.commit();
+
+    return commonService.okResponse(res, { employee });
+  } catch (err) {
+    await transaction.rollback();
+    return commonService.handleError(res, err);
+  }
+};
+
 module.exports = {
   createEmployee,
   listEmployees,
@@ -833,6 +863,7 @@ module.exports = {
   listDesignationDropdown,
   listDepartmentDropdown,
   updateEmployee,
+  updateEmployeeStatus,
   deleteEmployee,
   generateEmployeeCode,
   getTopEmployeePerformers,

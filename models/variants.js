@@ -12,6 +12,11 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.STRING, // e.g., Stone Color, Size, Occasion
         allowNull: true,
       },
+      branch_id:{
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        defaultValue: 1, // default branch_id to 1 for all variants
+      },
       status: {
         type: DataTypes.ENUM("Active", "Inactive"),
         allowNull: false,

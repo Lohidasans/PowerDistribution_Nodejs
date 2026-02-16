@@ -97,7 +97,7 @@ const createVendor = async (req, res) => {
 };
 const listVendors = async (req, res) => {
   try {
-    const { materialType, search } = req.query;
+    const { materialType, search, branch_id } = req.query;
 
     // Base SQL with array joins and aggregation
     let query = `
@@ -112,6 +112,8 @@ const listVendors = async (req, res) => {
         v.country_id,
         v.state_id,
         v.district_id,
+        v.branch_id,
+        b1.branch_name AS branch_name,
         v.visibilities,
         (
           SELECT COALESCE(
@@ -130,6 +132,7 @@ const listVendors = async (req, res) => {
           WHERE b2.id = ANY(v.visibilities)
         ) AS visibilities_names_detailed
       FROM vendors v
+      LEFT JOIN branches b1 ON b1.id = v.branch_id
       LEFT JOIN branches b ON b.id = ANY(v.visibilities)
       LEFT JOIN "materialTypes" m ON m.id = ANY(v.material_type_ids)
       WHERE 1=1`;
@@ -137,6 +140,11 @@ const listVendors = async (req, res) => {
     const replacements = {};
 
     // Apply filters
+    if (branch_id) {
+      query += ` AND v.branch_id = :branch_id`;
+      replacements.branch_id = branch_id;
+    }
+
     if (materialType) {
       query += ` AND m.material_type ILIKE :materialType`;
       replacements.materialType = `%${materialType}%`;
@@ -156,7 +164,7 @@ const listVendors = async (req, res) => {
       replacements.search = `%${search}%`;
     }
 
-    query += ` GROUP BY v.id ORDER BY v.vendor_name ASC`;
+    query += ` GROUP BY v.id, b1.branch_name ORDER BY v.vendor_name ASC`;
 
     const [vendors] = await sequelize.query(query, { replacements });
 
@@ -168,7 +176,9 @@ const listVendors = async (req, res) => {
 
 const listVendorDropdown = async (req, res) => {
   try {
-    const query = `
+    const { branch_id } = req.query;
+
+    let query = `
       SELECT
         v.id,
         v.vendor_name,
@@ -179,16 +189,26 @@ const listVendorDropdown = async (req, res) => {
         v.mobile,
         v.pin_code,
         v.gst_no,
+        v.branch_id,
+        b.branch_name,
         s.state_name,
         d.district_name
       FROM vendors v
+      LEFT JOIN branches b ON v.branch_id = b.id
       LEFT JOIN states s ON v.state_id = s.id
       LEFT JOIN districts d ON v.district_id = d.id
-      WHERE v.deleted_at IS NULL
-      ORDER BY v.vendor_name ASC
-    `;
+      WHERE v.deleted_at IS NULL`;
 
-    const [vendors] = await sequelize.query(query);
+    const replacements = {};
+
+    if (branch_id) {
+      query += ` AND v.branch_id = :branch_id`;
+      replacements.branch_id = branch_id;
+    }
+
+    query += ` ORDER BY v.vendor_name ASC`;
+
+    const [vendors] = await sequelize.query(query, { replacements });
     return commonService.okResponse(res, { vendors });
   } catch (err) {
     return commonService.handleError(res, err);

@@ -23,6 +23,7 @@ router.get("/employees/departments/dropdown", employeeSvc.listDepartmentDropdown
 router.get("/employees/top-performers", employeeSvc.getTopEmployeePerformers);
 router.get("/employees/:id", employeeSvc.getEmployeeById);
 router.put("/employees/:id", employeeSvc.updateEmployee);
+router.patch("/employees/:id", employeeSvc.updateEmployeeStatus);
 router.delete("/employees/:id", employeeSvc.deleteEmployee);
 
 

@@ -208,11 +208,22 @@ const getVoucherReceipts = async (req, res) => {
           WHEN vr.user_type_id = 1 THEN v.mobile
           WHEN vr.user_type_id = 2 THEN c.mobile_number
           ELSE NULL
-        END AS account_mobile
+        END AS account_mobile,
+        b.branch_name,
+        b.address AS branch_address,
+        b.gst_no AS branch_gst_no,
+        b.mobile AS branch_mobile,
+        b.signature_url AS branch_signature_url,
+        b.pin_code AS branch_pin_code,
+        d.district_name,
+        s.state_name
       FROM voucher_receipts vr
       LEFT JOIN ledger l ON l.id = vr.account_id AND vr.bill_type_id IN (2, 3) AND l.deleted_at IS NULL
       LEFT JOIN vendors v ON v.id = vr.account_id AND vr.user_type_id = 1 AND vr.bill_type_id NOT IN (2, 3) AND v.deleted_at IS NULL
       LEFT JOIN customers c ON c.id = vr.account_id AND vr.user_type_id = 2 AND vr.bill_type_id NOT IN (2, 3) AND c.deleted_at IS NULL
+      LEFT JOIN branches b ON b.id = vr.branch_id AND b.deleted_at IS NULL
+      LEFT JOIN districts d ON d.id = b.district_id AND d.deleted_at IS NULL
+      LEFT JOIN states s ON s.id = b.state_id AND s.deleted_at IS NULL
       ${whereSql}
       ORDER BY vr.receipt_no DESC
       ${paginationSql}
@@ -233,6 +244,7 @@ const getVoucherReceipts = async (req, res) => {
         LEFT JOIN ledger l ON l.id = vr.account_id AND vr.bill_type_id IN (2, 3) AND l.deleted_at IS NULL
         LEFT JOIN vendors v ON v.id = vr.account_id AND vr.user_type_id = 1 AND vr.bill_type_id NOT IN (2, 3) AND v.deleted_at IS NULL
         LEFT JOIN customers c ON c.id = vr.account_id AND vr.user_type_id = 2 AND vr.bill_type_id NOT IN (2, 3) AND c.deleted_at IS NULL
+        LEFT JOIN branches b ON b.id = vr.branch_id AND b.deleted_at IS NULL
         ${whereSql}
       `;
 

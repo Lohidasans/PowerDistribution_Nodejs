@@ -11,6 +11,7 @@ const createSubcategory = async (req, res) => {
       subcategory_name,
       subcategory_image_url,
       reorder_level,
+      branch_id,
     } = req.body;
 
     if (!materialtype_id || !category_id || !subcategory_name)
@@ -25,6 +26,7 @@ const createSubcategory = async (req, res) => {
       subcategory_name,
       subcategory_image_url,
       reorder_level,
+      branch_id: branch_id || 1, // default to 1 if not provided
     });
 
     return commonService.createdResponse(res, { subcategory: row });
@@ -35,11 +37,12 @@ const createSubcategory = async (req, res) => {
 
 const listSubcategories = async (req, res) => {
   try {
-    const { materialType_id, category_id, search = "" } = req.query;
+    const { materialType_id, category_id, search = "", branch_id } = req.query;
     const where = {};
 
     if (materialType_id) where.materialType_id = materialType_id;
     if (category_id) where.category_id = category_id;
+    if (branch_id) where.branch_id = branch_id;
 
     const searchCondition = buildSearchCondition(search, ["subcategory_name"]);
     if (searchCondition) Object.assign(where, searchCondition);
@@ -57,14 +60,15 @@ const listSubcategories = async (req, res) => {
 
 const listSubcategoriesDropdown = async (req, res) => {
   try {
-    const { materialType_id, category_id } = req.query;
+    const { materialType_id, category_id, branch_id } = req.query;
     const where = {};
 
     if (materialType_id) where.materialtype_id = materialType_id;
     if (category_id) where.category_id = category_id;
+    if (branch_id) where.branch_id = branch_id;
 
     const items = await models.Subcategory.findAll({
-      attributes: ["id", "subcategory_name"],
+      attributes: ["id", "subcategory_name", "branch_id"],
       where,
       order: [["subcategory_name", "ASC"]],
     });
@@ -79,7 +83,7 @@ const { QueryTypes } = require("sequelize");
 
 const getAllSubCategories = async (req, res) => {
   try {
-    const { materialType, materialtype_id, category, category_id, search } =
+    const { materialType, materialtype_id, category, category_id, search, branch_id } =
       req.query;
 
     let query = `
@@ -89,6 +93,7 @@ const getAllSubCategories = async (req, res) => {
         sc.subcategory_image_url,
         sc.reorder_level,
         sc.category_id,
+        sc.branch_id,
         c.category_name,
         c.category_image_url,
         sc.materialtype_id,
@@ -101,6 +106,12 @@ const getAllSubCategories = async (req, res) => {
     `;
 
     const replacements = {};
+
+    // 🔹 Filter by branch_id
+    if (branch_id) {
+      query += ` AND sc.branch_id = :branch_id`;
+      replacements.branch_id = branch_id;
+    }
 
     // 🔹 Filter by Material Type Name
     if (materialType) {

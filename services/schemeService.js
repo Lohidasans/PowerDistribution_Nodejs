@@ -59,6 +59,11 @@ const buildSchemePayload = (req, existing = null) => ({
     ? req.body.visible_to.map((id) => +id)
     : existing?.visible_to ?? null,
 
+  branch_id:
+    req.body.branch_id !== undefined
+      ? +req.body.branch_id
+      : existing?.branch_id ?? 1, // default to 1 if not provided
+
   status: req.body.status ?? existing?.status ?? "Active",
   terms_and_conditions_url:
     req.body.terms_and_conditions_url ??
@@ -93,7 +98,7 @@ const createScheme = async (req, res) => {
 /** List Schemes with filters (joined with master names) */
 const listSchemes = async (req, res) => {
   try {
-    const { material_type_id, scheme_type_id, status, scheme_code, search } = req.query;
+    const { material_type_id, scheme_type_id, status, scheme_code, search, branch_id } = req.query;
 
     let query = `
       SELECT
@@ -128,6 +133,10 @@ const listSchemes = async (req, res) => {
     if (scheme_code) {
       query += ` AND s.scheme_code = :scheme_code`;
       replacements.scheme_code = scheme_code;
+    }
+    if (branch_id) {
+      query += ` AND s.branch_id = :branch_id`;
+      replacements.branch_id = +branch_id;
     }
 
     if (search) {

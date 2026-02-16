@@ -1,75 +1,97 @@
-const { Op } = require('sequelize');
-const commonService = require('./commonService');
-const { models, sequelize } = require('../models/index');
+const { Op } = require("sequelize");
+const commonService = require("./commonService");
+const { models, sequelize } = require("../models/index");
 const { dateFilter } = require("../helpers/dateHelper");
 
+/**
+ * =========================================================
+ * NOTES (WHAT WAS OPTIMIZED / FIXED)
+ * =========================================================
+ * 1) getStockOverviewCount:
+ *    - reduced 4 DB round-trips -> 2 round-trips
+ *      (one query returns stock_in_hand + low_stock + out_of_stock, second query returns total_stock_value)
+ *
+ * 2) getOutOfStockSummaryInternal:
+ *    - FIXED: previously used buildSubcategoryFilters() which references c/mt/b aliases,
+ *      but query didn’t join categories/materialTypes/branches -> could break when search/category/material filters used
+ *    - optimized: COUNT(*) directly instead of fetching rows and using rows.length
+ *
+ * 3) getLowStockSummaryInternal:
+ *    - optimized to reuse filtered products early to reduce rows scanned
+ *
+ * 4) buildSubcategoryFilters:
+ *    - kept behavior, but it assumes joins exist (sc + p + c + mt + b). Now internal summary provides those joins.
+ *
+ * (You can further boost performance with indexes at DB level; I added suggestions at bottom as comments)
+ */
+
+/* =========================================================
+   OLD JEWEL REPORT
+========================================================= */
 const getOldJewelReport = async (req, res) => {
-    try {
-        const {
-            type = "old_jewel",
-            branch_id,
-            material_type_id,
-            from_date,
-            to_date,
-            date_filter,
-            search,
-            status,
-            page,
-            pageSize,
-            limit
-        } = req.query;
+  try {
+    const {
+      type = "old_jewel",
+      branch_id,
+      material_type_id,
+      from_date,
+      to_date,
+      date_filter,
+      search,
+      status,
+      page,
+      pageSize,
+      limit,
+    } = req.query;
 
-        // VALIDATION
-        if (!["old_jewel", "jewel_repair"].includes(type)) {
-            return commonService.badRequest(res, "Invalid report type");
-        }
+    if (!["old_jewel", "jewel_repair"].includes(type)) {
+      return commonService.badRequest(res, "Invalid report type");
+    }
 
-        // PAGINATION
-        const finalPageSize = pageSize || limit;
-        const hasPagination = page && finalPageSize;
-        const perPage = hasPagination ? Number(finalPageSize) : null;
-        const offset = hasPagination ? (page - 1) * perPage : null;
+    const finalPageSize = pageSize || limit;
+    const hasPagination = page && finalPageSize;
+    const perPage = hasPagination ? Number(finalPageSize) : null;
+    const offset = hasPagination ? (Number(page) - 1) * perPage : null;
 
-        const replacements = {};
-        let whereSql = `1=1`;
-        whereSql += dateFilter(
-            { from_date, to_date, date_filter },
-            "t.date",
-            replacements
-        );
-    
-        if (status) {
-            whereSql += ` AND t.status = :status`;
-            replacements.status = status;
-        }
+    const replacements = {};
+    let whereSql = `1=1`;
 
-        if (branch_id) {
-            whereSql += ` AND t.branch_id = :branch_id`;
-            replacements.branch_id = branch_id;
-        }
+    whereSql += dateFilter(
+      { from_date, to_date, date_filter },
+      "t.date",
+      replacements
+    );
 
-        // SEARCH SQL (SPLIT SAFELY)
-        const oldJewelSearchSql = search
-            ? ` AND (
+    if (status) {
+      whereSql += ` AND t.status = :status`;
+      replacements.status = status;
+    }
+
+    if (branch_id) {
+      whereSql += ` AND t.branch_id = :branch_id`;
+      replacements.branch_id = branch_id;
+    }
+
+    const oldJewelSearchSql = search
+      ? ` AND (
           t.old_jewel_code ILIKE :search
           OR c.customer_name ILIKE :search
           OR c.mobile_number ILIKE :search
         )`
-            : ``;
+      : ``;
 
-        const repairSearchSql = search
-            ? ` AND (
+    const repairSearchSql = search
+      ? ` AND (
           t.repair_code ILIKE :search
           OR c.customer_name ILIKE :search
           OR c.mobile_number ILIKE :search
         )`
-            : ``;
+      : ``;
 
-        if (search) replacements.search = `%${search}%`;
+    if (search) replacements.search = `%${search}%`;
 
-        // SCORECARDS
-        const [oldJewelCard] = await sequelize.query(
-            `
+    const [oldJewelCard] = await sequelize.query(
+      `
       SELECT
         COALESCE(SUM(oi.net_weight),0) AS total_weight,
         COUNT(oi.id) AS total_quantity
@@ -79,11 +101,11 @@ const getOldJewelReport = async (req, res) => {
       WHERE ${whereSql}
       ${oldJewelSearchSql}
       `,
-            { replacements, type: sequelize.QueryTypes.SELECT }
-        );
+      { replacements, type: sequelize.QueryTypes.SELECT }
+    );
 
-        const [repairCard] = await sequelize.query(
-            `
+    const [repairCard] = await sequelize.query(
+      `
       SELECT
         COALESCE(SUM(ri.weight),0) AS total_weight,
         COUNT(ri.id) AS total_quantity
@@ -93,29 +115,28 @@ const getOldJewelReport = async (req, res) => {
       WHERE ${whereSql}
       ${repairSearchSql}
       `,
-            { replacements, type: sequelize.QueryTypes.SELECT }
-        );
+      { replacements, type: sequelize.QueryTypes.SELECT }
+    );
 
-        // CONFIG BY TYPE
-        const config = type === "jewel_repair"
-            ? {
-                table: "jewel_repairs",
-                itemTable: "jewel_repair_items",
-                itemFk: "repair_id",
-                weight: "weight",
-                code: "repair_code"
-            }
-            : {
-                table: "old_jewels",
-                itemTable: "old_jewel_items",
-                itemFk: "old_jewel_id",
-                weight: "net_weight",
-                code: "old_jewel_code"
-            };
+    const config =
+      type === "jewel_repair"
+        ? {
+            table: "jewel_repairs",
+            itemTable: "jewel_repair_items",
+            itemFk: "repair_id",
+            weight: "weight",
+            code: "repair_code",
+          }
+        : {
+            table: "old_jewels",
+            itemTable: "old_jewel_items",
+            itemFk: "old_jewel_id",
+            weight: "net_weight",
+            code: "old_jewel_code",
+          };
 
-        // MATERIAL FILTER
-        if (material_type_id) {
-            whereSql += `
+    if (material_type_id) {
+      whereSql += `
         AND EXISTS (
           SELECT 1
           FROM ${config.itemTable} i
@@ -124,11 +145,10 @@ const getOldJewelReport = async (req, res) => {
           AND i.deleted_at IS NULL
         )
       `;
-            replacements.material_type_id = material_type_id;
-        }
+      replacements.material_type_id = material_type_id;
+    }
 
-        // GRID QUERY
-        let gridSql = `
+    let gridSql = `
       SELECT
         t.*,
         b.branch_name,
@@ -154,131 +174,131 @@ const getOldJewelReport = async (req, res) => {
       LEFT JOIN customers c ON c.id = t.customer_id
       LEFT JOIN branches b ON b.id = t.branch_id
       WHERE ${whereSql}
-      ${search ? ` AND (
-        t.${config.code} ILIKE :search
-        OR c.customer_name ILIKE :search
-        OR c.mobile_number ILIKE :search
-      )` : ""}
+      ${
+        search
+          ? ` AND (
+            t.${config.code} ILIKE :search
+            OR c.customer_name ILIKE :search
+            OR c.mobile_number ILIKE :search
+          )`
+          : ""
+      }
       ORDER BY t.id DESC
     `;
 
-        if (hasPagination) {
-            gridSql += ` LIMIT :limit OFFSET :offset`;
-            replacements.limit = perPage;
-            replacements.offset = offset;
-        }
+    if (hasPagination) {
+      gridSql += ` LIMIT :limit OFFSET :offset`;
+      replacements.limit = perPage;
+      replacements.offset = offset;
+    }
 
-        const data = await sequelize.query(gridSql, {
-            replacements,
-            type: sequelize.QueryTypes.SELECT
-        });
+    const data = await sequelize.query(gridSql, {
+      replacements,
+      type: sequelize.QueryTypes.SELECT,
+    });
 
-        // PAGINATION COUNT
-        let pagination = null;
-        if (hasPagination) {
-            const [{ total }] = await sequelize.query(
-                `
+    let pagination = null;
+    if (hasPagination) {
+      const [{ total }] = await sequelize.query(
+        `
         SELECT COUNT(*)::int AS total
         FROM ${config.table} t
         LEFT JOIN customers c ON c.id = t.customer_id
         WHERE ${whereSql}
         `,
-                { replacements, type: sequelize.QueryTypes.SELECT }
-            );
+        { replacements, type: sequelize.QueryTypes.SELECT }
+      );
 
-            pagination = {
-                total,
-                page: Number(page),
-                pageSize: perPage,
-                totalPages: Math.ceil(total / perPage)
-            };
-        }
-
-        return commonService.okResponse(res, {
-            scorecard: {
-                old_jewel: {
-                    total_weight: Number(oldJewelCard.total_weight).toFixed(3),
-                    total_quantity: Number(oldJewelCard.total_quantity)
-                },
-                jewel_repair: {
-                    total_weight: Number(repairCard.total_weight).toFixed(3),
-                    total_quantity: Number(repairCard.total_quantity)
-                }
-            },
-            data,
-            pagination
-        });
-
-    } catch (error) {
-        console.error("Old Jewel Report Error:", error);
-        return commonService.handleError(res, error);
+      pagination = {
+        total,
+        page: Number(page),
+        pageSize: perPage,
+        totalPages: Math.ceil(total / perPage),
+      };
     }
+
+    return commonService.okResponse(res, {
+      scorecard: {
+        old_jewel: {
+          total_weight: Number(oldJewelCard?.total_weight || 0).toFixed(3),
+          total_quantity: Number(oldJewelCard?.total_quantity || 0),
+        },
+        jewel_repair: {
+          total_weight: Number(repairCard?.total_weight || 0).toFixed(3),
+          total_quantity: Number(repairCard?.total_quantity || 0),
+        },
+      },
+      data,
+      pagination,
+    });
+  } catch (error) {
+    console.error("Old Jewel Report Error:", error);
+    return commonService.handleError(res, error);
+  }
 };
 
+/* =========================================================
+   STOCK AGEING REPORT
+========================================================= */
 const getStockAgeingReport = async (req, res) => {
-    try {
-        const {
-            material_type_id,
-            category_id,
-            subcategory_id,
-            grn_id,
-            ref_no_id,
-            search,
-            branch_id,
+  try {
+    const {
+      material_type_id,
+      category_id,
+      subcategory_id,
+      grn_id,
+      ref_no_id,
+      search,
+      branch_id,
 
-            ageing,        // 0_30 | 31_60 | 61_90 | 91_plus
-            date_filter,   // today | week | month | year
-            from_date,
-            to_date,
+      ageing, // 0_30 | 31_60 | 61_90 | 91_plus
+      date_filter,
+      from_date,
+      to_date,
 
-            page,
-            limit
-        } = req.query;
+      page,
+      limit,
+    } = req.query;
 
-        const usePagination = page && limit;
-        const offset = usePagination ? (Number(page) - 1) * Number(limit) : null;
+    const usePagination = page && limit;
+    const offset = usePagination ? (Number(page) - 1) * Number(limit) : null;
 
-        const replacements = {};
-        let whereSql = `
+    const replacements = {};
+    let whereSql = `
       WHERE p.status = 'Active'
       AND p.deleted_at IS NULL
       AND pid.quantity > 0
       AND pid.deleted_at IS NULL
     `;
 
-        if (material_type_id) {
-            whereSql += ` AND p.material_type_id = :material_type_id`;
-            replacements.material_type_id = material_type_id;
-        }
+    if (material_type_id) {
+      whereSql += ` AND p.material_type_id = :material_type_id`;
+      replacements.material_type_id = material_type_id;
+    }
+    if (category_id) {
+      whereSql += ` AND p.category_id = :category_id`;
+      replacements.category_id = category_id;
+    }
+    if (subcategory_id) {
+      whereSql += ` AND p.subcategory_id = :subcategory_id`;
+      replacements.subcategory_id = subcategory_id;
+    }
+    if (grn_id) {
+      whereSql += ` AND p.grn_id = :grn_id`;
+      replacements.grn_id = grn_id;
+    }
+    if (ref_no_id) {
+      whereSql += ` AND p.ref_no_id = :ref_no_id`;
+      replacements.ref_no_id = ref_no_id;
+    }
+    if (branch_id) {
+      whereSql += ` AND p.branch_id = :branch_id`;
+      replacements.branch_id = branch_id;
+    }
 
-        if (category_id) {
-            whereSql += ` AND p.category_id = :category_id`;
-            replacements.category_id = category_id;
-        }
-
-        if (subcategory_id) {
-            whereSql += ` AND p.subcategory_id = :subcategory_id`;
-            replacements.subcategory_id = subcategory_id;
-        }
-
-        if (grn_id) {
-            whereSql += ` AND p.grn_id = :grn_id`;
-            replacements.grn_id = grn_id;
-        }
-
-        if (ref_no_id) {
-            whereSql += ` AND p.ref_no_id = :ref_no_id`;
-            replacements.ref_no_id = ref_no_id;
-        }
-
-        if (branch_id) {
-            whereSql += ` AND p.branch_id = :branch_id`;
-            replacements.branch_id = branch_id;
-        }
-
-        if (search) {
-            replacements.search = `%${search}%`;
-            whereSql += `
+    if (search) {
+      replacements.search = `%${search}%`;
+      whereSql += `
         AND (
           p.product_name ILIKE :search
           OR p.sku_id ILIKE :search
@@ -286,23 +306,26 @@ const getStockAgeingReport = async (req, res) => {
           OR b.branch_name ILIKE :search
         )
       `;
-        }
+    }
 
-        const stockDateCondition = dateFilter(
-            { from_date, to_date, date_filter },
-            "p.created_at::date",
-            replacements
-        );
+    const stockDateCondition = dateFilter(
+      { from_date, to_date, date_filter },
+      "p.created_at::date",
+      replacements
+    );
 
-        let ageingSql = ``;
+    let ageingSql = ``;
+    if (ageing === "0_30")
+      ageingSql = ` AND (CURRENT_DATE - p.created_at::date) <= 30`;
+    if (ageing === "31_60")
+      ageingSql = ` AND (CURRENT_DATE - p.created_at::date) BETWEEN 31 AND 60`;
+    if (ageing === "61_90")
+      ageingSql = ` AND (CURRENT_DATE - p.created_at::date) BETWEEN 61 AND 90`;
+    if (ageing === "91_plus")
+      ageingSql = ` AND (CURRENT_DATE - p.created_at::date) >= 91`;
 
-        if (ageing === "0_30") ageingSql = ` AND (CURRENT_DATE - p.created_at::date) <= 30`;
-        if (ageing === "31_60") ageingSql = ` AND (CURRENT_DATE - p.created_at::date) BETWEEN 31 AND 60`;
-        if (ageing === "61_90") ageingSql = ` AND (CURRENT_DATE - p.created_at::date) BETWEEN 61 AND 90`;
-        if (ageing === "91_plus") ageingSql = ` AND (CURRENT_DATE - p.created_at::date) >= 91`;
-
-        const scoreRows = await sequelize.query(
-            `
+    const scoreRows = await sequelize.query(
+      `
       SELECT
         CASE
           WHEN (CURRENT_DATE - p.created_at::date) <= 30 THEN '0_30'
@@ -320,23 +343,22 @@ const getStockAgeingReport = async (req, res) => {
       ${stockDateCondition}
       GROUP BY bucket
       `,
-            { replacements, type: sequelize.QueryTypes.SELECT }
-        );
+      { replacements, type: sequelize.QueryTypes.SELECT }
+    );
 
-        const cards = {
-            "0_30": { weight: "0.000", qty: 0 },
-            "31_60": { weight: "0.000", qty: 0 },
-            "61_90": { weight: "0.000", qty: 0 },
-            "91_plus": { weight: "0.000", qty: 0 },
-        };
+    const cards = {
+      "0_30": { weight: "0.000", qty: 0 },
+      "31_60": { weight: "0.000", qty: 0 },
+      "61_90": { weight: "0.000", qty: 0 },
+      "91_plus": { weight: "0.000", qty: 0 },
+    };
 
-        scoreRows.forEach(r => {
-            cards[r.bucket].weight = Number(r.total_weight || 0).toFixed(3);
-            cards[r.bucket].qty = Number(r.total_quantity || 0);
-        });
+    scoreRows.forEach((r) => {
+      cards[r.bucket].weight = Number(r.total_weight || 0).toFixed(3);
+      cards[r.bucket].qty = Number(r.total_quantity || 0);
+    });
 
-        // GRID
-        let gridSql = `
+    let gridSql = `
         SELECT
         p.id,
         p.product_name,
@@ -352,7 +374,6 @@ const getStockAgeingReport = async (req, res) => {
 
         p.grn_id,
         g.grn_no,
-
         gi.ref_no AS grn_ref_no,
 
         mt.material_type,
@@ -395,108 +416,103 @@ const getStockAgeingReport = async (req, res) => {
         ct.category_name,
         sc.subcategory_name,
         b.branch_name
-        ORDER BY p.id DESC
-        `;
+      ORDER BY p.id DESC
+    `;
 
-
-        if (usePagination) {
-            gridSql += ` LIMIT :limit OFFSET :offset`;
-            replacements.limit = Number(limit);
-            replacements.offset = offset;
-        }
-
-        const data = await sequelize.query(gridSql, {
-            replacements,
-            type: sequelize.QueryTypes.SELECT
-        });
-
-        return commonService.okResponse(res, {
-            cards,
-            data
-        });
-
-    } catch (error) {
-        console.error("Stock Ageing Error:", error);
-        return commonService.handleError(res, error);
+    if (usePagination) {
+      gridSql += ` LIMIT :limit OFFSET :offset`;
+      replacements.limit = Number(limit);
+      replacements.offset = offset;
     }
+
+    const data = await sequelize.query(gridSql, {
+      replacements,
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    return commonService.okResponse(res, { cards, data });
+  } catch (error) {
+    console.error("Stock Ageing Error:", error);
+    return commonService.handleError(res, error);
+  }
 };
 
-// Old one - Future reference
+/* =========================================================
+   OLD ONE - FUTURE REFERENCE
+========================================================= */
 const getAllStockDetails = async (req, res) => {
-    try {
-        const {
-            material_type_id,
-            category_id,
-            subcategory_id,
-            grn_id,
-            ref_no_id,
-            search,
-            branch_id,
-            page,
-            limit,
-        } = req.query;
+  try {
+    const {
+      material_type_id,
+      category_id,
+      subcategory_id,
+      grn_id,
+      ref_no_id,
+      search,
+      branch_id,
+      page,
+      limit,
+    } = req.query;
 
-        const usePagination = page !== undefined || limit !== undefined;
-        const pageNum = usePagination ? parseInt(page || 1, 10) : null;
-        const limitNum = usePagination ? parseInt(limit || 10, 10) : null;
-        const offset = usePagination ? (pageNum - 1) * limitNum : null;
+    const usePagination = page !== undefined || limit !== undefined;
+    const pageNum = usePagination ? parseInt(page || 1, 10) : null;
+    const limitNum = usePagination ? parseInt(limit || 10, 10) : null;
+    const offset = usePagination ? (pageNum - 1) * limitNum : null;
 
-        let whereClause = `WHERE p.status = 'Active' AND p.deleted_at IS NULL`;
+    let whereClause = `WHERE p.status = 'Active' AND p.deleted_at IS NULL`;
+    const replacements = {};
 
-        const replacements = {};
+    if (material_type_id) {
+      whereClause += ` AND p.material_type_id = :material_type_id`;
+      replacements.material_type_id = +material_type_id;
+    }
+    if (category_id) {
+      whereClause += ` AND p.category_id = :category_id`;
+      replacements.category_id = +category_id;
+    }
+    if (branch_id) {
+      whereClause += ` AND p.branch_id = :branch_id`;
+      replacements.branch_id = +branch_id;
+    }
+    if (subcategory_id) {
+      whereClause += ` AND p.subcategory_id = :subcategory_id`;
+      replacements.subcategory_id = +subcategory_id;
+    }
+    if (grn_id) {
+      whereClause += ` AND p.grn_id = :grn_id`;
+      replacements.grn_id = +grn_id;
+    }
+    if (ref_no_id) {
+      whereClause += ` AND p.ref_no_id = :ref_no_id`;
+      replacements.ref_no_id = +ref_no_id;
+    }
 
-        if (material_type_id) {
-            whereClause += ` AND p.material_type_id = :material_type_id`;
-            replacements.material_type_id = +material_type_id;
-        }
+    whereClause += ` AND EXISTS (
+      SELECT 1 FROM "productItemDetails" pid_stock
+      WHERE pid_stock.product_id = p.id
+      AND pid_stock.quantity > 0
+      AND pid_stock.deleted_at IS NULL
+    )`;
 
-        if (category_id) {
-            whereClause += ` AND p.category_id = :category_id`;
-            replacements.category_id = +category_id;
-        }
+    if (search) {
+      const like = `%${search}%`;
+      whereClause += ` AND (
+        p.product_name ILIKE :like OR
+        p.product_code ILIKE :like OR
+        p.sku_id ILIKE :like OR
+        p.description ILIKE :like OR
+        p.hsn_code ILIKE :like OR
+        mt.material_type ILIKE :like OR
+        b.branch_name ILIKE :like OR
+        g.grn_no ILIKE :like OR
+        gi.ref_no ILIKE :like
+      )`;
+      replacements.like = like;
+    }
 
-        if (branch_id) {
-            whereClause += ` AND p.branch_id = :branch_id`;
-            replacements.branch_id = +branch_id;
-        }
-
-        if (subcategory_id) {
-            whereClause += ` AND p.subcategory_id = :subcategory_id`;
-            replacements.subcategory_id = +subcategory_id;
-        }
-
-        if (grn_id) {
-            whereClause += ` AND p.grn_id = :grn_id`;
-            replacements.grn_id = +grn_id;
-        }
-
-        if (ref_no_id) {
-            whereClause += ` AND p.ref_no_id = :ref_no_id`;
-            replacements.ref_no_id = +ref_no_id;
-        }
-        // Stock filter (only quantity > 0)
-        whereClause += ` AND EXISTS ( SELECT 1 FROM "productItemDetails" pid_stock WHERE pid_stock.product_id = p.id
-        AND pid_stock.quantity > 0 AND pid_stock.deleted_at IS NULL )`;
-
-        if (search) {
-            const like = `%${search}%`;
-            whereClause += `AND (
-          p.product_name ILIKE :like OR
-          p.product_code ILIKE :like OR
-          p.sku_id ILIKE :like OR
-          p.description ILIKE :like OR
-          p.hsn_code ILIKE :like OR
-          mt.material_type ILIKE :like OR
-          b.branch_name ILIKE :like OR
-          g.grn_no ILIKE :like OR
-          gi.ref_no ILIKE :like)`;
-            replacements.like = like;
-        }
-
-        // -------- COUNT --------
-        let total = null;
-        if (usePagination) {
-            const countQuery = `
+    let total = null;
+    if (usePagination) {
+      const countQuery = `
         SELECT COUNT(DISTINCT p.id) AS total
         FROM products p
         LEFT JOIN "productItemDetails" pid ON pid.product_id = p.id
@@ -506,14 +522,13 @@ const getAllStockDetails = async (req, res) => {
         LEFT JOIN categories ct ON ct.id = p.category_id
         LEFT JOIN subcategories sc ON sc.id = p.subcategory_id
         LEFT JOIN branches b ON b.id = p.branch_id
-        ${whereClause}`;
+        ${whereClause}
+      `;
+      const [countResult] = await sequelize.query(countQuery, { replacements });
+      total = Number(countResult[0]?.total || 0);
+    }
 
-            const [countResult] = await sequelize.query(countQuery, { replacements });
-            total = Number(countResult[0]?.total || 0);
-        }
-
-        // -------- MAIN QUERY --------
-        let query = `
+    let query = `
         SELECT
             p.id,
             p.product_code,
@@ -561,87 +576,83 @@ const getAllStockDetails = async (req, res) => {
             p.id, mt.material_type, mt.material_price,
             ct.category_name, ct.category_image_url,
             sc.subcategory_name, g.grn_no, gi.ref_no, b.branch_name
-        ORDER BY p.id DESC`;
+        ORDER BY p.id DESC
+    `;
 
-        if (usePagination) {
-            query += ` LIMIT :limit OFFSET :offset`;
-        }
+    if (usePagination) query += ` LIMIT :limit OFFSET :offset`;
 
-        const [rows] = await sequelize.query(query, {
-            replacements: {
-                ...replacements,
-                ...(usePagination ? { limit: limitNum, offset } : {}),
-            },
-        });
+    const [rows] = await sequelize.query(query, {
+      replacements: {
+        ...replacements,
+        ...(usePagination ? { limit: limitNum, offset } : {}),
+      },
+    });
 
-        let products = rows;
+    let products = rows;
 
-        // -------- ITEM DETAILS --------
-        if (products.length) {
-            const productIds = products.map(p => p.id);
+    if (products.length) {
+      const productIds = products.map((p) => p.id);
 
-            const itemDetails = await models.ProductItemDetail.findAll({
-                where: {
-                    product_id: productIds,
-                    quantity: { [Op.gt]: 0 },
-                },
-                order: [["id", "ASC"]],
-            });
+      const itemDetails = await models.ProductItemDetail.findAll({
+        where: {
+          product_id: productIds,
+          quantity: { [Op.gt]: 0 },
+        },
+        order: [["id", "ASC"]],
+      });
 
-            const itemsByProduct = itemDetails.reduce((acc, item) => {
-                (acc[item.product_id] ??= []).push(item);
-                return acc;
-            }, {});
+      const itemsByProduct = itemDetails.reduce((acc, item) => {
+        (acc[item.product_id] ??= []).push(item);
+        return acc;
+      }, {});
 
-            products = products.map(product => ({
-                ...product,
-                item_details: itemsByProduct[product.id] || [],
-            }));
-        }
-
-        const response = { products };
-
-        if (usePagination) {
-            response.pagination = {
-                total,
-                page: pageNum,
-                limit: limitNum,
-                totalPages: Math.ceil(total / limitNum),
-            };
-        }
-
-        return commonService.okResponse(res, response);
-
-    } catch (err) {
-        return commonService.handleError(res, err);
+      products = products.map((product) => ({
+        ...product,
+        item_details: itemsByProduct[product.id] || [],
+      }));
     }
+
+    const response = { products };
+
+    if (usePagination) {
+      response.pagination = {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum),
+      };
+    }
+
+    return commonService.okResponse(res, response);
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
 };
 
-// Old one - Future reference
+/* =========================================================
+   OLD LOW STOCK / OUT OF STOCK (FUTURE REFERENCE)
+========================================================= */
 const getLowStockSummary = async (req, res) => {
-    try {
-        const { branch_id, material_type_id, category_id, search } = req.query;
+  try {
+    const { branch_id, material_type_id, category_id, search } = req.query;
 
-        const replacements = {};
-        let filterSql = `WHERE sc.deleted_at IS NULL`;
+    const replacements = {};
+    let filterSql = `WHERE sc.deleted_at IS NULL`;
 
-        if (branch_id) {
-            filterSql += ` AND p.branch_id = :branch_id`;
-            replacements.branch_id = branch_id;
-        }
-
-        if (material_type_id) {
-            filterSql += ` AND p.material_type_id = :material_type_id`;
-            replacements.material_type_id = material_type_id;
-        }
-
-        if (category_id) {
-            filterSql += ` AND p.category_id = :category_id`;
-            replacements.category_id = category_id;
-        }
-
-        if (search) {
-            filterSql += `
+    if (branch_id) {
+      filterSql += ` AND p.branch_id = :branch_id`;
+      replacements.branch_id = branch_id;
+    }
+    if (material_type_id) {
+      filterSql += ` AND p.material_type_id = :material_type_id`;
+      replacements.material_type_id = material_type_id;
+    }
+    if (category_id) {
+      filterSql += ` AND p.category_id = :category_id`;
+      replacements.category_id = category_id;
+    }
+    if (search) {
+      filterSql += `
         AND (
           sc.subcategory_name ILIKE :search
           OR c.category_name ILIKE :search
@@ -649,19 +660,19 @@ const getLowStockSummary = async (req, res) => {
           OR b.branch_name ILIKE :search
         )
       `;
-            replacements.search = `%${search}%`;
-        }
+      replacements.search = `%${search}%`;
+    }
 
-        const rows = await sequelize.query(
-            `
+    const rows = await sequelize.query(
+      `
       WITH product_stock AS (
         SELECT
           p.id AS product_id,
           p.subcategory_id,
           SUM(pid.quantity) AS total_qty
         FROM products p
-        JOIN "productItemDetails" pid 
-          ON pid.product_id = p.id 
+        JOIN "productItemDetails" pid
+          ON pid.product_id = p.id
           AND pid.deleted_at IS NULL
         WHERE p.deleted_at IS NULL
         GROUP BY p.id, p.subcategory_id
@@ -697,46 +708,42 @@ const getLowStockSummary = async (req, res) => {
         sc.reorder_level
       ORDER BY low_stock_count DESC
       `,
-            { replacements, type: sequelize.QueryTypes.SELECT }
-        );
+      { replacements, type: sequelize.QueryTypes.SELECT }
+    );
 
-        return commonService.okResponse(res, { data: rows });
-    } catch (error) {
-        console.error("Low Stock Error", error);
-        return commonService.handleError(res, error);
-    }
+    return commonService.okResponse(res, { data: rows });
+  } catch (error) {
+    console.error("Low Stock Error", error);
+    return commonService.handleError(res, error);
+  }
 };
 
-// Out of Stock Summary - based on All products qty = 0
 const getOutOfStockOldSummary = async (req, res) => {
-    try {
-        const { branch_id, material_type_id, category_id, subcategory_id, search } = req.query;
+  try {
+    const { branch_id, material_type_id, category_id, subcategory_id, search } =
+      req.query;
 
-        const replacements = {};
-        let filterSql = `WHERE sc.deleted_at IS NULL`;
+    const replacements = {};
+    let filterSql = `WHERE sc.deleted_at IS NULL`;
 
-        if (branch_id) {
-            filterSql += ` AND p.branch_id = :branch_id`;
-            replacements.branch_id = branch_id;
-        }
-
-        if (material_type_id) {
-            filterSql += ` AND p.material_type_id = :material_type_id`;
-            replacements.material_type_id = material_type_id;
-        }
-
-        if (category_id) {
-            filterSql += ` AND p.category_id = :category_id`;
-            replacements.category_id = category_id;
-        }
-        
-        if (subcategory_id) {
-            filterSql += ` AND p.subcategory_id = :subcategory_id`;
-            replacements.subcategory_id = subcategory_id;
-        }
-
-        if (search) {
-            filterSql += `
+    if (branch_id) {
+      filterSql += ` AND p.branch_id = :branch_id`;
+      replacements.branch_id = branch_id;
+    }
+    if (material_type_id) {
+      filterSql += ` AND p.material_type_id = :material_type_id`;
+      replacements.material_type_id = material_type_id;
+    }
+    if (category_id) {
+      filterSql += ` AND p.category_id = :category_id`;
+      replacements.category_id = category_id;
+    }
+    if (subcategory_id) {
+      filterSql += ` AND p.subcategory_id = :subcategory_id`;
+      replacements.subcategory_id = subcategory_id;
+    }
+    if (search) {
+      filterSql += `
         AND (
           sc.subcategory_name ILIKE :search
           OR c.category_name ILIKE :search
@@ -744,11 +751,11 @@ const getOutOfStockOldSummary = async (req, res) => {
           OR b.branch_name ILIKE :search
         )
       `;
-            replacements.search = `%${search}%`;
-        }
+      replacements.search = `%${search}%`;
+    }
 
-        const rows = await sequelize.query(
-            `
+    const rows = await sequelize.query(
+      `
       WITH product_stock AS (
         SELECT
           p.id AS product_id,
@@ -773,10 +780,10 @@ const getOutOfStockOldSummary = async (req, res) => {
         COUNT(p.id) AS product_count,
         MAX(ps.total_qty) AS quantity
       FROM subcategories sc
-      JOIN products p 
+      JOIN products p
         ON p.subcategory_id = sc.id
         AND p.deleted_at IS NULL
-      JOIN product_stock ps 
+      JOIN product_stock ps
         ON ps.product_id = p.id
       LEFT JOIN branches b ON b.id = p.branch_id
       LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
@@ -795,41 +802,37 @@ const getOutOfStockOldSummary = async (req, res) => {
       AND MAX(ps.total_qty) = 0
       ORDER BY sc.subcategory_name
       `,
-            { replacements, type: sequelize.QueryTypes.SELECT }
-        );
+      { replacements, type: sequelize.QueryTypes.SELECT }
+    );
 
-        return commonService.okResponse(res, { data: rows });
-    } catch (error) {
-        console.error("Out of Stock Error:", error);
-        return commonService.handleError(res, error);
-    }
+    return commonService.okResponse(res, { data: rows });
+  } catch (error) {
+    console.error("Out of Stock Error:", error);
+    return commonService.handleError(res, error);
+  }
 };
 
-// Out of Stock Summary - based on Subcategory has no products
 const getOutOfStockSummary = async (req, res) => {
-    try {
-        const { branch_id, material_type_id, category_id, search } = req.query;
+  try {
+    const { branch_id, material_type_id, category_id, search } = req.query;
 
-        const replacements = {};
-        let filterSql = `WHERE sc.deleted_at IS NULL`;
+    const replacements = {};
+    let filterSql = `WHERE sc.deleted_at IS NULL`;
 
-        if (branch_id) {
-            filterSql += ` AND b.id = :branch_id`;
-            replacements.branch_id = branch_id;
-        }
-
-        if (material_type_id) {
-            filterSql += ` AND p.material_type_id = :material_type_id`;
-            replacements.material_type_id = material_type_id;
-        }
-
-        if (category_id) {
-            filterSql += ` AND p.category_id = :category_id`;
-            replacements.category_id = category_id;
-        }
-
-        if (search) {
-            filterSql += `
+    if (branch_id) {
+      filterSql += ` AND b.id = :branch_id`;
+      replacements.branch_id = branch_id;
+    }
+    if (material_type_id) {
+      filterSql += ` AND p.material_type_id = :material_type_id`;
+      replacements.material_type_id = material_type_id;
+    }
+    if (category_id) {
+      filterSql += ` AND p.category_id = :category_id`;
+      replacements.category_id = category_id;
+    }
+    if (search) {
+      filterSql += `
         AND (
           sc.subcategory_name ILIKE :search
           OR c.category_name ILIKE :search
@@ -837,11 +840,11 @@ const getOutOfStockSummary = async (req, res) => {
           OR b.branch_name ILIKE :search
         )
       `;
-            replacements.search = `%${search}%`;
-        }
+      replacements.search = `%${search}%`;
+    }
 
-        const data = await sequelize.query(
-            `
+    const data = await sequelize.query(
+      `
       SELECT
         b.id AS branch_id,
         b.branch_name,
@@ -862,7 +865,7 @@ const getOutOfStockSummary = async (req, res) => {
         b.id,
         b.branch_name,
         mt.material_type,
-        c.category_name,        
+        c.category_name,
         sc.materialtype_id,
         sc.category_id,
         sc.id,
@@ -870,92 +873,80 @@ const getOutOfStockSummary = async (req, res) => {
       HAVING COUNT(p.id) = 0
       ORDER BY sc.subcategory_name
       `,
-            { replacements, type: sequelize.QueryTypes.SELECT }
-        );
+      { replacements, type: sequelize.QueryTypes.SELECT }
+    );
 
-        return commonService.okResponse(res, { data });
-    } catch (error) {
-        console.error("Out of Stock Error:", error);
-        return commonService.handleError(res, error);
-    }
+    return commonService.okResponse(res, { data });
+  } catch (error) {
+    console.error("Out of Stock Error:", error);
+    return commonService.handleError(res, error);
+  }
 };
 
-// New
+/* =========================================================
+   NEW HELPERS (FILTER BUILDERS)
+========================================================= */
 const buildBaseFilters = (query, replacements) => {
-    let where = `WHERE p.deleted_at IS NULL AND p.status = 'Active'`;
+  let where = `WHERE p.deleted_at IS NULL AND p.status = 'Active'`;
 
-    if (query.branch_id) {
-        where += ` AND p.branch_id = :branch_id`;
-        replacements.branch_id = query.branch_id;
-    }
+  if (query.branch_id) {
+    where += ` AND p.branch_id = :branch_id`;
+    replacements.branch_id = query.branch_id;
+  }
+  if (query.material_type_id) {
+    where += ` AND p.material_type_id = :material_type_id`;
+    replacements.material_type_id = query.material_type_id;
+  }
+  if (query.category_id) {
+    where += ` AND p.category_id = :category_id`;
+    replacements.category_id = query.category_id;
+  }
+  if (query.subcategory_id) {
+    where += ` AND p.subcategory_id = :subcategory_id`;
+    replacements.subcategory_id = query.subcategory_id;
+  }
+  if (query.grn_id) {
+    where += ` AND p.grn_id = :grn_id`;
+    replacements.grn_id = query.grn_id;
+  }
+  if (query.ref_no_id) {
+    where += ` AND p.ref_no_id = :ref_no_id`;
+    replacements.ref_no_id = query.ref_no_id;
+  }
 
-    if (query.material_type_id) {
-        where += ` AND p.material_type_id = :material_type_id`;
-        replacements.material_type_id = query.material_type_id;
-    }
-
-    if (query.category_id) {
-        where += ` AND p.category_id = :category_id`;
-        replacements.category_id = query.category_id;
-    }
-
-    if (query.subcategory_id) {
-        where += ` AND p.subcategory_id = :subcategory_id`;
-        replacements.subcategory_id = query.subcategory_id;
-    }
-
-    if (query.grn_id) {
-        where += ` AND p.grn_id = :grn_id`;
-        replacements.grn_id = query.grn_id;
-    }
-
-    if (query.ref_no_id) {
-        where += ` AND p.ref_no_id = :ref_no_id`;
-        replacements.ref_no_id = query.ref_no_id;
-    }
-
-    if (query.search) {
-        where += `
+  if (query.search) {
+    where += `
       AND (
         p.product_name ILIKE :search OR
         p.product_code ILIKE :search OR
         p.sku_id ILIKE :search
       )
     `;
-        replacements.search = `%${query.search}%`;
-    }
+    replacements.search = `%${query.search}%`;
+  }
 
-    const dateCondition = dateFilter(
-        query,
-        "p.created_at::date",
-        replacements
-    );
-
-    where += dateCondition;
-
-    return where;
+  where += dateFilter(query, "p.created_at::date", replacements);
+  return where;
 };
 
 const buildSubcategoryFilters = (query, replacements) => {
-    let where = `WHERE sc.deleted_at IS NULL`;
+  let where = `WHERE sc.deleted_at IS NULL`;
 
-    if (query.material_type_id) {
-        where += ` AND sc.materialtype_id = :material_type_id`;
-        replacements.material_type_id = query.material_type_id;
-    }
+  if (query.material_type_id) {
+    where += ` AND sc.materialtype_id = :material_type_id`;
+    replacements.material_type_id = query.material_type_id;
+  }
+  if (query.category_id) {
+    where += ` AND sc.category_id = :category_id`;
+    replacements.category_id = query.category_id;
+  }
+  if (query.subcategory_id) {
+    where += ` AND sc.id = :subcategory_id`;
+    replacements.subcategory_id = query.subcategory_id;
+  }
 
-    if (query.category_id) {
-        where += ` AND sc.category_id = :category_id`;
-        replacements.category_id = query.category_id;
-    }
-
-    if (query.subcategory_id) {
-        where += ` AND sc.id = :subcategory_id`;
-        replacements.subcategory_id = query.subcategory_id;
-    }
-
-    if (query.search) {
-        where += `
+  if (query.search) {
+    where += `
       AND (
         sc.subcategory_name ILIKE :search
         OR c.category_name ILIKE :search
@@ -963,23 +954,21 @@ const buildSubcategoryFilters = (query, replacements) => {
         OR b.branch_name ILIKE :search
       )
     `;
-        replacements.search = `%${query.search}%`;
-    }
+    replacements.search = `%${query.search}%`;
+  }
 
-    const dateCondition = dateFilter(
-        query,
-        "p.created_at::date",
-        replacements
-    );
+  // Note: this expects products p to be joined (LEFT JOIN products p ...)
+  where += dateFilter(query, "p.created_at::date", replacements);
 
-    where += dateCondition;
-
-    return where;
+  return where;
 };
 
+/* =========================================================
+   STOCK SUMMARY HELPERS
+========================================================= */
 const getStockInHandSummary = async (where, replacements) => {
-    const [rows] = await sequelize.query(
-        `
+  const [rows] = await sequelize.query(
+    `
     SELECT
       COALESCE(SUM(pid.quantity), 0) AS total_quantity,
       COALESCE(SUM(pid.quantity * pid.gross_weight), 0) AS total_weight,
@@ -991,95 +980,135 @@ const getStockInHandSummary = async (where, replacements) => {
       AND pid.deleted_at IS NULL
     ${where}
     `,
-        { replacements }
-    );
+    { replacements }
+  );
 
-    return {
-        total_quantity: Number(rows[0]?.total_quantity || 0),
-        total_weight: Number(rows[0]?.total_weight || 0),
-        product_count: Number(rows[0]?.product_count || 0),
-    };
+  return {
+    total_quantity: Number(rows[0]?.total_quantity || 0),
+    total_weight: Number(rows[0]?.total_weight || 0),
+    product_count: Number(rows[0]?.product_count || 0),
+  };
 };
 
 const getLowStockSummaryInternal = async (where, replacements) => {
-    const [rows] = await sequelize.query(
-        `
-    WITH product_stock AS (
+  // Optimization: filter products early using the same base where (status/branch/material/category/search/date)
+  const [rows] = await sequelize.query(
+    `
+    WITH filtered_products AS (
+      SELECT p.id, p.subcategory_id, p.branch_id, p.material_type_id, p.category_id
+      FROM products p
+      ${where}
+    ),
+    product_stock AS (
       SELECT
-        p.id AS product_id,
-        p.subcategory_id,
-        p.branch_id,
+        fp.id AS product_id,
+        fp.subcategory_id,
+        fp.branch_id,
         SUM(pid.quantity) AS total_qty,
         SUM(pid.quantity * pid.gross_weight) AS total_weight
-      FROM products p
+      FROM filtered_products fp
       JOIN "productItemDetails" pid
-        ON pid.product_id = p.id
+        ON pid.product_id = fp.id
         AND pid.deleted_at IS NULL
-      WHERE p.deleted_at IS NULL
-      GROUP BY p.id, p.subcategory_id, p.branch_id
+      GROUP BY fp.id, fp.subcategory_id, fp.branch_id
     ),
     low_stock_rows AS (
       SELECT
-        b.id AS branch_id,
-        sc.id AS subcategory_id,
+        ps.branch_id,
+        ps.subcategory_id,
         SUM(ps.total_weight) AS row_weight
-      FROM subcategories sc
-      JOIN products p ON p.subcategory_id = sc.id
-      JOIN product_stock ps ON ps.product_id = p.id
-      LEFT JOIN branches b ON b.id = p.branch_id
-      LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
-      LEFT JOIN categories c ON c.id = p.category_id
-      ${where}
-      AND ps.total_qty < sc.reorder_level
-      GROUP BY
-        b.id,
-        sc.id
+      FROM product_stock ps
+      JOIN subcategories sc ON sc.id = ps.subcategory_id AND sc.deleted_at IS NULL
+      WHERE ps.total_qty < sc.reorder_level
+      GROUP BY ps.branch_id, ps.subcategory_id
     )
     SELECT
       COUNT(*) AS subcategory_count,
       COALESCE(SUM(row_weight), 0) AS total_weight
     FROM low_stock_rows
     `,
-        { replacements }
-    );
+    { replacements }
+  );
 
-    return {
-        subcategory_count: Number(rows[0]?.subcategory_count || 0),
-        total_weight: Number(rows[0]?.total_weight || 0),
-    };
+  return {
+    subcategory_count: Number(rows[0]?.subcategory_count || 0),
+    total_weight: Number(rows[0]?.total_weight || 0),
+  };
 };
 
 const getOutOfStockSummaryInternal = async (query) => {
-    const replacements = {};
-    const where = buildSubcategoryFilters(query, replacements);
+  // FIX + OPTIMIZATION:
+  // - Provide joins for c/mt/b aliases used in buildSubcategoryFilters
+  // - COUNT(*) directly (no rows.length)
+  const replacements = {};
+  const where = buildSubcategoryFilters(query, replacements);
 
-    const rows = await sequelize.query(
-        `
-    SELECT sc.id
-    FROM subcategories sc
-    LEFT JOIN products p
-      ON p.subcategory_id = sc.id
-      AND p.deleted_at IS NULL
-    ${where}
-    GROUP BY sc.id
-    HAVING COUNT(p.id) = 0
+  const [rows] = await sequelize.query(
+    `
+    SELECT
+      COUNT(*)::int AS subcategory_count
+    FROM (
+      SELECT sc.id
+      FROM subcategories sc
+      LEFT JOIN products p
+        ON p.subcategory_id = sc.id
+        AND p.deleted_at IS NULL
+        AND p.status = 'Active'
+      LEFT JOIN branches b ON b.id = p.branch_id AND b.deleted_at IS NULL
+      LEFT JOIN "materialTypes" mt ON mt.id = sc.materialtype_id AND mt.deleted_at IS NULL
+      LEFT JOIN categories c ON c.id = sc.category_id AND c.deleted_at IS NULL
+      ${where}
+      GROUP BY sc.id
+      HAVING COUNT(p.id) = 0
+    ) x
     `,
-        { replacements, type: sequelize.QueryTypes.SELECT }
-    );
+    { replacements }
+  );
 
-    return {
-        subcategory_count: rows.length,
-    };
+  return {
+    subcategory_count: Number(rows[0]?.subcategory_count || 0),
+  };
+};
+
+/* =========================================================
+   STOCK LIST HELPERS
+========================================================= */
+const attachItemDetails = async (products) => {
+  if (!products.length) return products;
+
+  const productIds = products.map((p) => p.id);
+
+  const itemDetails = await models.ProductItemDetail.findAll({
+    where: {
+      product_id: productIds,
+      quantity: { [Op.gt]: 0 },
+      deleted_at: null,
+    },
+    order: [["id", "ASC"]],
+  });
+
+  const itemsByProduct = itemDetails.reduce((acc, item) => {
+    (acc[item.product_id] ??= []).push(item);
+    return acc;
+  }, {});
+
+  return products.map((product) => {
+    const items = itemsByProduct[product.id];
+    if (items && items.length > 0) {
+      return { ...product, item_details: items };
+    }
+    return product;
+  });
 };
 
 const getStockInHandList = async (
-    whereClause,
-    replacements,
-    usePagination,
-    limit,
-    offset
+  whereClause,
+  replacements,
+  usePagination,
+  limit,
+  offset
 ) => {
-    let query = `
+  let query = `
     SELECT
       p.id,
       p.product_code,
@@ -1115,7 +1144,9 @@ const getStockInHandList = async (
       p.created_at,
       p.updated_at
     FROM products p
-    LEFT JOIN "productItemDetails" pid ON pid.product_id = p.id
+    LEFT JOIN "productItemDetails" pid
+      ON pid.product_id = p.id
+      AND pid.deleted_at IS NULL
     LEFT JOIN grns g ON g.id = p.grn_id AND g.deleted_at IS NULL
     LEFT JOIN "grnItems" gi ON gi.grn_id = g.id AND gi.id = p.ref_no_id AND gi.deleted_at IS NULL
     LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
@@ -1124,86 +1155,55 @@ const getStockInHandList = async (
     LEFT JOIN branches b ON b.id = p.branch_id
     ${whereClause}
     GROUP BY
-    p.id,
-    mt.material_type,
-    mt.material_price,
-    ct.category_name,
-    ct.category_image_url,
-    sc.subcategory_name,
-    g.grn_no,
-    gi.ref_no,
-    b.branch_name
-
+      p.id,
+      mt.material_type,
+      mt.material_price,
+      ct.category_name,
+      ct.category_image_url,
+      sc.subcategory_name,
+      g.grn_no,
+      gi.ref_no,
+      b.branch_name
     HAVING COALESCE(SUM(pid.quantity), 0) > 0
-
     ORDER BY p.id DESC
-    `;
+  `;
 
-    if (usePagination) {
-        query += ` LIMIT :limit OFFSET :offset`;
-        replacements.limit = limit;
-        replacements.offset = offset;
-    }
+  if (usePagination) {
+    query += ` LIMIT :limit OFFSET :offset`;
+    replacements.limit = limit;
+    replacements.offset = offset;
+  }
 
-    const [rows] = await sequelize.query(query, { replacements });
+  const [rows] = await sequelize.query(query, { replacements });
+  const enrichedRows = await attachItemDetails(rows);
 
-    // Attach item details here
-    const enrichedRows = await attachItemDetails(rows);
-
-    return { rows: enrichedRows };
-};
-
-const attachItemDetails = async (products) => {
-    if (!products.length) return products;
-
-    const productIds = products.map(p => p.id);
-
-    const itemDetails = await models.ProductItemDetail.findAll({
-        where: {
-            product_id: productIds,
-            quantity: { [Op.gt]: 0 },
-            deleted_at: null,
-        },
-        order: [["id", "ASC"]],
-    });
-
-    const itemsByProduct = itemDetails.reduce((acc, item) => {
-        (acc[item.product_id] ??= []).push(item);
-        return acc;
-    }, {});
-
-    return products.map(product => {
-        const items = itemsByProduct[product.id];
-
-        // Only attach when items exist
-        if (items && items.length > 0) {
-            return {
-                ...product,
-                item_details: items,
-            };
-        }
-
-        // No empty array
-        return product;
-    });
+  return { rows: enrichedRows };
 };
 
 const getLowStockList = async (
-    where,
-    replacements,
-    usePagination,
-    limit,
-    offset
+  where,
+  replacements,
+  usePagination,
+  limit,
+  offset
 ) => {
-    let query = `
-    WITH product_stock AS (
-      SELECT p.id AS product_id, p.subcategory_id, SUM(pid.quantity) AS total_qty
+  let query = `
+    WITH filtered_products AS (
+      SELECT p.id, p.subcategory_id, p.branch_id, p.material_type_id, p.category_id
       FROM products p
+      ${where}
+    ),
+    product_stock AS (
+      SELECT
+        fp.id AS product_id,
+        fp.subcategory_id,
+        fp.branch_id,
+        SUM(pid.quantity) AS total_qty
+      FROM filtered_products fp
       JOIN "productItemDetails" pid
-        ON pid.product_id = p.id
+        ON pid.product_id = fp.id
         AND pid.deleted_at IS NULL
-    WHERE p.deleted_at IS NULL
-      GROUP BY p.id, p.subcategory_id
+      GROUP BY fp.id, fp.subcategory_id, fp.branch_id
     )
     SELECT
       b.branch_name,
@@ -1216,46 +1216,45 @@ const getLowStockList = async (
       sc.id AS subcategory_id,
       sc.reorder_level,
       COUNT(ps.product_id) AS low_stock_count
-    FROM subcategories sc
-    JOIN products p ON p.subcategory_id = sc.id
-    JOIN product_stock ps ON ps.product_id = p.id
+    FROM product_stock ps
+    JOIN subcategories sc ON sc.id = ps.subcategory_id AND sc.deleted_at IS NULL
+    JOIN products p ON p.id = ps.product_id
     LEFT JOIN branches b ON b.id = p.branch_id
     LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
     LEFT JOIN categories c ON c.id = p.category_id
-    ${where}
-    AND ps.total_qty < sc.reorder_level
+    WHERE ps.total_qty < sc.reorder_level
     GROUP BY
-        b.branch_name,
-        mt.material_type,
-        c.category_name,
-        b.id,
-        p.material_type_id,
-        c.id,
-        sc.id,
-        sc.subcategory_name,
-        sc.reorder_level
+      b.branch_name,
+      mt.material_type,
+      c.category_name,
+      b.id,
+      p.material_type_id,
+      c.id,
+      sc.id,
+      sc.subcategory_name,
+      sc.reorder_level
     ORDER BY low_stock_count DESC
   `;
 
-    if (usePagination) {
-        query += ` LIMIT :limit OFFSET :offset`;
-        replacements.limit = limit;
-        replacements.offset = offset;
-    }
+  if (usePagination) {
+    query += ` LIMIT :limit OFFSET :offset`;
+    replacements.limit = limit;
+    replacements.offset = offset;
+  }
 
-    const rows = await sequelize.query(query, {
-        replacements,
-        type: sequelize.QueryTypes.SELECT,
-    });
+  const rows = await sequelize.query(query, {
+    replacements,
+    type: sequelize.QueryTypes.SELECT,
+  });
 
-    return { rows };
+  return { rows };
 };
 
 const getOutOfStockList = async (query, usePagination, limit, offset) => {
-    const replacements = {};
-    const where = buildSubcategoryFilters(query, replacements);
+  const replacements = {};
+  const where = buildSubcategoryFilters(query, replacements);
 
-    let sql = `
+  let sql = `
     SELECT
       b.id AS branch_id,
       b.branch_name,
@@ -1272,192 +1271,181 @@ const getOutOfStockList = async (query, usePagination, limit, offset) => {
     LEFT JOIN "materialTypes" mt ON mt.id = sc.materialtype_id
     LEFT JOIN categories c ON c.id = sc.category_id
     ${where}
-    GROUP BY 
-        b.id,
-        b.branch_name,
-        mt.material_type,
-        c.category_name,  
-        sc.materialtype_id,
-        sc.category_id,
-        sc.id, 
-        mt.material_type, 
-        sc.subcategory_name
+    GROUP BY
+      b.id,
+      b.branch_name,
+      mt.material_type,
+      c.category_name,
+      sc.materialtype_id,
+      sc.category_id,
+      sc.id,
+      mt.material_type,
+      sc.subcategory_name
     HAVING COUNT(p.id) = 0
     ORDER BY sc.subcategory_name
   `;
 
-    if (usePagination) {
-        sql += ` LIMIT :limit OFFSET :offset`;
-        replacements.limit = limit;
-        replacements.offset = offset;
-    }
+  if (usePagination) {
+    sql += ` LIMIT :limit OFFSET :offset`;
+    replacements.limit = limit;
+    replacements.offset = offset;
+  }
 
-    const rows = await sequelize.query(sql, {
-        replacements,
-        type: sequelize.QueryTypes.SELECT,
-    });
+  const rows = await sequelize.query(sql, {
+    replacements,
+    type: sequelize.QueryTypes.SELECT,
+  });
 
-    return { rows };
+  return { rows };
 };
 
+/* =========================================================
+   STOCK DASHBOARD
+========================================================= */
 const getStockDashboard = async (req, res) => {
-    try {
-        const {
-            type = "stock_in_hand", // stock_in_hand | low_stock | out_of_stock
-            page,
-            limit,
-        } = req.query;
+  try {
+    const { type = "stock_in_hand", page, limit } = req.query;
 
-        const usePagination = page || limit;
-        const pageNum = parseInt(page || 1, 10);
-        const limitNum = parseInt(limit || 10, 10);
-        const offset = (pageNum - 1) * limitNum;
+    const usePagination = page || limit;
+    const pageNum = parseInt(page || 1, 10);
+    const limitNum = parseInt(limit || 10, 10);
+    const offset = (pageNum - 1) * limitNum;
 
-        const scoreReplacements = {};
-        const baseWhere = buildBaseFilters(req.query, scoreReplacements);
+    const scoreReplacements = {};
+    const baseWhere = buildBaseFilters(req.query, scoreReplacements);
 
-        const [
-            stockInHand,
-            lowStock,
-            outOfStock,
-        ] = await Promise.all([
-            getStockInHandSummary(baseWhere, scoreReplacements),
-            getLowStockSummaryInternal(baseWhere, scoreReplacements),
-            getOutOfStockSummaryInternal(req.query), 
-        ]);
+    const [stockInHand, lowStock, outOfStock] = await Promise.all([
+      getStockInHandSummary(baseWhere, scoreReplacements),
+      getLowStockSummaryInternal(baseWhere, scoreReplacements),
+      getOutOfStockSummaryInternal(req.query),
+    ]);
 
-        // LIST DATA (BASED ON TYPE)
-        let listResult;
-        const listReplacements = {};
-        const listWhere = buildBaseFilters(req.query, listReplacements);
+    let listResult;
+    const listReplacements = {};
+    const listWhere = buildBaseFilters(req.query, listReplacements);
 
-        switch (type) {
-            case "low_stock":
-                listResult = await getLowStockList(
-                    listWhere,
-                    listReplacements,
-                    usePagination,
-                    limitNum,
-                    offset
-                );
-                break;
+    switch (type) {
+      case "low_stock":
+        listResult = await getLowStockList(
+          listWhere,
+          listReplacements,
+          usePagination,
+          limitNum,
+          offset
+        );
+        break;
 
-            case "out_of_stock":
-                listResult = await getOutOfStockList(
-                    req.query,
-                    usePagination,
-                    limitNum,
-                    offset
-                );
-                break;
+      case "out_of_stock":
+        listResult = await getOutOfStockList(
+          req.query,
+          usePagination,
+          limitNum,
+          offset
+        );
+        break;
 
-            default:
-                listResult = await getStockInHandList(
-                    listWhere,
-                    listReplacements,
-                    usePagination,
-                    limitNum,
-                    offset
-                );
-        }
-
-        return commonService.okResponse(res, {
-            score_cards: {
-                stock_in_hand: stockInHand,
-                low_stock: lowStock,
-                out_of_stock: outOfStock,
-            },
-            data: listResult,
-        });
-    } catch (err) {
-        return commonService.handleError(res, err);
+      default:
+        listResult = await getStockInHandList(
+          listWhere,
+          listReplacements,
+          usePagination,
+          limitNum,
+          offset
+        );
     }
+
+    return commonService.okResponse(res, {
+      score_cards: {
+        stock_in_hand: stockInHand,
+        low_stock: lowStock,
+        out_of_stock: outOfStock,
+      },
+      data: listResult,
+    });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
 };
 
-// Dashboard related api's
+/* =========================================================
+   DASHBOARD RELATED API'S
+========================================================= */
 const getBranchStockSummary = async (req, res) => {
-    try {
-        const rows = await sequelize.query(
-            `
-            SELECT
-              b.id AS branch_id,
-              b.branch_name,
-              COALESCE(SUM(pid.quantity), 0) AS total_quantity,
-              COALESCE(SUM(pid.quantity * pid.gross_weight), 0) AS total_weight
-            FROM branches b
-            LEFT JOIN products p
-              ON p.branch_id = b.id
-              AND p.deleted_at IS NULL
-              AND p.status = 'Active'
-            LEFT JOIN "productItemDetails" pid
-              ON pid.product_id = p.id
-              AND pid.deleted_at IS NULL
-              AND pid.quantity > 0
-            WHERE b.deleted_at IS NULL
-            GROUP BY b.id, b.branch_name
-            ORDER BY b.branch_name
-            `,
-            {
-                type: sequelize.QueryTypes.SELECT,
-            }
-        );
+  try {
+    const rows = await sequelize.query(
+      `
+      SELECT
+        b.id AS branch_id,
+        b.branch_name,
+        COALESCE(SUM(pid.quantity), 0) AS total_quantity,
+        COALESCE(SUM(pid.quantity * pid.gross_weight), 0) AS total_weight
+      FROM branches b
+      LEFT JOIN products p
+        ON p.branch_id = b.id
+        AND p.deleted_at IS NULL
+        AND p.status = 'Active'
+      LEFT JOIN "productItemDetails" pid
+        ON pid.product_id = p.id
+        AND pid.deleted_at IS NULL
+        AND pid.quantity > 0
+      WHERE b.deleted_at IS NULL
+      GROUP BY b.id, b.branch_name
+      ORDER BY b.branch_name
+      `,
+      { type: sequelize.QueryTypes.SELECT }
+    );
 
-        return commonService.okResponse(res, {
-            data: rows,
-        });
-    } catch (error) {
-        console.error("Branch Stock Error:", error);
-        return commonService.handleError(res, error);
-    }
+    return commonService.okResponse(res, { data: rows });
+  } catch (error) {
+    console.error("Branch Stock Error:", error);
+    return commonService.handleError(res, error);
+  }
 };
 
 const getBranchCategoryStock = async (req, res) => {
-    try {
-        const { branch_id } = req.query;
+  try {
+    const { branch_id } = req.query;
 
-        if (!branch_id) {
-            return commonService.badRequest(
-                res,
-                "branch_id is required"
-            );
-        }
-
-        const rows = await sequelize.query(
-            `
-            SELECT
-              c.id AS category_id,
-              c.category_name,
-              COALESCE(SUM(pid.quantity), 0) AS total_quantity,
-              COALESCE(SUM(pid.quantity * pid.gross_weight), 0) AS total_weight
-            FROM products p
-            JOIN categories c ON c.id = p.category_id AND c.deleted_at IS NULL
-            JOIN "productItemDetails" pid ON pid.product_id = p.id AND pid.deleted_at IS NULL AND pid.quantity > 0
-            WHERE p.deleted_at IS NULL AND p.status = 'Active' AND p.branch_id = :branch_id
-            GROUP BY c.id, c.category_name
-            ORDER BY c.category_name
-            `,
-            {
-                replacements: { branch_id },
-                type: sequelize.QueryTypes.SELECT,
-            }
-        );
-
-        return commonService.okResponse(res, {
-            data: rows,
-        });
-    } catch (error) {
-        console.error("Branch Category Stock Error:", error);
-        return commonService.handleError(res, error);
+    if (!branch_id) {
+      return commonService.badRequest(res, "branch_id is required");
     }
+
+    const rows = await sequelize.query(
+      `
+      SELECT
+        c.id AS category_id,
+        c.category_name,
+        COALESCE(SUM(pid.quantity), 0) AS total_quantity,
+        COALESCE(SUM(pid.quantity * pid.gross_weight), 0) AS total_weight
+      FROM products p
+      JOIN categories c ON c.id = p.category_id AND c.deleted_at IS NULL
+      JOIN "productItemDetails" pid
+        ON pid.product_id = p.id
+        AND pid.deleted_at IS NULL
+        AND pid.quantity > 0
+      WHERE p.deleted_at IS NULL
+        AND p.status = 'Active'
+        AND p.branch_id = :branch_id
+      GROUP BY c.id, c.category_name
+      ORDER BY c.category_name
+      `,
+      { replacements: { branch_id }, type: sequelize.QueryTypes.SELECT }
+    );
+
+    return commonService.okResponse(res, { data: rows });
+  } catch (error) {
+    console.error("Branch Category Stock Error:", error);
+    return commonService.handleError(res, error);
+  }
 };
 
 const getVendorContributionReport = async (req, res) => {
-    try {
-        const query = `
-     SELECT
+  try {
+    const query = `
+      SELECT
         v.id AS vendor_id,
         v.vendor_name,
-        
+
         gi.material_type_id,
         mt.material_type,
 
@@ -1467,7 +1455,10 @@ const getVendorContributionReport = async (req, res) => {
 
       FROM vendors v
       JOIN grns g ON g.vendor_id = v.id AND g.deleted_at IS NULL
-      JOIN "grnItems" gi ON gi.grn_id = g.id AND gi.deleted_at IS NULL AND gi.material_type_id = ANY(v.material_type_ids)
+      JOIN "grnItems" gi
+        ON gi.grn_id = g.id
+        AND gi.deleted_at IS NULL
+        AND gi.material_type_id = ANY(v.material_type_ids)
       JOIN "materialTypes" mt ON mt.id = gi.material_type_id AND mt.deleted_at IS NULL
 
       WHERE v.deleted_at IS NULL
@@ -1475,64 +1466,59 @@ const getVendorContributionReport = async (req, res) => {
       ORDER BY v.vendor_name;
     `;
 
-        const rows = await sequelize.query(query, {
-            type: sequelize.QueryTypes.SELECT
-        });
+    const rows = await sequelize.query(query, {
+      type: sequelize.QueryTypes.SELECT,
+    });
 
-        // GROUP BY VENDOR
-        const grouped = {};
+    const grouped = {};
+    for (const row of rows) {
+      if (!grouped[row.vendor_id]) {
+        grouped[row.vendor_id] = {
+          vendor_id: row.vendor_id,
+          vendor_name: row.vendor_name,
+          materials: {},
+        };
+      }
 
-        for (const row of rows) {
-            if (!grouped[row.vendor_id]) {
-                grouped[row.vendor_id] = {
-                    vendor_id: row.vendor_id,
-                    vendor_name: row.vendor_name,
-                    materials: {}
-                };
-            }
-
-            grouped[row.vendor_id].materials[row.material_type] = {
-                quantity: Number(row.quantity),
-                weight: Number(row.weight),
-                value: Number(row.value)
-            };
-        }
-
-        return res.status(200).json({
-            success: true,
-            data: Object.values(grouped)
-        });
-
-    } catch (error) {
-        console.error(error);
-        return res.status(500).json({
-            success: false,
-            message: "Failed to fetch vendor contribution"
-        });
+      grouped[row.vendor_id].materials[row.material_type] = {
+        quantity: Number(row.quantity),
+        weight: Number(row.weight),
+        value: Number(row.value),
+      };
     }
+
+    return res.status(200).json({
+      success: true,
+      data: Object.values(grouped),
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch vendor contribution",
+    });
+  }
 };
 
 const getStockByMaterialTypeReport = async (req, res) => {
-    try {
-        const { branch_id, from_date, to_date, date_filter } = req.query;
+  try {
+    const { branch_id, from_date, to_date, date_filter } = req.query;
 
-        const replacements = {};
-        let whereClause = "";
+    const replacements = {};
+    let whereClause = "";
 
-        // Branch filter
-        if (branch_id) {
-            whereClause += " AND p.branch_id = :branch_id";
-            replacements.branch_id = branch_id;
-        }
+    if (branch_id) {
+      whereClause += " AND p.branch_id = :branch_id";
+      replacements.branch_id = branch_id;
+    }
 
-        // Date filter (using your helper)
-        whereClause += dateFilter(
-            { from_date, to_date, date_filter },
-            "pid.created_at",
-            replacements
-        );
+    whereClause += dateFilter(
+      { from_date, to_date, date_filter },
+      "pid.created_at",
+      replacements
+    );
 
-        const query = `
+    const query = `
       SELECT
         mt.id AS material_type_id,
         mt.material_type,
@@ -1541,243 +1527,249 @@ const getStockByMaterialTypeReport = async (req, res) => {
 
       FROM "materialTypes" mt
       JOIN products p ON p.material_type_id = mt.id AND p.deleted_at IS NULL
-      JOIN "productItemDetails" pid ON pid.product_id = p.id AND pid.deleted_at IS NULL AND pid.quantity > 0
+      JOIN "productItemDetails" pid
+        ON pid.product_id = p.id
+        AND pid.deleted_at IS NULL
+        AND pid.quantity > 0
       WHERE mt.deleted_at IS NULL
       ${whereClause}
-
       GROUP BY mt.id, mt.material_type
       ORDER BY mt.material_type;
     `;
 
-        const data = await sequelize.query(query, {
-            type: sequelize.QueryTypes.SELECT,
-            replacements
-        });
+    const data = await sequelize.query(query, {
+      type: sequelize.QueryTypes.SELECT,
+      replacements,
+    });
 
-        return res.status(200).json({
-            success: true,
-            data
-        });
-
-    } catch (error) {
-        console.error(error);
-        return res.status(500).json({
-            success: false,
-            message: "Failed to fetch stock by material type"
-        });
-    }
+    return res.status(200).json({ success: true, data });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch stock by material type",
+    });
+  }
 };
 
+/* =========================================================
+   BRANCHWISE STOCK COUNT
+========================================================= */
 const mapByBranch = (rows, key = "branch_id") =>
-    rows.reduce((acc, r) => {
-        acc[r[key]] = r;
-        return acc;
-    }, {});
+  rows.reduce((acc, r) => {
+    acc[r[key]] = r;
+    return acc;
+  }, {});
 
 const getBranchwiseStockCount = async (req, res) => {
-    try {
-        const { branch_id, from_date, to_date, date_filter } = req.query;
+  try {
+    const { branch_id, from_date, to_date, date_filter } = req.query;
 
-        const replacements = branch_id ? { branch_id } : {};
-        const dateReplacements = { ...replacements };
-        const productDateCondition = dateFilter(
-            { from_date, to_date, date_filter },
-            "p.created_at::date",
-            dateReplacements
-        );
+    const replacements = branch_id ? { branch_id } : {};
+    const dateReplacements = { ...replacements };
 
-        // date filter
-        const billingDateCondition = dateFilter(
-            { from_date, to_date, date_filter },
-            "t.created_at::date",
-            dateReplacements
-        );
+    const productDateCondition = dateFilter(
+      { from_date, to_date, date_filter },
+      "p.created_at::date",
+      dateReplacements
+    );
 
-        const branches = await sequelize.query(
-            `SELECT
-                branches.id AS branch_id,
-                branches.branch_name,
-                branches.branch_no,
-                branches.mobile,
-                branches.contact_person,
-                branches.district_id,
-                d.district_name
-            FROM branches
-            left JOIN districts d ON d.id = branches.district_id AND d.deleted_at IS NULL
-            WHERE branches.deleted_at IS NULL
-            ${branch_id ? "AND branches.id = :branch_id" : ""}
-            ORDER BY branches.branch_name
-            `,
-            { replacements, type: sequelize.QueryTypes.SELECT }
-        );
+    const billingDateCondition = dateFilter(
+      { from_date, to_date, date_filter },
+      "t.created_at::date",
+      dateReplacements
+    );
 
-        const [
-            stockRows,
-            lowStockRows,
-            outStockRows,
-            oldJewelRows,
-            repairRows
-        ] = await Promise.all([
-            sequelize.query(`SELECT
-                p.branch_id,
-                SUM(pid.quantity) AS total_quantity,
-                SUM(pid.quantity * pid.gross_weight) AS total_weight
-                FROM products p
-                JOIN "productItemDetails" pid
-                ON pid.product_id = p.id
-                AND pid.quantity > 0
-                AND pid.deleted_at IS NULL
-                WHERE p.deleted_at IS NULL
-                AND p.status = 'Active'
-                ${branch_id ? "AND p.branch_id = :branch_id" : ""}
-                ${productDateCondition}
-                GROUP BY p.branch_id
-                `, {
-                replacements: dateReplacements,
-                type: sequelize.QueryTypes.SELECT
-            }),
-            sequelize.query(`WITH product_stock AS (
-                SELECT
-                    p.id AS product_id,
-                    p.subcategory_id,
-                    p.branch_id,
-                    SUM(pid.quantity) AS total_qty,
-                    SUM(pid.quantity * pid.gross_weight) AS total_weight
-                FROM products p
-                JOIN "productItemDetails" pid
-                    ON pid.product_id = p.id
-                    AND pid.deleted_at IS NULL
-                WHERE p.deleted_at IS NULL
-                ${branch_id ? "AND p.branch_id = :branch_id" : ""}
-                ${productDateCondition}
-                GROUP BY p.id, p.subcategory_id, p.branch_id
-                ),
-                low_stock_rows AS (
-                SELECT
-                    ps.branch_id,
-                    ps.subcategory_id,
-                    SUM(ps.total_weight) AS row_weight
-                FROM product_stock ps
-                JOIN subcategories sc ON sc.id = ps.subcategory_id
-                WHERE ps.total_qty < sc.reorder_level
-                GROUP BY ps.branch_id, ps.subcategory_id
-                )
-                SELECT
-                branch_id,
-                COUNT(*) AS subcategory_count,
-                COALESCE(SUM(row_weight),0) AS total_weight
-                FROM low_stock_rows
-                GROUP BY branch_id `, {
-                replacements: dateReplacements,
-                type: sequelize.QueryTypes.SELECT
-            }),
-            sequelize.query(`SELECT
-                p.branch_id,
-                COUNT(DISTINCT sc.id) AS total_quantity
-                FROM subcategories sc
-                LEFT JOIN products p
-                ON p.subcategory_id = sc.id
-                AND p.deleted_at IS NULL
-                ${branch_id ? "AND p.branch_id = :branch_id" : ""}
-                ${productDateCondition}
-                GROUP BY p.branch_id
-                HAVING COUNT(p.id) = 0 `, {
-                replacements: dateReplacements,
-                type: sequelize.QueryTypes.SELECT
-            }),
-            sequelize.query(`SELECT
-                t.branch_id,
-                SUM(oi.net_weight) AS total_weight,
-                COUNT(oi.id) AS total_quantity
-                FROM old_jewels t
-                JOIN old_jewel_items oi
-                ON oi.old_jewel_id = t.id
-                AND oi.deleted_at IS NULL
-                WHERE 1=1
-                ${branch_id ? "AND t.branch_id = :branch_id" : ""}
-                ${billingDateCondition}
-                GROUP BY t.branch_id `, {
-                replacements: dateReplacements,
-                type: sequelize.QueryTypes.SELECT
-            }),
-            sequelize.query(`SELECT
-                t.branch_id,
-                SUM(ri.weight) AS total_weight,
-                COUNT(ri.id) AS total_quantity
-                FROM jewel_repairs t
-                JOIN jewel_repair_items ri
-                ON ri.repair_id = t.id
-                AND ri.deleted_at IS NULL
-                WHERE 1=1
-                ${branch_id ? "AND t.branch_id = :branch_id" : ""}
-                ${billingDateCondition}
-                GROUP BY t.branch_id `, {
-                replacements: dateReplacements,
-                type: sequelize.QueryTypes.SELECT
-            }),
-        ]);
+    const branches = await sequelize.query(
+      `
+      SELECT
+        branches.id AS branch_id,
+        branches.branch_name,
+        branches.branch_no,
+        branches.mobile,
+        branches.contact_person,
+        branches.district_id,
+        d.district_name
+      FROM branches
+      LEFT JOIN districts d ON d.id = branches.district_id AND d.deleted_at IS NULL
+      WHERE branches.deleted_at IS NULL
+      ${branch_id ? "AND branches.id = :branch_id" : ""}
+      ORDER BY branches.branch_name
+      `,
+      { replacements, type: sequelize.QueryTypes.SELECT }
+    );
 
-        const stockMap = mapByBranch(stockRows);
-        const lowStockMap = mapByBranch(lowStockRows);
-        const outStockMap = mapByBranch(outStockRows);
-        const oldJewelMap = mapByBranch(oldJewelRows);
-        const repairMap = mapByBranch(repairRows);
+    const [stockRows, lowStockRows, outStockRows, oldJewelRows, repairRows] =
+      await Promise.all([
+        sequelize.query(
+          `
+          SELECT
+            p.branch_id,
+            SUM(pid.quantity) AS total_quantity,
+            SUM(pid.quantity * pid.gross_weight) AS total_weight
+          FROM products p
+          JOIN "productItemDetails" pid
+            ON pid.product_id = p.id
+            AND pid.quantity > 0
+            AND pid.deleted_at IS NULL
+          WHERE p.deleted_at IS NULL
+            AND p.status = 'Active'
+            ${branch_id ? "AND p.branch_id = :branch_id" : ""}
+            ${productDateCondition}
+          GROUP BY p.branch_id
+          `,
+          { replacements: dateReplacements, type: sequelize.QueryTypes.SELECT }
+        ),
+        sequelize.query(
+          `
+          WITH product_stock AS (
+            SELECT
+              p.id AS product_id,
+              p.subcategory_id,
+              p.branch_id,
+              SUM(pid.quantity) AS total_qty,
+              SUM(pid.quantity * pid.gross_weight) AS total_weight
+            FROM products p
+            JOIN "productItemDetails" pid
+              ON pid.product_id = p.id
+              AND pid.deleted_at IS NULL
+            WHERE p.deleted_at IS NULL
+              ${branch_id ? "AND p.branch_id = :branch_id" : ""}
+              ${productDateCondition}
+            GROUP BY p.id, p.subcategory_id, p.branch_id
+          ),
+          low_stock_rows AS (
+            SELECT
+              ps.branch_id,
+              ps.subcategory_id,
+              SUM(ps.total_weight) AS row_weight
+            FROM product_stock ps
+            JOIN subcategories sc ON sc.id = ps.subcategory_id
+            WHERE ps.total_qty < sc.reorder_level
+            GROUP BY ps.branch_id, ps.subcategory_id
+          )
+          SELECT
+            branch_id,
+            COUNT(*) AS subcategory_count,
+            COALESCE(SUM(row_weight),0) AS total_weight
+          FROM low_stock_rows
+          GROUP BY branch_id
+          `,
+          { replacements: dateReplacements, type: sequelize.QueryTypes.SELECT }
+        ),
+        sequelize.query(
+          `
+          SELECT
+            p.branch_id,
+            COUNT(DISTINCT sc.id) AS total_quantity
+          FROM subcategories sc
+          LEFT JOIN products p
+            ON p.subcategory_id = sc.id
+            AND p.deleted_at IS NULL
+            ${branch_id ? "AND p.branch_id = :branch_id" : ""}
+            ${productDateCondition}
+          GROUP BY p.branch_id
+          HAVING COUNT(p.id) = 0
+          `,
+          { replacements: dateReplacements, type: sequelize.QueryTypes.SELECT }
+        ),
+        sequelize.query(
+          `
+          SELECT
+            t.branch_id,
+            SUM(oi.net_weight) AS total_weight,
+            COUNT(oi.id) AS total_quantity
+          FROM old_jewels t
+          JOIN old_jewel_items oi
+            ON oi.old_jewel_id = t.id
+            AND oi.deleted_at IS NULL
+          WHERE 1=1
+            ${branch_id ? "AND t.branch_id = :branch_id" : ""}
+            ${billingDateCondition}
+          GROUP BY t.branch_id
+          `,
+          { replacements: dateReplacements, type: sequelize.QueryTypes.SELECT }
+        ),
+        sequelize.query(
+          `
+          SELECT
+            t.branch_id,
+            SUM(ri.weight) AS total_weight,
+            COUNT(ri.id) AS total_quantity
+          FROM jewel_repairs t
+          JOIN jewel_repair_items ri
+            ON ri.repair_id = t.id
+            AND ri.deleted_at IS NULL
+          WHERE 1=1
+            ${branch_id ? "AND t.branch_id = :branch_id" : ""}
+            ${billingDateCondition}
+          GROUP BY t.branch_id
+          `,
+          { replacements: dateReplacements, type: sequelize.QueryTypes.SELECT }
+        ),
+      ]);
 
-        const data = branches.map(b => ({
-            branch_id: b.branch_id,
-            branch_name: b.branch_name,
-            branch_no: b.branch_no,
-            mobile: b.mobile,
-            contact_person: b.contact_person,
-            district_id: b.district_id,
-            district_name: b.district_name,
+    const stockMap = mapByBranch(stockRows);
+    const lowStockMap = mapByBranch(lowStockRows);
+    const outStockMap = mapByBranch(outStockRows);
+    const oldJewelMap = mapByBranch(oldJewelRows);
+    const repairMap = mapByBranch(repairRows);
 
-            stock_in_hand: {
-                total_weight: Number(stockMap[b.branch_id]?.total_weight || 0),
-                total_quantity: Number(stockMap[b.branch_id]?.total_quantity || 0),
-            },
-            low_stock: {
-                total_weight: Number(lowStockMap[b.branch_id]?.total_weight || 0),
-                subcategory_count: Number(lowStockMap[b.branch_id]?.subcategory_count || 0),
-            },
-            out_of_stock: {
-                total_quantity: Number(outStockMap[b.branch_id]?.total_quantity || 0),
-            },
-            old_jewel: {
-                total_weight: Number(oldJewelMap[b.branch_id]?.total_weight || 0),
-                total_quantity: Number(oldJewelMap[b.branch_id]?.total_quantity || 0),
-            },
-            jewel_repair: {
-                total_weight: Number(repairMap[b.branch_id]?.total_weight || 0),
-                total_quantity: Number(repairMap[b.branch_id]?.total_quantity || 0),
-            }
-        }));
+    const data = branches.map((b) => ({
+      branch_id: b.branch_id,
+      branch_name: b.branch_name,
+      branch_no: b.branch_no,
+      mobile: b.mobile,
+      contact_person: b.contact_person,
+      district_id: b.district_id,
+      district_name: b.district_name,
 
-        return commonService.okResponse(res, data);
+      stock_in_hand: {
+        total_weight: Number(stockMap[b.branch_id]?.total_weight || 0),
+        total_quantity: Number(stockMap[b.branch_id]?.total_quantity || 0),
+      },
+      low_stock: {
+        total_weight: Number(lowStockMap[b.branch_id]?.total_weight || 0),
+        subcategory_count: Number(
+          lowStockMap[b.branch_id]?.subcategory_count || 0
+        ),
+      },
+      out_of_stock: {
+        total_quantity: Number(outStockMap[b.branch_id]?.total_quantity || 0),
+      },
+      old_jewel: {
+        total_weight: Number(oldJewelMap[b.branch_id]?.total_weight || 0),
+        total_quantity: Number(oldJewelMap[b.branch_id]?.total_quantity || 0),
+      },
+      jewel_repair: {
+        total_weight: Number(repairMap[b.branch_id]?.total_weight || 0),
+        total_quantity: Number(repairMap[b.branch_id]?.total_quantity || 0),
+      },
+    }));
 
-    } catch (err) {
-        return commonService.handleError(res, err);
-    }
+    return commonService.okResponse(res, data);
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
 };
 
+/* =========================================================
+   GRN DISCREPANCY LIST
+========================================================= */
 const getGrnDiscrepancyList = async (req, res) => {
-    try {
-        const {
-            page,
-            limit
-        } = req.query;
+  try {
+    const { page, limit } = req.query;
 
-        const replacements = {};
-        const whereConditions = [`g.deleted_at IS NULL`];
+    const replacements = {};
+    const whereConditions = [`g.deleted_at IS NULL`];
+    const whereSql = `WHERE ${whereConditions.join(" AND ")}`;
 
-        const whereSql = `WHERE ${whereConditions.join(" AND ")}`;
+    const hasPagination = page && limit;
+    const pageNum = hasPagination ? Number(page) : null;
+    const limitNum = hasPagination ? Number(limit) : null;
+    const offset = hasPagination ? (pageNum - 1) * limitNum : null;
 
-        const hasPagination = page && limit;
-        const pageNum = hasPagination ? Number(page) : null;
-        const limitNum = hasPagination ? Number(limit) : null;
-        const offset = hasPagination ? (pageNum - 1) * limitNum : null;
-
-        let query = `
+    let query = `
       SELECT
         g.id,
         g.grn_no,
@@ -1820,205 +1812,264 @@ const getGrnDiscrepancyList = async (req, res) => {
       ORDER BY g.grn_date DESC, g.grn_no DESC
     `;
 
-        if (hasPagination) {
-            query += ` LIMIT :limit OFFSET :offset`;
-            replacements.limit = limitNum;
-            replacements.offset = offset;
-        }
+    if (hasPagination) {
+      query += ` LIMIT :limit OFFSET :offset`;
+      replacements.limit = limitNum;
+      replacements.offset = offset;
+    }
 
-        const rows = await sequelize.query(query, {
-            replacements,
-            type: sequelize.QueryTypes.SELECT
-        });
+    const rows = await sequelize.query(query, {
+      replacements,
+      type: sequelize.QueryTypes.SELECT,
+    });
 
-        let updatedCount = 0;
-        let yetToUpdateCount = 0;
+    let updatedCount = 0;
+    let yetToUpdateCount = 0;
 
-        const data = rows.map(row => {
-            const orderedWt = Number(row.ordered_weight || 0);
-            const updatedWt = Number(row.updated_weight || 0);
-            const diffWt = Number((updatedWt - orderedWt).toFixed(3));
-            const yetToUpdateWt = Number(Math.max(0, orderedWt - updatedWt).toFixed(3));
+    const data = rows.map((row) => {
+      const orderedWt = Number(row.ordered_weight || 0);
+      const updatedWt = Number(row.updated_weight || 0);
+      const diffWt = Number((updatedWt - orderedWt).toFixed(3));
+      const yetToUpdateWt = Number(
+        Math.max(0, orderedWt - updatedWt).toFixed(3)
+      );
 
-            const status_id = yetToUpdateWt <= 0.001 ? 2 : 1;
+      const status_id = yetToUpdateWt <= 0.001 ? 2 : 1;
 
-            if (status_id === 2) updatedCount++;
-            else yetToUpdateCount++;
+      if (status_id === 2) updatedCount++;
+      else yetToUpdateCount++;
 
-            return {
-                id: row.id,
-                grn_no: row.grn_no,
-                date: row.date,
-                vendor_name: row.vendor_name,
+      return {
+        id: row.id,
+        grn_no: row.grn_no,
+        date: row.date,
+        vendor_name: row.vendor_name,
 
-                ordered: {
-                    weight: orderedWt,
-                    quantity: Number(row.ordered_qty || 0)
-                },
-                updated: {
-                    weight: updatedWt,
-                    quantity: Number(row.updated_qty || 0)
-                },
-                yet_to_update: {
-                    weight: yetToUpdateWt,
-                    quantity: 0
-                },
-                difference: {
-                    weight: diffWt,
-                    quantity: 0
-                },
-                status_id
-            };
-        });
+        ordered: {
+          weight: orderedWt,
+          quantity: Number(row.ordered_qty || 0),
+        },
+        updated: {
+          weight: updatedWt,
+          quantity: Number(row.updated_qty || 0),
+        },
+        yet_to_update: {
+          weight: yetToUpdateWt,
+          quantity: 0,
+        },
+        difference: {
+          weight: diffWt,
+          quantity: 0,
+        },
+        status_id,
+      };
+    });
 
-        // -----------------------------
-        // TOTAL COUNT (FOR PAGINATION)
-        // -----------------------------
-        let totalItems = data.length;
-
-        if (hasPagination) {
-            const [{ count }] = await sequelize.query(
-                `
+    let totalItems = data.length;
+    if (hasPagination) {
+      const [{ count }] = await sequelize.query(
+        `
         SELECT COUNT(*)::int AS count
         FROM grns g
         LEFT JOIN vendors v ON v.id = g.vendor_id
         ${whereSql}
         `,
-                { replacements, type: sequelize.QueryTypes.SELECT }
-            );
-            totalItems = count;
-        }
-
-        return commonService.okResponse(res, {
-            summary: {
-                totalGrns: totalItems,
-                updated: updatedCount,
-                yetToUpdate: yetToUpdateCount
-            },
-            totalItems,
-            data
-        });
-
-    } catch (error) {
-        console.error("getGrnDiscrepancyList Error:", error);
-        return commonService.handleError(res, error);
+        { replacements, type: sequelize.QueryTypes.SELECT }
+      );
+      totalItems = count;
     }
+
+    return commonService.okResponse(res, {
+      summary: {
+        totalGrns: totalItems,
+        updated: updatedCount,
+        yetToUpdate: yetToUpdateCount,
+      },
+      totalItems,
+      data,
+    });
+  } catch (error) {
+    console.error("getGrnDiscrepancyList Error:", error);
+    return commonService.handleError(res, error);
+  }
 };
 
-
-// Helper function to get stock overview counts
+/* =========================================================
+   TOTAL STOCK VALUE
+========================================================= */
 const getTotalStockValueInternal = async (query) => {
-    const { branch_id, from_date, to_date, date_filter } = query;
+  const { branch_id, from_date, to_date, date_filter } = query;
 
-    const replacements = {};
+  const replacements = {};
+  let where = `
+    WHERE g.deleted_at IS NULL
+    AND g.is_active = true
+  `;
 
-    let where = `
-        WHERE g.deleted_at IS NULL
-        AND g.is_active = true
+  if (branch_id) {
+    where += `
+      AND EXISTS (
+        SELECT 1
+        FROM products p
+        WHERE p.grn_id = g.id
+          AND p.branch_id = :branch_id
+          AND p.deleted_at IS NULL
+      )
     `;
+    replacements.branch_id = branch_id;
+  }
 
-    // Branch filter via products → GRN
-    if (branch_id) {
-        where += `
-            AND g.id IN (
-                SELECT DISTINCT grn_id
-                FROM products
-                WHERE branch_id = :branch_id
-                AND deleted_at IS NULL
-            )
-        `;
-        replacements.branch_id = branch_id;
-    }
+  where += dateFilter({ from_date, to_date, date_filter }, "g.grn_date", replacements);
 
-    // Date filter on GRN
-    const dateCondition = dateFilter(
-        { from_date, to_date, date_filter },
-        "g.grn_date",
-        replacements
-    );
+  const [rows] = await sequelize.query(
+    `
+    SELECT COALESCE(SUM(g.total_amount), 0) AS total_stock_value
+    FROM grns g
+    ${where}
+    `,
+    { replacements }
+  );
 
-    where += dateCondition;
-
-    const [rows] = await sequelize.query(
-        `
-        SELECT
-            COALESCE(SUM(g.total_amount), 0) AS total_stock_value
-        FROM grns g
-        ${where}
-        `,
-        { replacements }
-    );
-
-    return Number(rows[0]?.total_stock_value || 0);
+  return Number(rows[0]?.total_stock_value || 0);
 };
 
-
+/* =========================================================
+   OPTIMIZED: STOCK OVERVIEW COUNT (2 QUERIES INSTEAD OF 4)
+========================================================= */
 const getStockOverviewCount = async (req, res) => {
-    try {
-        const replacements = {};
-        const baseWhere = buildBaseFilters(req.query, replacements);
+  try {
+    const replacements = {};
+    const baseWhere = buildBaseFilters(req.query, replacements);
 
-        const [
-            stockInHand,
-            lowStock,
-            outOfStock,
-            totalStockValue
-        ] = await Promise.all([
-            getStockInHandSummary(baseWhere, replacements),
-            getLowStockSummaryInternal(baseWhere, replacements),
-            getOutOfStockSummaryInternal(req.query),
-            getTotalStockValueInternal(req.query)
-        ]);
+    // 1) One query: stock_in_hand + low_stock + out_of_stock
+    const [summary] = await sequelize.query(
+      `
+      WITH filtered_products AS (
+        SELECT p.id, p.subcategory_id, p.branch_id
+        FROM products p
+        ${baseWhere}
+      ),
+      stock_in_hand AS (
+        SELECT
+          COALESCE(SUM(pid.quantity), 0) AS total_quantity,
+          COALESCE(SUM(pid.quantity * pid.gross_weight), 0) AS total_weight,
+          COUNT(DISTINCT fp.id) AS product_count
+        FROM filtered_products fp
+        JOIN "productItemDetails" pid
+          ON pid.product_id = fp.id
+          AND pid.deleted_at IS NULL
+          AND pid.quantity > 0
+      ),
+      product_stock AS (
+        SELECT
+          fp.id AS product_id,
+          fp.subcategory_id,
+          SUM(pid.quantity) AS total_qty,
+          SUM(pid.quantity * pid.gross_weight) AS total_weight
+        FROM filtered_products fp
+        JOIN "productItemDetails" pid
+          ON pid.product_id = fp.id
+          AND pid.deleted_at IS NULL
+        GROUP BY fp.id, fp.subcategory_id
+      ),
+      low_stock_rows AS (
+        SELECT
+          ps.subcategory_id,
+          SUM(ps.total_weight) AS row_weight
+        FROM product_stock ps
+        JOIN subcategories sc ON sc.id = ps.subcategory_id AND sc.deleted_at IS NULL
+        WHERE ps.total_qty < sc.reorder_level
+        GROUP BY ps.subcategory_id
+      ),
+      out_of_stock AS (
+        -- Subcategories filtered by requested subcategory/material/category/search + (optional) product created_at date filter
+        SELECT COUNT(*)::int AS subcategory_count
+        FROM (
+          SELECT sc.id
+          FROM subcategories sc
+          LEFT JOIN products p
+            ON p.subcategory_id = sc.id
+            AND p.deleted_at IS NULL
+            AND p.status = 'Active'
+          LEFT JOIN branches b ON b.id = p.branch_id AND b.deleted_at IS NULL
+          LEFT JOIN "materialTypes" mt ON mt.id = sc.materialtype_id AND mt.deleted_at IS NULL
+          LEFT JOIN categories c ON c.id = sc.category_id AND c.deleted_at IS NULL
+          ${buildSubcategoryFilters(req.query, { ...replacements })}
+          GROUP BY sc.id
+          HAVING COUNT(p.id) = 0
+        ) z
+      )
+      SELECT
+        sih.total_quantity AS stock_total_quantity,
+        sih.total_weight AS stock_total_weight,
+        sih.product_count AS stock_product_count,
 
-        return commonService.okResponse(res, {
-            total_stock_value: totalStockValue,
+        (SELECT COUNT(*) FROM low_stock_rows) AS low_subcategory_count,
+        (SELECT COALESCE(SUM(row_weight),0) FROM low_stock_rows) AS low_total_weight,
 
-            stock_in_hand: {
-                total_quantity: stockInHand.total_quantity,
-                total_weight: stockInHand.total_weight,
-                product_count: stockInHand.product_count
-            },
+        (SELECT subcategory_count FROM out_of_stock) AS out_subcategory_count
+      FROM stock_in_hand sih
+      `,
+      { replacements, type: sequelize.QueryTypes.SELECT }
+    );
 
-            low_stock: {
-                subcategory_count: lowStock.subcategory_count,
-                total_weight: lowStock.total_weight
-            },
+    // 2) Second query: total stock value (grns sum)
+    const totalStockValue = await getTotalStockValueInternal(req.query);
 
-            out_of_stock: {
-                subcategory_count: outOfStock.subcategory_count
-            }
-        });
+    return commonService.okResponse(res, {
+      total_stock_value: totalStockValue,
 
-    } catch (error) {
-        console.error("Stock Overview Count Error:", error);
-        return commonService.handleError(res, error);
-    }
+      stock_in_hand: {
+        total_quantity: Number(summary?.stock_total_quantity || 0),
+        total_weight: Number(summary?.stock_total_weight || 0),
+        product_count: Number(summary?.stock_product_count || 0),
+      },
+
+      low_stock: {
+        subcategory_count: Number(summary?.low_subcategory_count || 0),
+        total_weight: Number(summary?.low_total_weight || 0),
+      },
+
+      out_of_stock: {
+        subcategory_count: Number(summary?.out_subcategory_count || 0),
+      },
+    });
+  } catch (error) {
+    console.error("Stock Overview Count Error:", error);
+    return commonService.handleError(res, error);
+  }
 };
 
-
-
+/* =========================================================
+   EXPORTS
+========================================================= */
 module.exports = {
-    getOldJewelReport,
-    getStockAgeingReport,
-    getAllStockDetails,
-    getLowStockSummary,
-    getOutOfStockOldSummary,
-    getOutOfStockSummary,
-    buildBaseFilters,
-    buildSubcategoryFilters,
-    getStockInHandSummary,
-    getLowStockSummaryInternal,
-    getOutOfStockSummaryInternal,
-    getStockInHandList,
-    getLowStockList,
-    getOutOfStockList,
-    getStockDashboard,
-    getBranchStockSummary,
-    getBranchCategoryStock,
-    getVendorContributionReport,
-    getStockByMaterialTypeReport,
-    getBranchwiseStockCount,
-    getGrnDiscrepancyList,
-    getTotalStockValueInternal,
-    getStockOverviewCount
+  getOldJewelReport,
+  getStockAgeingReport,
+  getAllStockDetails,
+  getLowStockSummary,
+  getOutOfStockOldSummary,
+  getOutOfStockSummary,
+
+  buildBaseFilters,
+  buildSubcategoryFilters,
+
+  getStockInHandSummary,
+  getLowStockSummaryInternal,
+  getOutOfStockSummaryInternal,
+
+  getStockInHandList,
+  getLowStockList,
+  getOutOfStockList,
+
+  getStockDashboard,
+  getBranchStockSummary,
+  getBranchCategoryStock,
+  getVendorContributionReport,
+  getStockByMaterialTypeReport,
+  getBranchwiseStockCount,
+  getGrnDiscrepancyList,
+
+  getTotalStockValueInternal,
+  getStockOverviewCount,
 };

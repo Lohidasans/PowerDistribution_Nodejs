@@ -21,6 +21,11 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.STRING,
         allowNull: false,
       },
+      branch_id:{
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        defaultValue: 1, // default branch_id to 1 for all ledgers
+      }
     },
     {
       tableName: "ledger",

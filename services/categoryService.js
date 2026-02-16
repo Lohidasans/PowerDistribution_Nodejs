@@ -4,7 +4,7 @@ const enMessage = require("../constants/en.json");
 
 const createCategory = async (req, res) => {
   try {
-    const { material_type_id, category_name, category_image_url, short_name } = req.body;
+    const { material_type_id, category_name, category_image_url, short_name, branch_id } = req.body;
 
     if (!material_type_id || !category_name) {
       return commonService.badRequest(
@@ -23,6 +23,7 @@ const createCategory = async (req, res) => {
       category_name,
       category_image_url,
       short_name,
+      branch_id: branch_id || 1, // default to 1 if not provided
     });
 
     return commonService.createdResponse(res, { category: row });
@@ -33,7 +34,7 @@ const createCategory = async (req, res) => {
 
 const getAllCategories = async (req, res) => {
   try {
-    const { materialType, material_type_id, search } = req.query;
+    const { materialType, material_type_id, search, branch_id } = req.query;
 
     let query = `
       SELECT
@@ -42,6 +43,7 @@ const getAllCategories = async (req, res) => {
         c.short_name,
         c.category_image_url,
         c.material_type_id,
+        c.branch_id,
         mt.material_type,
         mt.material_image_url
       FROM categories c
@@ -50,6 +52,12 @@ const getAllCategories = async (req, res) => {
     `;
 
     const replacements = {};
+
+    // 🔹 Filter by branch_id
+    if (branch_id) {
+      query += ` AND c.branch_id = :branch_id`;
+      replacements.branch_id = branch_id;
+    }
 
     // 🔹 Filter by Material Type ID (numeric)
     if (material_type_id) {
@@ -87,7 +95,7 @@ const getAllCategories = async (req, res) => {
 
 const listCategories = async (req, res) => {
   try {
-    const { material_type_id, search = "" } = req.query;
+    const { material_type_id, search = "", branch_id } = req.query;
 
     let sql = `
       SELECT
@@ -95,6 +103,7 @@ const listCategories = async (req, res) => {
         c.category_name,
         c.category_image_url,
         c.material_type_id,
+        c.branch_id,
         c.description,
         c.sort_order,
         c.status,
@@ -108,6 +117,10 @@ const listCategories = async (req, res) => {
     `;
 
     const replacements = {};
+    if (branch_id) {
+      sql += ` AND c.branch_id = :branch_id`;
+      replacements.branch_id = branch_id;
+    }
     if (material_type_id) {
       sql += ` AND c.material_type_id = :material_type_id`;
       replacements.material_type_id = +material_type_id;
@@ -128,12 +141,13 @@ const listCategories = async (req, res) => {
 
 const listCategoriesDropdown = async (req, res) => {
   try {
-    const { material_type_id } = req.query;
+    const { material_type_id, branch_id } = req.query;
     const where = {};
     if (material_type_id) where.material_type_id = material_type_id;
+    if (branch_id) where.branch_id = branch_id;
 
     const items = await models.Category.findAll({
-      attributes: ["id", "category_name", "short_name"],
+      attributes: ["id", "category_name", "short_name", "branch_id"],
       where,
       order: [["category_name", "ASC"]],
     });

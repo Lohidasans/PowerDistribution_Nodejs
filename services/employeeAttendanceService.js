@@ -88,7 +88,6 @@ const getEmployeeAttendance = async (req, res) => {
           ROW_NUMBER() OVER (PARTITION BY et.ref_employee_id ORDER BY et.time ASC) as row_num
         FROM employee_tracking et
         WHERE et.date BETWEEN :startDate AND :endDate
-          AND et.deleted_at IS NULL
       ),
       clock_times AS (
         SELECT 
@@ -267,7 +266,6 @@ const getEmployeeAttendanceHistory = async (req, res) => {
           MAX(CASE WHEN et.status_id = 2 THEN et.time END) as clock_out
         FROM employee_tracking et
         WHERE et.date BETWEEN :start_date AND :end_date
-          AND et.deleted_at IS NULL
         GROUP BY et.ref_employee_id, et.date
       )
       SELECT 
@@ -423,7 +421,6 @@ const getAttendanceSummary = async (req, res) => {
         FROM employee_tracking et
         INNER JOIN employees e ON e.ref_employee_id = et.ref_employee_id
         WHERE et.date = :targetDate
-          AND et.deleted_at IS NULL
           ${branch_id ? 'AND e.branch_id = :branch_id' : ''}
       )
       SELECT 

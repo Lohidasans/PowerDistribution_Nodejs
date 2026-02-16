@@ -6,10 +6,10 @@ const { Op, literal } = require('sequelize');
 const createHoliday = async (req, res) => {
   const transaction = await sequelize.transaction();
   try {
-    const { holiday_date, holiday_name, description } = req.body;
+    const { holiday_date, holiday_name, description, branch_id } = req.body;
     
     const holiday = await models.Holiday.create(
-      { holiday_date, holiday_name, description },
+      { holiday_date, holiday_name, description, branch_id: branch_id || 1 },
       { transaction }
     );
 
@@ -24,7 +24,7 @@ const createHoliday = async (req, res) => {
 // Get all holidays with optional filtering
 const getAllHolidays = async (req, res) => {
   try {
-    const { year, month } = req.query;
+    const { year, month, branch_id } = req.query;
     const whereClause = {};
 
     if (year) {
@@ -44,6 +44,10 @@ const getAllHolidays = async (req, res) => {
           month
         )
       ];
+    }
+
+    if (branch_id) {
+      whereClause.branch_id = branch_id;
     }
     const holidays = await models.Holiday.findAll({
       where: whereClause,
@@ -130,7 +134,7 @@ const deleteHoliday = async (req, res) => {
 // Get holidays within a date range
 const getHolidaysInRange = async (req, res) => {
   try { 
-    const { start_date, end_date, search } = req.query;
+    const { start_date, end_date, search, branch_id } = req.query;
     const whereClause = {};
 
     // 📅 Optional date filters
@@ -142,6 +146,10 @@ const getHolidaysInRange = async (req, res) => {
       whereClause.holiday_date = { [Op.gte]: start_date };
     } else if (end_date) {
       whereClause.holiday_date = { [Op.lte]: end_date };
+    }
+
+    if (branch_id) {
+      whereClause.branch_id = branch_id;
     }
 
     // 🔍 Optional text search across name/description

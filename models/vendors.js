@@ -86,6 +86,11 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
         defaultValue: "Active",
       },
+      branch_id:{
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        defaultValue: 1, // default branch_id to 1 for all vendors
+      }
     },
     {
       timestamps: true,

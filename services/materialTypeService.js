@@ -12,7 +12,8 @@ const createMaterialType = async (req, res) => {
       material_price,
       purity_name,
       purity_percentage,
-      website_visibility
+      website_visibility,
+      branch_id
     } = req.body;
 
     // Only material_type is required
@@ -39,6 +40,7 @@ const createMaterialType = async (req, res) => {
     // Create with only the provided fields
     const materialData = {
       material_type,
+      branch_id: branch_id || 1, // default to 1 if not provided
       ...(material_price !== undefined && { material_price }),
       ...(material_image_url !== undefined && { material_image_url }),
       ...(purity_name !== undefined && { purity_name }),
@@ -59,7 +61,7 @@ const createMaterialType = async (req, res) => {
 // Update the listMaterialTypes function to include new fields in the response
 const listMaterialTypes = async (req, res) => {
   try {
-    const { search = "", material_type } = req.query;
+    const { search = "", material_type, branch_id } = req.query;
     const where = {};
     const searchCondition = buildSearchCondition(search, [
       "material_type",
@@ -69,6 +71,10 @@ const listMaterialTypes = async (req, res) => {
 
     if (material_type && typeof material_type === "string" && material_type.trim()) {
       where.material_type = { [Op.iLike]: `%${material_type.trim()}%` };
+    }
+
+    if (branch_id) {
+      where.branch_id = branch_id;
     }
 
     const items = await models.MaterialType.findAll({
@@ -84,14 +90,23 @@ const listMaterialTypes = async (req, res) => {
 // Update the listMaterialTypesDropdown to include new fields if needed
 const listMaterialTypesDropdown = async (req, res) => {
   try {
+    const { branch_id } = req.query;
+    const where = {};
+
+    if (branch_id) {
+      where.branch_id = branch_id;
+    }
+
     const items = await models.MaterialType.findAll({
+      where,
       attributes: [
         "id", 
         "material_type", 
         "material_price",
         "purity_name",
         "purity_percentage",
-        "website_visibility"
+        "website_visibility",
+        "branch_id"
       ],
       order: [["material_type", "ASC"]],
     });

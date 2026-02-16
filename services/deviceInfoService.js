@@ -285,7 +285,7 @@ const employeePunInPunOut = async (deviceId, role) => {
     const deviceInfo = await getDeviceInfo(deviceId);
     console.log(deviceInfo, "deviceInfo");
     const seqNumber = maxSeqNumber + 1;
-    const url = `http://${deviceInfo[0]?.ip_address}/device.cgi/events?action=getevent&roll-over-count=0&seq-number=${seqNumber}&no-of-events=100&format=text`;
+    const url = `http://192.168.1.23/device.cgi/events?action=getevent&roll-over-count=0&seq-number=${seqNumber}&no-of-events=100&format=text`;
     // console.log(url, "url");
     const response = await matrixDeviceApi(url);
     const filteredRecords = parseData(response.data);

@@ -7,7 +7,7 @@ const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
 // Create Ledger Group
 const create = async (req, res) => {
   try {
-    const { ledger_group_name, ledger_group_no, status_id = 1 } = req.body;
+    const { ledger_group_name, ledger_group_no, status_id = 1, branch_id } = req.body;
 
     // Check if ledger group ID already exists
     const ledgerGroupExists = await models.LedgerGroup.findOne({
@@ -28,6 +28,7 @@ const create = async (req, res) => {
       ledger_group_no,
       ledger_group_name,
       status_id,
+      branch_id: branch_id || 1, // default to 1 if not provided
     });
 
     return commonService.createdResponse(res, { ledgerGroup });
@@ -68,7 +69,7 @@ const bulkCreate = async (req, res) => {
 // List all Ledger Groups with optional search
 const list = async (req, res) => {
   try {
-    const { page = 1, limit = 10, search, status_id } = req.query;
+    const { page = 1, limit = 10, search, status_id, branch_id } = req.query;
     const offset = (page - 1) * limit;
 
     let where = {};
@@ -84,6 +85,10 @@ const list = async (req, res) => {
 
     if (status_id) {
       where.status_id = status_id;
+    }
+
+    if (branch_id) {
+      where.branch_id = branch_id;
     }
 
     const { count, rows: ledgerGroups } =

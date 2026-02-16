@@ -8,19 +8,29 @@ module.exports = (sequelize, DataTypes) => {
         primaryKey: true,
         type: DataTypes.INTEGER,
       },
+
       uom_code: {
-        type: DataTypes.STRING,  // Visible UOM ID in UI (e.g., UOM001)
+        type: DataTypes.STRING(20),
         allowNull: false,
-        unique: true,
+        unique: true, // already unique here, no need duplicate index
       },
+
       uom_name: {
-        type: DataTypes.STRING,// e.g., grams, kilograms
+        type: DataTypes.STRING(100),
         allowNull: false,
       },
+
       short_code: {
-        type: DataTypes.STRING,// e.g., gm, kg, pcs
+        type: DataTypes.STRING(20),
         allowNull: false,
       },
+
+      branch_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        defaultValue: 1,
+      },
+
       status: {
         type: DataTypes.ENUM("Active", "Inactive"),
         allowNull: false,
@@ -28,14 +38,28 @@ module.exports = (sequelize, DataTypes) => {
       },
     },
     {
+      tableName: "uoms",
       timestamps: true,
       createdAt: "created_at",
       updatedAt: "updated_at",
-      paranoid: true,
       deletedAt: "deleted_at",
+      paranoid: true,
+      underscored: true,
+
       indexes: [
-        { unique: true, fields: ["uom_code"] },
-        { unique: true, fields: ["uom_name", "short_code"] },
+        // Prevent duplicate UOM per branch
+        {
+          unique: true,
+          fields: ["uom_name", "short_code", "branch_id"],
+        },
+
+        // Faster filtering
+        {
+          fields: ["branch_id"],
+        },
+        {
+          fields: ["status"],
+        },
       ],
     }
   );

@@ -16,7 +16,8 @@ const createOffer = async (req, res) => {
       valid_from,
       valid_to,
       applicable_type_id,
-      status = "Active"
+      status = "Active",
+      branch_id
     } = req.body;
 
     // Required field validation
@@ -54,7 +55,8 @@ const createOffer = async (req, res) => {
       valid_from,
       valid_to,
       applicable_type_id,
-      status
+      status,
+      branch_id: branch_id || 1, // default to 1 if not provided
     };
 
     const row = await models.Offer.create(offerData);
@@ -70,7 +72,8 @@ const listOffers = async (req, res) => {
     const {
       search = "",
       status,
-      offer_plan_id
+      offer_plan_id,
+      branch_id
     } = req.query;
 
     const where = {
@@ -92,6 +95,10 @@ const listOffers = async (req, res) => {
 
     if (offer_plan_id) {
       where.offer_plan_id = offer_plan_id;
+    }
+
+    if (branch_id) {
+      where.branch_id = branch_id;
     }
 
     const offers = await models.Offer.findAll({
@@ -235,7 +242,7 @@ const deleteOffer = async (req, res) => {
 // For dropdown/list selection
 const listOffersDropdown = async (req, res) => {
   try {
-    const { status = 'Active' } = req.query;
+    const { status = 'Active', branch_id } = req.query;
     
     const where = {
       deleted_at: null
@@ -243,6 +250,10 @@ const listOffersDropdown = async (req, res) => {
     
     if (status) {
       where.status = status;
+    }
+
+    if (branch_id) {
+      where.branch_id = branch_id;
     }
     
     const items = await models.Offer.findAll({
@@ -255,6 +266,7 @@ const listOffersDropdown = async (req, res) => {
         'valid_from',
         'valid_to',
         'applicable_type_id',
+        'branch_id',
         'status'
       ],
       where,

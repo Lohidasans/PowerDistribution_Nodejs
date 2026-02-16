@@ -6,7 +6,7 @@ const message = require("../constants/en.json");
 // Create UOM
 const create = async (req, res) => {
   try {
-    const { uom_code, uom_name, short_code, status = "Active" } = req.body;
+    const { uom_code, uom_name, short_code, status = "Active", branch_id } = req.body;
 
     // Check if UOM code already exists
     const uomCodeExists = await models.Uom.findOne({
@@ -38,6 +38,7 @@ const create = async (req, res) => {
       uom_name,
       short_code,
       status,
+      branch_id: branch_id || 1, // default to 1 if not provided
     });
 
     return commonService.createdResponse(res, { uom });
@@ -51,6 +52,7 @@ const list = async (req, res) => {
   try {
     const searchKey = req.query.search || "";
     const status = req.query.status;
+    const { branch_id } = req.query;
 
     let whereClause = {};
 
@@ -64,6 +66,10 @@ const list = async (req, res) => {
 
     if (status) {
       whereClause.status = status;
+    }
+
+    if (branch_id) {
+      whereClause.branch_id = branch_id;
     }
 
     const uoms = await models.Uom.findAll({
@@ -209,9 +215,16 @@ const toggleStatus = async (req, res) => {
 // Get all active UOMs (for dropdown/select purposes)
 const getActiveUoms = async (req, res) => {
   try {
+    const { branch_id } = req.query;
+    const where = { status: "Active" };
+
+    if (branch_id) {
+      where.branch_id = branch_id;
+    }
+
     const uoms = await models.Uom.findAll({
-      where: { status: "Active" },
-      attributes: ["id", "uom_code", "uom_name", "short_code"],
+      where,
+      attributes: ["id", "uom_code", "uom_name", "short_code", "branch_id"],
       order: [["uom_name", "ASC"]],
     });
 
