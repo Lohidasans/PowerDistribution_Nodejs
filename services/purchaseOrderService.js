@@ -170,31 +170,58 @@ const deletePurchaseOrder = async (req, res) => {
 // List POs with pagination and filters (raw SQL)
 const listPurchaseOrders = async (req, res) => {
   try {
-    const { page = 1, limit = 10, vendor_id, start_date, end_date, search, branch_id, status_id } = req.query;
-    const offset = (parseInt(page) - 1) * parseInt(limit);
+    const {
+      page,
+      limit,
+      status_id = 1, // ✅ default = Approval Pending
+      date,
+      search,
+      branch_id,
+      vendor_id,
+    } = req.query;
 
-    let whereSql = "WHERE p.deleted_at IS NULL";
-    const replacements = { limit: parseInt(limit), offset };
+    const replacements = {};
 
-    if (vendor_id) { whereSql += " AND p.vendor_id = :vendor_id"; replacements.vendor_id = vendor_id; }
-    if (start_date) { whereSql += " AND p.po_date >= :start_date"; replacements.start_date = start_date; }
-    if (end_date) { whereSql += " AND p.po_date <= :end_date"; replacements.end_date = end_date; }
-    if (search) { whereSql += " AND (p.po_no ILIKE :search OR v.vendor_name ILIKE :search)"; replacements.search = `%${search}%`; }
-    if (branch_id) { whereSql += " AND p.branch_id = :branch_id"; replacements.branch_id = branch_id; }
-    if (status_id) { whereSql += " AND p.status_id = :status_id"; replacements.status_id = status_id; }
+    // ---------------- BASE FILTER ----------------
+    let whereSql = `
+      WHERE p.deleted_at IS NULL
+    `;
+    // 2- Approved and 3- Rejected
+    if (status_id) {
+      whereSql += ` AND p.status_id = :status_id`;
+      replacements.status_id = Number(status_id);
+    }
+
+    if (date) {
+      whereSql += ` AND p.po_date = :date`;
+      replacements.date = date;
+    }
+
+    if (branch_id) {
+      whereSql += ` AND p.branch_id = :branch_id`;
+      replacements.branch_id = Number(branch_id);
+    }
+
+    if (vendor_id) {
+      whereSql += ` AND p.vendor_id = :vendor_id`;
+      replacements.vendor_id = Number(vendor_id);
+    }
+
+    if (search) {
+      whereSql += `
+        AND (
+          p.po_no ILIKE :search
+          OR v.vendor_name ILIKE :search
+          OR b.branch_name ILIKE :search
+        )
+      `;
+      replacements.search = `%${search}%`;
+    }
 
     const joinVendors = "LEFT JOIN vendors v ON v.id = p.vendor_id";
     const joinBranches = "LEFT JOIN branches b ON b.id = p.branch_id";
 
-    // Get status counts - exclude status_id filter to get all counts
-    // Build whereSql for status counts (without status_id filter)
-    let statusCountWhereSql = "WHERE p.deleted_at IS NULL";
-    if (vendor_id) statusCountWhereSql += " AND p.vendor_id = :vendor_id";
-    if (start_date) statusCountWhereSql += " AND p.po_date >= :start_date";
-    if (end_date) statusCountWhereSql += " AND p.po_date <= :end_date";
-    if (search) statusCountWhereSql += " AND (p.po_no ILIKE :search OR v.vendor_name ILIKE :search)";
-    if (branch_id) statusCountWhereSql += " AND p.branch_id = :branch_id";
-
+    // ---------------- SCORE CARD (FILTER-AWARE) ----------------
     const statusCountQuery = `
       SELECT 
         COUNT(CASE WHEN p.status_id = 1 THEN 1 END) AS approval_pending,
@@ -203,25 +230,49 @@ const listPurchaseOrders = async (req, res) => {
       FROM purchase_orders p
       ${joinVendors}
       ${joinBranches}
-      ${statusCountWhereSql};
+      WHERE p.deleted_at IS NULL
+      ${date ? "AND p.po_date = :date" : ""}
+      ${branch_id ? "AND p.branch_id = :branch_id" : ""}
+      ${vendor_id ? "AND p.vendor_id = :vendor_id" : ""}
+      ${search ? "AND (p.po_no ILIKE :search OR v.vendor_name ILIKE :search OR b.branch_name ILIKE :search)" : ""}
     `;
-    const [statusCountRows] = await sequelize.query(statusCountQuery, { replacements });
-    const statusCounts = statusCountRows?.[0] || { approval_pending: 0, approved: 0, completed: 0 };
 
+    const [statusCounts] = await sequelize.query(statusCountQuery, {
+      replacements,
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    // ---------------- OPTIONAL PAGINATION ----------------
+    let paginationSql = "";
+    let pageNum, limitNum;
+
+    if (page || limit) {
+      pageNum = Number(page) || 1;
+      limitNum = Number(limit) || 10;
+      const offset = (pageNum - 1) * limitNum;
+
+      paginationSql = ` LIMIT :limit OFFSET :offset`;
+      replacements.limit = limitNum;
+      replacements.offset = offset;
+    }
+
+    // ---------------- TOTAL COUNT ----------------
     const countQuery = `
-      SELECT COUNT(*) AS total
-      FROM (
-        SELECT p.id
-        FROM purchase_orders p
-        ${joinVendors}
-        ${joinBranches}
-        ${whereSql}
-        GROUP BY p.id
-      ) t;
+      SELECT COUNT(DISTINCT p.id) AS total
+      FROM purchase_orders p
+      ${joinVendors}
+      ${joinBranches}
+      ${whereSql}
     `;
-    const [countRows] = await sequelize.query(countQuery, { replacements });
-    const total = parseInt(countRows?.[0]?.total || 0, 10);
 
+    const [countResult] = await sequelize.query(countQuery, {
+      replacements,
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    const total = Number(countResult.total || 0);
+
+    // ---------------- LIST DATA ----------------
     const dataQuery = `
       SELECT 
         p.id,
@@ -234,19 +285,25 @@ const listPurchaseOrders = async (req, res) => {
         v.id AS vendor_id,
         v.vendor_name,
         v.vendor_image_url,
-        u.email as created_by,
+        u.email AS created_by,
         COALESCE(SUM(poi.ordered_weight), 0) AS ordered_weight
       FROM purchase_orders p
       ${joinVendors}
       ${joinBranches}
-      LEFT JOIN purchase_order_items poi ON poi.po_id = p.id AND poi.deleted_at IS NULL
+      LEFT JOIN purchase_order_items poi 
+        ON poi.po_id = p.id AND poi.deleted_at IS NULL
       LEFT JOIN users u ON u.id = p.order_by_user_id
       ${whereSql}
-      GROUP BY p.id, v.vendor_name, v.id, v.vendor_image_url, u.email, b.branch_name
+      GROUP BY 
+        p.id, b.branch_name, v.id, v.vendor_name, v.vendor_image_url, u.email
       ORDER BY p.po_date DESC, p.id DESC
-      LIMIT :limit OFFSET :offset;
+      ${paginationSql};
     `;
-    const [rows] = await sequelize.query(dataQuery, { replacements });
+
+    const rows = await sequelize.query(dataQuery, {
+      replacements,
+      type: sequelize.QueryTypes.SELECT,
+    });
 
     return commonService.okResponse(res, {
       status_counts: {
@@ -255,8 +312,12 @@ const listPurchaseOrders = async (req, res) => {
         rejected: Number(statusCounts.rejected || 0),
       },
       total,
-      page: parseInt(page),
-      totalPages: Math.ceil(total / parseInt(limit)),
+      ...(page || limit
+        ? {
+          page: pageNum,
+          totalPages: Math.ceil(total / limitNum),
+        }
+        : {}),
       data: rows,
     });
   } catch (err) {
@@ -375,7 +436,6 @@ const getPurchaseOrderView = async (req, res) => {
     return commonService.handleError(res, err);
   }
 };
-
 
 // Minimal dropdown list
 const listPurchaseOrderNumbers = async (req, res) => {
