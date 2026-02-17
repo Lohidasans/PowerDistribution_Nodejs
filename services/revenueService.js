@@ -22,7 +22,7 @@ const getBranchwiseRevenue = async (req, res) => {
         // DATE FILTER
         const paymentDateCondition = dateFilter(
             { from_date, to_date, date_filter },
-            "p.payment_date::date",
+            "p.payment_date",
             dateReplacements
         );
 
@@ -197,7 +197,7 @@ const getBranchRevenueDetails = async (req, res) => {
         // DATE FILTER
         const paymentDateCondition = dateFilter(
             { from_date, to_date, date_filter },
-            "p.payment_date::date",
+            "p.payment_date",
             replacements
         );
 

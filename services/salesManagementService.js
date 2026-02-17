@@ -614,7 +614,7 @@ const getBranchWiseSalesCount = async (req, res) => {
 
         whereSql += dateFilter(
             { from_date, to_date, date_filter },
-            "t.created_at::date",
+            "t.created_at",
             replacements
         );
 

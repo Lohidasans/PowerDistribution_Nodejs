@@ -310,7 +310,7 @@ const getStockAgeingReport = async (req, res) => {
 
     const stockDateCondition = dateFilter(
       { from_date, to_date, date_filter },
-      "p.created_at::date",
+      "p.created_at",
       replacements
     );
 
@@ -925,7 +925,7 @@ const buildBaseFilters = (query, replacements) => {
     replacements.search = `%${query.search}%`;
   }
 
-  where += dateFilter(query, "p.created_at::date", replacements);
+  where += dateFilter(query, "p.created_at", replacements);
   return where;
 };
 
@@ -958,7 +958,7 @@ const buildSubcategoryFilters = (query, replacements) => {
   }
 
   // Note: this expects products p to be joined (LEFT JOIN products p ...)
-  where += dateFilter(query, "p.created_at::date", replacements);
+  where += dateFilter(query, "p.created_at", replacements);
 
   return where;
 };
@@ -1570,13 +1570,13 @@ const getBranchwiseStockCount = async (req, res) => {
 
     const productDateCondition = dateFilter(
       { from_date, to_date, date_filter },
-      "p.created_at::date",
+      "p.created_at",
       dateReplacements
     );
 
     const billingDateCondition = dateFilter(
       { from_date, to_date, date_filter },
-      "t.created_at::date",
+      "t.created_at",
       dateReplacements
     );
 
