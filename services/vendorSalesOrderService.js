@@ -3,87 +3,87 @@ const commonService = require('./commonService');
 const { Op } = require('sequelize');
 
 const submitVendorSalesOrder = async (req, res) => {
-    const transaction = await sequelize.transaction();
+const transaction = await sequelize.transaction();
 
-    try {
-        const { id } = req.params;
-        const {
+try {
+    const { id } = req.params;
+    const {
+        sales_order_date,
+        consignment_date,
+        credit_terms,
+        additional_charges = [],
+        remarks,
+    } = req.body;
+
+    // 🔒 Required ONLY on accept
+    if (!sales_order_date || !consignment_date || !credit_terms) {
+        await transaction.rollback();
+        return commonService.badRequest(
+            res,
+            "Sales order date, consignment date and credit terms are required"
+        );
+    }
+
+    const salesOrder = await models.SalesOrder.findByPk(id, { transaction });
+    if (!salesOrder) {
+        await transaction.rollback();
+        return commonService.notFound(res, "Sales order not found");
+    }
+
+    if (salesOrder.status !== "pending") {
+        await transaction.rollback();
+        return commonService.badRequest(
+            res,
+            "Sales order already processed"
+        );
+    }
+
+    // Replace additional charges
+    await models.SalesOrderAdditionalCharge.destroy({
+        where: { sales_order_id: id },
+        transaction,
+    });
+
+    let chargesTotal = 0;
+
+    if (additional_charges.length) {
+        additional_charges.forEach(c => {
+            chargesTotal += Number(c.amount || 0);
+        });
+
+        await models.SalesOrderAdditionalCharge.bulkCreate(
+            additional_charges.map(c => ({
+                sales_order_id: id,
+                charge_name: c.charge_name,
+                amount: c.amount,
+            })),
+            { transaction }
+        );
+    }
+
+    await salesOrder.update(
+        {
+            status: "accepted",
+            response_date: new Date(),
+            remarks,
+
+            // ✅ vendor-provided fields
             sales_order_date,
             consignment_date,
             credit_terms,
-            additional_charges = [],
-            remarks,
-        } = req.body;
 
-        // 🔒 Required ONLY on accept
-        if (!sales_order_date || !consignment_date || !credit_terms) {
-            await transaction.rollback();
-            return commonService.badRequest(
-                res,
-                "Sales order date, consignment date and credit terms are required"
-            );
-        }
+            // ✅ only total changes due to charges
+            total_amount: Number(salesOrder.total_amount) + chargesTotal,
+        },
+        { transaction }
+    );
 
-        const salesOrder = await models.SalesOrder.findByPk(id, { transaction });
-        if (!salesOrder) {
-            await transaction.rollback();
-            return commonService.notFound(res, "Sales order not found");
-        }
-
-        if (salesOrder.status !== "pending") {
-            await transaction.rollback();
-            return commonService.badRequest(
-                res,
-                "Sales order already processed"
-            );
-        }
-
-        // Replace additional charges
-        await models.SalesOrderAdditionalCharge.destroy({
-            where: { sales_order_id: id },
-            transaction,
-        });
-
-        let chargesTotal = 0;
-
-        if (additional_charges.length) {
-            additional_charges.forEach(c => {
-                chargesTotal += Number(c.amount || 0);
-            });
-
-            await models.SalesOrderAdditionalCharge.bulkCreate(
-                additional_charges.map(c => ({
-                    sales_order_id: id,
-                    charge_name: c.charge_name,
-                    amount: c.amount,
-                })),
-                { transaction }
-            );
-        }
-
-        await salesOrder.update(
-            {
-                status: "accepted",
-                response_date: new Date(),
-                remarks,
-
-                // ✅ vendor-provided fields
-                sales_order_date,
-                consignment_date,
-                credit_terms,
-
-                // ✅ only total changes due to charges
-                total_amount: Number(salesOrder.total_amount) + chargesTotal,
-            },
-            { transaction }
-        );
-
-        await transaction.commit();
-        return commonService.okResponse(res, salesOrder);
-    } catch (error) {
-        await transaction.rollback();
-        return commonService.handleError(res, error);
-    }
+    await transaction.commit();
+    return commonService.okResponse(res, salesOrder);
+} catch (error) {
+    await transaction.rollback();
+    return commonService.handleError(res, error);
+}
 };
 
 const calculatePOVendorStatus = async (poId) => {
@@ -283,27 +283,27 @@ const listVendorSalesOrders = async (req, res) => {
 };
 
 
-// const rejectVendorSalesOrder = async (req, res) => {
-//     const { id } = req.params;
-//     const { remarks } = req.body;
+const rejectVendorSalesOrder = async (req, res) => {
+    const { id } = req.params;
+    const { remarks } = req.body;
 
-//     const salesOrder = await models.SalesOrder.findByPk(id);
-//     if (!salesOrder) {
-//         return commonService.notFound(res, "Sales order not found");
-//     }
+    const salesOrder = await models.SalesOrder.findByPk(id);
+    if (!salesOrder) {
+        return commonService.notFound(res, "Sales order not found");
+    }
 
-//     if (salesOrder.status !== "pending") {
-//         return commonService.badRequest(res, "Order already processed");
-//     }
+    if (salesOrder.status !== "pending") {
+        return commonService.badRequest(res, "Order already processed");
+    }
 
-//     await salesOrder.update({
-//         status: "rejected",
-//         response_date: new Date(),
-//         remarks,
-//     });
+    await salesOrder.update({
+        status: "rejected",
+        response_date: new Date(),
+        remarks,
+    });
 
-//     return commonService.okResponse(res, salesOrder);
-// };
+    return commonService.okResponse(res, salesOrder);
+};
 
 const getVendorSalesOrderById = async (req, res) => {
     try {
@@ -395,6 +395,7 @@ module.exports = {
     submitVendorSalesOrder,
     calculatePOVendorStatus,
     updateVendorSalesOrderStatus,
+    rejectVendorSalesOrder,
     listVendorSalesOrders,
     getVendorSalesOrderById
 };

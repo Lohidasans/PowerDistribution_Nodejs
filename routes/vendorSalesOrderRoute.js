@@ -6,7 +6,8 @@ const vendorSalesOrderService = require("../services/vendorSalesOrderService");
 vendorRouter.get("/vendor/sales-orders", vendorSalesOrderService.listVendorSalesOrders);
 vendorRouter.get("/vendor/sales-orders/:id", vendorSalesOrderService.getVendorSalesOrderById);
 vendorRouter.put("/vendor/sales-orders/:id", vendorSalesOrderService.submitVendorSalesOrder);
-vendorRouter.put("/vendor/sales-orders/:id/status", vendorSalesOrderService.updateVendorSalesOrderStatus);
+vendorRouter.put("/vendor/sales-orders/:id/status", vendorSalesOrderService.rejectVendorSalesOrder);
+//vendorRouter.put("/vendor/sales-orders/:id/status", vendorSalesOrderService.updateVendorSalesOrderStatus);  // accept or reject
 
 
 module.exports = vendorRouter;
