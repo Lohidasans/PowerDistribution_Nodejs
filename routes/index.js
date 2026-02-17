@@ -68,6 +68,7 @@ const VendorAnalyticsRoute = require("./vendorAnalyticsRoute");
 const DeviceInfoRoute = require("./deviceInfoRoute");
 const DevEnrollRoute = require("./devEnrollRoute");
 const EmployeeAttendanceRoute = require("./employeeAttendanceRoute");
+const SalesOrderRoute = require("./vendorSalesOrderRoute");
 
 module.exports = (app) => {
   app.use("/api/v1", RoleRouter);
@@ -140,5 +141,6 @@ module.exports = (app) => {
   app.use("/api/v1", VendorAnalyticsRoute);
   app.use("/api/v1", DeviceInfoRoute);
   app.use("/api/v1", DevEnrollRoute);
+  app.use("/api/v1", SalesOrderRoute);
 };
 
