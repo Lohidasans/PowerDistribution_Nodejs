@@ -5,9 +5,13 @@ const svc = require("../services/stockManagementService");
 // CRUD
 router.get("/stock-management/old-jewel-report", svc.getOldJewelReport);
 router.get("/stock-management/stock-ageing-report", svc.getStockAgeingReport);
+
+// just to check  - below 3 APIs are not in use
 router.get("/stock-management/stock-in-hand-report", svc.getAllStockDetails);
 router.get("/stock-management/low-stock-report", svc.getLowStockSummary);
 router.get("/stock-management/out-of-stock-report", svc.getOutOfStockSummary);
+
+// stock
 router.get("/stock-management/stock-dashboard", svc.getStockDashboard);
 
 // dashboard

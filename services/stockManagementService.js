@@ -250,6 +250,7 @@ const getStockAgeingReport = async (req, res) => {
       ref_no_id,
       search,
       branch_id,
+      vendor_id, 
 
       ageing, // 0_30 | 31_60 | 61_90 | 91_plus
       date_filter,
@@ -282,6 +283,10 @@ const getStockAgeingReport = async (req, res) => {
     if (subcategory_id) {
       whereSql += ` AND p.subcategory_id = :subcategory_id`;
       replacements.subcategory_id = subcategory_id;
+    }
+    if (vendor_id) {
+      whereSql += ` AND p.vendor_id = :vendor_id`;
+      replacements.vendor_id = Number(vendor_id);
     }
     if (grn_id) {
       whereSql += ` AND p.grn_id = :grn_id`;
@@ -900,6 +905,10 @@ const buildBaseFilters = (query, replacements) => {
   if (query.category_id) {
     where += ` AND p.category_id = :category_id`;
     replacements.category_id = query.category_id;
+  }
+  if (query.vendor_id) {
+    where += ` AND p.vendor_id = :vendor_id`;
+    replacements.vendor_id = query.vendor_id;
   }
   if (query.subcategory_id) {
     where += ` AND p.subcategory_id = :subcategory_id`;
