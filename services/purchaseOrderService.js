@@ -264,84 +264,118 @@ const listPurchaseOrders = async (req, res) => {
   }
 };
 
-// Detailed view (header + vendor address names + items)
+// Detailed view (header + vendor address names + branch address name + items)
 const getPurchaseOrderView = async (req, res) => {
   try {
     const { id } = req.params;
+
     const [headerRows] = await sequelize.query(
-      `SELECT 
-         p.id,
-         p.po_no,
-         p.po_date,
-         p.subtotal_amount,
-         p.sgst_percent,
-         p.cgst_percent,
-         p.discount_percent,
-         p.remarks,
-         p.gst_no,
-         p.billing_address,
-         p.shipping_address,
-         v.id AS vendor_id,
-         v.vendor_name,
-         v.address AS vendor_address,
-         v.mobile AS vendor_mobile,
-         v.gst_no AS vendor_gst_no,
-         d.district_name AS vendor_district,
-         s.state_name AS vendor_state,
-         c.country_name AS vendor_country
-       FROM purchase_orders p
-       LEFT JOIN vendors v   ON v.id = p.vendor_id
-       LEFT JOIN districts d ON d.id = v.district_id
-       LEFT JOIN states s    ON s.id = v.state_id
-       LEFT JOIN countries c ON c.id = v.country_id
-       WHERE p.id = :id
-       LIMIT 1;`,
-      { replacements: { id } }
+      `
+      SELECT 
+        p.id,
+        p.po_no,
+        p.po_date,
+        p.subtotal_amount,
+        p.sgst_percent,
+        p.sgst_amount,
+        p.cgst_percent,
+        p.cgst_amount,         
+        p.discount_percent,
+        p.discount_amount,
+        p.total_amount,
+        p.amount_in_words,
+        p.remarks,
+
+        -- 🏢 BRANCH DETAILS
+        b.id            AS branch_id,
+        b.branch_name   AS branch_name,
+        b.address       AS branch_address,
+        b.mobile        AS branch_mobile,
+        b.gst_no        AS branch_gst_no,
+        bd.district_name AS branch_district,
+        bs.state_name    AS branch_state,
+        bc.country_name  AS branch_country,
+
+        -- 🧾 VENDOR DETAILS
+        v.id            AS vendor_id,
+        v.vendor_name,
+        v.address       AS vendor_address,
+        v.mobile        AS vendor_mobile,
+        v.gst_no        AS vendor_gst_no,
+        vd.district_name AS vendor_district,
+        vs.state_name    AS vendor_state,
+        vc.country_name  AS vendor_country
+
+      FROM purchase_orders p
+
+      LEFT JOIN branches b       ON b.id = p.branch_id
+      LEFT JOIN districts bd     ON bd.id = b.district_id
+      LEFT JOIN states bs        ON bs.id = b.state_id
+      LEFT JOIN countries bc     ON bc.id = bs.country_id
+
+      LEFT JOIN vendors v        ON v.id = p.vendor_id
+      LEFT JOIN districts vd    ON vd.id = v.district_id
+      LEFT JOIN states vs       ON vs.id = v.state_id
+      LEFT JOIN countries vc    ON vc.id = vs.country_id
+
+      WHERE p.id = :id
+      LIMIT 1;
+      `,
+      { replacements: { id }, type: sequelize.QueryTypes.SELECT }
     );
 
     if (!headerRows || headerRows.length === 0) {
       return commonService.notFound(res, "Purchase Order not found");
     }
 
-    const [items] = await sequelize.query(
-      `SELECT 
-         poi.id,
-         poi.description,
-         poi.purity,
-         poi.ordered_weight,
-         poi.quantity,
-         poi.rate,
-         poi.amount,
-         mt.material_type AS material_type_name,
-         c.category_name AS category_name,
-         sc.subcategory_name AS subcategory_name
-       FROM purchase_order_items poi
-       LEFT JOIN "materialTypes" mt ON poi.material_type_id = mt.id
-       LEFT JOIN categories c       ON poi.category_id = c.id
-       LEFT JOIN subcategories sc   ON poi.subcategory_id = sc.id
-       WHERE poi.po_id = :id AND poi.deleted_at IS NULL
-       ORDER BY poi.id ASC;`,
-      { replacements: { id } }
+    // ---------------- ITEMS ----------------
+    const items = await sequelize.query(
+      `
+      SELECT 
+        poi.id,
+        poi.description,
+        poi.purity,
+        poi.ordered_weight,
+        poi.quantity,
+        poi.rate,
+        poi.amount,
+        mt.material_type   AS material_type_name,
+        c.category_name    AS category_name,
+        sc.subcategory_name AS subcategory_name
+      FROM purchase_order_items poi
+      LEFT JOIN "materialTypes" mt ON poi.material_type_id = mt.id
+      LEFT JOIN categories c       ON poi.category_id = c.id
+      LEFT JOIN subcategories sc   ON poi.subcategory_id = sc.id
+      WHERE poi.po_id = :id
+        AND poi.deleted_at IS NULL
+      ORDER BY poi.id ASC;
+      `,
+      { replacements: { id }, type: sequelize.QueryTypes.SELECT }
     );
 
-    const [totalsRows] = await sequelize.query(
-      `SELECT 
-         COALESCE(SUM(poi.ordered_weight), 0) AS total_ordered_weight,
-         COALESCE(SUM(poi.amount), 0)         AS total_amount
-       FROM purchase_order_items poi
-       WHERE poi.po_id = :id AND poi.deleted_at IS NULL;`,
-      { replacements: { id } }
+    // ---------------- TOTALS ----------------
+    const [totals] = await sequelize.query(
+      `
+      SELECT 
+        COALESCE(SUM(poi.ordered_weight), 0) AS total_ordered_weight,
+        COALESCE(SUM(poi.amount), 0)         AS total_amount
+      FROM purchase_order_items poi
+      WHERE poi.po_id = :id
+        AND poi.deleted_at IS NULL;
+      `,
+      { replacements: { id }, type: sequelize.QueryTypes.SELECT }
     );
 
     return commonService.okResponse(res, {
-      header: headerRows[0],
+      header: headerRows,
       items,
-      totals: totalsRows[0],
+      totals,
     });
   } catch (err) {
     return commonService.handleError(res, err);
   }
 };
+
 
 // Minimal dropdown list
 const listPurchaseOrderNumbers = async (req, res) => {
