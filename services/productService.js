@@ -846,13 +846,6 @@ const getAllProductDetails = async (req, res) => {
           FROM "productItemDetails" pid_stock
           WHERE pid_stock.product_id = p.id
           AND pid_stock.quantity > 0
-          AND pid_stock.stock_out_reason = 'SOLD'
-          AND pid_stock.deleted_at IS NULL
-        )
-        AND EXISTS (
-          SELECT 1
-          FROM "productItemDetails" pid_stock
-          WHERE pid_stock.product_id = p.id
           AND pid_stock.deleted_at IS NULL
         )
         AND EXISTS (
@@ -864,7 +857,14 @@ const getAllProductDetails = async (req, res) => {
             AND sib.status = 'Invoice'
           WHERE sii.deleted_at IS NULL
             AND sii.product_id = p.id
-            AND sib.branch_id = p.branch_id
+        )
+        AND NOT EXISTS (
+          SELECT 1
+          FROM "productItemDetails" pid
+          WHERE pid.product_id = p.id
+          AND pid.quantity = 0
+          AND pid.stock_out_reason = 'TRANSFERRED'
+          AND pid.deleted_at IS NULL
         )
       `;
     }
@@ -2538,14 +2538,7 @@ const getProductStockCounts = async (req, res) => {
         SELECT 1
         FROM "productItemDetails" pid
         WHERE pid.product_id = p.id
-        AND pid.quantity > 0 AND pid.stock_out_reason = 'SOLD'
-        AND pid.deleted_at IS NULL
-      )
-      AND EXISTS (
-        SELECT 1
-        FROM "productItemDetails" pid
-        WHERE pid.product_id = p.id
-        AND pid.quantity = 0
+        AND pid.quantity > 0
         AND pid.deleted_at IS NULL
       )
       AND EXISTS (
@@ -2557,7 +2550,14 @@ const getProductStockCounts = async (req, res) => {
           AND sib.status = 'Invoice'
         WHERE sii.deleted_at IS NULL
           AND sii.product_id = p.id
-          AND sib.branch_id = p.branch_id
+      )
+      AND NOT EXISTS (
+        SELECT 1
+        FROM "productItemDetails" pid
+        WHERE pid.product_id = p.id
+        AND pid.quantity = 0
+        AND pid.stock_out_reason = 'TRANSFERRED'
+        AND pid.deleted_at IS NULL
       )
     `,
       {
