@@ -85,20 +85,54 @@ const getEmployeeAttendance = async (req, res) => {
           et.date,
           et.time,
           et.status_id,
-          ROW_NUMBER() OVER (PARTITION BY et.ref_employee_id ORDER BY et.time ASC) as row_num
+          ROW_NUMBER() OVER (PARTITION BY et.ref_employee_id, et.date ORDER BY et.time ASC) as row_num,
+          COUNT(*) OVER (PARTITION BY et.ref_employee_id, et.date) as total_punches
         FROM employee_tracking et
         WHERE et.date BETWEEN :startDate AND :endDate
+          AND et.status_id = 1
+      ),
+      punch_pairs AS (
+        SELECT 
+          ref_employee_id,
+          date,
+          time as start_time,
+          LEAD(time) OVER (PARTITION BY ref_employee_id, date ORDER BY time) as end_time,
+          row_num,
+          total_punches
+        FROM tracking_data
+      ),
+      work_periods AS (
+        SELECT 
+          ref_employee_id,
+          date,
+          SUM(
+            CASE 
+              WHEN row_num % 2 = 1 AND end_time IS NOT NULL THEN
+                EXTRACT(EPOCH FROM (end_time - start_time)) / 3600
+              WHEN row_num % 2 = 1 AND end_time IS NULL AND total_punches % 2 = 1 AND date = CURRENT_DATE THEN
+                EXTRACT(EPOCH FROM (CURRENT_TIME - start_time)) / 3600
+              ELSE 0
+            END
+          ) as total_work_duration
+        FROM punch_pairs
+        GROUP BY ref_employee_id, date
       ),
       clock_times AS (
         SELECT 
-          ref_employee_id,
-          MIN(time) as clock_in,
+          td.ref_employee_id,
+          MIN(td.time) as clock_in,
           CASE 
-            WHEN COUNT(*) > 1 THEN MAX(time)
+            WHEN COUNT(DISTINCT td.time) > 1 THEN MAX(td.time)
             ELSE NULL
           END as clock_out
-        FROM tracking_data
-        WHERE status_id = 1
+        FROM tracking_data td
+        GROUP BY td.ref_employee_id
+      ),
+      employee_work_hours AS (
+        SELECT 
+          ref_employee_id,
+          SUM(total_work_duration) as actual_work_hours
+        FROM work_periods
         GROUP BY ref_employee_id
       )
       SELECT 
@@ -121,26 +155,28 @@ const getEmployeeAttendance = async (req, res) => {
             EXTRACT(EPOCH FROM (ct.clock_in - :office_start::time)) / 3600
           ELSE 0
         END as late_by_hours,
+        COALESCE(ewh.actual_work_hours, 0) as actual_work_hours,
         CASE 
-          WHEN ct.clock_in IS NOT NULL THEN
-            GREATEST(0, LEAST(
-              EXTRACT(EPOCH FROM (
-                LEAST(COALESCE(ct.clock_out, CURRENT_TIME), :office_end::time) - 
-                GREATEST(ct.clock_in, :office_start::time)
-              )) / 3600,
-              :standard_hours
-            ))
+          WHEN ct.clock_in IS NOT NULL AND ewh.actual_work_hours IS NOT NULL THEN
+            LEAST(ewh.actual_work_hours, :standard_hours)
           ELSE 0
         END as production_hours,
         CASE 
           WHEN ct.clock_out IS NOT NULL AND ct.clock_out > :office_end::time THEN
-            EXTRACT(EPOCH FROM (ct.clock_out - :office_end::time)) / 3600
-          WHEN ct.clock_out IS NULL AND CURRENT_TIME > :office_end::time THEN
-            EXTRACT(EPOCH FROM (CURRENT_TIME - :office_end::time)) / 3600
+            GREATEST(0, 
+              EXTRACT(EPOCH FROM (ct.clock_out - :office_end::time)) / 3600 - 
+              CASE WHEN ct.clock_in > :office_start::time THEN EXTRACT(EPOCH FROM (ct.clock_in - :office_start::time)) / 3600 ELSE 0 END
+            )
+          WHEN ct.clock_out IS NULL AND ct.clock_in IS NOT NULL AND CURRENT_TIME > :office_end::time THEN
+            GREATEST(0, 
+              EXTRACT(EPOCH FROM (CURRENT_TIME - :office_end::time)) / 3600 - 
+              CASE WHEN ct.clock_in > :office_start::time THEN EXTRACT(EPOCH FROM (ct.clock_in - :office_start::time)) / 3600 ELSE 0 END
+            )
           ELSE 0
         END as overtime_hours
       FROM employee_list el
       LEFT JOIN clock_times ct ON ct.ref_employee_id = el.ref_employee_id
+      LEFT JOIN employee_work_hours ewh ON ewh.ref_employee_id = el.ref_employee_id
       ORDER BY el.employee_name ASC
     `;
 
@@ -156,9 +192,10 @@ const getEmployeeAttendance = async (req, res) => {
     // Format the response
     let attendance = rows.map((row) => {
       const totalHours = row.total_hours || 0;
+      const actualWorkHours = row.actual_work_hours || 0;
       const productionHours = row.production_hours || 0;
       const overtimeHours = row.overtime_hours || 0;
-      const breakHours = Math.max(0, totalHours - productionHours - overtimeHours);
+      const breakHours = Math.max(0, totalHours - actualWorkHours);
 
       return {
         employee_id: row.id,
@@ -270,61 +307,95 @@ const getEmployeeAttendanceHistory = async (req, res) => {
         SELECT 
           et.ref_employee_id,
           et.date,
-          MIN(et.time) as clock_in,
-          CASE 
-            WHEN COUNT(*) > 1 THEN MAX(et.time)
-            ELSE NULL
-          END as clock_out
+          et.time,
+          ROW_NUMBER() OVER (PARTITION BY et.ref_employee_id, et.date ORDER BY et.time ASC) as row_num,
+          COUNT(*) OVER (PARTITION BY et.ref_employee_id, et.date) as total_punches
         FROM employee_tracking et
         WHERE et.date BETWEEN :start_date AND :end_date
           AND et.status_id = 1
-        GROUP BY et.ref_employee_id, et.date
+      ),
+      punch_pairs AS (
+        SELECT 
+          ref_employee_id,
+          date,
+          time as start_time,
+          LEAD(time) OVER (PARTITION BY ref_employee_id, date ORDER BY time) as end_time,
+          row_num,
+          total_punches
+        FROM tracking_data
+      ),
+      work_periods AS (
+        SELECT 
+          ref_employee_id,
+          date,
+          SUM(
+            CASE 
+              WHEN row_num % 2 = 1 AND end_time IS NOT NULL THEN
+                EXTRACT(EPOCH FROM (end_time - start_time)) / 3600
+              WHEN row_num % 2 = 1 AND end_time IS NULL AND total_punches % 2 = 1 AND date = CURRENT_DATE THEN
+                EXTRACT(EPOCH FROM (CURRENT_TIME - start_time)) / 3600
+              ELSE 0
+            END
+          ) as total_work_duration
+        FROM punch_pairs
+        GROUP BY ref_employee_id, date
+      ),
+      daily_attendance AS (
+        SELECT 
+          td.ref_employee_id,
+          td.date,
+          MIN(td.time) as clock_in,
+          CASE 
+            WHEN COUNT(DISTINCT td.time) > 1 THEN MAX(td.time)
+            ELSE NULL
+          END as clock_out
+        FROM tracking_data td
+        GROUP BY td.ref_employee_id, td.date
       )
       SELECT 
         ei.*,
         dr.date,
-        td.clock_in,
-        td.clock_out,
+        da.clock_in,
+        da.clock_out,
         CASE 
-          WHEN td.clock_in IS NOT NULL AND td.clock_out IS NOT NULL THEN
-            EXTRACT(EPOCH FROM (td.clock_out - td.clock_in)) / 3600
-          WHEN td.clock_in IS NOT NULL AND td.clock_out IS NULL AND dr.date = CURRENT_DATE THEN
-            EXTRACT(EPOCH FROM (CURRENT_TIME - td.clock_in)) / 3600
+          WHEN da.clock_in IS NOT NULL AND da.clock_out IS NOT NULL THEN
+            EXTRACT(EPOCH FROM (da.clock_out - da.clock_in)) / 3600
+          WHEN da.clock_in IS NOT NULL AND da.clock_out IS NULL AND dr.date = CURRENT_DATE THEN
+            EXTRACT(EPOCH FROM (CURRENT_TIME - da.clock_in)) / 3600
           ELSE NULL
         END as total_hours,
         CASE 
-          WHEN td.clock_in IS NOT NULL THEN 'Present'
+          WHEN da.clock_in IS NOT NULL THEN 'Present'
           ELSE 'Absent'
         END as status,
         CASE 
-          WHEN td.clock_in IS NOT NULL AND td.clock_in > :office_start::time THEN
-            EXTRACT(EPOCH FROM (td.clock_in - :office_start::time)) / 3600
+          WHEN da.clock_in IS NOT NULL AND da.clock_in > :office_start::time THEN
+            EXTRACT(EPOCH FROM (da.clock_in - :office_start::time)) / 3600
           ELSE 0
         END as late_by_hours,
+        COALESCE(wp.total_work_duration, 0) as actual_work_hours,
         CASE 
-          WHEN td.clock_in IS NOT NULL THEN
-            GREATEST(0, LEAST(
-              EXTRACT(EPOCH FROM (
-                LEAST(
-                  COALESCE(td.clock_out, CASE WHEN dr.date = CURRENT_DATE THEN CURRENT_TIME ELSE NULL END), 
-                  :office_end::time
-                ) - 
-                GREATEST(td.clock_in, :office_start::time)
-              )) / 3600,
-              :standard_hours
-            ))
+          WHEN da.clock_in IS NOT NULL AND wp.total_work_duration IS NOT NULL THEN
+            LEAST(wp.total_work_duration, :standard_hours)
           ELSE 0
         END as production_hours,
         CASE 
-          WHEN td.clock_out IS NOT NULL AND td.clock_out > :office_end::time THEN
-            EXTRACT(EPOCH FROM (td.clock_out - :office_end::time)) / 3600
-          WHEN td.clock_out IS NULL AND dr.date = CURRENT_DATE AND CURRENT_TIME > :office_end::time THEN
-            EXTRACT(EPOCH FROM (CURRENT_TIME - :office_end::time)) / 3600
+          WHEN da.clock_out IS NOT NULL AND da.clock_out > :office_end::time THEN
+            GREATEST(0, 
+              EXTRACT(EPOCH FROM (da.clock_out - :office_end::time)) / 3600 - 
+              CASE WHEN da.clock_in > :office_start::time THEN EXTRACT(EPOCH FROM (da.clock_in - :office_start::time)) / 3600 ELSE 0 END
+            )
+          WHEN da.clock_out IS NULL AND da.clock_in IS NOT NULL AND dr.date = CURRENT_DATE AND CURRENT_TIME > :office_end::time THEN
+            GREATEST(0, 
+              EXTRACT(EPOCH FROM (CURRENT_TIME - :office_end::time)) / 3600 - 
+              CASE WHEN da.clock_in > :office_start::time THEN EXTRACT(EPOCH FROM (da.clock_in - :office_start::time)) / 3600 ELSE 0 END
+            )
           ELSE 0
         END as overtime_hours
       FROM employee_info ei
       CROSS JOIN date_range dr
-      LEFT JOIN tracking_data td ON td.ref_employee_id = ei.ref_employee_id AND td.date = dr.date
+      LEFT JOIN daily_attendance da ON da.ref_employee_id = ei.ref_employee_id AND da.date = dr.date
+      LEFT JOIN work_periods wp ON wp.ref_employee_id = ei.ref_employee_id AND wp.date = dr.date
       ORDER BY dr.date DESC
     `;
 
@@ -355,9 +426,10 @@ const getEmployeeAttendanceHistory = async (req, res) => {
 
     let history = rows.map((row) => {
       const totalHours = row.total_hours || 0;
+      const actualWorkHours = row.actual_work_hours || 0;
       const productionHours = row.production_hours || 0;
       const overtimeHours = row.overtime_hours || 0;
-      const breakHours = Math.max(0, totalHours - productionHours - overtimeHours);
+      const breakHours = Math.max(0, totalHours - actualWorkHours);
 
       return {
         date: moment(row.date).format("YYYY-MM-DD"),
