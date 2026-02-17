@@ -86,23 +86,6 @@ try {
 }
 };
 
-const calculatePOVendorStatus = async (poId) => {
-    const salesOrders = await models.SalesOrder.findAll({
-        where: { po_id: poId },
-        attributes: ["status"],
-        raw: true,
-    });
-
-    const total = salesOrders.length;
-    const accepted = salesOrders.filter(s => s.status === "accepted").length;
-    const rejected = salesOrders.filter(s => s.status === "rejected").length;
-
-    if (accepted === 0 && rejected === 0) return "pending";
-    if (accepted === total) return "accepted";
-    if (rejected === total) return "rejected";
-    return "partially_accepted";
-};
-
 const updateVendorSalesOrderStatus = async (req, res) => {
     const t = await sequelize.transaction();
     try {
@@ -153,8 +136,10 @@ const listVendorSalesOrders = async (req, res) => {
         const {
             page,
             limit,
-            status,
+            status = "pending", // ✅ default = Received
             vendor_id,
+            date,
+            search,
         } = req.query;
 
         if (!vendor_id) {
@@ -165,23 +150,7 @@ const listVendorSalesOrders = async (req, res) => {
             vendor_id: Number(vendor_id),
         };
 
-        // ---------------- SCORE CARD ----------------
-        const scoreCardQuery = `
-      SELECT
-        COUNT(CASE WHEN so.status = 'pending' THEN 1 END)  AS received,
-        COUNT(CASE WHEN so.status = 'accepted' THEN 1 END) AS sent,
-        COUNT(CASE WHEN so.status = 'rejected' THEN 1 END) AS rejected
-      FROM sales_orders so
-      WHERE so.vendor_id = :vendor_id
-        AND so.deleted_at IS NULL
-    `;
-
-        const [scoreCardResult] = await sequelize.query(scoreCardQuery, {
-            replacements,
-            type: sequelize.QueryTypes.SELECT,
-        });
-
-        // ---------------- FILTER ----------------
+        // ---------------- BASE FILTER ----------------
         let whereSql = `
       WHERE so.vendor_id = :vendor_id
         AND so.deleted_at IS NULL
@@ -192,7 +161,36 @@ const listVendorSalesOrders = async (req, res) => {
             replacements.status = status;
         }
 
-        // ---------------- OPTIONAL PAGINATION ----------------
+        if (date) {
+            whereSql += ` AND po.po_date = :date`;
+            replacements.date = date;
+        }
+
+        if (search) {
+            whereSql += ` AND po.po_no ILIKE :search`;
+            replacements.search = `%${search}%`;
+        }
+
+        // ---------------- SCORE CARD (FILTER-AWARE) ----------------
+        const scoreCardQuery = `
+      SELECT
+        COUNT(CASE WHEN so.status = 'pending' THEN 1 END)  AS received,
+        COUNT(CASE WHEN so.status = 'accepted' THEN 1 END) AS sent,
+        COUNT(CASE WHEN so.status = 'rejected' THEN 1 END) AS rejected
+      FROM sales_orders so
+      LEFT JOIN purchase_orders po ON po.id = so.po_id
+      WHERE so.vendor_id = :vendor_id
+        AND so.deleted_at IS NULL
+        ${date ? "AND po.po_date = :date" : ""}
+        ${search ? "AND po.po_no ILIKE :search" : ""}
+    `;
+
+        const [scoreCardResult] = await sequelize.query(scoreCardQuery, {
+            replacements,
+            type: sequelize.QueryTypes.SELECT,
+        });
+
+        // ---------------- PAGINATION ----------------
         let paginationSql = "";
         let pageNum, limitNum;
 
@@ -208,8 +206,9 @@ const listVendorSalesOrders = async (req, res) => {
 
         // ---------------- TOTAL COUNT ----------------
         const countQuery = `
-      SELECT COUNT(*) AS total
+      SELECT COUNT(DISTINCT so.id) AS total
       FROM sales_orders so
+      LEFT JOIN purchase_orders po ON po.id = so.po_id
       ${whereSql}
     `;
 
@@ -220,7 +219,7 @@ const listVendorSalesOrders = async (req, res) => {
 
         const total = Number(countResult.total || 0);
 
-        // ---------------- LIST DATA (WITH ITEMS + QTY) ----------------
+        // ---------------- LIST DATA ----------------
         const listQuery = `
       SELECT
         so.id,
@@ -232,27 +231,18 @@ const listVendorSalesOrders = async (req, res) => {
         po.po_no,
         po.po_date,
 
-        -- 🔹 item details
         STRING_AGG(DISTINCT c.category_name, ', ') AS item_details,
-
-        -- 🔹 total quantity
         COALESCE(SUM(poi.quantity), 0) AS quantity
 
       FROM sales_orders so
-      LEFT JOIN purchase_orders po
-        ON po.id = so.po_id
+      LEFT JOIN purchase_orders po ON po.id = so.po_id
       LEFT JOIN purchase_order_items poi
-        ON poi.po_id = po.id
-       AND poi.deleted_at IS NULL
-      LEFT JOIN categories c
-        ON c.id = poi.category_id
+        ON poi.po_id = po.id AND poi.deleted_at IS NULL
+      LEFT JOIN categories c ON c.id = poi.category_id
 
       ${whereSql}
 
-      GROUP BY
-        so.id,
-        po.id
-
+      GROUP BY so.id, po.id
       ORDER BY so.created_at DESC
       ${paginationSql}
     `;
@@ -281,7 +271,6 @@ const listVendorSalesOrders = async (req, res) => {
         return commonService.handleError(res, err);
     }
 };
-
 
 const rejectVendorSalesOrder = async (req, res) => {
     const { id } = req.params;
@@ -393,7 +382,6 @@ const getVendorSalesOrderById = async (req, res) => {
 
 module.exports = {
     submitVendorSalesOrder,
-    calculatePOVendorStatus,
     updateVendorSalesOrderStatus,
     rejectVendorSalesOrder,
     listVendorSalesOrders,
