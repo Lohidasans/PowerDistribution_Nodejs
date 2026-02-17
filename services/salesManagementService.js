@@ -626,6 +626,7 @@ const getBranchWiseSalesCount = async (req, res) => {
         const salesInvoiceSql = `
       SELECT
         b.id AS branch_id,
+        b.branch_no,
         b.branch_name,
         COUNT(DISTINCT t.id)::int AS count,
         COALESCE(SUM(t.total_amount), 0) AS value
@@ -633,53 +634,57 @@ const getBranchWiseSalesCount = async (req, res) => {
       JOIN branches b ON b.id = t.branch_id
       ${whereSql}
         AND t.status = 'Invoice'
-      GROUP BY b.id, b.branch_name
+      GROUP BY b.id, b.branch_name, b.branch_no
     `;
 
         const salesReturnSql = `
       SELECT
         b.id AS branch_id,
+        b.branch_no,
         COUNT(DISTINCT t.id)::int AS count,
         COALESCE(SUM(t.total_amount), 0) AS value
       FROM sales_returns t
       JOIN branches b ON b.id = t.branch_id
       ${whereSql}
         AND t.status = 'Printed'
-      GROUP BY b.id
+      GROUP BY b.id, b.branch_no
     `;
 
         const estimateSql = `
       SELECT
         b.id AS branch_id,
+        b.branch_no,
         COUNT(DISTINCT t.id)::int AS count,
         COALESCE(SUM(t.total_amount), 0) AS value
       FROM estimate_bills t
       JOIN branches b ON b.id = t.branch_id
       ${whereSql}
         AND t.status = 'Printed'
-      GROUP BY b.id
+      GROUP BY b.id, b.branch_no
     `;
 
         const oldJewelSql = `
       SELECT
         b.id AS branch_id,
+        b.branch_no,
         COUNT(DISTINCT t.id)::int AS count,
         COALESCE(SUM(t.total_amount), 0) AS value
       FROM old_jewels t
       JOIN branches b ON b.id = t.branch_id
       ${whereSql}
-      GROUP BY b.id
+      GROUP BY b.id,b.branch_no
     `;
 
         const jewelRepairSql = `
       SELECT
         b.id AS branch_id,
+        b.branch_no,
         COUNT(DISTINCT t.id)::int AS count,
         COALESCE(SUM(t.total_amount), 0) AS value
       FROM jewel_repairs t
       JOIN branches b ON b.id = t.branch_id
       ${whereSql}
-      GROUP BY b.id
+      GROUP BY b.id, b.branch_no
     `;
 
         const [
@@ -703,6 +708,7 @@ const getBranchWiseSalesCount = async (req, res) => {
                 branchMap[row.branch_id] = {
                     branch_id: row.branch_id,
                     branch_name: row.branch_name,
+                    branch_no: row.branch_no,
                     estimate: { count: 0, value: 0 },
                     sales_invoice: { count: 0, value: 0 },
                     sales_return: { count: 0, value: 0 },
