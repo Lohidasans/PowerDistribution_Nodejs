@@ -27,9 +27,9 @@ const getEmployeeAttendance = async (req, res) => {
     const endDate = to_date || targetDate;
 
     // Office timings configuration
-    const OFFICE_START = "09:00:00";
-    const OFFICE_END = "18:00:00"; // 06:00 PM in 24-hour format
-    const STANDARD_WORK_HOURS = 9; // 9 hours (09:00 AM to 06:00 PM)
+    const OFFICE_START = "10:30:00";
+    const OFFICE_END = "20:30:00"; // 08:30 PM in 24-hour format
+    const STANDARD_WORK_HOURS = 10; // 10 hours (10:30 AM to 08:30 PM)
 
     let query = `
       WITH employee_list AS (
@@ -92,9 +92,13 @@ const getEmployeeAttendance = async (req, res) => {
       clock_times AS (
         SELECT 
           ref_employee_id,
-          MIN(CASE WHEN status_id = 1 THEN time END) as clock_in,
-          MAX(CASE WHEN status_id = 2 THEN time END) as clock_out
+          MIN(time) as clock_in,
+          CASE 
+            WHEN COUNT(*) > 1 THEN MAX(time)
+            ELSE NULL
+          END as clock_out
         FROM tracking_data
+        WHERE status_id = 1
         GROUP BY ref_employee_id
       )
       SELECT 
@@ -104,6 +108,8 @@ const getEmployeeAttendance = async (req, res) => {
         CASE 
           WHEN ct.clock_in IS NOT NULL AND ct.clock_out IS NOT NULL THEN
             EXTRACT(EPOCH FROM (ct.clock_out - ct.clock_in)) / 3600
+          WHEN ct.clock_in IS NOT NULL AND ct.clock_out IS NULL THEN
+            EXTRACT(EPOCH FROM (CURRENT_TIME - ct.clock_in)) / 3600
           ELSE NULL
         END as total_hours,
         CASE 
@@ -116,19 +122,21 @@ const getEmployeeAttendance = async (req, res) => {
           ELSE 0
         END as late_by_hours,
         CASE 
-          WHEN ct.clock_in IS NOT NULL AND ct.clock_out IS NOT NULL THEN
-            LEAST(
+          WHEN ct.clock_in IS NOT NULL THEN
+            GREATEST(0, LEAST(
               EXTRACT(EPOCH FROM (
-                LEAST(ct.clock_out, :office_end::time) - 
+                LEAST(COALESCE(ct.clock_out, CURRENT_TIME), :office_end::time) - 
                 GREATEST(ct.clock_in, :office_start::time)
               )) / 3600,
               :standard_hours
-            )
+            ))
           ELSE 0
         END as production_hours,
         CASE 
           WHEN ct.clock_out IS NOT NULL AND ct.clock_out > :office_end::time THEN
             EXTRACT(EPOCH FROM (ct.clock_out - :office_end::time)) / 3600
+          WHEN ct.clock_out IS NULL AND CURRENT_TIME > :office_end::time THEN
+            EXTRACT(EPOCH FROM (CURRENT_TIME - :office_end::time)) / 3600
           ELSE 0
         END as overtime_hours
       FROM employee_list el
@@ -231,9 +239,9 @@ const getEmployeeAttendanceHistory = async (req, res) => {
       return commonService.badRequest(res, "start_date and end_date are required");
     }
 
-    const OFFICE_START = "09:00:00";
-    const OFFICE_END = "18:00:00";
-    const STANDARD_WORK_HOURS = 9;
+    const OFFICE_START = "10:30:00";
+    const OFFICE_END = "20:30:00";
+    const STANDARD_WORK_HOURS = 10;
 
     const query = `
       WITH date_range AS (
@@ -262,10 +270,14 @@ const getEmployeeAttendanceHistory = async (req, res) => {
         SELECT 
           et.ref_employee_id,
           et.date,
-          MIN(CASE WHEN et.status_id = 1 THEN et.time END) as clock_in,
-          MAX(CASE WHEN et.status_id = 2 THEN et.time END) as clock_out
+          MIN(et.time) as clock_in,
+          CASE 
+            WHEN COUNT(*) > 1 THEN MAX(et.time)
+            ELSE NULL
+          END as clock_out
         FROM employee_tracking et
         WHERE et.date BETWEEN :start_date AND :end_date
+          AND et.status_id = 1
         GROUP BY et.ref_employee_id, et.date
       )
       SELECT 
@@ -276,6 +288,8 @@ const getEmployeeAttendanceHistory = async (req, res) => {
         CASE 
           WHEN td.clock_in IS NOT NULL AND td.clock_out IS NOT NULL THEN
             EXTRACT(EPOCH FROM (td.clock_out - td.clock_in)) / 3600
+          WHEN td.clock_in IS NOT NULL AND td.clock_out IS NULL AND dr.date = CURRENT_DATE THEN
+            EXTRACT(EPOCH FROM (CURRENT_TIME - td.clock_in)) / 3600
           ELSE NULL
         END as total_hours,
         CASE 
@@ -288,19 +302,24 @@ const getEmployeeAttendanceHistory = async (req, res) => {
           ELSE 0
         END as late_by_hours,
         CASE 
-          WHEN td.clock_in IS NOT NULL AND td.clock_out IS NOT NULL THEN
-            LEAST(
+          WHEN td.clock_in IS NOT NULL THEN
+            GREATEST(0, LEAST(
               EXTRACT(EPOCH FROM (
-                LEAST(td.clock_out, :office_end::time) - 
+                LEAST(
+                  COALESCE(td.clock_out, CASE WHEN dr.date = CURRENT_DATE THEN CURRENT_TIME ELSE NULL END), 
+                  :office_end::time
+                ) - 
                 GREATEST(td.clock_in, :office_start::time)
               )) / 3600,
               :standard_hours
-            )
+            ))
           ELSE 0
         END as production_hours,
         CASE 
           WHEN td.clock_out IS NOT NULL AND td.clock_out > :office_end::time THEN
             EXTRACT(EPOCH FROM (td.clock_out - :office_end::time)) / 3600
+          WHEN td.clock_out IS NULL AND dr.date = CURRENT_DATE AND CURRENT_TIME > :office_end::time THEN
+            EXTRACT(EPOCH FROM (CURRENT_TIME - :office_end::time)) / 3600
           ELSE 0
         END as overtime_hours
       FROM employee_info ei
