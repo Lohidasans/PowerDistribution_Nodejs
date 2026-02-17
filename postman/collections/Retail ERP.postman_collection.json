@@ -24781,7 +24781,7 @@
                 "method": "POST",
                 "header": [],
                 "url": {
-                  "raw": "http://localhost:5000/api/v1/purchase-orders/code?prefix=P0&fy=24-25",
+                  "raw": "http://localhost:5000/api/v1/purchase-orders/code?prefix=PO",
                   "protocol": "http",
                   "host": [
                     "localhost"
@@ -24796,16 +24796,79 @@
                   "query": [
                     {
                       "key": "prefix",
-                      "value": "P0"
-                    },
-                    {
-                      "key": "fy",
-                      "value": "24-25"
+                      "value": "PO"
                     }
                   ]
                 }
               },
-              "response": []
+              "response": [
+                {
+                  "name": "Generate COde",
+                  "originalRequest": {
+                    "method": "POST",
+                    "header": [],
+                    "url": {
+                      "raw": "http://localhost:5000/api/v1/purchase-orders/code?prefix=P0",
+                      "protocol": "http",
+                      "host": [
+                        "localhost"
+                      ],
+                      "port": "5000",
+                      "path": [
+                        "api",
+                        "v1",
+                        "purchase-orders",
+                        "code"
+                      ],
+                      "query": [
+                        {
+                          "key": "prefix",
+                          "value": "P0"
+                        }
+                      ]
+                    }
+                  },
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": null,
+                  "header": [
+                    {
+                      "key": "X-Powered-By",
+                      "value": "Express"
+                    },
+                    {
+                      "key": "Access-Control-Allow-Origin",
+                      "value": "*"
+                    },
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json; charset=utf-8"
+                    },
+                    {
+                      "key": "Content-Length",
+                      "value": "63"
+                    },
+                    {
+                      "key": "ETag",
+                      "value": "W/\"3f-RREZAPy792jvAr6F3fduV0afPNE\""
+                    },
+                    {
+                      "key": "Date",
+                      "value": "Mon, 16 Feb 2026 05:29:11 GMT"
+                    },
+                    {
+                      "key": "Connection",
+                      "value": "keep-alive"
+                    },
+                    {
+                      "key": "Keep-Alive",
+                      "value": "timeout=5"
+                    }
+                  ],
+                  "cookie": [],
+                  "body": "{\n    \"statusCode\": 200,\n    \"message\": \"Success\",\n    \"data\": {\n        \"po_no\": \"P0002\"\n    }\n}"
+                }
+              ]
             },
             {
               "name": "Create",
@@ -24814,7 +24877,7 @@
                 "header": [],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\r\n  \"po_no\": \"PO 02/24-25\",\r\n  \"po_date\": \"2025-06-07\",\r\n  \"vendor_id\": 1,\r\n  \"order_by_user_id\": 1,\r\n  \"reference_id\": \"10001\",\r\n  \"gst_no\": \"12AAACT0303Q1Z3\",\r\n  \"billing_address\": \"Main Street, Chennai\",\r\n  \"shipping_address\": \"Main Street, Chennai\",\r\n  \"subtotal_amount\": 20000.00,\r\n  \"sgst_percent\": 3.00,\r\n  \"cgst_percent\": 3.00,\r\n  \"discount_percent\": 1.00,\r\n  \"remarks\": \"PO Gold Item.\",\r\n  \"status_id\":1, \r\n  \"items\": [\r\n    {\r\n      \"material_type_id\": 4,\r\n      \"category_id\": 1,\r\n      \"subcategory_id\": 1,\r\n      \"description\": \"Gold Bracelet\",\r\n      \"purity\": 92.5,\r\n      \"ordered_weight\": 50.000,\r\n      \"quantity\": 10,\r\n      \"rate\": 10000.00,\r\n      \"amount\": 50000.00\r\n    }\r\n  ]\r\n}\r\n\r\n\r\n\r\n\r\n// {\r\n//   \"po_no\": \"PO 01/24-25\",\r\n//   \"po_date\": \"2025-06-01\",\r\n//   \"vendor_id\": 1,\r\n//   \"order_by_user_id\": 1,\r\n//   \"gst_no\": \"33AADFT06040126\",\r\n//   \"billing_address\": \"18, Variet Street George Town, Chennai, Tamil Nadu - 600 001\",\r\n//   \"shipping_address\": \"18, Variet Street George Town, Chennai, Tamil Nadu - 600 001\",\r\n//   \"subtotal_amount\": 50000.00,\r\n//   \"sgst_percent\": 1.5,\r\n//   \"cgst_percent\": 1.5,\r\n//   \"discount_percent\": 2.0,\r\n//   \"remarks\": \"Purchase order for gold items\",\r\n//   \"status_id\": 1,\r\n//   \"items\": [\r\n//     {\r\n//       \"material_type_id\": 1,\r\n//       \"category_id\": 1,\r\n//       \"subcategory_id\": 1,\r\n//       \"description\": \"Gold Ring\",\r\n//       \"purity\": 92.5,\r\n//       \"ordered_weight\": 500.000,\r\n//       \"quantity\": 20,\r\n//       \"rate\": 10525.00,\r\n//       \"amount\": 210500.00\r\n//     },\r\n//     {\r\n//       \"material_type_id\": 1,\r\n//       \"category_id\": 2,\r\n//       \"subcategory_id\": 2,\r\n//       \"description\": \"Gold Earrings\",\r\n//       \"purity\": 92.5,\r\n//       \"ordered_weight\": 300.000,\r\n//       \"quantity\": 15,\r\n//       \"rate\": 10525.00,\r\n//       \"amount\": 157875.00\r\n//     }\r\n//   ]\r\n// }",
+                  "raw": "// if entity type is superadmin - statusId = 1(approved)\r\n// if entity type is brnach - statusId = 2(approval pending)\r\n\r\n{\r\n  \"po_no\": \"PO018\",\r\n  \"po_date\": \"2026-02-17\",\r\n  \"vendor_id\": 1,\r\n  \"order_by_user_id\": 1,  // logged in - brnach_id or superadmin_id\r\n  \"entity_type\": \"superadmin\",   // branch - 4 or superadmin\r\n  \"branch_id\": 1, // logged in branch\r\n  \"reference_id\": \"30014\",\r\n  \"gst_no\": \"78KAACT0303Q1Z3\",\r\n  \"billing_address\": \"Natraj Street, Chennai\",\r\n  \"shipping_address\": \"Natraj Street, Chennai\",\r\n  \"subtotal_amount\": 30000.00,\r\n  \"sgst_percent\": 1.5,\r\n  \"sgst_amount\": 450,\r\n  \"cgst_percent\": 1.5,\r\n  \"cgst_amount\":450,\r\n  \"discount_percent\": 2.00,\r\n  \"discount_amount\":600,\r\n  \"total_amount\": 30300.00,\r\n  \"amount_in_words\": \"Thirty thousand and three hundred only\",\r\n  \"remarks\": \"PO Gold Item.\",\r\n  \"items\": [\r\n    {\r\n      \"material_type_id\": 1,\r\n      \"category_id\": 1,\r\n      \"subcategory_id\": 1,\r\n      \"description\": \"Gold Bracelet\",\r\n      \"purity\": 92.5,\r\n      \"ordered_weight\": 50.000,\r\n      \"quantity\": 3,\r\n      \"rate\": 10000.00,\r\n      \"amount\": 30000.00\r\n    }\r\n  ]\r\n}\r\n\r\n\r\n\r\n\r\n// {\r\n//   \"po_no\": \"PO 01/24-25\",\r\n//   \"po_date\": \"2025-06-01\",\r\n//   \"vendor_id\": 1,\r\n//   \"order_by_user_id\": 1,\r\n//   \"gst_no\": \"33AADFT06040126\",\r\n//   \"billing_address\": \"18, Variet Street George Town, Chennai, Tamil Nadu - 600 001\",\r\n//   \"shipping_address\": \"18, Variet Street George Town, Chennai, Tamil Nadu - 600 001\",\r\n//   \"subtotal_amount\": 50000.00,\r\n//   \"sgst_percent\": 1.5,\r\n//   \"cgst_percent\": 1.5,\r\n//   \"discount_percent\": 2.0,\r\n//   \"remarks\": \"Purchase order for gold items\",\r\n//   \"status_id\": 1,\r\n//   \"items\": [\r\n//     {\r\n//       \"material_type_id\": 1,\r\n//       \"category_id\": 1,\r\n//       \"subcategory_id\": 1,\r\n//       \"description\": \"Gold Ring\",\r\n//       \"purity\": 92.5,\r\n//       \"ordered_weight\": 500.000,\r\n//       \"quantity\": 20,\r\n//       \"rate\": 10525.00,\r\n//       \"amount\": 210500.00\r\n//     },\r\n//     {\r\n//       \"material_type_id\": 1,\r\n//       \"category_id\": 2,\r\n//       \"subcategory_id\": 2,\r\n//       \"description\": \"Gold Earrings\",\r\n//       \"purity\": 92.5,\r\n//       \"ordered_weight\": 300.000,\r\n//       \"quantity\": 15,\r\n//       \"rate\": 10525.00,\r\n//       \"amount\": 157875.00\r\n//     }\r\n//   ]\r\n// }",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -24843,7 +24906,7 @@
                     "header": [],
                     "body": {
                       "mode": "raw",
-                      "raw": "{\r\n  \"po_no\": \"PO 02/24-25\",\r\n  \"po_date\": \"2025-06-07\",\r\n  \"vendor_id\": 1,\r\n  \"order_by_user_id\": 1,\r\n  \"reference_id\": \"10001\",\r\n  \"gst_no\": \"12AAACT0303Q1Z3\",\r\n  \"billing_address\": \"Main Street, Chennai\",\r\n  \"shipping_address\": \"Main Street, Chennai\",\r\n  \"subtotal_amount\": 20000.00,\r\n  \"sgst_percent\": 3.00,\r\n  \"cgst_percent\": 3.00,\r\n  \"discount_percent\": 1.00,\r\n  \"remarks\": \"PO Gold Item.\",\r\n  \"status_id\":1, \r\n  \"items\": [\r\n    {\r\n      \"material_type_id\": 4,\r\n      \"category_id\": 1,\r\n      \"subcategory_id\": 1,\r\n      \"description\": \"Gold Bracelet\",\r\n      \"purity\": 92.5,\r\n      \"ordered_weight\": 50.000,\r\n      \"quantity\": 10,\r\n      \"rate\": 10000.00,\r\n      \"amount\": 50000.00\r\n    }\r\n  ]\r\n}",
+                      "raw": "// if entity type is superadmin - statusId = 1(approved)\r\n// if entity type is brnach - statusId = 2(approval pending)\r\n\r\n{\r\n  \"po_no\": \"PO014\",\r\n  \"po_date\": \"2026-02-16\",\r\n  \"vendor_id\": 1,\r\n  \"order_by_user_id\": 1,  // logged in - brnach_id or superadmin_id\r\n  \"entity_type\": \"superadmin\",   // branch or superadmin\r\n  \"branch_id\": 1, // logged in branch\r\n  \"reference_id\": \"10014\",\r\n  \"gst_no\": \"52AAACT0303Q1Z3\",\r\n  \"billing_address\": \"Raj Street, Chennai\",\r\n  \"shipping_address\": \"Raj Street, Chennai\",\r\n  \"subtotal_amount\": 30000.00,\r\n  \"sgst_percent\": 1.5,\r\n  \"sgst_amount\": 450,\r\n  \"cgst_percent\": 1.5,\r\n  \"cgst_amount\":450,\r\n  \"discount_percent\": 2.00,\r\n  \"discount_amount\":600,\r\n  \"total_amount\": 30300.00,\r\n  \"amount_in_words\": \"Thirty thousand and three hundred only\",\r\n  \"remarks\": \"PO Gold Item.\",\r\n  \"items\": [\r\n    {\r\n      \"material_type_id\": 4,\r\n      \"category_id\": 1,\r\n      \"subcategory_id\": 1,\r\n      \"description\": \"Gold Bracelet\",\r\n      \"purity\": 92.5,\r\n      \"ordered_weight\": 50.000,\r\n      \"quantity\": 10,\r\n      \"rate\": 10000.00,\r\n      \"amount\": 50000.00\r\n    }\r\n  ]\r\n}\r\n\r\n\r\n\r\n\r\n// {\r\n//   \"po_no\": \"PO 01/24-25\",\r\n//   \"po_date\": \"2025-06-01\",\r\n//   \"vendor_id\": 1,\r\n//   \"order_by_user_id\": 1,\r\n//   \"gst_no\": \"33AADFT06040126\",\r\n//   \"billing_address\": \"18, Variet Street George Town, Chennai, Tamil Nadu - 600 001\",\r\n//   \"shipping_address\": \"18, Variet Street George Town, Chennai, Tamil Nadu - 600 001\",\r\n//   \"subtotal_amount\": 50000.00,\r\n//   \"sgst_percent\": 1.5,\r\n//   \"cgst_percent\": 1.5,\r\n//   \"discount_percent\": 2.0,\r\n//   \"remarks\": \"Purchase order for gold items\",\r\n//   \"status_id\": 1,\r\n//   \"items\": [\r\n//     {\r\n//       \"material_type_id\": 1,\r\n//       \"category_id\": 1,\r\n//       \"subcategory_id\": 1,\r\n//       \"description\": \"Gold Ring\",\r\n//       \"purity\": 92.5,\r\n//       \"ordered_weight\": 500.000,\r\n//       \"quantity\": 20,\r\n//       \"rate\": 10525.00,\r\n//       \"amount\": 210500.00\r\n//     },\r\n//     {\r\n//       \"material_type_id\": 1,\r\n//       \"category_id\": 2,\r\n//       \"subcategory_id\": 2,\r\n//       \"description\": \"Gold Earrings\",\r\n//       \"purity\": 92.5,\r\n//       \"ordered_weight\": 300.000,\r\n//       \"quantity\": 15,\r\n//       \"rate\": 10525.00,\r\n//       \"amount\": 157875.00\r\n//     }\r\n//   ]\r\n// }",
                       "options": {
                         "raw": {
                           "language": "json"
@@ -24882,15 +24945,15 @@
                     },
                     {
                       "key": "Content-Length",
-                      "value": "877"
+                      "value": "1073"
                     },
                     {
                       "key": "ETag",
-                      "value": "W/\"36d-mgY1DtFE3h9qReydekQTkBmfOeY\""
+                      "value": "W/\"431-CcIFfNEaVzrwtECXJAWG5QFA07o\""
                     },
                     {
                       "key": "Date",
-                      "value": "Sat, 08 Nov 2025 05:33:58 GMT"
+                      "value": "Mon, 16 Feb 2026 12:02:36 GMT"
                     },
                     {
                       "key": "Connection",
@@ -24902,7 +24965,7 @@
                     }
                   ],
                   "cookie": [],
-                  "body": "{\n    \"statusCode\": 201,\n    \"message\": \"Success\",\n    \"data\": {\n        \"id\": 2,\n        \"po_no\": \"PO 02/24-25\",\n        \"po_date\": \"2025-06-07\",\n        \"vendor_id\": 1,\n        \"order_by_user_id\": 1,\n        \"gst_no\": \"12AAACT0303Q1Z3\",\n        \"billing_address\": \"Main Street, Chennai\",\n        \"shipping_address\": \"Main Street, Chennai\",\n        \"subtotal_amount\": \"20000.00\",\n        \"sgst_percent\": \"3.00\",\n        \"cgst_percent\": \"3.00\",\n        \"discount_percent\": \"1.00\",\n        \"remarks\": \"PO Gold Item.\",\n        \"status_id\": 1,\n        \"created_at\": \"2025-11-08T05:33:57.173Z\",\n        \"updated_at\": \"2025-11-08T05:33:57.173Z\",\n        \"deleted_at\": null,\n        \"items\": [\n            {\n                \"id\": 2,\n                \"po_id\": 2,\n                \"material_type_id\": 4,\n                \"category_id\": 1,\n                \"subcategory_id\": 1,\n                \"description\": \"Gold Bracelet\",\n                \"purity\": \"92.500\",\n                \"ordered_weight\": \"50.000\",\n                \"quantity\": 10,\n                \"rate\": \"10000.00\",\n                \"amount\": \"50000.00\",\n                \"created_at\": \"2025-11-08T05:33:57.974Z\",\n                \"updated_at\": \"2025-11-08T05:33:57.974Z\",\n                \"deleted_at\": null,\n                \"material_type_name\": \"Platinum1\",\n                \"category_name\": \"Gold\",\n                \"subcategory_name\": \"Rose Gold\"\n            }\n        ]\n    }\n}"
+                  "body": "{\n    \"statusCode\": 201,\n    \"message\": \"Success\",\n    \"data\": {\n        \"id\": 17,\n        \"po_no\": \"PO014\",\n        \"po_date\": \"2026-02-16\",\n        \"vendor_id\": 1,\n        \"order_by_user_id\": 1,\n        \"gst_no\": \"52AAACT0303Q1Z3\",\n        \"billing_address\": \"Raj Street, Chennai\",\n        \"shipping_address\": \"Raj Street, Chennai\",\n        \"subtotal_amount\": \"30000.00\",\n        \"sgst_percent\": \"1.50\",\n        \"sgst_amount\": \"450.00\",\n        \"cgst_percent\": \"1.50\",\n        \"cgst_amount\": \"450.00\",\n        \"discount_percent\": \"2.00\",\n        \"discount_amount\": \"600.00\",\n        \"total_amount\": \"30300.00\",\n        \"amount_in_words\": \"Thirty thousand and three hundred only\",\n        \"remarks\": \"PO Gold Item.\",\n        \"status_id\": 2,\n        \"branch_id\": 1,\n        \"entity_type\": \"superadmin\",\n        \"created_at\": \"2026-02-16T12:02:36.125Z\",\n        \"updated_at\": \"2026-02-16T12:02:36.125Z\",\n        \"deleted_at\": null,\n        \"items\": [\n            {\n                \"id\": 16,\n                \"po_id\": 17,\n                \"material_type_id\": 4,\n                \"category_id\": 1,\n                \"subcategory_id\": 1,\n                \"description\": \"Gold Bracelet\",\n                \"purity\": \"92.500\",\n                \"ordered_weight\": \"50.000\",\n                \"quantity\": 10,\n                \"rate\": \"10000.00\",\n                \"amount\": \"50000.00\",\n                \"created_at\": \"2026-02-16T12:02:36.233Z\",\n                \"updated_at\": \"2026-02-16T12:02:36.233Z\",\n                \"deleted_at\": null,\n                \"material_type_name\": \"platinum\",\n                \"category_name\": \"Chain\",\n                \"subcategory_name\": \"Fancy Chain\"\n            }\n        ]\n    }\n}"
                 }
               ]
             },
@@ -24913,7 +24976,7 @@
                 "header": [],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\r\n  \"po_date\": \"2025-06-01\",\r\n  \"vendor_id\": 1,\r\n  \"order_by_user_id\": 1,\r\n  \"reference_id\": \"10000\",\r\n  \"gst_no\": \"1ABAACT0303Q1Z3\",\r\n  \"billing_address\": \"Rajan Street, Chennai\",\r\n  \"shipping_address\": \"Rajan Street, Chennai\",\r\n  \"subtotal_amount\": 20000.00,\r\n  \"sgst_percent\": 3.00,\r\n  \"cgst_percent\": 3.50,\r\n  \"discount_percent\": 1.00,\r\n  \"remarks\": \"Gold Item PO.\",\r\n  \"status_id\":1, \r\n  \"items\": [\r\n    {\r\n     \"id\":1,\r\n      \"material_type_id\": 4,\r\n      \"category_id\": 1,\r\n      \"subcategory_id\": 1,\r\n      \"description\": \"Gold Ring\",\r\n      \"purity\": 92.5,\r\n      \"ordered_weight\": 500.000,\r\n      \"quantity\": 20,\r\n      \"rate\": 10525.00,\r\n      \"amount\": 210500.00\r\n    }\r\n  ]\r\n}",
+                  "raw": "// if entity type is superadmin - statusId = 1(approved)\r\n// if entity type is brnach - statusId = 2(approval pending)\r\n{\r\n    \"po_no\": \"PO015\",\r\n    \"po_date\": \"2026-02-16\",\r\n    \"vendor_id\": 2,\r\n    \"order_by_user_id\": 1, // logged in - brnach_id or superadmin_id\r\n    \"entity_type\": \"branch\", // branch or superadmin\r\n    \"branch_id\": 1, // logged in branch\r\n    \"reference_id\": \"20014\",\r\n    \"gst_no\": \"78KAACT0303Q1Z3\",\r\n    \"billing_address\": \"Natraj Street, Chennai\",\r\n    \"shipping_address\": \"Natraj Street, Chennai\",\r\n    \"subtotal_amount\": 30000.00,\r\n    \"sgst_percent\": 1.5,\r\n    \"sgst_amount\": 450,\r\n    \"cgst_percent\": 1.5,\r\n    \"cgst_amount\": 450,\r\n    \"discount_percent\": 2.00,\r\n    \"discount_amount\": 600,\r\n    \"total_amount\": 30300.00,\r\n    \"amount_in_words\": \"Thirty thousand and three hundred only\",\r\n    \"remarks\": \"PO Gold Item.\",\r\n    \"status_id\": 1,\r\n    \"items\": [\r\n        {\r\n            \"id\": 21,\r\n            \"material_type_id\": 1,\r\n            \"category_id\": 1,\r\n            \"subcategory_id\": 1,\r\n            \"description\": \"Gold Bracelet\",\r\n            \"purity\": 92.5,\r\n            \"ordered_weight\": 50.000,\r\n            \"quantity\": 3,\r\n            \"rate\": 10000.00,\r\n            \"amount\": 30000.00\r\n        }\r\n    ]\r\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -24921,7 +24984,7 @@
                   }
                 },
                 "url": {
-                  "raw": "http://localhost:5000/api/v1/purchase-orders/1",
+                  "raw": "http://localhost:5000/api/v1/purchase-orders/23",
                   "protocol": "http",
                   "host": [
                     "localhost"
@@ -24931,7 +24994,7 @@
                     "api",
                     "v1",
                     "purchase-orders",
-                    "1"
+                    "23"
                   ]
                 }
               },
@@ -24943,7 +25006,7 @@
                     "header": [],
                     "body": {
                       "mode": "raw",
-                      "raw": "{\r\n  \"po_no\": \"PO 01/24-25\",\r\n  \"po_date\": \"2025-06-01\",\r\n  \"vendor_id\": 1,\r\n  \"order_by_user_id\": 1,\r\n  \"reference_id\": \"10000\",\r\n  \"gst_no\": \"1ABAACT0303Q1Z3\",\r\n  \"billing_address\": \"Rajan Street, Chennai\",\r\n  \"shipping_address\": \"Rajan Street, Chennai\",\r\n  \"subtotal_amount\": 20000.00,\r\n  \"sgst_percent\": 3.00,\r\n  \"cgst_percent\": 3.50,\r\n  \"discount_percent\": 1.00,\r\n  \"remarks\": \"Gold Item PO.\",\r\n  \"status_id\":1, \r\n  \"items\": [\r\n    {\r\n     \"id\":1,\r\n      \"material_type_id\": 4,\r\n      \"category_id\": 1,\r\n      \"subcategory_id\": 1,\r\n      \"description\": \"Gold Ring\",\r\n      \"purity\": 92.5,\r\n      \"ordered_weight\": 500.000,\r\n      \"quantity\": 20,\r\n      \"rate\": 10525.00,\r\n      \"amount\": 210500.00\r\n    }\r\n  ]\r\n}",
+                      "raw": "// if entity type is superadmin - statusId = 1(approved)\r\n// if entity type is brnach - statusId = 2(approval pending)\r\n{\r\n    \"po_no\": \"PO015\",\r\n    \"po_date\": \"2026-02-16\",\r\n    \"vendor_id\": 2,\r\n    \"order_by_user_id\": 1, // logged in - brnach_id or superadmin_id\r\n    \"entity_type\": \"branch\", // branch or superadmin\r\n    \"branch_id\": 1, // logged in branch\r\n    \"reference_id\": \"20014\",\r\n    \"gst_no\": \"78KAACT0303Q1Z3\",\r\n    \"billing_address\": \"Natraj Street, Chennai\",\r\n    \"shipping_address\": \"Natraj Street, Chennai\",\r\n    \"subtotal_amount\": 30000.00,\r\n    \"sgst_percent\": 1.5,\r\n    \"sgst_amount\": 450,\r\n    \"cgst_percent\": 1.5,\r\n    \"cgst_amount\": 450,\r\n    \"discount_percent\": 2.00,\r\n    \"discount_amount\": 600,\r\n    \"total_amount\": 30300.00,\r\n    \"amount_in_words\": \"Thirty thousand and three hundred only\",\r\n    \"remarks\": \"PO Gold Item.\",\r\n    \"status_id\": 1,\r\n    \"items\": [\r\n        {\r\n            \"id\": 21,\r\n            \"material_type_id\": 1,\r\n            \"category_id\": 1,\r\n            \"subcategory_id\": 1,\r\n            \"description\": \"Gold Bracelet\",\r\n            \"purity\": 92.5,\r\n            \"ordered_weight\": 50.000,\r\n            \"quantity\": 3,\r\n            \"rate\": 10000.00,\r\n            \"amount\": 30000.00\r\n        }\r\n    ]\r\n}",
                       "options": {
                         "raw": {
                           "language": "json"
@@ -24951,7 +25014,7 @@
                       }
                     },
                     "url": {
-                      "raw": "http://localhost:5000/api/v1/purchase-orders/1",
+                      "raw": "http://localhost:5000/api/v1/purchase-orders/23",
                       "protocol": "http",
                       "host": [
                         "localhost"
@@ -24961,7 +25024,7 @@
                         "api",
                         "v1",
                         "purchase-orders",
-                        "1"
+                        "23"
                       ]
                     }
                   },
@@ -24983,15 +25046,15 @@
                     },
                     {
                       "key": "Content-Length",
-                      "value": "877"
+                      "value": "1072"
                     },
                     {
                       "key": "ETag",
-                      "value": "W/\"36d-j7lzhNyPT+LS9D0dBVfebXNx/uY\""
+                      "value": "W/\"430-Ta0ZIyi/85N+kXxv7fV8nG0l2G4\""
                     },
                     {
                       "key": "Date",
-                      "value": "Sat, 08 Nov 2025 05:34:31 GMT"
+                      "value": "Mon, 16 Feb 2026 12:45:43 GMT"
                     },
                     {
                       "key": "Connection",
@@ -25003,7 +25066,7 @@
                     }
                   ],
                   "cookie": [],
-                  "body": "{\n    \"statusCode\": 200,\n    \"message\": \"Success\",\n    \"data\": {\n        \"id\": 1,\n        \"po_no\": \"PO 01/24-25\",\n        \"po_date\": \"2025-06-01\",\n        \"vendor_id\": 1,\n        \"order_by_user_id\": 1,\n        \"gst_no\": \"1ABAACT0303Q1Z3\",\n        \"billing_address\": \"Rajan Street, Chennai\",\n        \"shipping_address\": \"Rajan Street, Chennai\",\n        \"subtotal_amount\": \"20000.00\",\n        \"sgst_percent\": \"3.00\",\n        \"cgst_percent\": \"3.50\",\n        \"discount_percent\": \"1.00\",\n        \"remarks\": \"Gold Item PO.\",\n        \"status_id\": 1,\n        \"created_at\": \"2025-11-07T12:24:52.820Z\",\n        \"updated_at\": \"2025-11-08T05:34:30.033Z\",\n        \"deleted_at\": null,\n        \"items\": [\n            {\n                \"id\": 1,\n                \"po_id\": 1,\n                \"material_type_id\": 4,\n                \"category_id\": 1,\n                \"subcategory_id\": 1,\n                \"description\": \"Gold Ring\",\n                \"purity\": \"92.500\",\n                \"ordered_weight\": \"500.000\",\n                \"quantity\": 20,\n                \"rate\": \"10525.00\",\n                \"amount\": \"210500.00\",\n                \"created_at\": \"2025-11-07T12:24:52.920Z\",\n                \"updated_at\": \"2025-11-08T05:34:30.106Z\",\n                \"deleted_at\": null,\n                \"material_type_name\": \"Platinum1\",\n                \"category_name\": \"Gold\",\n                \"subcategory_name\": \"Rose Gold\"\n            }\n        ]\n    }\n}"
+                  "body": "{\n    \"statusCode\": 200,\n    \"message\": \"Success\",\n    \"data\": {\n        \"id\": 23,\n        \"po_no\": \"PO015\",\n        \"po_date\": \"2026-02-16\",\n        \"vendor_id\": 2,\n        \"order_by_user_id\": 1,\n        \"gst_no\": \"78KAACT0303Q1Z3\",\n        \"billing_address\": \"Natraj Street, Chennai\",\n        \"shipping_address\": \"Natraj Street, Chennai\",\n        \"subtotal_amount\": \"30000.00\",\n        \"sgst_percent\": \"1.50\",\n        \"sgst_amount\": \"450.00\",\n        \"cgst_percent\": \"1.50\",\n        \"cgst_amount\": \"450.00\",\n        \"discount_percent\": \"2.00\",\n        \"discount_amount\": \"600.00\",\n        \"total_amount\": \"30300.00\",\n        \"amount_in_words\": \"Thirty thousand and three hundred only\",\n        \"remarks\": \"PO Gold Item.\",\n        \"status_id\": 1,\n        \"branch_id\": 1,\n        \"entity_type\": \"branch\",\n        \"created_at\": \"2026-02-16T12:37:18.759Z\",\n        \"updated_at\": \"2026-02-16T12:45:38.494Z\",\n        \"deleted_at\": null,\n        \"items\": [\n            {\n                \"id\": 21,\n                \"po_id\": 23,\n                \"material_type_id\": 1,\n                \"category_id\": 1,\n                \"subcategory_id\": 1,\n                \"description\": \"Gold Bracelet\",\n                \"purity\": \"92.500\",\n                \"ordered_weight\": \"50.000\",\n                \"quantity\": 3,\n                \"rate\": \"10000.00\",\n                \"amount\": \"30000.00\",\n                \"created_at\": \"2026-02-16T12:37:18.803Z\",\n                \"updated_at\": \"2026-02-16T12:45:38.696Z\",\n                \"deleted_at\": null,\n                \"material_type_name\": \"Silver\",\n                \"category_name\": \"Chain\",\n                \"subcategory_name\": \"Fancy Chain\"\n            }\n        ]\n    }\n}"
                 }
               ]
             },
@@ -25013,7 +25076,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "http://localhost:5000/api/v1/purchase-orders/1",
+                  "raw": "http://localhost:5000/api/v1/purchase-orders/23",
                   "protocol": "http",
                   "host": [
                     "localhost"
@@ -25023,7 +25086,7 @@
                     "api",
                     "v1",
                     "purchase-orders",
-                    "1"
+                    "23"
                   ]
                 }
               },
@@ -25034,7 +25097,7 @@
                     "method": "GET",
                     "header": [],
                     "url": {
-                      "raw": "http://localhost:5000/api/v1/purchase-orders/1",
+                      "raw": "http://localhost:5000/api/v1/purchase-orders/23",
                       "protocol": "http",
                       "host": [
                         "localhost"
@@ -25044,7 +25107,7 @@
                         "api",
                         "v1",
                         "purchase-orders",
-                        "1"
+                        "23"
                       ]
                     }
                   },
@@ -25066,15 +25129,15 @@
                     },
                     {
                       "key": "Content-Length",
-                      "value": "877"
+                      "value": "1072"
                     },
                     {
                       "key": "ETag",
-                      "value": "W/\"36d-j7lzhNyPT+LS9D0dBVfebXNx/uY\""
+                      "value": "W/\"430-Ta0ZIyi/85N+kXxv7fV8nG0l2G4\""
                     },
                     {
                       "key": "Date",
-                      "value": "Sat, 08 Nov 2025 05:34:40 GMT"
+                      "value": "Mon, 16 Feb 2026 12:46:32 GMT"
                     },
                     {
                       "key": "Connection",
@@ -25086,7 +25149,7 @@
                     }
                   ],
                   "cookie": [],
-                  "body": "{\n    \"statusCode\": 200,\n    \"message\": \"Success\",\n    \"data\": {\n        \"id\": 1,\n        \"po_no\": \"PO 01/24-25\",\n        \"po_date\": \"2025-06-01\",\n        \"vendor_id\": 1,\n        \"order_by_user_id\": 1,\n        \"gst_no\": \"1ABAACT0303Q1Z3\",\n        \"billing_address\": \"Rajan Street, Chennai\",\n        \"shipping_address\": \"Rajan Street, Chennai\",\n        \"subtotal_amount\": \"20000.00\",\n        \"sgst_percent\": \"3.00\",\n        \"cgst_percent\": \"3.50\",\n        \"discount_percent\": \"1.00\",\n        \"remarks\": \"Gold Item PO.\",\n        \"status_id\": 1,\n        \"created_at\": \"2025-11-07T12:24:52.820Z\",\n        \"updated_at\": \"2025-11-08T05:34:30.033Z\",\n        \"deleted_at\": null,\n        \"items\": [\n            {\n                \"id\": 1,\n                \"po_id\": 1,\n                \"material_type_id\": 4,\n                \"category_id\": 1,\n                \"subcategory_id\": 1,\n                \"description\": \"Gold Ring\",\n                \"purity\": \"92.500\",\n                \"ordered_weight\": \"500.000\",\n                \"quantity\": 20,\n                \"rate\": \"10525.00\",\n                \"amount\": \"210500.00\",\n                \"created_at\": \"2025-11-07T12:24:52.920Z\",\n                \"updated_at\": \"2025-11-08T05:34:30.106Z\",\n                \"deleted_at\": null,\n                \"material_type_name\": \"Platinum1\",\n                \"category_name\": \"Gold\",\n                \"subcategory_name\": \"Rose Gold\"\n            }\n        ]\n    }\n}"
+                  "body": "{\n    \"statusCode\": 200,\n    \"message\": \"Success\",\n    \"data\": {\n        \"id\": 23,\n        \"po_no\": \"PO015\",\n        \"po_date\": \"2026-02-16\",\n        \"vendor_id\": 2,\n        \"order_by_user_id\": 1,\n        \"gst_no\": \"78KAACT0303Q1Z3\",\n        \"billing_address\": \"Natraj Street, Chennai\",\n        \"shipping_address\": \"Natraj Street, Chennai\",\n        \"subtotal_amount\": \"30000.00\",\n        \"sgst_percent\": \"1.50\",\n        \"sgst_amount\": \"450.00\",\n        \"cgst_percent\": \"1.50\",\n        \"cgst_amount\": \"450.00\",\n        \"discount_percent\": \"2.00\",\n        \"discount_amount\": \"600.00\",\n        \"total_amount\": \"30300.00\",\n        \"amount_in_words\": \"Thirty thousand and three hundred only\",\n        \"remarks\": \"PO Gold Item.\",\n        \"status_id\": 1,\n        \"branch_id\": 1,\n        \"entity_type\": \"branch\",\n        \"created_at\": \"2026-02-16T12:37:18.759Z\",\n        \"updated_at\": \"2026-02-16T12:45:38.494Z\",\n        \"deleted_at\": null,\n        \"items\": [\n            {\n                \"id\": 21,\n                \"po_id\": 23,\n                \"material_type_id\": 1,\n                \"category_id\": 1,\n                \"subcategory_id\": 1,\n                \"description\": \"Gold Bracelet\",\n                \"purity\": \"92.500\",\n                \"ordered_weight\": \"50.000\",\n                \"quantity\": 3,\n                \"rate\": \"10000.00\",\n                \"amount\": \"30000.00\",\n                \"created_at\": \"2026-02-16T12:37:18.803Z\",\n                \"updated_at\": \"2026-02-16T12:45:38.696Z\",\n                \"deleted_at\": null,\n                \"material_type_name\": \"Silver\",\n                \"category_name\": \"Chain\",\n                \"subcategory_name\": \"Fancy Chain\"\n            }\n        ]\n    }\n}"
                 }
               ]
             },
@@ -25096,7 +25159,7 @@
                 "method": "GET",
                 "header": [],
                 "url": {
-                  "raw": "http://localhost:5000/api/v1/purchase-orders/1/view",
+                  "raw": "http://localhost:5000/api/v1/purchase-orders/24/view",
                   "protocol": "http",
                   "host": [
                     "localhost"
@@ -25106,7 +25169,7 @@
                     "api",
                     "v1",
                     "purchase-orders",
-                    "1",
+                    "24",
                     "view"
                   ]
                 }
@@ -25118,7 +25181,7 @@
                     "method": "GET",
                     "header": [],
                     "url": {
-                      "raw": "http://localhost:5000/api/v1/purchase-orders/1/view",
+                      "raw": "http://localhost:5000/api/v1/purchase-orders/24/view",
                       "protocol": "http",
                       "host": [
                         "localhost"
@@ -25128,7 +25191,7 @@
                         "api",
                         "v1",
                         "purchase-orders",
-                        "1",
+                        "24",
                         "view"
                       ]
                     }
@@ -25151,15 +25214,15 @@
                     },
                     {
                       "key": "Content-Length",
-                      "value": "860"
+                      "value": "1110"
                     },
                     {
                       "key": "ETag",
-                      "value": "W/\"35c-NJ1TgC6mLymH0KeIZ9euFHT3p0Q\""
+                      "value": "W/\"456-K3OKhf/mGQH5PCLJemwqff07JfQ\""
                     },
                     {
                       "key": "Date",
-                      "value": "Sat, 08 Nov 2025 05:34:46 GMT"
+                      "value": "Tue, 17 Feb 2026 06:59:48 GMT"
                     },
                     {
                       "key": "Connection",
@@ -25171,12 +25234,12 @@
                     }
                   ],
                   "cookie": [],
-                  "body": "{\n    \"statusCode\": 200,\n    \"message\": \"Success\",\n    \"data\": {\n        \"header\": {\n            \"id\": 1,\n            \"po_no\": \"PO 01/24-25\",\n            \"po_date\": \"2025-06-01\",\n            \"subtotal_amount\": \"20000.00\",\n            \"sgst_percent\": \"3.00\",\n            \"cgst_percent\": \"3.50\",\n            \"discount_percent\": \"1.00\",\n            \"remarks\": \"Gold Item PO.\",\n            \"gst_no\": \"1ABAACT0303Q1Z3\",\n            \"billing_address\": \"Rajan Street, Chennai\",\n            \"shipping_address\": \"Rajan Street, Chennai\",\n            \"vendor_id\": 1,\n            \"vendor_name\": \"Mano\",\n            \"vendor_address\": \"Karur\",\n            \"vendor_mobile\": \"5464746765\",\n            \"vendor_gst_no\": \"11AAAAA1111A1Z1\",\n            \"vendor_district\": \"Tirupur\",\n            \"vendor_state\": \"Karnataka\",\n            \"vendor_country\": \"United Kingdom\"\n        },\n        \"items\": [\n            {\n                \"id\": 1,\n                \"description\": \"Gold Ring\",\n                \"purity\": \"92.500\",\n                \"ordered_weight\": \"500.000\",\n                \"quantity\": 20,\n                \"rate\": \"10525.00\",\n                \"amount\": \"210500.00\",\n                \"material_type_name\": \"Platinum1\",\n                \"category_name\": \"Gold\",\n                \"subcategory_name\": \"Rose Gold\"\n            }\n        ],\n        \"totals\": {\n            \"total_ordered_weight\": \"500.000\",\n            \"total_amount\": \"210500.00\"\n        }\n    }\n}"
+                  "body": "{\n    \"statusCode\": 200,\n    \"message\": \"Success\",\n    \"data\": {\n        \"header\": {\n            \"id\": 24,\n            \"po_no\": \"PO016\",\n            \"po_date\": \"2026-02-16\",\n            \"subtotal_amount\": \"30000.00\",\n            \"sgst_percent\": \"1.50\",\n            \"sgst_amount\": null,\n            \"cgst_percent\": \"1.50\",\n            \"cgst_amount\": null,\n            \"discount_percent\": \"2.00\",\n            \"discount_amount\": null,\n            \"total_amount\": null,\n            \"amount_in_words\": null,\n            \"remarks\": \"Rejected due to price mismatch\",\n            \"branch_id\": 4,\n            \"branch_name\": \"Aura\",\n            \"branch_address\": \"518,rm colony,balakrishnapuram\",\n            \"branch_mobile\": \"8946043489\",\n            \"branch_gst_no\": \"22AAAAA0000A1Z6\",\n            \"branch_district\": \"Dindigul\",\n            \"branch_state\": \"Tamil Nadu\",\n            \"branch_country\": \"India\",\n            \"vendor_id\": 3,\n            \"vendor_name\": \"Nakoda Silver Creations\",\n            \"vendor_address\": \"Anna Salai\",\n            \"vendor_mobile\": \"5252652568\",\n            \"vendor_gst_no\": \"29AAACC1206D2ZB\",\n            \"vendor_district\": \"Chennai\",\n            \"vendor_state\": \"Tamil Nadu\",\n            \"vendor_country\": \"India\"\n        },\n        \"items\": [\n            {\n                \"id\": 22,\n                \"description\": \"Gold Bracelet\",\n                \"purity\": \"92.500\",\n                \"ordered_weight\": \"50.000\",\n                \"quantity\": 3,\n                \"rate\": \"10000.00\",\n                \"amount\": \"30000.00\",\n                \"material_type_name\": \"Silver\",\n                \"category_name\": \"Chain\",\n                \"subcategory_name\": \"Fancy Chain\"\n            }\n        ],\n        \"totals\": {\n            \"total_ordered_weight\": \"50.000\",\n            \"total_amount\": \"30000.00\"\n        }\n    }\n}"
                 }
               ]
             },
             {
-              "name": "Gets",
+              "name": "Gets - score card - table page",
               "request": {
                 "method": "GET",
                 "header": [],
@@ -25277,16 +25340,638 @@
                 }
               },
               "response": []
+            },
+            {
+              "name": "Accept - branch admin req",
+              "request": {
+                "method": "PUT",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n  \"status_id\": 2,  // 2- accepted\r\n  \"remarks\": \"Approved by super admin\"\r\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "http://localhost:5000/api/v1/purchase-orders/23/status",
+                  "protocol": "http",
+                  "host": [
+                    "localhost"
+                  ],
+                  "port": "5000",
+                  "path": [
+                    "api",
+                    "v1",
+                    "purchase-orders",
+                    "23",
+                    "status"
+                  ]
+                }
+              },
+              "response": [
+                {
+                  "name": "Accept - branch admin req",
+                  "originalRequest": {
+                    "method": "PUT",
+                    "header": [],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\r\n  \"status_id\": 2,  // 2- accepted\r\n  \"remarks\": \"Approved by super admin\"\r\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    },
+                    "url": {
+                      "raw": "http://localhost:5000/api/v1/purchase-orders/23/status",
+                      "protocol": "http",
+                      "host": [
+                        "localhost"
+                      ],
+                      "port": "5000",
+                      "path": [
+                        "api",
+                        "v1",
+                        "purchase-orders",
+                        "23",
+                        "status"
+                      ]
+                    }
+                  },
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": null,
+                  "header": [
+                    {
+                      "key": "X-Powered-By",
+                      "value": "Express"
+                    },
+                    {
+                      "key": "Access-Control-Allow-Origin",
+                      "value": "*"
+                    },
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json; charset=utf-8"
+                    },
+                    {
+                      "key": "Content-Length",
+                      "value": "685"
+                    },
+                    {
+                      "key": "ETag",
+                      "value": "W/\"2ad-W17y4+17pGcXFJlG1sxoBeOygA0\""
+                    },
+                    {
+                      "key": "Date",
+                      "value": "Mon, 16 Feb 2026 12:58:10 GMT"
+                    },
+                    {
+                      "key": "Connection",
+                      "value": "keep-alive"
+                    },
+                    {
+                      "key": "Keep-Alive",
+                      "value": "timeout=5"
+                    }
+                  ],
+                  "cookie": [],
+                  "body": "{\n    \"statusCode\": 200,\n    \"message\": \"Success\",\n    \"data\": {\n        \"id\": 23,\n        \"po_no\": \"PO015\",\n        \"po_date\": \"2026-02-16\",\n        \"vendor_id\": 2,\n        \"order_by_user_id\": 1,\n        \"gst_no\": \"78KAACT0303Q1Z3\",\n        \"billing_address\": \"Natraj Street, Chennai\",\n        \"shipping_address\": \"Natraj Street, Chennai\",\n        \"subtotal_amount\": \"30000.00\",\n        \"sgst_percent\": \"1.50\",\n        \"sgst_amount\": \"450.00\",\n        \"cgst_percent\": \"1.50\",\n        \"cgst_amount\": \"450.00\",\n        \"discount_percent\": \"2.00\",\n        \"discount_amount\": \"600.00\",\n        \"total_amount\": \"30300.00\",\n        \"amount_in_words\": \"Thirty thousand and three hundred only\",\n        \"remarks\": \"Approved by super admin\",\n        \"status_id\": 2,\n        \"branch_id\": 1,\n        \"entity_type\": \"branch\",\n        \"created_at\": \"2026-02-16T12:37:18.759Z\",\n        \"updated_at\": \"2026-02-16T12:58:06.580Z\",\n        \"deleted_at\": null\n    }\n}"
+                }
+              ]
+            },
+            {
+              "name": "Reject - branch admin req",
+              "request": {
+                "method": "PUT",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n  \"status_id\": 3,   // 3 - rejected\r\n  \"remarks\": \"Rejected due to price mismatch\"\r\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "http://localhost:5000/api/v1/purchase-orders/24/status",
+                  "protocol": "http",
+                  "host": [
+                    "localhost"
+                  ],
+                  "port": "5000",
+                  "path": [
+                    "api",
+                    "v1",
+                    "purchase-orders",
+                    "24",
+                    "status"
+                  ]
+                }
+              },
+              "response": [
+                {
+                  "name": "Reject - branch admin req",
+                  "originalRequest": {
+                    "method": "PUT",
+                    "header": [],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\r\n  \"status_id\": 3,   // 3 - rejected\r\n  \"remarks\": \"Rejected due to price mismatch\"\r\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    },
+                    "url": {
+                      "raw": "http://localhost:5000/api/v1/purchase-orders/24/status",
+                      "protocol": "http",
+                      "host": [
+                        "localhost"
+                      ],
+                      "port": "5000",
+                      "path": [
+                        "api",
+                        "v1",
+                        "purchase-orders",
+                        "24",
+                        "status"
+                      ]
+                    }
+                  },
+                  "status": "OK",
+                  "code": 200,
+                  "_postman_previewlanguage": null,
+                  "header": [
+                    {
+                      "key": "X-Powered-By",
+                      "value": "Express"
+                    },
+                    {
+                      "key": "Access-Control-Allow-Origin",
+                      "value": "*"
+                    },
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json; charset=utf-8"
+                    },
+                    {
+                      "key": "Content-Length",
+                      "value": "692"
+                    },
+                    {
+                      "key": "ETag",
+                      "value": "W/\"2b4-yLvuIipeJKZOz0CgwCuFLIMRdGU\""
+                    },
+                    {
+                      "key": "Date",
+                      "value": "Mon, 16 Feb 2026 12:58:33 GMT"
+                    },
+                    {
+                      "key": "Connection",
+                      "value": "keep-alive"
+                    },
+                    {
+                      "key": "Keep-Alive",
+                      "value": "timeout=5"
+                    }
+                  ],
+                  "cookie": [],
+                  "body": "{\n    \"statusCode\": 200,\n    \"message\": \"Success\",\n    \"data\": {\n        \"id\": 24,\n        \"po_no\": \"PO016\",\n        \"po_date\": \"2026-02-16\",\n        \"vendor_id\": 3,\n        \"order_by_user_id\": 4,\n        \"gst_no\": \"78KAACT0303Q1Z3\",\n        \"billing_address\": \"Natraj Street, Chennai\",\n        \"shipping_address\": \"Natraj Street, Chennai\",\n        \"subtotal_amount\": \"30000.00\",\n        \"sgst_percent\": \"1.50\",\n        \"sgst_amount\": \"450.00\",\n        \"cgst_percent\": \"1.50\",\n        \"cgst_amount\": \"450.00\",\n        \"discount_percent\": \"2.00\",\n        \"discount_amount\": \"600.00\",\n        \"total_amount\": \"30300.00\",\n        \"amount_in_words\": \"Thirty thousand and three hundred only\",\n        \"remarks\": \"Rejected due to price mismatch\",\n        \"status_id\": 3,\n        \"branch_id\": 4,\n        \"entity_type\": \"branch\",\n        \"created_at\": \"2026-02-16T12:56:31.116Z\",\n        \"updated_at\": \"2026-02-16T12:58:33.201Z\",\n        \"deleted_at\": null\n    }\n}"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Sales Orders",
+      "item": [
+        {
+          "name": "Gets - score card",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:5000/api/v1/vendor/sales-orders?vendor_id=1",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "5000",
+              "path": [
+                "api",
+                "v1",
+                "vendor",
+                "sales-orders"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "10",
+                  "disabled": true
+                },
+                {
+                  "key": "vendor_id",
+                  "value": "1"
+                }
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "Gets - score card",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "http://localhost:5000/api/v1/vendor/sales-orders?vendor_id=1",
+                  "protocol": "http",
+                  "host": [
+                    "localhost"
+                  ],
+                  "port": "5000",
+                  "path": [
+                    "api",
+                    "v1",
+                    "vendor",
+                    "sales-orders"
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "disabled": true
+                    },
+                    {
+                      "key": "limit",
+                      "value": "10",
+                      "disabled": true
+                    },
+                    {
+                      "key": "vendor_id",
+                      "value": "1"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": null,
+              "header": [
+                {
+                  "key": "X-Powered-By",
+                  "value": "Express"
+                },
+                {
+                  "key": "Access-Control-Allow-Origin",
+                  "value": "*"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                },
+                {
+                  "key": "Content-Length",
+                  "value": "664"
+                },
+                {
+                  "key": "ETag",
+                  "value": "W/\"298-nwf5KBSpIRA3uf7OwsXwebILTrc\""
+                },
+                {
+                  "key": "Date",
+                  "value": "Tue, 17 Feb 2026 06:06:50 GMT"
+                },
+                {
+                  "key": "Connection",
+                  "value": "keep-alive"
+                },
+                {
+                  "key": "Keep-Alive",
+                  "value": "timeout=5"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n    \"statusCode\": 200,\n    \"message\": \"Success\",\n    \"data\": {\n        \"score_card\": {\n            \"received\": 1,\n            \"sent\": 1,\n            \"rejected\": 1\n        },\n        \"total\": 3,\n        \"data\": [\n            {\n                \"id\": 4,\n                \"status\": \"rejected\",\n                \"total_amount\": \"30300.00\",\n                \"created_at\": \"2026-02-17T05:48:49.206Z\",\n                \"po_id\": 26,\n                \"po_no\": \"PO018\",\n                \"po_date\": \"2026-02-17\",\n                \"item_details\": \"Chain\",\n                \"quantity\": \"3\"\n            },\n            {\n                \"id\": 3,\n                \"status\": \"pending\",\n                \"total_amount\": \"30300.00\",\n                \"created_at\": \"2026-02-17T05:48:05.997Z\",\n                \"po_id\": 25,\n                \"po_no\": \"PO017\",\n                \"po_date\": \"2026-02-17\",\n                \"item_details\": \"Chain\",\n                \"quantity\": \"3\"\n            },\n            {\n                \"id\": 1,\n                \"status\": \"accepted\",\n                \"total_amount\": \"30300.00\",\n                \"created_at\": \"2026-02-16T12:35:25.265Z\",\n                \"po_id\": 22,\n                \"po_no\": \"PO014\",\n                \"po_date\": \"2026-02-16\",\n                \"item_details\": \"Chain\",\n                \"quantity\": \"3\"\n            }\n        ]\n    }\n}"
             }
           ]
         },
         {
-          "name": "New Request",
+          "name": "Get sales order by id",
+          "protocolProfileBehavior": {
+            "disableBodyPruning": true
+          },
           "request": {
             "method": "GET",
-            "header": []
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": ""
+            },
+            "url": {
+              "raw": "http://localhost:5000/api/v1/vendor/sales-orders/1",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "5000",
+              "path": [
+                "api",
+                "v1",
+                "vendor",
+                "sales-orders",
+                "1"
+              ]
+            }
           },
-          "response": []
+          "response": [
+            {
+              "name": "Get sales order by id",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": ""
+                },
+                "url": {
+                  "raw": "http://localhost:5000/api/v1/vendors/sales-orders/1",
+                  "protocol": "http",
+                  "host": [
+                    "localhost"
+                  ],
+                  "port": "5000",
+                  "path": [
+                    "api",
+                    "v1",
+                    "vendors",
+                    "sales-orders",
+                    "1"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": null,
+              "header": [
+                {
+                  "key": "X-Powered-By",
+                  "value": "Express"
+                },
+                {
+                  "key": "Access-Control-Allow-Origin",
+                  "value": "*"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                },
+                {
+                  "key": "Content-Length",
+                  "value": "860"
+                },
+                {
+                  "key": "ETag",
+                  "value": "W/\"35c-Ncw/xTRuP8ooRHGD8TvMhftldpc\""
+                },
+                {
+                  "key": "Date",
+                  "value": "Mon, 16 Feb 2026 13:37:07 GMT"
+                },
+                {
+                  "key": "Connection",
+                  "value": "keep-alive"
+                },
+                {
+                  "key": "Keep-Alive",
+                  "value": "timeout=5"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n    \"statusCode\": 200,\n    \"message\": \"Success\",\n    \"data\": {\n        \"sales_order\": {\n            \"id\": 1,\n            \"status\": \"pending\",\n            \"remarks\": null,\n            \"response_date\": null,\n            \"sales_order_date\": null,\n            \"consignment_date\": null,\n            \"credit_terms\": null,\n            \"sgst_percentage\": \"1.50\",\n            \"sgst_amount\": \"450.00\",\n            \"cgst_percentage\": \"1.50\",\n            \"cgst_amount\": \"450.00\",\n            \"discount_percentage\": \"2.00\",\n            \"discount_amount\": \"600.00\",\n            \"total_amount\": \"30300.00\"\n        },\n        \"purchase_order\": {\n            \"id\": 22,\n            \"po_no\": \"PO014\",\n            \"po_date\": \"2026-02-16\"\n        },\n        \"items\": [\n            {\n                \"id\": 20,\n                \"po_id\": 22,\n                \"material_type_id\": 4,\n                \"category_id\": 1,\n                \"subcategory_id\": 1,\n                \"description\": \"Gold Bracelet\",\n                \"purity\": \"92.500\",\n                \"ordered_weight\": \"50.000\",\n                \"quantity\": 3,\n                \"rate\": \"10000.00\",\n                \"amount\": \"30000.00\",\n                \"created_at\": \"2026-02-16T12:35:24.332Z\",\n                \"updated_at\": \"2026-02-16T12:35:24.332Z\",\n                \"deleted_at\": null,\n                \"material_type_name\": \"platinum\",\n                \"category_name\": \"Chain\",\n                \"subcategory_name\": \"Fancy Chain\"\n            }\n        ],\n        \"additional_charges\": []\n    }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Reject - PO by vendor",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"remarks\": \"Rejected due to price mismatch\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "http://localhost:5000/api/v1/vendor/sales-orders/1/status",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "5000",
+              "path": [
+                "api",
+                "v1",
+                "vendor",
+                "sales-orders",
+                "1",
+                "status"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "Reject - PO by vendor",
+              "originalRequest": {
+                "method": "PUT",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n  \"remarks\": \"Rejected due to price mismatch\"\r\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "http://localhost:5000/api/v1/vendor/sales-orders/1/status",
+                  "protocol": "http",
+                  "host": [
+                    "localhost"
+                  ],
+                  "port": "5000",
+                  "path": [
+                    "api",
+                    "v1",
+                    "vendor",
+                    "sales-orders",
+                    "1",
+                    "status"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": null,
+              "header": [
+                {
+                  "key": "X-Powered-By",
+                  "value": "Express"
+                },
+                {
+                  "key": "Access-Control-Allow-Origin",
+                  "value": "*"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                },
+                {
+                  "key": "Content-Length",
+                  "value": "559"
+                },
+                {
+                  "key": "ETag",
+                  "value": "W/\"22f-f115Ndm6B+M6/GzrEIcalsXvH+8\""
+                },
+                {
+                  "key": "Date",
+                  "value": "Tue, 17 Feb 2026 06:33:38 GMT"
+                },
+                {
+                  "key": "Connection",
+                  "value": "keep-alive"
+                },
+                {
+                  "key": "Keep-Alive",
+                  "value": "timeout=5"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n    \"statusCode\": 200,\n    \"message\": \"Success\",\n    \"data\": {\n        \"id\": 1,\n        \"po_id\": 22,\n        \"vendor_id\": 1,\n        \"sales_order_date\": null,\n        \"consignment_date\": null,\n        \"credit_terms\": null,\n        \"status\": \"rejected\",\n        \"response_date\": \"2026-02-17\",\n        \"remarks\": \"Rejected due to price mismatch\",\n        \"sgst_percentage\": \"1.50\",\n        \"sgst_amount\": \"450.00\",\n        \"cgst_percentage\": \"1.50\",\n        \"cgst_amount\": \"450.00\",\n        \"discount_percentage\": \"2.00\",\n        \"discount_amount\": \"600.00\",\n        \"total_amount\": \"30300.00\",\n        \"created_by\": \"superadmin\",\n        \"updated_by\": null,\n        \"created_at\": \"2026-02-16T12:35:25.265Z\",\n        \"updated_at\": \"2026-02-17T06:33:38.886Z\",\n        \"deleted_at\": null\n    }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Accept and Submit Sales Orders",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"sales_order_date\": \"2026-02-17\",\r\n  \"consignment_date\": \"2026-02-20\",\r\n  \"credit_terms\": \"30 days\",\r\n  \"remarks\": \"Order accepted by vendor\",\r\n  \"additional_charges\": [\r\n    {\r\n      \"charge_name\": \"Transport Charges\",\r\n      \"amount\": 1000\r\n    },\r\n    {\r\n      \"charge_name\": \"Packing Charges\",\r\n      \"amount\": 500\r\n    }\r\n  ]\r\n}\r\n",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "http://localhost:5000/api/v1/vendor/sales-orders/1",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "5000",
+              "path": [
+                "api",
+                "v1",
+                "vendor",
+                "sales-orders",
+                "1"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "Accept and Submit Sales Orders",
+              "originalRequest": {
+                "method": "PUT",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n  \"sales_order_date\": \"2026-02-17\",\r\n  \"consignment_date\": \"2026-02-20\",\r\n  \"credit_terms\": \"30 days\",\r\n  \"remarks\": \"Order accepted by vendor\",\r\n  \"additional_charges\": [\r\n    {\r\n      \"charge_name\": \"Transport Charges\",\r\n      \"amount\": 1000\r\n    },\r\n    {\r\n      \"charge_name\": \"Packing Charges\",\r\n      \"amount\": 500\r\n    }\r\n  ]\r\n}\r\n",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "http://localhost:5000/api/v1/vendor/sales-orders/1",
+                  "protocol": "http",
+                  "host": [
+                    "localhost"
+                  ],
+                  "port": "5000",
+                  "path": [
+                    "api",
+                    "v1",
+                    "vendor",
+                    "sales-orders",
+                    "1"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": null,
+              "header": [
+                {
+                  "key": "X-Powered-By",
+                  "value": "Express"
+                },
+                {
+                  "key": "Access-Control-Allow-Origin",
+                  "value": "*"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json; charset=utf-8"
+                },
+                {
+                  "key": "Content-Length",
+                  "value": "569"
+                },
+                {
+                  "key": "ETag",
+                  "value": "W/\"239-fBLXH11MLvMUOd3kEO3yQOU1YnQ\""
+                },
+                {
+                  "key": "Date",
+                  "value": "Tue, 17 Feb 2026 06:35:16 GMT"
+                },
+                {
+                  "key": "Connection",
+                  "value": "keep-alive"
+                },
+                {
+                  "key": "Keep-Alive",
+                  "value": "timeout=5"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n    \"statusCode\": 200,\n    \"message\": \"Success\",\n    \"data\": {\n        \"id\": 1,\n        \"po_id\": 22,\n        \"vendor_id\": 1,\n        \"sales_order_date\": \"2026-02-17\",\n        \"consignment_date\": \"2026-02-20\",\n        \"credit_terms\": \"30 days\",\n        \"status\": \"accepted\",\n        \"response_date\": \"2026-02-17\",\n        \"remarks\": \"Order accepted by vendor\",\n        \"sgst_percentage\": \"1.50\",\n        \"sgst_amount\": \"450.00\",\n        \"cgst_percentage\": \"1.50\",\n        \"cgst_amount\": \"450.00\",\n        \"discount_percentage\": \"2.00\",\n        \"discount_amount\": \"600.00\",\n        \"total_amount\": 31800,\n        \"created_by\": \"superadmin\",\n        \"updated_by\": null,\n        \"created_at\": \"2026-02-16T12:35:25.265Z\",\n        \"updated_at\": \"2026-02-17T06:35:16.216Z\",\n        \"deleted_at\": null\n    }\n}"
+            }
+          ]
         }
       ]
     },
