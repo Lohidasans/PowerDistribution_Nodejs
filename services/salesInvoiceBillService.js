@@ -241,7 +241,7 @@ const getSalesInvoiceById = async (req, res) => {
 // List invoices - bill page/ customer - order details page
 const listSalesInvoices = async (req, res) => {
   try {
-    const { from, to, invoice_no, employee_id, customer_id, branch_id, order_type, search, status } = req.query || {};
+    const { from, to, invoice_no, date, employee_id, customer_id, branch_id, order_type, search, status } = req.query || {};
 
     let sql = `
       WITH invoice_items AS (
@@ -390,6 +390,11 @@ const listSalesInvoices = async (req, res) => {
     if (to) {
       sql += ` AND i.invoice_date <= :to`;
       replacements.to = to;
+    }
+
+    if (date) {
+      sql += ` AND DATE(i.invoice_date) = :date`;
+      replacements.date = date; // '2026-02-16'
     }
 
     if (employee_id) {
