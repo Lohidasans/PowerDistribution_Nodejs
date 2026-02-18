@@ -389,7 +389,7 @@ const deleteQuotationRequest = async (req, res) => {
 // List all Quotation Requests with pagination
 const getAllQuotationRequests = async (req, res) => {
   try {
-    const { page, limit, type = "sent", status_id, vendor_id, search } = req.query;
+    const { page, limit, type = "sent", status_id, vendor_id, date, search } = req.query;
 
     // --- Optional Pagination ---
     const isPaginated = page && limit;
@@ -416,6 +416,11 @@ const getAllQuotationRequests = async (req, res) => {
       replacements.search = `%${search}%`;
     }
 
+    if (date) {
+      whereSql += ` AND q.request_date = :date`;
+      replacements.date = date;
+    }
+
     // SCORE CARDS (DYNAMIC & FILTER-AWARE)
     let sentWhereSql = `WHERE q.deleted_at IS NULL`;
     let receivedWhereSql = `WHERE vq.deleted_at IS NULL AND vq.status = 'accepted'`;
@@ -431,6 +436,12 @@ const getAllQuotationRequests = async (req, res) => {
       sentWhereSql += ` AND (q.qr_id ILIKE :search OR v.vendor_name ILIKE :search)`;
       receivedWhereSql += ` AND (q.qr_id ILIKE :search OR v.vendor_name ILIKE :search)`;
       scoreReplacements.search = `%${search}%`;
+    }
+
+    if (date) {
+      sentWhereSql += ` AND q.request_date = :date`;
+      receivedWhereSql += ` AND q.request_date = :date`;
+      scoreReplacements.date = date;
     }
 
     const scoreCardQuery = `
@@ -478,6 +489,11 @@ const getAllQuotationRequests = async (req, res) => {
         vqReplacements.search = `%${search}%`;
       }
 
+      if (date) {
+        vqWhereSql += ` AND q.request_date = :date`;
+        vqReplacements.date = date;
+      }
+
       const vqCountQuery = `
         SELECT COUNT(*) AS total
         FROM vendor_quotations vq
@@ -502,6 +518,7 @@ const getAllQuotationRequests = async (req, res) => {
           vq.response_date,
           vq.sub_total,
           vq.total_amount,
+          vq.created_at,
           q.qr_id,
           q.request_date,
           q.expiry_date,
