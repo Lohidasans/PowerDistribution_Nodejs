@@ -226,9 +226,12 @@ const listVendorSalesOrders = async (req, res) => {
         so.sales_order_date,
         so.consignment_date,
         so.credit_terms,
+        so.vendor_id,
         so.status,
         so.total_amount,
         so.created_at,
+
+        v.state_id AS vendor_state_id,
 
         po.id     AS po_id,
         po.po_no,
@@ -242,10 +245,11 @@ const listVendorSalesOrders = async (req, res) => {
       LEFT JOIN purchase_order_items poi
         ON poi.po_id = po.id AND poi.deleted_at IS NULL
       LEFT JOIN categories c ON c.id = poi.category_id
+      LEFT JOIN vendors v ON v.id = so.vendor_id
 
       ${whereSql}
 
-      GROUP BY so.id, po.id
+      GROUP BY so.id, po.id, state_id
       ORDER BY so.created_at DESC
       ${paginationSql}
     `;
