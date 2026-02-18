@@ -358,10 +358,11 @@ const searchEmployeeDropdown = async (req, res) => {
         e.id,
         e.employee_no,
         e.employee_name,
+        e.status,
         ec.mobile_number
       FROM employees e
       LEFT JOIN employee_contacts ec ON ec.employee_id = e.id AND ec.deleted_at IS NULL
-      WHERE e.deleted_at IS NULL
+      WHERE e.deleted_at IS NULL and e.status = 'Active'
     `;
     const replacements = {};
     if (search && String(search).trim() !== "") {
@@ -382,6 +383,7 @@ const searchEmployeeDropdown = async (req, res) => {
       employee_no: r.employee_no,
       employee_name: r.employee_name,
       mobile_number: r.mobile_number || null,
+      status: r.status,
     }));
 
     return commonService.okResponse(res, { employees });
