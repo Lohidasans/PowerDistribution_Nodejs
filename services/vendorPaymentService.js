@@ -63,7 +63,7 @@ const getVendorPayments = async (req, res) => {
     } = req.query;
 
     const replacements = {};
-    let whereSql = "WHERE vp.deleted_at IS NULL";
+    let whereSql = "WHERE vp.deleted_at IS NULL and vp.is_active = true"; // Only fetch active (non-deleted) records
 
     // Filters
     if (bill_type_id) {
@@ -350,7 +350,7 @@ const activateDeactivateVendorPayment = async (req, res) => {
       return commonService.badRequest(res, "is_active must be true or false");
     }
 
-    const payment = await models.VendorPayments.findByPk(id, {
+    const payment = await models.VendorPayment.findByPk(id, {
       paranoid: false,
     });
 

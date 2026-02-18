@@ -151,7 +151,7 @@ const getVoucherReceipts = async (req, res) => {
     } = req.query;
 
     const replacements = {};
-    let whereSql = "WHERE vr.deleted_at IS NULL";
+    let whereSql = "WHERE vr.deleted_at IS NULL and vr.is_active = true";
 
     if (receipt_date) {
       whereSql += " AND vr.receipt_date = :receipt_date";
@@ -386,7 +386,7 @@ const activateDeactivateReceipt = async (req, res) => {
       return commonService.badRequest(res, "is_active must be true or false");
     }
 
-    const receipt = await models.Receipt.findByPk(id, {
+    const receipt = await models.VoucherReceipt.findByPk(id, {
       paranoid: false,
     });
 
