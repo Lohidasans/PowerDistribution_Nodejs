@@ -1013,28 +1013,41 @@ const getLowStockSummaryInternal = async (where, replacements) => {
         fp.id AS product_id,
         fp.subcategory_id,
         fp.branch_id,
+        fp.material_type_id,
+        fp.category_id,
         SUM(pid.quantity) AS total_qty,
         SUM(pid.quantity * pid.gross_weight) AS total_weight
       FROM filtered_products fp
       JOIN "productItemDetails" pid
         ON pid.product_id = fp.id
         AND pid.deleted_at IS NULL
-      GROUP BY fp.id, fp.subcategory_id, fp.branch_id
+      GROUP BY
+        fp.id,
+        fp.subcategory_id,
+        fp.branch_id,
+        fp.material_type_id,
+        fp.category_id
     ),
     low_stock_rows AS (
       SELECT
         ps.branch_id,
+        ps.material_type_id,
+        ps.category_id,
         ps.subcategory_id,
         SUM(ps.total_weight) AS row_weight
       FROM product_stock ps
-      JOIN subcategories sc ON sc.id = ps.subcategory_id AND sc.deleted_at IS NULL
+      JOIN subcategories sc ON sc.id = ps.subcategory_id
       WHERE ps.total_qty < sc.reorder_level
-      GROUP BY ps.branch_id, ps.subcategory_id
+      GROUP BY
+        ps.branch_id,
+        ps.material_type_id,
+        ps.category_id,
+        ps.subcategory_id
     )
     SELECT
       COUNT(*) AS subcategory_count,
       COALESCE(SUM(row_weight), 0) AS total_weight
-    FROM low_stock_rows
+    FROM low_stock_rows;
     `,
     { replacements }
   );
