@@ -97,6 +97,34 @@ const reduceStockForInvoice = async (items, transaction) => {
     }
 };
 
+const restoreStockForInvoice = async (items, transaction) => {
+    for (const item of items) {
+        if (!item.product_item_detail_id || item.quantity <= 0) continue;
+
+        const productItemDetail = await models.ProductItemDetail.findByPk(
+            item.product_item_detail_id,
+            { transaction }
+        );
+
+        if (!productItemDetail) {
+            throw new ValidationError(
+                `Invalid product_item_detail_id: ${item.product_item_detail_id}`
+            );
+        }
+
+        const newQuantity = productItemDetail.quantity + item.quantity;
+
+        await productItemDetail.update(
+            {
+                quantity: newQuantity,
+                stock_out_reason: null, // restoring stock
+            },
+            { transaction }
+        );
+    }
+};
+
+
 const validateCashPayment = (payments) => {
     const totalCash = payments
         .filter(p => p.payment_mode?.toLowerCase() === 'cash')
@@ -244,5 +272,6 @@ module.exports = {
     updateBillAdjustmentFlags,
     validateInvoiceItems,
     validateEstimateForInvoice,
-    markEstimateAsConverted
+    markEstimateAsConverted,
+    restoreStockForInvoice,
 };
