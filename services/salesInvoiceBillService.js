@@ -9,6 +9,7 @@ const { validateProductItemDetails,
   updateBillAdjustmentFlags,
   validateInvoiceItems,
   validateEstimateForInvoice,
+  restoreStockForInvoice,
   markEstimateAsConverted } = require('../helpers/billingValidations');
 const { calculateItemsAndSubtotal, calculateInvoiceTotals, calculatePaymentSummary } = require("../helpers/billingCalculations");
 const { Op } = require("sequelize");
@@ -1036,6 +1037,7 @@ const createSalesInvoice = async (req, res) => {
 
 const updateSalesInvoice = async (req, res) => {
   const t = await sequelize.transaction();
+
   try {
     const invoiceId = req.params.id;
     const { header = {}, items = [], payment = [], adjustments = [] } = req.body || {};
@@ -1049,17 +1051,13 @@ const updateSalesInvoice = async (req, res) => {
       excludeInvoiceId: invoiceId,
     });
 
-    const status = header.status ?? invoice.status;  
-    const previousStatus = invoice.status; //onhold - hold - invoice
-    const newStatus = status; // invoice   
-    
-    //const shouldReduceStock =  previousStatus !== "Invoice" && newStatus === "Invoice" && invoice.stock_deducted === false; // true for holded → invoice
+    const previousStatus = invoice.status;
+    const newStatus = header.status ?? invoice.status;
 
     // Validate products and stock
     await validateProducts(items, t);
     await validateProductItemDetails(items, t);
 
-    // Validate numbers are sane (no negatives, NaN)
     if (header.net_total < 0 || header.total_amount < 0) {
       throw new ValidationError("Invalid invoice totals");
     }
@@ -1067,43 +1065,43 @@ const updateSalesInvoice = async (req, res) => {
     // PAYMENT PROCESSING
     const incomingPayments = Array.isArray(payment) ? payment : [];
 
-    // Fetch existing payments for cash validation
     const existingPayments = await models.Payment.findAll({
       where: { invoice_bill_id: invoice.id },
-      attributes: ['id', 'payment_mode', 'amount_received'],
+      attributes: ["id", "payment_mode", "amount_received"],
       transaction: t,
     });
 
-    // Combine existing + incoming (excluding deleted ones)
     const allPayments = [
       ...existingPayments.map(p => ({
-        id: p.id,
         payment_mode: p.payment_mode,
         amount_received: Number(p.amount_received),
       })),
-      ...incomingPayments
-        .filter(p => p.payment_mode)
-        .map(p => ({
-          id: p.id || null,
-          payment_mode: p.payment_mode,
-          amount_received: Number(p.amount_received || 0),
-        })),
+      ...incomingPayments.map(p => ({
+        payment_mode: p.payment_mode,
+        amount_received: Number(p.amount_received || 0),
+      })),
     ];
 
-    // === PAN CARD VALIDATION: Total CASH ≥ ₹2 Lakh ===
     validateCashPayment(allPayments);
 
     // Determine IGST vs CGST/SGST
-    const hasHeaderIgst = header.igst_amount !== undefined && Number(header.igst_amount) > 0;
-    const cgstAmt = hasHeaderIgst ? 0 : Number(header.cgst_amount || 0);
-    const sgstAmt = hasHeaderIgst ? 0 : Number(header.sgst_amount || 0);
-    const igstAmt = hasHeaderIgst ? Number(header.igst_amount || 0) : 0;
+    const hasIgst = Number(header.igst_amount || 0) > 0;
+    const cgstAmt = hasIgst ? 0 : Number(header.cgst_amount || 0);
+    const sgstAmt = hasIgst ? 0 : Number(header.sgst_amount || 0);
+    const igstAmt = hasIgst ? Number(header.igst_amount || 0) : 0;
 
-    // UPDATE INVOICE HEADER (NO CALCULATION)
+    // ================= FETCH OLD ITEMS =================
+    const oldItems = await models.SalesInvoiceBillItem.findAll({
+      where: { invoice_bill_id: invoice.id },
+      transaction: t,
+      raw: true,
+    });
+
+    // ================= UPDATE HEADER =================
     await invoice.update(
       {
-        invoice_date: header.invoice_date || invoice.invoice_date,
-        invoice_time: header.invoice_time || invoice.invoice_time,
+        invoice_date: header.invoice_date,
+        invoice_time: header.invoice_time,
         employee_id: header.employee_id,
         customer_id: header.customer_id,
         branch_id: header.branch_id,
@@ -1112,8 +1110,8 @@ const updateSalesInvoice = async (req, res) => {
         subtotal_amount: header.subtotal_amount,
 
         discount_type: header.discount_type,
-        discount_amount: header.discount_amount,           // user-entered
-        discount_calculated: header.discount_calculated,   // UI-calculated
+        discount_amount: header.discount_amount,
+        discount_calculated: header.discount_calculated,
 
         cgst_percent: header.cgst_percent,
         sgst_percent: header.sgst_percent,
@@ -1128,28 +1126,27 @@ const updateSalesInvoice = async (req, res) => {
         amount_in_words: header.amount_in_words,
         total_quantity: header.total_quantity,
         hasBillAdjustment: header.hasBillAdjustment || false,
-        status: status,
+        status: newStatus,
       },
       { transaction: t }
     );
 
-    // UPSERT INVOICE ITEMS (amounts already calculated by UI)
+    // UPSERT ITEMS
     const payloadItemIds = items.filter(i => i.id).map(i => i.id);
 
     await models.SalesInvoiceBillItem.destroy({
       where: {
         invoice_bill_id: invoice.id,
-        id: { [Op.notIn]: payloadItemIds.length > 0 ? payloadItemIds : [0] },
+        id: { [Op.notIn]: payloadItemIds.length ? payloadItemIds : [0] },
       },
       transaction: t,
     });
 
     for (const item of items) {
       if (item.id) {
-        await models.SalesInvoiceBillItem.update(
-          { ...item },
-          { where: { id: item.id }, transaction: t }
-        );
+        await models.SalesInvoiceBillItem.update(item, {
+          where: { id: item.id }, transaction: t,
+        });
       } else {
         await models.SalesInvoiceBillItem.create(
           { ...item, invoice_bill_id: invoice.id },
@@ -1158,13 +1155,52 @@ const updateSalesInvoice = async (req, res) => {
       }
     }
 
+    //STOCK LOGIC
+    const normalize = list =>
+      list
+        .map(i => ({
+          product_item_detail_id: i.product_item_detail_id,
+          quantity: Number(i.quantity),
+        }))
+        .sort((a, b) => a.product_item_detail_id - b.product_item_detail_id);
+
+    const itemsChanged =
+      JSON.stringify(normalize(oldItems)) !==
+      JSON.stringify(normalize(items));
+
+    const hasPayment = allPayments.length > 0;
+    const isFullyPaid = Number(header.amount_due) === 0;
+    const isInvoice = newStatus === "Invoice";
+    const wasStockDeducted = invoice.stock_deducted === true;
+
+    const shouldReduceStock =
+      isInvoice && hasPayment && isFullyPaid;
+
+    // 🔁 RESTORE OLD STOCK
+    if (wasStockDeducted && itemsChanged) {
+      await restoreStockForInvoice(oldItems, t);
+    }
+
+    // 🔻 REDUCE NEW STOCK
+    if (
+      (!wasStockDeducted && shouldReduceStock) ||
+      (wasStockDeducted && itemsChanged)
+    ) {
+      await reduceStockForInvoice(items, t);
+
+      await invoice.update(
+        { stock_deducted: true },
+        { transaction: t }
+      );
+    }
+
     // UPSERT PAYMENTS
     const payloadPaymentIds = incomingPayments.filter(p => p.id).map(p => p.id);
 
     await models.Payment.destroy({
       where: {
         invoice_bill_id: invoice.id,
-        id: { [Op.notIn]: payloadPaymentIds.length > 0 ? payloadPaymentIds : [0] },
+        id: { [Op.notIn]: payloadPaymentIds.length ? payloadPaymentIds : [0] },
       },
       transaction: t,
     });
@@ -1230,31 +1266,7 @@ const updateSalesInvoice = async (req, res) => {
         { where: { id: header.customer_id }, transaction: t }
       );
     }
-
-    // Update Holded Invoice	- Status - On Hold to Invoice	✅ Reduce stock
-    // Update Invoice	- Status will always be Invoice	❌ No stock change
-    // Update Invoice	when amountdue is 0 when create- Status - Invoice	✅ Reduce stock
-
-    const hasPayment = allPayments.length > 0;
-    const isFullyPaid = Number(header.amount_due ?? invoice.amount_due) === 0;
-    const isInvoice = newStatus === "Invoice";
-
-    const shouldReduceStock =
-      isInvoice &&
-      invoice.stock_deducted === false &&
-      hasPayment &&
-      isFullyPaid;
-
-    if (shouldReduceStock) {
-      await reduceStockForInvoice(items, t);
-
-      await invoice.update(
-        { stock_deducted: true },
-        { transaction: t }
-      );
-    }
-
-      // Lock adjustments
+    // Lock adjustments
     await updateBillAdjustmentFlags(adjustments, t);
 
     await t.commit();
