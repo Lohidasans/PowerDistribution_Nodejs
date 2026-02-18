@@ -319,6 +319,11 @@ const getVendorSalesOrderById = async (req, res) => {
             raw: true,
         });
 
+        const vendor = await models.Vendor.findByPk(salesOrder.vendor_id, {
+            attributes: ['id', 'state_id'],
+            raw: true,
+        });
+
         // 3️⃣ Get PO Items (with master names)
         const items = await sequelize.query(
             `
@@ -354,7 +359,8 @@ const getVendorSalesOrderById = async (req, res) => {
                 status: salesOrder.status,
                 remarks: salesOrder.remarks,
                 response_date: salesOrder.response_date,
-
+                vendor_id: salesOrder.vendor_id,
+                vendor_state_id: vendor?.state_id || null,
                 sales_order_date: salesOrder.sales_order_date,
                 consignment_date: salesOrder.consignment_date,
                 credit_terms: salesOrder.credit_terms,
