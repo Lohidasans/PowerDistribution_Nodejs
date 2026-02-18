@@ -345,6 +345,7 @@ const listAccess = async (req, res) => {
         d.id AS department_id,
         d.department_name AS department,
         rp.role_name AS role,
+        rp.created_at,
         COALESCE(COUNT(DISTINCT e.id), 0) AS members,
         COALESCE(STRING_AGG(DISTINCT mg.module_group_name, ', ' ORDER BY mg.module_group_name), '') AS access_control
       FROM role_permissions rp
@@ -355,8 +356,8 @@ const listAccess = async (req, res) => {
       LEFT JOIN employees e ON e.role_id = r.id AND e.department_id = rp.department_id AND e.deleted_at IS NULL
       WHERE rp.deleted_at IS NULL
        ${filterClause}
-      GROUP BY d.id, d.department_name, rp.role_name
-      ORDER BY d.department_name, rp.role_name;
+      GROUP BY d.id, d.department_name, rp.role_name, rp.created_at 
+      ORDER BY rp.created_at DESC;
     `;
     const [rows] = await sequelize.query(query, { replacements });
     return commonService.okResponse(res, { items: rows });
