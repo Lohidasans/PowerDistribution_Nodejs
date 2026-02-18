@@ -341,6 +341,43 @@ const getInvoiceDropdown = async (req, res) => {
   }
 };
 
+const activateDeactivateVendorPayment = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { is_active } = req.body;
+
+    if (typeof is_active !== "boolean") {
+      return commonService.badRequest(res, "is_active must be true or false");
+    }
+
+    const payment = await models.VendorPayments.findByPk(id, {
+      paranoid: false,
+    });
+
+    if (!payment) {
+      return commonService.notFound(res, "Vendor payment not found");
+    }
+
+    if (payment.is_active === is_active) {
+      return commonService.badRequest(
+        res,
+        `Vendor payment already ${is_active ? "active" : "inactive"}`
+      );
+    }
+
+    await payment.update({
+      is_active,
+      status: is_active ? "Completed" : "Cancelled",
+    });
+
+    return commonService.okResponse(res, {
+      message: `Vendor payment ${is_active ? "activated" : "deactivated"} successfully`,
+    });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
 
 module.exports = {
   createVendorPayment,
@@ -351,5 +388,6 @@ module.exports = {
   generatePaymentNumber,
   getBillTypeDropdown,
   getPaymentModeDropdown,
-  getInvoiceDropdown
+  getInvoiceDropdown,
+  activateDeactivateVendorPayment
 };

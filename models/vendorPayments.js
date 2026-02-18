@@ -71,7 +71,12 @@ module.exports = (sequelize, DataTypes) => {
             branch_id: {
                 type: DataTypes.INTEGER, // branches table
                 allowNull: true,
-            }
+            },
+            is_active: {
+                type: DataTypes.BOOLEAN,
+                allowNull: false,
+                defaultValue: true,
+            },
         },
         {
             timestamps: true,

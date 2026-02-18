@@ -377,6 +377,42 @@ const updateVoucherReceipt = async (req, res) => {
   }
 };
 
+const activateDeactivateReceipt = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { is_active } = req.body;
+
+    if (typeof is_active !== "boolean") {
+      return commonService.badRequest(res, "is_active must be true or false");
+    }
+
+    const receipt = await models.Receipt.findByPk(id, {
+      paranoid: false,
+    });
+
+    if (!receipt) {
+      return commonService.notFound(res, "Receipt not found");
+    }
+
+    if (receipt.is_active === is_active) {
+      return commonService.badRequest(
+        res,
+        `Receipt already ${is_active ? "active" : "inactive"}`
+      );
+    }
+
+    await receipt.update({ is_active });
+
+    return commonService.okResponse(res, {
+      message: `Receipt ${is_active ? "activated" : "deactivated"} successfully`,
+    });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
+
+
 
 module.exports = {
   generateReceiptNumber,
@@ -384,5 +420,6 @@ module.exports = {
   getVoucherReceiptById,
   deleteVoucherReceipt,
   getVoucherReceipts,
-  updateVoucherReceipt
+  updateVoucherReceipt,
+  activateDeactivateReceipt
 };

@@ -11,7 +11,9 @@ router.get("/vendor-payments/payment-mode-dropdown", svc.getPaymentModeDropdown)
 router.get("/vendor-payments/invoice-dropdown", svc.getInvoiceDropdown);
 router.get("/vendor-payments/:id", svc.getVendorPaymentById);
 router.put("/vendor-payments/:id", svc.updateVendorPayment); 
+router.put("/vendor-payments/:id/activate-deactivate", svc.activateDeactivateVendorPayment);
 router.delete("/vendor-payments/:id", svc.deleteVendorPayment);
+
 
 module.exports = router;
 
