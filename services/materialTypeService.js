@@ -260,20 +260,55 @@ const updateMaterialTypesBulk = async (req, res) => {
 };
 
 const deleteMaterialType = async (req, res) => {
-  const entity = await commonService.findById(
-    models.MaterialType,
-    req.params.id,
-    res
-  );
-  if (!entity) return;
-
   try {
-    await entity.destroy();
-    return commonService.noContentResponse(res);
+    const materialTypeId = req.params.id;
+
+    // 1. Check material type exists
+    const materialType = await models.MaterialType.findOne({
+      where: { id: materialTypeId }
+    });
+
+    if (!materialType) {
+      return res.status(404).json({
+        message: "Material type not found"
+      });
+    }
+
+    // 2. Check categories
+    const categoryCount = await models.Category.count({
+      where: { material_type_id: materialTypeId }
+    });
+
+    if (categoryCount > 0) {
+      return res.status(400).json({
+        message: "Cannot delete material type. Categories exist under this material type."
+      });
+    }
+
+    // 3. Check subcategories
+    const subCategoryCount = await models.Subcategory.count({
+      where: { materialtype_id: materialTypeId }
+    });
+
+    if (subCategoryCount > 0) {
+      return res.status(400).json({
+        message: "Cannot delete material type. Subcategories exist under this material type."
+      });
+    }
+
+    // 4. Safe to delete
+    await materialType.destroy();
+
+    return res.status(204).send();
+
   } catch (err) {
-    return commonService.handleError(res, err);
+    console.error("Delete MaterialType Error:", err);
+    return res.status(500).json({
+      message: "Something went wrong while deleting material type"
+    });
   }
 };
+
 
 module.exports = {
   createMaterialType,
