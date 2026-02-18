@@ -223,6 +223,9 @@ const listVendorSalesOrders = async (req, res) => {
         const listQuery = `
       SELECT
         so.id,
+        so.sales_order_date,
+        so.consignment_date,
+        so.credit_terms,
         so.status,
         so.total_amount,
         so.created_at,
