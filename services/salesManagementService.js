@@ -606,6 +606,7 @@ const getBranchWiseSalesCount = async (req, res) => {
             branch_id,
             from_date,
             to_date,
+            search,
             date_filter
         } = req.query;
 
@@ -623,6 +624,11 @@ const getBranchWiseSalesCount = async (req, res) => {
             replacements.branch_id = branch_id;
         }
 
+        if (search) { 
+            whereSql += ` AND b.branch_name ILIKE :search`;
+            replacements.search = `%${search}%`;
+        }
+        
         const salesInvoiceSql = `
       SELECT
         b.id AS branch_id,
