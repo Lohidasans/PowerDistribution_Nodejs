@@ -411,11 +411,11 @@ const getStockTransferWithItems = async (stockTransferId) => {
     // Get branch details
     const [branchFrom, branchTo] = await Promise.all([
       models.Branch.findByPk(stockTransfer.branch_from, {
-        attributes: ["id", "branch_name",'address'],
+        attributes: ["id", "branch_name",'address', 'mobile'],
         raw: true,
       }),
       models.Branch.findByPk(stockTransfer.branch_to, {
-        attributes: ["id", "branch_name",'address'],
+        attributes: ["id", "branch_name",'address', 'mobile'],
         raw: true,
       })
     ]);
