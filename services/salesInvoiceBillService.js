@@ -463,7 +463,15 @@ const listSalesInvoices = async (req, res) => {
       .filter(Boolean);
 
     // Fetch current stock from ProductItemDetails
-    const productItems = productItemDetailIds.length ? await sequelize.query(`SELECT id, sku_id, quantity FROM "productItemDetails" WHERE id IN (:ids)`,
+    const productItems = productItemDetailIds.length ? await sequelize.query(`
+        SELECT 
+          pid.id,
+          pid.sku_id AS product_item_sku_id,
+          pid.quantity,
+          p.sku_id AS product_sku_id
+        FROM "productItemDetails" pid
+        LEFT JOIN products p ON p.id = pid.product_id
+        WHERE pid.id IN (:ids)`,
       {
         replacements: { ids: productItemDetailIds },
         type: sequelize.QueryTypes.SELECT
@@ -472,7 +480,8 @@ const listSalesInvoices = async (req, res) => {
     // Create lookup map
     const productItemMap = productItems.reduce((acc, row) => {
       acc[row.id] = {
-        sku_id: row.sku_id,
+        product_item_sku_id: row.product_item_sku_id,
+        product_sku_id: row.product_sku_id,
         quantity: row.quantity
       };
       return acc;
@@ -531,8 +540,12 @@ const listSalesInvoices = async (req, res) => {
           ...item,
           remaining_quantity:
             productItemMap[item.product_item_detail_id]?.quantity ?? 0,
+
           product_item_sku_id:
-            productItemMap[item.product_item_detail_id]?.sku_id ?? null
+            productItemMap[item.product_item_detail_id]?.product_item_sku_id ?? null,
+
+          product_sku_id:
+            productItemMap[item.product_item_detail_id]?.product_sku_id ?? null
         })),
 
         bill_adjustments: billAdjustments,
