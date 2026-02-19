@@ -436,6 +436,7 @@ const getFastMovingSoldProducts = async (req, res) => {
       LEFT JOIN "productItemDetails" pid
         ON pid.id = sii.product_item_detail_id
         AND pid.deleted_at IS NULL
+        AND (pid.stock_out_reason IS NULL OR pid.stock_out_reason = 'SOLD')
 
       LEFT JOIN vendors v ON v.id = p.vendor_id
       LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
