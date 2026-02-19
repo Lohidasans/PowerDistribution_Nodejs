@@ -845,7 +845,7 @@ const getAllProductDetails = async (req, res) => {
           SELECT 1
           FROM "productItemDetails" pid_stock
           WHERE pid_stock.product_id = p.id
-          AND pid_stock.quantity > 0
+          AND pid_stock.quantity > 0 AND pid.stock_out_reason IS NULL  --get a pdt at least one SOLD item exists
           AND pid_stock.deleted_at IS NULL
         )
         AND EXISTS (
@@ -1008,11 +1008,14 @@ const getAllProductDetails = async (req, res) => {
     if (products.length) {
       const productIds = products.map((p) => p.id);
 
-      const itemWhere = { product_id: productIds };
+      const itemWhere = { product_id: productIds, deleted_at: null };
 
       if (!stock) itemWhere.quantity = { [Op.gt]: 0 };
       if (stock === "stock_in_hand") itemWhere.quantity = { [Op.gt]: 0 };
-      if (stock === "out_of_stock") itemWhere.quantity = 0;
+      if (stock === "out_of_stock") {
+        itemWhere.quantity = 0;
+        itemWhere.stock_out_reason = "SOLD";
+      };
 
       const itemDetails = await models.ProductItemDetail.findAll({
         where: itemWhere,
@@ -1101,6 +1104,7 @@ const getAllProductDetails = async (req, res) => {
   }
 };
 
+/*
 // Get details for Web list page (with filters and search) - OPTIMIZED (RESPONSE UNCHANGED)
 const newGetAllProductDetails = async (req, res) => {
   try {
@@ -1504,6 +1508,8 @@ const newGetAllProductDetails = async (req, res) => {
     return commonService.handleError(res, err);
   }
 };
+
+*/
 
 const searchProductBySkuNew = async (req, res) => {
   try {
@@ -2538,7 +2544,7 @@ const getProductStockCounts = async (req, res) => {
         SELECT 1
         FROM "productItemDetails" pid
         WHERE pid.product_id = p.id
-        AND pid.quantity > 0
+        AND pid.quantity > 0 AND pid.stock_out_reason IS NULL
         AND pid.deleted_at IS NULL
       )
       AND EXISTS (
@@ -2793,7 +2799,7 @@ module.exports = {
   getProductStockCounts,
   createProductInternal,
   cloneProductAddOns,
-  newGetAllProductDetails,
+  //newGetAllProductDetails,
   getTopSellingSubcategories,
   getStockUpdates,
 };
