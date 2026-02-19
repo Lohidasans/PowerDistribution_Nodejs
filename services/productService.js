@@ -841,31 +841,36 @@ const getAllProductDetails = async (req, res) => {
 
     if (stock === "out_of_stock") {
       whereClause += `
-        AND NOT EXISTS (
-          SELECT 1
-          FROM "productItemDetails" pid_stock
-          WHERE pid_stock.product_id = p.id
-          AND pid_stock.quantity > 0 AND pid.stock_out_reason IS NULL  --get a pdt at least one SOLD item exists
-          AND pid_stock.deleted_at IS NULL
-        )
-        AND EXISTS (
-          SELECT 1
-          FROM sales_invoice_bill_items sii
-          JOIN sales_invoice_bills sib
-            ON sib.id = sii.invoice_bill_id
-            AND sib.deleted_at IS NULL
-            AND sib.status = 'Invoice'
-          WHERE sii.deleted_at IS NULL
-            AND sii.product_id = p.id
-        )
-        AND NOT EXISTS (
-          SELECT 1
-          FROM "productItemDetails" pid
-          WHERE pid.product_id = p.id
-          AND pid.quantity = 0
-          AND pid.stock_out_reason = 'TRANSFERRED'
-          AND pid.deleted_at IS NULL
-        )
+       AND EXISTS (
+        SELECT 1
+        FROM "productItemDetails" pid_sold
+        WHERE pid_sold.product_id = p.id
+        AND pid_sold.quantity = 0
+        AND pid_sold.stock_out_reason = 'SOLD'
+        AND pid_sold.deleted_at IS NULL
+      )
+
+      -- Exclude transferred-only products
+      AND NOT EXISTS (
+        SELECT 1
+        FROM "productItemDetails" pid_tr
+        WHERE pid_tr.product_id = p.id
+        AND pid_tr.quantity = 0
+        AND pid_tr.stock_out_reason = 'TRANSFERRED'
+        AND pid_tr.deleted_at IS NULL
+      )
+
+      -- Must be invoiced
+      AND EXISTS (
+        SELECT 1
+        FROM sales_invoice_bill_items sii
+        JOIN sales_invoice_bills sib
+          ON sib.id = sii.invoice_bill_id
+          AND sib.deleted_at IS NULL
+          AND sib.status = 'Invoice'
+        WHERE sii.deleted_at IS NULL
+          AND sii.product_id = p.id
+      )
       `;
     }
 
@@ -2422,8 +2427,8 @@ const getProductStockCounts = async (req, res) => {
     } = req.query;
 
     // Build common WHERE clause for all queries
-    let whereClause = 'WHERE p.deleted_at IS NULL';
-    const replacements = {};
+    let whereClause = 'WHERE p.deleted_at IS NULL AND p.status = :status';
+    const replacements = { status: "Active" };
 
     if (branch_id) {
       whereClause += ' AND p.branch_id = :branch_id';
@@ -2540,13 +2545,26 @@ const getProductStockCounts = async (req, res) => {
       FROM "products" p
       ${searchJoins}
       ${whereClause}
+      AND EXISTS (
+        SELECT 1
+        FROM "productItemDetails" pid_sold
+        WHERE pid_sold.product_id = p.id
+        AND pid_sold.quantity = 0
+        AND pid_sold.stock_out_reason = 'SOLD'
+        AND pid_sold.deleted_at IS NULL
+      )
+
+      -- Exclude transferred-only products
       AND NOT EXISTS (
         SELECT 1
-        FROM "productItemDetails" pid
-        WHERE pid.product_id = p.id
-        AND pid.quantity > 0 AND pid.stock_out_reason IS NULL
-        AND pid.deleted_at IS NULL
+        FROM "productItemDetails" pid_tr
+        WHERE pid_tr.product_id = p.id
+        AND pid_tr.quantity = 0
+        AND pid_tr.stock_out_reason = 'TRANSFERRED'
+        AND pid_tr.deleted_at IS NULL
       )
+
+      -- Must be invoiced
       AND EXISTS (
         SELECT 1
         FROM sales_invoice_bill_items sii
@@ -2556,14 +2574,6 @@ const getProductStockCounts = async (req, res) => {
           AND sib.status = 'Invoice'
         WHERE sii.deleted_at IS NULL
           AND sii.product_id = p.id
-      )
-      AND NOT EXISTS (
-        SELECT 1
-        FROM "productItemDetails" pid
-        WHERE pid.product_id = p.id
-        AND pid.quantity = 0
-        AND pid.stock_out_reason = 'TRANSFERRED'
-        AND pid.deleted_at IS NULL
       )
     `,
       {
