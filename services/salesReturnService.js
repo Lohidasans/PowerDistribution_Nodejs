@@ -284,13 +284,21 @@ const listSalesReturns = async (req, res) => {
 
     if (salesReturnIds.length) {
       const itemsQuery = `
-        SELECT sri.*, p.product_name
+      SELECT sri.*, p.product_name,
+        --Product Item SKU
+        pid.sku_id AS product_item_sku_id,
+
+        --Product SKU
+        p.sku_id AS product_sku_id
+
         FROM sales_return_items sri
+        LEFT JOIN "productItemDetails" pid ON pid.id = sri.product_item_detail_id
         LEFT JOIN products p
-          ON p.id = sri.product_id
+          ON p.id = pid.product_id
           AND p.deleted_at IS NULL
         WHERE sri.sales_return_id IN (:ids)
           AND sri.deleted_at IS NULL
+
         ORDER BY sri.sales_return_id;
       `;
 

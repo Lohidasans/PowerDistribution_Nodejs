@@ -174,7 +174,7 @@ const listEstimates = async (req, res) => {
     const estimateIds = estimates.map((e) => Number(e.id)).filter((v) => Number.isFinite(v));
     const idsList = estimateIds.length ? estimateIds.join(",") : "0"; // safe: ids come from DB
     const itemsSql = `
-      SELECT 
+      SELECT
         i.id,
         i.estimate_bill_id,
         i.product_id,
@@ -185,10 +185,19 @@ const listEstimates = async (req, res) => {
         i.rate,
         i.amount,
         i.created_at,
-        i.updated_at
+        i.updated_at,
+
+        -- Product Item SKU
+        pid.sku_id AS product_item_sku_id,
+
+        -- Product SKU
+        p.sku_id AS product_sku_id
+
       FROM "estimate_bill_items" i
-      WHERE i.deleted_at IS NULL
-        AND i.estimate_bill_id IN (${idsList})
+      LEFT JOIN "productItemDetails" pid ON pid.id = i.product_item_detail_id
+      LEFT JOIN products p ON p.id = pid.product_id
+      WHERE i.deleted_at IS NULL AND i.estimate_bill_id IN (${idsList})
+
       ORDER BY i.estimate_bill_id ASC, i.id ASC
     `;
 
