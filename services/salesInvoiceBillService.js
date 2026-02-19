@@ -495,7 +495,10 @@ const listSalesInvoices = async (req, res) => {
       const totalBeforeAdjustment = subtotal + cgst + sgst + igst;
 
       // Amount due (can be negative → refund)
-      const amountDue = totalAfterAdjustment - totalPaid;
+      const rawDifference = totalAfterAdjustment - totalPaid;
+
+      const amountDue = rawDifference > 0 ? rawDifference : 0;
+      const refundAmount = rawDifference < 0 ? Math.abs(rawDifference) : 0;
 
       // Parse JSON safely
       const invoiceItems =
@@ -521,6 +524,7 @@ const listSalesInvoices = async (req, res) => {
         total_amount_after_adjustment: totalAfterAdjustment.toFixed(2),   // eg: 1444.00
         total_paid_amount: totalPaid.toFixed(2),
         amount_due: amountDue.toFixed(2),
+        refund_amount: refundAmount.toFixed(2),
 
         // Line items with remaining stock & SKU
         invoice_items: invoiceItems.map(item => ({
