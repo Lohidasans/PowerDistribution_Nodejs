@@ -120,7 +120,7 @@ const createDeliveryChellan = async (req, res) => {
 
 const getAllDeliveryChellans = async (req, res) => {
   try {
-    const { search, vendor_id, delivery_challan_type_id, date_from, date_to } =
+    const { search, vendor_id, date, status_id, delivery_challan_type_id, date_from, date_to } =
       req.query;
 
     // 1) get headers with vendor details
@@ -152,17 +152,26 @@ const getAllDeliveryChellans = async (req, res) => {
       query += ` AND dc.vendor_id = :vendor_id`;
       replacements.vendor_id = vendor_id;
     }
+    if (status_id) {
+      query += ` AND dc.status_id = :status_id`;
+      replacements.status_id = status_id;
+    }
     if (delivery_challan_type_id) {
       query += ` AND dc.delivery_challan_type_id = :delivery_challan_type_id`;
       replacements.delivery_challan_type_id = delivery_challan_type_id;
     }
-    if (date_from) {
-      query += ` AND dc.date >= :date_from`;
-      replacements.date_from = date_from;
-    }
-    if (date_to) {
-      query += ` AND dc.date <= :date_to`;
-      replacements.date_to = date_to;
+    if (date) {
+      query += ` AND DATE(dc.date) = :date`;
+      replacements.date = date;
+    } else {
+      if (date_from) {
+        query += ` AND dc.date >= :date_from`;
+        replacements.date_from = date_from;
+      }
+      if (date_to) {
+        query += ` AND dc.date <= :date_to`;
+        replacements.date_to = date_to;
+      }
     }
 
     if (search) {
