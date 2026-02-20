@@ -2084,6 +2084,7 @@ const getBranchCustomers = async (req, res) => {
 const getCustomerInvoices = async (req, res) => {
   try {
     const { customer_id } = req.params;
+    const { include_items } = req.query; // Optional: include_items=true to get detailed items
 
     if (!customer_id) {
       return commonService.badRequest(res, "customer_id is required");
@@ -2118,8 +2119,8 @@ const getCustomerInvoices = async (req, res) => {
       type: sequelize.QueryTypes.SELECT,
     });
 
-    // Format the response
-    const formattedData = invoices.map((item, index) => ({
+    // Optionally fetch items with product details for each invoice
+    let formattedData = invoices.map((item, index) => ({
       s_no: index + 1,
       invoice_id: item.invoice_id,
       invoice_no: item.invoice_no,
@@ -2129,6 +2130,45 @@ const getCustomerInvoices = async (req, res) => {
       total_amount: parseFloat(item.total_amount || 0).toFixed(2),
       status: item.status,
     }));
+
+    // If include_items=true, fetch product names for each invoice
+    if (include_items === 'true' && invoices.length > 0) {
+      const itemsQuery = `
+        SELECT 
+          sibi.invoice_bill_id,
+          COALESCE(p.product_name, sibi.product_name_snapshot) AS product_name
+        FROM 
+          sales_invoice_bill_items sibi
+        LEFT JOIN 
+          products p ON p.id = sibi.product_id AND p.deleted_at IS NULL
+        WHERE 
+          sibi.invoice_bill_id IN (:invoice_ids)
+          AND sibi.deleted_at IS NULL
+        ORDER BY 
+          sibi.invoice_bill_id, sibi.id
+      `;
+
+      const invoice_ids = invoices.map(inv => inv.invoice_id);
+      const items = await sequelize.query(itemsQuery, {
+        replacements: { invoice_ids },
+        type: sequelize.QueryTypes.SELECT,
+      });
+
+      // Group items by invoice_bill_id
+      const itemsByInvoice = items.reduce((acc, item) => {
+        if (!acc[item.invoice_bill_id]) {
+          acc[item.invoice_bill_id] = [];
+        }
+        acc[item.invoice_bill_id].push(item.product_name);
+        return acc;
+      }, {});
+
+      // Add items to each invoice
+      formattedData = formattedData.map(invoice => ({
+        ...invoice,
+        items: itemsByInvoice[invoice.invoice_id] || [],
+      }));
+    }
 
     return commonService.okResponse(res, {
       invoices: formattedData,

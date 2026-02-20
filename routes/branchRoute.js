@@ -789,15 +789,19 @@ module.exports = branchRouter;
  * @openapi
  * /api/v1/branch/customers/{customer_id}/invoices:
  *   get:
- *     summary: Get all invoices for a specific customer
+ *     summary: Get all invoices for a specific customer with optional product details
  *     tags: [Branch]
- *     description: Returns all invoices raised for a specific customer across all branches. Used when clicking on a customer ID from the customer list.
+ *     description: Returns all invoices raised for a specific customer across all branches. Include `include_items=true` query parameter to get detailed product information for each invoice item.
  *     parameters:
  *       - in: path
  *         name: customer_id
  *         required: true
  *         schema: { type: integer }
  *         description: Customer ID
+ *       - in: query
+ *         name: include_items
+ *         schema: { type: string, enum: [true, false] }
+ *         description: Set to 'true' to include detailed items with product names for each invoice
  *     responses:
  *       200:
  *         description: OK
@@ -825,6 +829,12 @@ module.exports = branchRouter;
  *                           total_items: { type: integer, description: "Number of items in invoice" }
  *                           total_amount: { type: string, description: "Total invoice amount" }
  *                           status: { type: string, description: "Invoice status" }
+ *                           items:
+ *                             type: array
+ *                             description: "Product names for invoice items (only if include_items=true)"
+ *                             items:
+ *                               type: string
+ *                               example: "Gold Ring"
  *                     total_invoices: { type: integer, description: "Total number of invoices" }
  *       400:
  *         description: Bad Request - customer_id is required
