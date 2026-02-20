@@ -1085,7 +1085,7 @@ const submitVendorRates = async (req, res) => {
 // Get All Vendor Quotations with Score Cards and Filtering
 const getAllVendorQuotations = async (req, res) => {
   try {
-    const { page, limit, status = "received", search, vendor_id } = req.query;
+    const { page, limit, status = "received", search, vendor_id, date } = req.query;
 
     // vendor_id is REQUIRED
     if (!vendor_id) {
@@ -1119,8 +1119,26 @@ const getAllVendorQuotations = async (req, res) => {
       whereSql += ` AND vq.status = 'rejected'`;
     }
 
+    if (date) {
+      whereSql += ` AND DATE(q.request_date) = :date`;
+      replacements.date = date;
+    }
+
     if (search) {
-      whereSql += ` AND q.qr_id ILIKE :search`;
+      whereSql += `
+      AND (
+        vq.vendor_quotation_number ILIKE :search
+        OR q.qr_id ILIKE :search
+        OR EXISTS (
+          SELECT 1
+          FROM quotation_items qi
+          WHERE qi.quotation_id = q.id
+            AND qi.vendor_quotation_id IS NULL
+            AND qi.deleted_at IS NULL
+            AND qi.product_description ILIKE :search
+        )
+      )
+    `;
       replacements.search = `%${search}%`;
     }
 
