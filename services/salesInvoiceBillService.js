@@ -503,11 +503,12 @@ const listSalesInvoices = async (req, res) => {
       // ✅ Correct total before discount (matches CREATE logic)
       const totalBeforeAdjustment = subtotal + cgst + sgst + igst;
 
-      // Amount due (can be negative → refund)
-      const rawDifference = totalAfterAdjustment - totalPaid;
+      // const rawDifference = totalAfterAdjustment - totalPaid; // To Prevent Negative Due Amounts
+      // const amountDue = rawDifference > 0 ? rawDifference : 0;
+      // const refundAmount = rawDifference < 0 ? Math.abs(rawDifference) : 0;
 
-      const amountDue = rawDifference > 0 ? rawDifference : 0;
-      const refundAmount = rawDifference < 0 ? Math.abs(rawDifference) : 0;
+      // Amount due (can be negative → refund)
+      const amountDue = totalAfterAdjustment - totalPaid;
 
       // Parse JSON safely
       const invoiceItems =
@@ -533,7 +534,7 @@ const listSalesInvoices = async (req, res) => {
         total_amount_after_adjustment: totalAfterAdjustment.toFixed(2),   // eg: 1444.00
         total_paid_amount: totalPaid.toFixed(2),
         amount_due: amountDue.toFixed(2),
-        refund_amount: refundAmount.toFixed(2),
+//        refund_amount: refundAmount.toFixed(2),
 
         // Line items with remaining stock & SKU
         invoice_items: invoiceItems.map(item => ({
