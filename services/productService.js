@@ -1671,6 +1671,219 @@ const searchProductBySkuNew = async (req, res) => {
     return commonService.handleError(res, error);
   }
 };
+const searchProductBySkuStockTransfer = async (req, res) => {
+  try {
+    const { sku, branch_id } = req.query;
+
+    if (!branch_id) {
+      return commonService.badRequest(res, "branch_id is required");
+    }
+
+    // CASE 1 → No SKU
+    if (!sku || sku.trim() === "") {
+      const [allProducts, allItems] = await Promise.all([
+        models.Product.findAll({ where: { branch_id }, raw: true }),
+        models.ProductItemDetail.findAll({
+          where: { quantity: { [Op.gt]: 0 }, is_visible: true },
+          raw: true,
+        }),
+      ]);
+
+      // Batch material prices and names
+      const materialIds = [
+        ...new Set(allProducts.map((p) => p.material_type_id).filter(Boolean)),
+      ];
+      const materials = materialIds.length
+        ? await models.MaterialType.findAll({
+            where: { id: materialIds },
+            attributes: ["id", "material_price", "material_type"],
+            raw: true,
+          })
+        : [];
+      const materialPriceMap = {};
+      const materialNameMap = {};
+      materials.forEach((m) => {
+        materialPriceMap[m.id] = Number(m.material_price || 0);
+        materialNameMap[m.id] = m.material_type || null;
+      });
+
+      // Batch categories
+      const categoryIds = [
+        ...new Set(allProducts.map((p) => p.category_id).filter(Boolean)),
+      ];
+      const categories = categoryIds.length
+        ? await models.Category.findAll({
+            where: { id: categoryIds },
+            attributes: ["id", "category_name"],
+            raw: true,
+          })
+        : [];
+      const categoryNameMap = {};
+      categories.forEach((c) => (categoryNameMap[c.id] = c.category_name || null));
+
+      // Batch subcategories
+      const subcategoryIds = [
+        ...new Set(allProducts.map((p) => p.subcategory_id).filter(Boolean)),
+      ];
+      const subcategories = subcategoryIds.length
+        ? await models.Subcategory.findAll({
+            where: { id: subcategoryIds },
+            attributes: ["id", "subcategory_name"],
+            raw: true,
+          })
+        : [];
+      const subcategoryNameMap = {};
+      subcategories.forEach((s) => (subcategoryNameMap[s.id] = s.subcategory_name || null));
+
+      // Batch additional details
+      const itemIds = allItems.map((i) => i.id);
+      const allAdds = itemIds.length
+        ? await models.ProductAdditionalDetail.findAll({
+            where: { item_detail_id: itemIds },
+            raw: true,
+          })
+        : [];
+      const addsByItem = {};
+      allAdds.forEach((a) => ((addsByItem[a.item_detail_id] ??= []).push(a)));
+
+      const output = allItems
+        .map((item) => {
+          const product = allProducts.find((p) => p.id === item.product_id);
+          if (!product) return null;
+
+          const priceDetails = calculateSellingPriceSync(
+            product,
+            item,
+            addsByItem[item.id] || [],
+            materialPriceMap[product.material_type_id] || 0
+          );
+
+          return {
+            sku_id: item.sku_id || product.sku_id,
+            product_name: product.product_name,
+            product_variations: product.product_variations,
+            purity: product.purity,
+            branch_id: product.branch_id,
+            product_id: product.id,
+            product_item_details_id: item.id,
+            quantity: item.quantity,
+            hsn_code: product.hsn_code,
+            base_price: item.base_price,
+            gross_weight: item.gross_weight,
+            net_weight: item.net_weight,
+            product_item_wastage: item.wastage,
+            material_type_id: product.material_type_id,
+            material_type: materialNameMap[product.material_type_id] || null,
+            category_id: product.category_id,
+            category_name: categoryNameMap[product.category_id] || null,
+            subcategory_id: product.subcategory_id,
+            subcategory_name: subcategoryNameMap[product.subcategory_id] || null,
+            ...priceDetails,
+          };
+        })
+        .filter(Boolean);
+
+      return commonService.okResponse(res, output);
+    }
+
+    // CASE 2 → SKU provided
+    const [directProduct, itemDetail] = await Promise.all([
+      models.Product.findOne({ where: { sku_id: sku, branch_id }, raw: true }),
+      models.ProductItemDetail.findOne({
+        where: { sku_id: sku, quantity: { [Op.gt]: 0 }, is_visible: true },
+        raw: true,
+      }),
+    ]);
+
+    let product = null;
+    let items = [];
+
+    if (directProduct) {
+      product = directProduct;
+      items = await models.ProductItemDetail.findAll({
+        where: { product_id: directProduct.id, quantity: { [Op.gt]: 0 }, is_visible: true },
+        raw: true,
+      });
+    } else if (itemDetail) {
+      product = await models.Product.findOne({
+        where: { id: itemDetail.product_id, branch_id },
+        raw: true,
+      });
+      items = product ? [itemDetail] : [];
+    }
+
+    if (!product || items.length === 0) {
+      return commonService.notFound(res, "No in-stock product found for given SKU");
+    }
+
+    // Batch material, category, subcategory + adds for this one product
+    const [material, category, subcategory] = await Promise.all([
+      product.material_type_id
+        ? models.MaterialType.findByPk(product.material_type_id, { raw: true })
+        : null,
+      product.category_id
+        ? models.Category.findByPk(product.category_id, { raw: true })
+        : null,
+      product.subcategory_id
+        ? models.Subcategory.findByPk(product.subcategory_id, { raw: true })
+        : null,
+    ]);
+
+    const materialPrice = Number(material?.material_price || 0);
+    const materialTypeName = material?.material_type || null;
+    const categoryName = category?.category_name || null;
+    const subcategoryName = subcategory?.subcategory_name || null;
+
+    const itemIds = items.map((i) => i.id);
+    const adds = itemIds.length
+      ? await models.ProductAdditionalDetail.findAll({
+          where: { item_detail_id: itemIds },
+          raw: true,
+        })
+      : [];
+    const addsByItem = {};
+    adds.forEach((a) => ((addsByItem[a.item_detail_id] ??= []).push(a)));
+
+    const flatResponse = items
+      .filter((it) => Number(it.quantity || 0) > 0)
+      .map((item) => {
+        const priceDetails = calculateSellingPriceSync(
+          product,
+          item,
+          addsByItem[item.id] || [],
+          materialPrice
+        );
+
+        return {
+          sku_id: item.sku_id || product.sku_id,
+          product_name: product.product_name,
+          product_variations: product.product_variations,
+          purity: product.purity,
+          branch_id: product.branch_id,
+          product_id: product.id,
+          product_item_details_id: item.id,
+          quantity: item.quantity,
+          hsn_code: product.hsn_code,
+          base_price: item.base_price,
+          gross_weight: item.gross_weight,
+          net_weight: item.net_weight,
+          product_item_wastage: item.wastage,
+          material_type_id: product.material_type_id,
+          material_type: materialTypeName,
+          category_id: product.category_id,
+          category_name: categoryName,
+          subcategory_id: product.subcategory_id,
+          subcategory_name: subcategoryName,
+          ...priceDetails,
+        };
+      });
+
+    return commonService.okResponse(res, flatResponse);
+  } catch (error) {
+    console.error("Error searching products by SKU:", error);
+    return commonService.handleError(res, error);
+  }
+};
 
 // ORIGINAL async function kept (response unchanged)
 const calculateSellingPrice = async (product, item, models) => {
@@ -2812,4 +3025,5 @@ module.exports = {
   //newGetAllProductDetails,
   getTopSellingSubcategories,
   getStockUpdates,
+  searchProductBySkuStockTransfer
 };

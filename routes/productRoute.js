@@ -7,6 +7,7 @@ router.post("/products", svc.createProduct);
 router.get("/products", svc.getAllProducts);
 router.get("/products/list-website-details", svc.getProductsForWebsiteList);
 router.get("/products/search/sku", svc.searchProductBySkuNew);
+router.get("/products/search/sku/stock-transfer", svc.searchProductBySkuStockTransfer);
 router.post("/products/generateSku", svc.createProductSKUCode);
 router.get("/products/list-details", svc.getAllProductDetails);
 // router.get("/products/list-details", svc.newGetAllProductDetails);
