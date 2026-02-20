@@ -1977,6 +1977,30 @@ const getBranchCustomers = async (req, res) => {
       offset: parseInt(offset, 10)
     };
 
+    // Query to get branch details with district and state information
+    const branchQuery = `
+      SELECT 
+        b.id,
+        b.branch_name,
+        b.contact_person,
+        b.mobile,
+        b.address,
+        b.pin_code,
+        b.district_id,
+        d.district_name,
+        b.state_id,
+        s.state_name
+      FROM 
+        branches b
+      LEFT JOIN 
+        districts d ON b.district_id = d.id AND d.deleted_at IS NULL
+      LEFT JOIN 
+        states s ON b.state_id = s.id AND s.deleted_at IS NULL
+      WHERE 
+        b.id = :branch_id
+        AND b.deleted_at IS NULL
+    `;
+
     const query = `
       SELECT 
         c.id AS customer_id,
@@ -2012,7 +2036,8 @@ const getBranchCustomers = async (req, res) => {
       WHERE c.deleted_at IS NULL
     `;
 
-    const [customers, countResult] = await Promise.all([
+    const [branchInfo, customers, countResult] = await Promise.all([
+      sequelize.query(branchQuery, { replacements: { branch_id }, type: sequelize.QueryTypes.SELECT }),
       sequelize.query(query, { replacements, type: sequelize.QueryTypes.SELECT }),
       sequelize.query(countQuery, { replacements: { branch_id }, type: sequelize.QueryTypes.SELECT })
     ]);
@@ -2028,7 +2053,22 @@ const getBranchCustomers = async (req, res) => {
       purchase_amount: parseFloat(item.purchase_amount || 0).toFixed(2),
     }));
 
+    // Format branch information
+    const branch = branchInfo[0] || null;
+
     return commonService.okResponse(res, {
+      branch: branch ? {
+        branch_id: branch.id,
+        branch_name: branch.branch_name,
+        contact_person: branch.contact_person,
+        mobile: branch.mobile,
+        address: branch.address,
+        pin_code: branch.pin_code,
+        district_id: branch.district_id,
+        district_name: branch.district_name,
+        state_id: branch.state_id,
+        state_name: branch.state_name
+      } : null,
       customers: formattedData,
       total_count: parseInt(countResult[0]?.total_count || 0),
       current_page: Math.floor(parseInt(offset, 10) / parseInt(limit, 10)) + 1,
