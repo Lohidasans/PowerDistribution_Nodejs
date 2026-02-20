@@ -141,8 +141,8 @@ const listVendors = async (req, res) => {
 
     // Apply filters
     if (branch_id) {
-      query += ` AND v.branch_id = :branch_id`;
-      replacements.branch_id = branch_id;
+      query += ` AND :branch_id = ANY(v.visibilities)`;
+      replacements.branch_id = parseInt(branch_id);
     }
 
     if (materialType) {
