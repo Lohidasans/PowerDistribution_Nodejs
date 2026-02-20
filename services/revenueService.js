@@ -50,6 +50,11 @@ const getBranchwiseRevenue = async (req, res) => {
             dateReplacements.payment_mode = payment_mode;
         }
 
+        // Refund deduction logic: Refunds are cash transactions
+        // Deduct from total and cash, but not from UPI/Card
+        // Only skip deduction if explicitly filtering by UPI or Card
+        const shouldDeductRefunds = !payment_mode || payment_mode === 'Cash';
+
         const hasPagination = page && limit;
         const limitNum = hasPagination ? Number(limit) : null;
         const offset = hasPagination ? (Number(page) - 1) * limitNum : null;
@@ -57,16 +62,20 @@ const getBranchwiseRevenue = async (req, res) => {
         // ===============================
         // 1️⃣ TABLE ROWS QUERY (WITH payment_mode)
         // ===============================
+        const rowRefundDeduction = shouldDeductRefunds 
+            ? '- COALESCE(SUM(DISTINCT sib.refund_amount), 0)' 
+            : '';
+
         let rowsQuery = `
       SELECT
         b.id AS branch_id,
         b.branch_name,
 
-        COALESCE(SUM(CASE WHEN p.payment_mode = 'Cash' THEN p.amount_received ELSE 0 END),0) AS cash,
+        COALESCE(SUM(CASE WHEN p.payment_mode = 'Cash' THEN p.amount_received ELSE 0 END),0) ${rowRefundDeduction} AS cash,
         COALESCE(SUM(CASE WHEN p.payment_mode = 'UPI' THEN p.amount_received ELSE 0 END),0) AS upi,
         COALESCE(SUM(CASE WHEN p.payment_mode = 'Card' THEN p.amount_received ELSE 0 END),0) AS card,
 
-        COALESCE(SUM(p.amount_received),0) AS total_amount
+        COALESCE(SUM(p.amount_received),0) ${rowRefundDeduction} AS total_amount
 
       FROM payments p
       LEFT JOIN sales_invoice_bills sib
@@ -102,8 +111,42 @@ const getBranchwiseRevenue = async (req, res) => {
 
         const summaryQuery = `
       SELECT
-        COALESCE(SUM(p.amount_received),0) AS total_collection,
-        COALESCE(SUM(CASE WHEN p.payment_mode = 'Cash' THEN p.amount_received ELSE 0 END),0) AS cash,
+        COALESCE(SUM(p.amount_received),0) ${shouldDeductRefunds ? `- COALESCE((
+          SELECT SUM(DISTINCT sib_inner.refund_amount) 
+          FROM payments p_inner
+          LEFT JOIN sales_invoice_bills sib_inner
+            ON sib_inner.id = p_inner.invoice_bill_id
+            AND sib_inner.deleted_at IS NULL
+          LEFT JOIN jewel_repairs jr_inner
+            ON jr_inner.id = p_inner.jewel_repair_id
+            AND jr_inner.deleted_at IS NULL
+          INNER JOIN branches b_inner
+            ON b_inner.id = COALESCE(sib_inner.branch_id, jr_inner.branch_id)
+          WHERE p_inner.deleted_at IS NULL
+            AND p_inner.status = 'Completed'
+            AND sib_inner.id IS NOT NULL
+            ${paymentDateCondition.replace(/p\./g, 'p_inner.')}
+            ${branchCondition.replace(/b\./g, 'b_inner.')}
+            ${searchCondition.replace(/b\./g, 'b_inner.')}
+        ), 0)` : ''} AS total_collection,
+        COALESCE(SUM(CASE WHEN p.payment_mode = 'Cash' THEN p.amount_received ELSE 0 END),0) ${shouldDeductRefunds ? `- COALESCE((
+          SELECT SUM(DISTINCT sib_inner.refund_amount) 
+          FROM payments p_inner
+          LEFT JOIN sales_invoice_bills sib_inner
+            ON sib_inner.id = p_inner.invoice_bill_id
+            AND sib_inner.deleted_at IS NULL
+          LEFT JOIN jewel_repairs jr_inner
+            ON jr_inner.id = p_inner.jewel_repair_id
+            AND jr_inner.deleted_at IS NULL
+          INNER JOIN branches b_inner
+            ON b_inner.id = COALESCE(sib_inner.branch_id, jr_inner.branch_id)
+          WHERE p_inner.deleted_at IS NULL
+            AND p_inner.status = 'Completed'
+            AND sib_inner.id IS NOT NULL
+            ${paymentDateCondition.replace(/p\./g, 'p_inner.')}
+            ${branchCondition.replace(/b\./g, 'b_inner.')}
+            ${searchCondition.replace(/b\./g, 'b_inner.')}
+        ), 0)` : ''} AS cash,
         COALESCE(SUM(CASE WHEN p.payment_mode = 'UPI' THEN p.amount_received ELSE 0 END),0) AS upi,
         COALESCE(SUM(CASE WHEN p.payment_mode = 'Card' THEN p.amount_received ELSE 0 END),0) AS card
       FROM payments p
