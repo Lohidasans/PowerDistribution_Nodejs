@@ -999,54 +999,39 @@ const getStockInHandSummary = async (where, replacements) => {
   };
 };
 
+//Subcategory is low stock when SUM of all available quantities(for that subcategory + branch)  < reorder_level defined in subcategory table
 const getLowStockSummaryInternal = async (where, replacements) => {
   // Optimization: filter products early using the same base where (status/branch/material/category/search/date)
   const [rows] = await sequelize.query(
     `
     WITH filtered_products AS (
-      SELECT p.id, p.subcategory_id, p.branch_id, p.material_type_id, p.category_id
+      SELECT p.id, p.subcategory_id, p.branch_id
       FROM products p
       ${where}
     ),
-    product_stock AS (
+    subcategory_stock AS (
       SELECT
-        fp.id AS product_id,
         fp.subcategory_id,
         fp.branch_id,
-        fp.material_type_id,
-        fp.category_id,
-        SUM(pid.quantity) AS total_qty,
-        SUM(pid.quantity * pid.gross_weight) AS total_weight
+        SUM(pid.quantity) AS total_qty
       FROM filtered_products fp
       JOIN "productItemDetails" pid
         ON pid.product_id = fp.id
         AND pid.deleted_at IS NULL
-      GROUP BY
-        fp.id,
-        fp.subcategory_id,
-        fp.branch_id,
-        fp.material_type_id,
-        fp.category_id
+      GROUP BY fp.subcategory_id, fp.branch_id
     ),
     low_stock_rows AS (
       SELECT
-        ps.branch_id,
-        ps.material_type_id,
-        ps.category_id,
-        ps.subcategory_id,
-        SUM(ps.total_weight) AS row_weight
-      FROM product_stock ps
-      JOIN subcategories sc ON sc.id = ps.subcategory_id
-      WHERE ps.total_qty < sc.reorder_level
-      GROUP BY
-        ps.branch_id,
-        ps.material_type_id,
-        ps.category_id,
-        ps.subcategory_id
+        ss.subcategory_id,
+        ss.branch_id,
+        ss.total_qty
+      FROM subcategory_stock ss
+      JOIN subcategories sc ON sc.id = ss.subcategory_id
+      WHERE ss.total_qty < sc.reorder_level
     )
     SELECT
       COUNT(*) AS subcategory_count,
-      COALESCE(SUM(row_weight), 0) AS total_weight
+      COALESCE(SUM(total_qty), 0) AS total_quantity
     FROM low_stock_rows;
     `,
     { replacements }
@@ -1054,7 +1039,7 @@ const getLowStockSummaryInternal = async (where, replacements) => {
 
   return {
     subcategory_count: Number(rows[0]?.subcategory_count || 0),
-    total_weight: Number(rows[0]?.total_weight || 0),
+    total_weight: Number(rows[0]?.total_quantity || 0),
   };
 };
 
@@ -1237,7 +1222,7 @@ const getLowStockList = async (
       sc.subcategory_name,
       sc.id AS subcategory_id,
       sc.reorder_level,
-      COUNT(ps.product_id) AS low_stock_count
+      SUM(ps.total_qty) AS quantity
     FROM product_stock ps
     JOIN subcategories sc ON sc.id = ps.subcategory_id AND sc.deleted_at IS NULL
     JOIN products p ON p.id = ps.product_id
@@ -1255,7 +1240,6 @@ const getLowStockList = async (
       sc.id,
       sc.subcategory_name,
       sc.reorder_level
-    ORDER BY low_stock_count DESC
   `;
 
   if (usePagination) {
