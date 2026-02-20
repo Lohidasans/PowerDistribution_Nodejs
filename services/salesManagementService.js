@@ -909,9 +909,156 @@ const getSalesByMaterialType = async (req, res) => {
     }
 };
 
+const getFastMovingCategoryStats = async (req, res) => {
+    try {
+        const {
+            branch_id,
+            search,
+            from_date,
+            to_date,
+            date_filter,
+            page,
+            limit
+        } = req.query;
+
+        const hasPagination = page && limit;
+        const pageNum = hasPagination ? Number(page) : null;
+        const limitNum = hasPagination ? Number(limit) : null;
+        const offset = hasPagination ? (pageNum - 1) * limitNum : null;
+
+        const replacements = {
+            branch_id: branch_id || null,
+            search: search ? `%${search}%` : null
+        };
+
+        // Date filter on invoice date
+        const dateCondition = dateFilter(
+            { from_date, to_date, date_filter },
+            "sib.invoice_date",
+            replacements
+        );
+
+        /* ---------------- MAIN QUERY ---------------- */
+        let query = `
+        WITH invoice_totals AS (
+            SELECT
+            sii.invoice_bill_id,
+            SUM(sii.quantity) AS invoice_qty
+            FROM sales_invoice_bill_items sii
+            WHERE sii.deleted_at IS NULL
+            GROUP BY sii.invoice_bill_id
+        ),
+        item_values AS (
+            SELECT
+            p.subcategory_id,
+            sii.quantity,
+            (sib.total_amount * sii.quantity / NULLIF(it.invoice_qty, 0)) AS allocated_amount
+            FROM sales_invoice_bill_items sii
+            JOIN sales_invoice_bills sib
+            ON sib.id = sii.invoice_bill_id
+            AND sib.deleted_at IS NULL
+            AND sib.status = 'Invoice'
+            ${dateCondition}
+            JOIN invoice_totals it
+            ON it.invoice_bill_id = sii.invoice_bill_id
+            JOIN products p
+            ON p.id = sii.product_id
+            AND p.deleted_at IS NULL
+            AND (:branch_id IS NULL OR p.branch_id = :branch_id)
+            WHERE sii.deleted_at IS NULL
+        )
+        SELECT
+            sc.id AS subcategory_id,
+            sc.subcategory_name,
+            ROUND(SUM(iv.allocated_amount), 2) AS sold_value,
+            SUM(iv.quantity) AS sold_quantity
+        FROM item_values iv
+        JOIN subcategories sc
+            ON sc.id = iv.subcategory_id
+            AND sc.deleted_at IS NULL
+        ${search ? `WHERE sc.subcategory_name ILIKE :search` : ""}
+        GROUP BY sc.id, sc.subcategory_name
+        ORDER BY 
+        --sold_quantity DESC, 
+        sold_value DESC
+        `;
+
+        if (hasPagination) {
+            query += ` LIMIT :limit OFFSET :offset`;
+            replacements.limit = limitNum;
+            replacements.offset = offset;
+        }
+
+        const rows = await sequelize.query(query, {
+            replacements,
+            type: sequelize.QueryTypes.SELECT
+        });
+
+        /* ---------------- COUNT QUERY (only if paginated) ---------------- */
+        let pagination = null;
+
+        if (hasPagination) {
+            const countQuery = `
+        WITH invoice_totals AS (
+          SELECT
+            sii.invoice_bill_id,
+            SUM(sii.quantity) AS invoice_qty
+          FROM sales_invoice_bill_items sii
+          WHERE sii.deleted_at IS NULL
+          GROUP BY sii.invoice_bill_id
+        ),
+        item_values AS (
+          SELECT
+            p.subcategory_id,
+            sii.quantity
+          FROM sales_invoice_bill_items sii
+          JOIN sales_invoice_bills sib
+            ON sib.id = sii.invoice_bill_id
+            AND sib.deleted_at IS NULL
+            AND sib.status = 'Invoice'
+            ${dateCondition}
+          JOIN invoice_totals it
+            ON it.invoice_bill_id = sii.invoice_bill_id
+          JOIN products p
+            ON p.id = sii.product_id
+            AND p.deleted_at IS NULL
+            AND (:branch_id IS NULL OR p.branch_id = :branch_id)
+          WHERE sii.deleted_at IS NULL
+        )
+        SELECT COUNT(DISTINCT subcategory_id)::int AS total
+        FROM item_values
+      `;
+
+            const [{ total }] = await sequelize.query(countQuery, {
+                replacements,
+                type: sequelize.QueryTypes.SELECT
+            });
+
+            pagination = {
+                total,
+                page: pageNum,
+                limit: limitNum,
+                totalPages: Math.ceil(total / limitNum)
+            };
+        }
+
+        return commonService.okResponse(res, {
+            data: rows,
+            pagination
+        });
+
+    } catch (error) {
+        console.error("Fast Moving Category Stats Error", error);
+        return commonService.handleError(res, error);
+    }
+};
+
+
+
 
 module.exports = {
     getSalesReport,
+    getFastMovingCategoryStats,
     getFastMovingSubCategories,
     getFastMovingSoldProducts,
     getTopBuyingCustomers,
