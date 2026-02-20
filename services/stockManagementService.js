@@ -1835,12 +1835,19 @@ const getGrnDiscrepancyList = async (req, res) => {
     const data = rows.map((row) => {
       const orderedWt = Number(row.ordered_weight || 0);
       const updatedWt = Number(row.updated_weight || 0);
-      const diffWt = Number((updatedWt - orderedWt).toFixed(3));
+      const orderedQty = Number(row.ordered_qty || 0);
+      const updatedQty = Number(row.updated_qty || 0);
+
       const yetToUpdateWt = Number(
-        Math.max(0, orderedWt - updatedWt).toFixed(3)
+        (orderedWt - updatedWt).toFixed(3)
       );
 
-      const status_id = yetToUpdateWt <= 0.001 ? 2 : 1;
+      const yetToUpdateQty = orderedQty - updatedQty;
+
+      // status logic:
+      // closed only when both weight & qty are exactly matched
+      const status_id =
+        Math.abs(yetToUpdateWt) <= 0.001 && yetToUpdateQty === 0 ? 2 : 1;
 
       if (status_id === 2) updatedCount++;
       else yetToUpdateCount++;
@@ -1853,20 +1860,17 @@ const getGrnDiscrepancyList = async (req, res) => {
 
         ordered: {
           weight: orderedWt,
-          quantity: Number(row.ordered_qty || 0),
+          quantity: orderedQty,
         },
         updated: {
           weight: updatedWt,
-          quantity: Number(row.updated_qty || 0),
+          quantity: updatedQty,
         },
         yet_to_update: {
-          weight: yetToUpdateWt,
-          quantity: 0,
+          weight: yetToUpdateWt,   // ✅ can be negative
+          quantity: yetToUpdateQty // ✅ real difference
         },
-        difference: {
-          weight: diffWt,
-          quantity: 0,
-        },
+
         status_id,
       };
     });
