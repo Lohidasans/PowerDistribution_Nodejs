@@ -242,9 +242,9 @@ const listEmployees = async (req, res) => {
       LEFT JOIN "employee_departments" d ON d.id = e.department_id
       LEFT JOIN "roles" des ON des.id = e.role_id
       LEFT JOIN employee_contacts c ON c.employee_id = e.id
-      LEFT JOIN countries coun ON coun.id = c.country_id
-      LEFT JOIN states s ON s.id = c.state_id
-      LEFT JOIN districts dist ON dist.id = c.district_id
+      LEFT JOIN countries coun ON coun.id = CAST(c.country_id AS INTEGER)
+      LEFT JOIN states s ON s.id = CAST(c.state_id AS INTEGER)
+      LEFT JOIN districts dist ON dist.id = CAST(c.district_id AS INTEGER)
       WHERE e.deleted_at IS NULL
     `;
 
@@ -447,9 +447,9 @@ const getEmployeeById = async (req, res) => {
       LEFT JOIN "employee_departments" d ON d.id = e.department_id
       LEFT JOIN "roles" r ON r.id = e.role_id
       LEFT JOIN employee_contacts c ON c.employee_id = e.id
-      LEFT JOIN countries coun ON coun.id = c.country_id
-      LEFT JOIN states s ON s.id = c.state_id
-      LEFT JOIN districts dist ON dist.id = c.district_id
+      LEFT JOIN countries coun ON coun.id = CAST(c.country_id AS INTEGER)
+      LEFT JOIN states s ON s.id = CAST(c.state_id AS INTEGER)
+      LEFT JOIN districts dist ON dist.id = CAST(c.district_id AS INTEGER)
       WHERE e.id = :id AND e.deleted_at IS NULL
     `;
 
