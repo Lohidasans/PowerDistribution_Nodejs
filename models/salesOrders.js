@@ -63,11 +63,7 @@ module.exports = (sequelize, DataTypes) => {
                 type: DataTypes.DECIMAL(15, 2),
                 allowNull: true,
             },
-            discount_percentage: {
-                type: DataTypes.DECIMAL(5, 2),
-                allowNull: true,
-            },
-            discount_amount: {
+            round_off: {
                 type: DataTypes.DECIMAL(15, 2),
                 allowNull: true,
             },

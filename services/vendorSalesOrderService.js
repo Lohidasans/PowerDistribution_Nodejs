@@ -370,8 +370,7 @@ const getVendorSalesOrderById = async (req, res) => {
                 sgst_amount: salesOrder.sgst_amount,
                 cgst_percentage: salesOrder.cgst_percentage,
                 cgst_amount: salesOrder.cgst_amount,
-                discount_percentage: salesOrder.discount_percentage,
-                discount_amount: salesOrder.discount_amount,
+                round_off: salesOrder.round_off,
                 total_amount: salesOrder.total_amount,
             },
 
