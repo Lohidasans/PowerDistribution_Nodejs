@@ -1,5 +1,6 @@
 const Sequelize = require("sequelize");
 const { sequelize } = require("../config/dbConfig");
+const chargesTypes = require("./chargeTypes");
 const Holiday = require("./holidays")(sequelize, Sequelize.DataTypes);
 
 const Country = require("./country")(sequelize, Sequelize.DataTypes);
@@ -47,6 +48,7 @@ const SalesOrderAdditionalCharge = require("./salesOrderAdditionalCharges")(
   sequelize,
   Sequelize.DataTypes
 );
+const ChargesType = require("./chargeTypes")(sequelize, Sequelize.DataTypes);
 
 // Employee related models
 const Employee = require("./employees")(sequelize, Sequelize.DataTypes);
@@ -295,6 +297,7 @@ const models = {
   UserNotification,
   SalesOrder,
   SalesOrderAdditionalCharge,
+  ChargesType,
 };
 
 Object.values(models).forEach((model) => {

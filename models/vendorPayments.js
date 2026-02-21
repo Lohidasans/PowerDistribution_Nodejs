@@ -64,8 +64,8 @@ module.exports = (sequelize, DataTypes) => {
                 type: DataTypes.ENUM('Pending', 'Completed', 'Failed', 'Cancelled'),
                 defaultValue: 'Completed',
             },
-            user_type_id: {
-                type: DataTypes.INTEGER, // user_types table
+            user_type_id: {  // 1 - vendor, 2 - customer
+                type: DataTypes.INTEGER,
                 allowNull: true,
             },
             branch_id: {
