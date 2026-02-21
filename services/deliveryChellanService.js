@@ -120,7 +120,7 @@ const createDeliveryChellan = async (req, res) => {
 
 const getAllDeliveryChellans = async (req, res) => {
   try {
-    const { search, vendor_id, date, status_id, delivery_challan_type_id, date_from, date_to } =
+    const { search, vendor_id, date, status_id, delivery_challan_type_id, date_from, date_to, branch_id } =
       req.query;
 
     // 1) get headers with vendor details
@@ -151,6 +151,10 @@ const getAllDeliveryChellans = async (req, res) => {
     if (vendor_id) {
       query += ` AND dc.vendor_id = :vendor_id`;
       replacements.vendor_id = vendor_id;
+    }
+    if (branch_id) {
+      query += ` AND dc.branch_id = :branch_id`;
+      replacements.branch_id = branch_id;
     }
     if (status_id) {
       query += ` AND dc.status_id = :status_id`;
