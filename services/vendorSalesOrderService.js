@@ -54,7 +54,7 @@ try {
         await models.SalesOrderAdditionalCharge.bulkCreate(
             additional_charges.map(c => ({
                 sales_order_id: id,
-                charge_name: c.charge_name,
+                charge_type_id: c.charge_type_id,
                 amount: c.amount,
             })),
             { transaction }
@@ -347,10 +347,23 @@ const getVendorSalesOrderById = async (req, res) => {
         );
 
         // 4️⃣ Get Additional Charges
-        const additionalCharges = await models.SalesOrderAdditionalCharge.findAll({
-            where: { sales_order_id: id },
-            raw: true,
-        });
+        const additionalCharges = await sequelize.query(
+            `
+            SELECT 
+                soc.*,
+                ct.name AS charge_type_name
+            FROM sales_order_additional_charges soc
+            LEFT JOIN charge_types ct 
+                ON ct.id = soc.charge_type_id
+            WHERE soc.sales_order_id = :salesOrderId
+            AND soc.deleted_at IS NULL
+            ORDER BY soc.id ASC
+            `,
+            {
+                replacements: { salesOrderId: id },
+                type: sequelize.QueryTypes.SELECT,
+            }
+        );
 
         // 5️⃣ Assemble response for UI
         return commonService.okResponse(res, {

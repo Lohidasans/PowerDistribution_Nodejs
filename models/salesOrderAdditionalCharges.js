@@ -13,9 +13,9 @@ module.exports = (sequelize, DataTypes) => {
                 allowNull: false,
             },
 
-            charge_name: {  // additional charge name (e.g., "Shipping", "Handling", etc.)
-                type: DataTypes.STRING,
-                allowNull: false,
+            charge_type_id: {  // comes from charge_types table (e.g., 1 for "Additional Charges", 2 for "Delivery Charges", etc.)
+                type: DataTypes.INTEGER,
+                allowNull: true,   
             },
 
             amount: {
