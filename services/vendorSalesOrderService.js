@@ -401,8 +401,29 @@ const getVendorSalesOrderById = async (req, res) => {
     }
 };
 
+const getChargeTypeDropdown = async (req, res) => {
+    try {
+        const chargeTypes = await sequelize.query(
+            `
+            SELECT 
+                id,
+                name
+            FROM charge_types
+            WHERE is_active = true
+              AND deleted_at IS NULL
+            ORDER BY name ASC
+            `,
+            {
+                type: sequelize.QueryTypes.SELECT,
+            }
+        );
 
+        return commonService.okResponse(res, chargeTypes);
 
+    } catch (error) {
+        return commonService.handleError(res, error);
+    }
+};
 
 
 module.exports = {
@@ -410,7 +431,8 @@ module.exports = {
     updateVendorSalesOrderStatus,
     rejectVendorSalesOrder,
     listVendorSalesOrders,
-    getVendorSalesOrderById
+    getVendorSalesOrderById,
+    getChargeTypeDropdown
 };
 
 
