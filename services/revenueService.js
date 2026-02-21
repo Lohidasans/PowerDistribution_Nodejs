@@ -434,7 +434,84 @@ const getBranchRevenueDetails = async (req, res) => {
     }
 };
 
+const getVendorGrnRevenueList = async (req, res) => {
+    try {
+        const { page, limit, search, date } = req.query;
+
+        const isPaginated = page && limit;
+        const pageNum = isPaginated ? Number(page) : 1;
+        const limitNum = isPaginated ? Number(limit) : null;
+        const offset = isPaginated ? (pageNum - 1) * limitNum : null;
+
+        const replacements = {};
+        let whereSql = `
+      WHERE g.deleted_at IS NULL
+    `;
+
+        if (date) {
+            whereSql += ` AND g.grn_date = :date`;
+            replacements.date = date;
+        }
+
+        if (search) {
+            whereSql += ` AND g.grn_no ILIKE :search`;
+            replacements.search = `%${search}%`;
+        }
+
+        let query = `
+            SELECT
+                g.id AS grn_id,
+                g.grn_date AS date,
+                g.grn_no,
+                COALESCE(SUM(gi.quantity), 0) AS quantity,
+                COALESCE(SUM(gi.gross_wt_in_g), 0) AS weight,
+                g.total_amount AS amount,
+                SUM(vp.amount) AS received_amount,
+                (g.total_amount - SUM(vp.amount)) AS due_amount
+            
+            FROM grns g
+            LEFT JOIN "grnItems" gi ON gi.grn_id = g.id AND gi.deleted_at IS NULL
+            
+            INNER JOIN vendor_payments vp
+            ON vp.purchase_id::int = g.id
+            AND vp.deleted_at IS NULL
+            AND vp.bill_type_id = 1
+            AND vp.user_type_id = 1
+            AND vp.purchase_id IS NOT NULL
+
+            ${whereSql}
+
+            GROUP BY g.id
+            ORDER BY g.grn_date DESC, g.grn_no DESC
+    `;
+
+        if (isPaginated) {
+            query += ` LIMIT :limit OFFSET :offset`;
+            replacements.limit = limitNum;
+            replacements.offset = offset;
+        }
+
+        const data = await sequelize.query(query, {
+            replacements,
+            type: sequelize.QueryTypes.SELECT,
+        });
+
+        return commonService.okResponse(res, {
+            total: data.length,
+            page: isPaginated ? pageNum : null,
+            totalPages: isPaginated ? Math.ceil(data.length / limitNum) : 1,
+            data,
+        });
+
+    } catch (error) {
+        console.error("getRevenueList Error:", error);
+        return commonService.handleError(res, error);
+    }
+};
+
+
 module.exports = {
     getBranchwiseRevenue,
-    getBranchRevenueDetails
+    getBranchRevenueDetails,
+    getVendorGrnRevenueList
 };
