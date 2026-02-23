@@ -124,18 +124,36 @@ const getVendorPayments = async (req, res) => {
         vp.amount,
         vp.transaction_no,
         vp.status,
+        vp.invoice_id,
+        vp.purchase_id,
+
+        -- ✅ GRN / Invoice number
+      CASE
+        WHEN vp.purchase_id IS NOT NULL THEN g.grn_no
+        WHEN vp.invoice_id IS NOT NULL THEN si.invoice_no
+        ELSE NULL
+      END AS reference_no,
+
+        CASE
+        WHEN vp.purchase_id IS NOT NULL THEN 'GRN'
+        WHEN vp.invoice_id IS NOT NULL THEN 'INVOICE'
+        ELSE NULL
+      END AS reference_type,
+
         CASE 
-          WHEN vp.bill_type_id IN (2, 3) THEN l.ledger_name
-          WHEN vp.user_type_id = 1 THEN v.vendor_name
-          WHEN vp.user_type_id = 2 THEN c.customer_name
-          ELSE NULL
-        END AS account_name,
+        WHEN vp.bill_type_id IN(2, 3) THEN l.ledger_name
+        WHEN vp.user_type_id = 1 THEN v.vendor_name
+        WHEN vp.user_type_id = 2 THEN c.customer_name
+        ELSE NULL
+      END AS account_name,
+
         CASE 
-          WHEN vp.bill_type_id IN (2, 3) THEN l.ledger_no
-          WHEN vp.user_type_id = 1 THEN v.mobile
-          WHEN vp.user_type_id = 2 THEN c.mobile_number
-          ELSE NULL
-        END AS account_mobile,
+        WHEN vp.bill_type_id IN(2, 3) THEN l.ledger_no
+        WHEN vp.user_type_id = 1 THEN v.mobile
+        WHEN vp.user_type_id = 2 THEN c.mobile_number
+        ELSE NULL
+      END AS account_mobile,
+
         b.branch_name,
         b.address AS branch_address,
         b.gst_no AS branch_gst_no,
@@ -145,9 +163,13 @@ const getVendorPayments = async (req, res) => {
         d.district_name,
         s.state_name
       FROM vendor_payments vp
-      LEFT JOIN ledger l ON l.id = vp.account_name_id AND vp.bill_type_id IN (2, 3) AND l.deleted_at IS NULL
+      LEFT JOIN ledger l ON l.id = vp.account_name_id AND vp.bill_type_id IN(2, 3) AND l.deleted_at IS NULL
       LEFT JOIN vendors v ON v.id = vp.account_name_id AND vp.user_type_id = 1 AND vp.bill_type_id NOT IN (2, 3) AND v.deleted_at IS NULL
-      LEFT JOIN customers c ON c.id = vp.account_name_id AND vp.user_type_id = 2 AND vp.bill_type_id NOT IN (2, 3) AND c.deleted_at IS NULL
+      LEFT JOIN customers c ON c.id = vp.account_name_id AND vp.user_type_id = 2 AND vp.bill_type_id NOT IN(2, 3) AND c.deleted_at IS NULL
+
+      -- ✅ NEW JOINS
+      LEFT JOIN grns g ON vp.purchase_id IS NOT NULL AND g.id = vp.purchase_id:: int AND g.deleted_at IS NULL
+      LEFT JOIN sales_invoice_bills si ON vp.invoice_id IS NOT NULL AND si.id = vp.invoice_id:: int AND si.deleted_at IS NULL
       LEFT JOIN branches b ON b.id = vp.branch_id AND b.deleted_at IS NULL
       LEFT JOIN districts d ON d.id = b.district_id AND d.deleted_at IS NULL
       LEFT JOIN states s ON s.id = b.state_id AND s.deleted_at IS NULL
