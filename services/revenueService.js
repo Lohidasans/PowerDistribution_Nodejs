@@ -510,8 +510,168 @@ const getVendorGrnRevenueList = async (req, res) => {
 };
 
 
+const getVendorGrnView = async (req, res) => {
+    try {
+        const { grnId } = req.params;
+
+        // GRN + Branch + Vendor
+        const [grn] = await sequelize.query(
+            `
+            SELECT
+                g.id,
+                g.grn_no,
+                g.grn_date,
+                g.po_id,
+                g.total_amount,
+                g.subtotal_amount,
+                g.sgst_percent,
+                g.cgst_percent,
+                g.discount_percent,
+                g.remarks,
+
+                v.vendor_name,
+                v.address AS vendor_address,
+                v.mobile AS vendor_mobile,
+                v.gst_no AS vendor_gst_no,
+
+                b.branch_name,
+                b.address AS branch_address,
+                b.mobile AS branch_mobile,
+                b.gst_no AS branch_gst_no,
+                b.pin_code
+
+            FROM grns g
+
+            JOIN vendors v 
+                ON v.id = g.vendor_id 
+            AND v.deleted_at IS NULL
+
+            LEFT JOIN vendor_payments vp
+                ON vp.purchase_id::int = g.id
+            AND vp.bill_type_id = 1
+            AND vp.user_type_id = 1
+            AND vp.deleted_at IS NULL
+
+            LEFT JOIN branches b 
+                ON b.id = vp.branch_id
+            AND b.deleted_at IS NULL
+
+            WHERE g.id = :grnId
+                AND g.deleted_at IS NULL
+            `,
+            {
+                replacements: { grnId },
+                type: sequelize.QueryTypes.SELECT,
+            }
+        );
+
+
+        if (!grn) {
+            return commonService.notFound(res, "GRN not found");
+        }
+
+        // GRN Items
+        const items = await sequelize.query(
+            `
+            SELECT
+                id,
+                quantity,
+                gross_wt_in_g,
+                net_wt_in_g,
+                rate_per_g,
+                total_amount,
+                comments AS product_description
+            FROM "grnItems"
+            WHERE grn_id = :grnId
+                AND deleted_at IS NULL
+            ORDER BY id
+            `,
+                    {
+                        replacements: { grnId },
+                        type: sequelize.QueryTypes.SELECT,
+                    }
+                );
+
+        // Payment Details
+        const payments = await sequelize.query(
+            `
+        SELECT
+            vp.payment_date,
+            vp.payment_no,
+            vp.payment_mode,
+            vp.transaction_no,
+            vp.amount
+        FROM vendor_payments vp
+        WHERE vp.purchase_id::int = :grnId
+            AND vp.bill_type_id = 1
+            AND vp.user_type_id = 1
+            AND vp.deleted_at IS NULL
+        ORDER BY vp.payment_date
+        `,
+                {
+                    replacements: { grnId },
+                    type: sequelize.QueryTypes.SELECT,
+                }
+            );
+
+        const totalPaid = payments.reduce(
+            (sum, p) => sum + Number(p.amount || 0),
+            0
+        );
+
+        const dueAmount = Number(grn.total_amount || 0) - totalPaid;
+
+        return commonService.okResponse(res, {
+            grn_details: {
+                grn_no: grn.grn_no,
+                grn_date: grn.grn_date,
+                purchase_order: grn.po_id,
+            },
+
+            branch: {
+                name: grn.branch_name,
+                address: grn.branch_address,
+                mobile: grn.branch_mobile,
+                gst_no: grn.branch_gst_no,
+                pin_code: grn.pin_code,
+            },
+
+            vendor: {
+                name: grn.vendor_name,
+                address: grn.vendor_address,
+                mobile: grn.vendor_mobile,
+                gst_no: grn.vendor_gst_no,
+            },
+
+            items,
+
+            totals: {
+                sub_total: grn.subtotal_amount,
+                sgst_percent: grn.sgst_percent,
+                cgst_percent: grn.cgst_percent,
+                discount_percent: grn.discount_percent,
+                total_amount: grn.total_amount,
+            },
+
+            payments: {
+                paid_amount: totalPaid,
+                due_amount: dueAmount,
+                payment_history: payments,
+            },
+
+            remarks: grn.remarks,
+        });
+
+    } catch (error) {
+        console.error("getGrnView error:", error);
+        return commonService.handleError(res, error);
+    }
+};
+
+
 module.exports = {
     getBranchwiseRevenue,
     getBranchRevenueDetails,
-    getVendorGrnRevenueList
+    getVendorGrnRevenueList,
+    getVendorGrnView,
 };
