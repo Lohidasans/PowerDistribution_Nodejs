@@ -89,39 +89,41 @@ const generateUniqueCode = async ( model, field, parts = [],
 };
 
 //Generate simple running codes
-const generateFiscalSeriesCode = async (model, field, prefix, { pad = 3 } = {}) => {
+const generateFiscalSeriesCode = async (
+  model,
+  field,
+  prefix,
+  { pad = 3 } = {}
+) => {
   const cleanPrefix = String(prefix || "").trim().toUpperCase();
 
-  // Escape regex special characters from prefix
-  const escapedPrefix = cleanPrefix.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+  // Escape regex special characters
+  const escapedPrefix = cleanPrefix.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&");
 
-  // Build dynamic regex, extract digits after the prefix
-  const regex = new RegExp(`^${escapedPrefix}(\\d+)$`, "i");
-
-  // Fetch all entries with the given prefix
-  const entries = await model.findAll({
-    where: {
-      [field]: { [Op.iLike]: `${cleanPrefix}%` },
-    },
-    attributes: [field],
-    order: [["id", "DESC"]],
-    raw: true
-  });
-
-  let nextNumber = 1;
-
-  for (const entry of entries) {
-    const code = entry[field];
-
-    const match = String(code).match(regex);
-    if (match) {
-      nextNumber = parseInt(match[1], 10) + 1;
-      break;
+  // Extract numeric part and get MAX value for the given prefix, case-insensitive
+  const [result] = await model.sequelize.query(
+    `
+    SELECT
+      MAX(
+        CAST(
+          REGEXP_REPLACE(${field}, '^${escapedPrefix}', '', 'i')
+          AS INTEGER
+        )
+      ) AS max_no
+    FROM ${model.getTableName()}
+    WHERE ${field} ILIKE :prefix
+    `,
+    {
+      replacements: { prefix: `${cleanPrefix}%` },
+      type: model.sequelize.QueryTypes.SELECT,
     }
-  }
+  );
+
+  const nextNumber = (result?.max_no || 0) + 1;
 
   return `${cleanPrefix}${String(nextNumber).padStart(pad, "0")}`;
 };
+
 
 
 const generateProductSKUCode = async (prefixFromQuery = "", options = {}) => {
