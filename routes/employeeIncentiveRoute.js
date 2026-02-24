@@ -9,6 +9,12 @@ router.get("/employee-incentives/:id", service.getIncentiveById);
 router.put("/employee-incentives/:id", service.updateIncentive);
 router.delete("/employee-incentives/:id", service.deleteIncentive);
 
+// Report: Employee Incentive Report
+// Returns per-employee: Sales Amount (subtotal_amount), Total No. of Invoice,
+// matched Target Range, Incentive %, and computed Incentives Amount
+// Query params: branch_id, department_id, role_id, from_date, to_date, search
+router.get("/employee-incentive-report", service.getEmployeeIncentiveReport);
+
 module.exports = router;
 
 /**
