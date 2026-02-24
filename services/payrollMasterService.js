@@ -294,12 +294,58 @@ const deletePayrollMaster = async (req, res) => {
     }
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// GET PAYROLL MASTERS GROUPED BY TYPE (earnings / deductions)
+// GET /api/v1/payroll-masters/grouped?branch_id=1
+// ─────────────────────────────────────────────────────────────────────────────
+const getPayrollMastersGrouped = async (req, res) => {
+    try {
+        const { branch_id } = req.query;
+
+        if (!branch_id) {
+            return commonService.badRequest(res, 'branch_id query param is required');
+        }
+
+        const masters = await models.PayrollMaster.findAll({
+            where: { branch_id, deleted_at: null },
+            attributes: ['id', 'pay_type_name', 'payroll_master_type_id', 'calculation_type_id', 'payroll_value'],
+            order: [['pay_type_name', 'ASC']],
+            paranoid: true,
+        });
+
+        // payroll_master_type_id: 1 = Earning, 2 = Deduction
+        const earnings = masters.filter(m => m.payroll_master_type_id === 1).map(m => ({
+            id: m.id,
+            payroll_master_name: m.pay_type_name,
+            payroll_master_type_id: m.payroll_master_type_id,
+            calculation_type_id: m.calculation_type_id,
+            default_amount: parseFloat(m.payroll_value || 0),
+        }));
+
+        const deductions = masters.filter(m => m.payroll_master_type_id === 2).map(m => ({
+            id: m.id,
+            payroll_master_name: m.pay_type_name,
+            payroll_master_type_id: m.payroll_master_type_id,
+            calculation_type_id: m.calculation_type_id,
+            default_amount: parseFloat(m.payroll_value || 0),
+        }));
+
+        return commonService.okResponse(res, {
+            data: { earnings, deductions },
+        });
+    } catch (error) {
+        return commonService.handleError(res, error);
+    }
+};
+
+
 module.exports = {
     createPayrollMaster,
     createPayrollMasterBulk,
     getPayrollMasters,
     getPayrollMasterById,
+    getPayrollMastersGrouped,
     updatePayrollMaster,
     updatePayrollMasterBulk,
-    deletePayrollMaster
+    deletePayrollMaster,
 };

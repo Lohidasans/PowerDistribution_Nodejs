@@ -58,6 +58,7 @@ const AuthRoute = require("./authRoute");
 const StockManagementRoute = require("./stockManagementRoute");
 const SalesManagementRoute = require("./salesManagementRoute");
 const PayrollMasterRoute = require("./payrollMasterRoute");
+const PayrollRoute = require("./payrollRoute");
 const RevenueRoute = require("./revenueRoute");
 const DeliveryChellanRouter = require("./deliveryChellanRouter");
 const VoucherReceiptRoute = require("./voucherReceiptRoute");
@@ -132,6 +133,7 @@ module.exports = (app) => {
   app.use("/api/v1", StockManagementRoute);
   app.use("/api/v1", SalesManagementRoute);
   app.use("/api/v1", PayrollMasterRoute);
+  app.use("/api/v1", PayrollRoute);
   app.use("/api/v1", RevenueRoute);
   app.use("/api/v1", DeliveryChellanRouter);
   app.use("/api/v1", VoucherReceiptRoute);

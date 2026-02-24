@@ -301,6 +301,63 @@ const getEmployeeIncentiveReport = async (req, res) => {
   }
 };
 
+/**
+ * Pure helper (no req/res) — callable from the scheduler.
+ * Returns the calculated incentive amount for one employee for a given pay month.
+ *
+ * @param {number} employeeId  - employees.id
+ * @param {string} payMonth    - "YYYY-MM"
+ * @returns {number}           - incentives_amount (0 if no matching incentive tier)
+ */
+const getIncentiveAmountForEmployee = async (employeeId, payMonth) => {
+  const [yearStr, monthStr] = payMonth.split('-');
+  const month = +monthStr;
+  const year = +yearStr;
+
+  const query = `
+    WITH emp_sales AS (
+      SELECT
+        e.id            AS employee_id,
+        e.department_id,
+        e.role_id,
+        COALESCE(SUM(sib.subtotal_amount), 0)::numeric AS sales_amount
+      FROM employees e
+      LEFT JOIN sales_invoice_bills sib
+        ON sib.employee_id = e.id
+        AND sib.deleted_at IS NULL
+        AND sib.status = 'Invoice'
+        AND EXTRACT(MONTH FROM sib.invoice_date) = :month
+        AND EXTRACT(YEAR  FROM sib.invoice_date) = :year
+      WHERE e.id = :employeeId
+        AND e.deleted_at IS NULL
+      GROUP BY e.id, e.department_id, e.role_id
+    )
+    SELECT
+      CASE
+        WHEN ei.incentive_type = 'Percentage'
+          THEN ROUND((es.sales_amount * ei.incentive_value / 100), 2)
+        WHEN ei.incentive_type = 'Rupees'
+          THEN ei.incentive_value::numeric
+        ELSE 0
+      END AS incentives_amount
+    FROM emp_sales es
+    LEFT JOIN employee_incentives ei
+      ON ei.department_id = es.department_id
+      AND ei.role_id      = es.role_id
+      AND ei.deleted_at IS NULL
+      AND es.sales_amount >= ei.sales_target[1]
+      AND es.sales_amount <= ei.sales_target[2]
+    LIMIT 1
+  `;
+
+  const [row] = await sequelize.query(query, {
+    replacements: { employeeId, month, year },
+    type: sequelize.QueryTypes.SELECT,
+  });
+
+  return parseFloat(row?.incentives_amount || 0);
+};
+
 module.exports = {
   createIncentive,
   listIncentives,
@@ -308,4 +365,5 @@ module.exports = {
   updateIncentive,
   deleteIncentive,
   getEmployeeIncentiveReport,
+  getIncentiveAmountForEmployee,
 };

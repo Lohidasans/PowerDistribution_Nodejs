@@ -1,0 +1,619 @@
+{
+  "info": {
+    "_postman_id": "0efb08cd-3aa9-45c0-a3d4-005f20c4e711",
+    "name": "PowerDistribution – Payroll & Incentive",
+    "description": "All API endpoints for Payroll management and Employee Incentive management.\n\nBase URL variable: {{base_url}} = http://localhost:5001/api/v1",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Payroll Masters",
+      "item": [
+        {
+          "name": "Get Grouped (Earnings & Deductions)",
+          "id": "fa6df3dd-f747-4deb-8b8a-c5503a99e6b8",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/payroll-masters/grouped?branch_id=1",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "payroll-masters",
+                "grouped"
+              ],
+              "query": [
+                {
+                  "key": "branch_id",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Returns payroll_masters split into earnings[] and deductions[] for a branch. Use this to populate the payroll form."
+          },
+          "response": []
+        },
+        {
+          "name": "List All",
+          "id": "5cf88eae-951a-4eb2-a73f-6943078732df",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/payroll-masters",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "payroll-masters"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get By ID",
+          "id": "b74f3139-e262-405d-bb82-615aef426d59",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/payroll-masters/1",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "payroll-masters",
+                "1"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Single",
+          "id": "b12765c8-2c9d-450e-8259-4e2f3e75964f",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"payroll_master_type_id\": 1,\n  \"pay_type_name\": \"Basic Salary\",\n  \"calculation_type_id\": 1,\n  \"payroll_value\": 20000,\n  \"branch_id\": 1\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/payroll-masters",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "payroll-masters"
+              ]
+            },
+            "description": "payroll_master_type_id: 1=Earning, 2=Deduction"
+          },
+          "response": []
+        },
+        {
+          "name": "Update",
+          "id": "6f3e60ff-451d-49b2-81c7-02321ec89a16",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pay_type_name\": \"Basic Salary\",\n  \"payroll_value\": 22000\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/payroll-masters/1",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "payroll-masters",
+                "1"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete (Soft)",
+          "id": "9e2ff3c0-6461-43dc-9457-8c4d62b28e8f",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/payroll-masters/1",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "payroll-masters",
+                "1"
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "id": "8eca60ab-874a-4982-ac38-d0e657d8b7a0"
+    },
+    {
+      "name": "Payroll",
+      "item": [
+        {
+          "name": "Attendance Preview (pre-fill form)",
+          "id": "547b423c-86b5-486e-a54b-e07bee7a299c",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/payrolls/attendance-preview?employee_id=3&pay_month=2026-02",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "payrolls",
+                "attendance-preview"
+              ],
+              "query": [
+                {
+                  "key": "employee_id",
+                  "value": "3"
+                },
+                {
+                  "key": "pay_month",
+                  "value": "2026-02"
+                }
+              ]
+            },
+            "description": "Returns worked_days, absent_days, total_days from employee_tracking. Call this when user selects employee + pay_month to pre-fill the form."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Payroll",
+          "id": "361f9185-088e-47a8-bc01-42035f98e66a",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pay_date\": \"2026-02-25\",\n  \"branch_id\": 1,\n  \"employee_id\": 3,\n  \"pay_month\": \"2026-02\",\n  \"pf_number\": \"PF001\",\n  \"comp_off_days\": 4,\n  \"loss_of_pay_days\": 1,\n  \"earnings\": [\n    { \"payroll_master_id\": 1, \"amount\": 20000 },\n    { \"payroll_master_id\": 2, \"amount\": 1000 }\n  ],\n  \"deductions\": [\n    { \"payroll_master_id\": 4, \"amount\": 100 }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/payrolls",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "payrolls"
+              ]
+            },
+            "description": "worked_days and absent_days are auto-calculated from employee_tracking. net_salary = total_earnings - total_deductions."
+          },
+          "response": []
+        },
+        {
+          "name": "List Payrolls",
+          "id": "28c4f6b4-0219-4b7c-935d-e8f0a498e1ad",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/payrolls?page=1&pageSize=10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "payrolls"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "10"
+                },
+                {
+                  "key": "branch_id",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "employee_id",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "pay_month",
+                  "value": "",
+                  "description": "Exact match e.g. 2026-02",
+                  "disabled": true
+                },
+                {
+                  "key": "month",
+                  "value": "",
+                  "description": "e.g. 2",
+                  "disabled": true
+                },
+                {
+                  "key": "year",
+                  "value": "",
+                  "description": "e.g. 2026",
+                  "disabled": true
+                },
+                {
+                  "key": "search",
+                  "value": "",
+                  "description": "Employee name or employee_no",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Supports: branch_id, employee_id, pay_month (exact), month, year, search, page, pageSize"
+          },
+          "response": []
+        },
+        {
+          "name": "List – Filter by Month+Year",
+          "id": "c707aeef-d909-4b59-bf9e-a967d3c6b436",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/payrolls?month=2&year=2026&page=1&pageSize=10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "payrolls"
+              ],
+              "query": [
+                {
+                  "key": "month",
+                  "value": "2"
+                },
+                {
+                  "key": "year",
+                  "value": "2026"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "10"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List – Filter by Branch + Month",
+          "id": "0c803bd0-02a9-4b21-a358-0b6b738cdf11",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/payrolls?branch_id=1&month=2&year=2026",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "payrolls"
+              ],
+              "query": [
+                {
+                  "key": "branch_id",
+                  "value": "1"
+                },
+                {
+                  "key": "month",
+                  "value": "2"
+                },
+                {
+                  "key": "year",
+                  "value": "2026"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Payroll By ID",
+          "id": "fffb6c13-f176-4123-8924-d83fe32d3e91",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/payrolls/1",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "payrolls",
+                "1"
+              ]
+            },
+            "description": "Returns full payroll detail with flattened earnings[] and deductions[] including payroll_master_name."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Payroll",
+          "id": "0722adb8-3bec-4db7-8d66-f43b0887254f",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"comp_off_days\": 2,\n  \"loss_of_pay_days\": 0,\n  \"pf_number\": \"PF999\",\n  \"earnings\": [\n    { \"payroll_master_id\": 1, \"amount\": 21000 },\n    { \"payroll_master_id\": 2, \"amount\": 1500 }\n  ],\n  \"deductions\": [\n    { \"payroll_master_id\": 4, \"amount\": 200 }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/payrolls/1",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "payrolls",
+                "1"
+              ]
+            },
+            "description": "If earnings/deductions are provided, all existing items are replaced. If pay_month changes, worked_days/absent_days are re-calculated."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Payroll (Soft)",
+          "id": "72a95edb-7301-479c-8c73-4f74eee995d6",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/payrolls/1",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "payrolls",
+                "1"
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "id": "3d631651-e57c-4434-8d08-3de56089a0c7"
+    },
+    {
+      "name": "Employee Incentives",
+      "item": [
+        {
+          "name": "Incentive Report",
+          "id": "ce31bd77-0206-4ee6-b804-9b1b6b902c2c",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/employee-incentive-report?month=2&year=2026",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "employee-incentive-report"
+              ],
+              "query": [
+                {
+                  "key": "month",
+                  "value": "2"
+                },
+                {
+                  "key": "year",
+                  "value": "2026"
+                },
+                {
+                  "key": "branch_id",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "department_id",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "role_id",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "from_date",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "to_date",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "search",
+                  "value": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Returns each employee's sales_amount, total_no_of_invoice, matched target_range, and computed incentives_amount."
+          },
+          "response": []
+        },
+        {
+          "name": "List Incentive Rules",
+          "id": "522f0832-ca72-4d92-9232-f3fac0688cd8",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/employee-incentives",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "employee-incentives"
+              ],
+              "query": [
+                {
+                  "key": "department_id",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "role_id",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "search",
+                  "value": "",
+                  "disabled": true
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Incentive Rule By ID",
+          "id": "bfe73240-7584-4eb6-9702-dbc02ac0ec00",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/employee-incentives/1",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "employee-incentives",
+                "1"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Incentive Rule",
+          "id": "faf7f453-9798-457f-9b43-1346f7a2926f",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role_id\": 2,\n  \"department_id\": 1,\n  \"sales_target\": [200000, 400000],\n  \"incentive_type\": \"Percentage\",\n  \"incentive_value\": 5\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/employee-incentives",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "employee-incentives"
+              ]
+            },
+            "description": "incentive_type: 'Percentage' or 'Rupees'. sales_target: [min, max] sales amount range."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Incentive Rule",
+          "id": "133d4b54-1a10-4c77-983a-5a98fc9ee662",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"incentive_type\": \"Rupees\",\n  \"incentive_value\": 2000,\n  \"sales_target\": [200000, 400000]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/employee-incentives/1",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "employee-incentives",
+                "1"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Incentive Rule (Soft)",
+          "id": "2f7e96a0-2019-47db-9855-cf3be280231b",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/employee-incentives/1",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "employee-incentives",
+                "1"
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "id": "62635ddf-4d6e-4cf1-9400-a9429e3a6977"
+    }
+  ],
+  "variable": [
+    {
+      "id": "27c31c68-103f-4608-ae36-d07ce4d954e2",
+      "key": "base_url",
+      "value": "http://localhost:5001/api/v1",
+      "type": "string"
+    }
+  ]
+}

@@ -4,10 +4,12 @@ const svc = require('../services/payrollMasterService');
 
 // CRUD operations
 router.post('/payroll-masters', svc.createPayrollMaster);
+router.get('/payroll-masters/grouped', svc.getPayrollMastersGrouped);  // ← must be before /:id
 router.get('/payroll-masters', svc.getPayrollMasters);
 router.get('/payroll-masters/:id', svc.getPayrollMasterById);
 router.put('/payroll-masters/:id', svc.updatePayrollMaster);
 router.delete('/payroll-masters/:id', svc.deletePayrollMaster);
+
 
 // Swagger documentation
 /**

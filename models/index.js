@@ -173,6 +173,8 @@ const MaintenanceType = require("./maintenanceTypes")(sequelize, Sequelize.DataT
 
 // Payroll related models
 const PayrollMaster = require("./payrollMasters")(sequelize, Sequelize.DataTypes);
+const Payroll = require("./payrolls")(sequelize, Sequelize.DataTypes);
+const PayrollItem = require("./payrollItems")(sequelize, Sequelize.DataTypes);
 
 //Delivery Chellan Model
 const DeliveryChellan = require("./deliveryChellan")(sequelize, Sequelize.DataTypes);
@@ -284,6 +286,8 @@ const models = {
   Maintenance,
   MaintenanceType,
   PayrollMaster,
+  Payroll,
+  PayrollItem,
   DeliveryChellan,
   DeliveryChellanItem,
   VoucherReceipt,
