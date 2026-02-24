@@ -183,6 +183,7 @@ const updateCustomer = async (req, res) => {
       gst_no: req.body.gst_no ?? entity.gst_no,
       email_id: req.body.email_id ?? (entity.email_id || null),
       is_online: req.body.is_online !== undefined ? Boolean(req.body.is_online) : entity.is_online,
+      branch_id: req.body.branch_id !== undefined ? (+req.body.branch_id || null) : entity.branch_id,
     };
     await entity.update(up);
     return commonService.okResponse(res, { customer: entity });
@@ -357,27 +358,33 @@ const listCustomers = async (req, res) => {
           LIMIT 1
         ) AS mode,
 
-        -- Most recent branch_id
-        (
-          SELECT sib2.branch_id
-          FROM sales_invoice_bills sib2
-          WHERE sib2.customer_id = c.id 
-            AND sib2.deleted_at IS NULL
-            ${branch_id ? 'AND sib2.branch_id = :branch_id' : ''}
-          ORDER BY sib2.created_at DESC 
-          LIMIT 1
+        -- Most recent branch_id (prefer recent invoice, fallback to customer's branch_id)
+        COALESCE(
+          (
+            SELECT sib2.branch_id
+            FROM sales_invoice_bills sib2
+            WHERE sib2.customer_id = c.id
+              AND sib2.deleted_at IS NULL
+              ${branch_id ? 'AND sib2.branch_id = :branch_id' : ''}
+            ORDER BY sib2.created_at DESC
+            LIMIT 1
+          ),
+          (SELECT c2.branch_id FROM customers c2 WHERE c2.id = c.id)
         ) AS branch_id,
 
-        -- Most recent branch name (for display)
-        (
-          SELECT b.branch_name
-          FROM sales_invoice_bills sib2
-          LEFT JOIN branches b ON b.id = sib2.branch_id
-          WHERE sib2.customer_id = c.id 
-            AND sib2.deleted_at IS NULL
-            ${branch_id ? 'AND sib2.branch_id = :branch_id' : ''}
-          ORDER BY sib2.created_at DESC 
-          LIMIT 1
+        -- Most recent branch name (for display) with fallback to customer's branch
+        COALESCE(
+          (
+            SELECT b.branch_name
+            FROM sales_invoice_bills sib2
+            LEFT JOIN branches b ON b.id = sib2.branch_id
+            WHERE sib2.customer_id = c.id
+              AND sib2.deleted_at IS NULL
+              ${branch_id ? 'AND sib2.branch_id = :branch_id' : ''}
+            ORDER BY sib2.created_at DESC
+            LIMIT 1
+          ),
+          (SELECT b2.branch_name FROM branches b2 WHERE b2.id = (SELECT c3.branch_id FROM customers c3 WHERE c3.id = c.id))
         ) AS branch,
 
         -- Total purchase amount
