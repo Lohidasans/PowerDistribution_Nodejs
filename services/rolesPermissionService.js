@@ -161,7 +161,7 @@ const getRolePermissionById = async (req, res) => {
 const updateRolePermissionsBulk = async (req, res) => {
   const transaction = await sequelize.transaction();
   try {
-    const { role_name, department_id, permissions = [] } = req.body;
+    const { role_name, department_id, permissions = [], old_role_name } = req.body;
 
     if (!role_name || !department_id) {
       return commonService.badRequest(res, "role_name and department_id are required");
@@ -171,15 +171,38 @@ const updateRolePermissionsBulk = async (req, res) => {
       return commonService.badRequest(res, "permissions must be an array");
     }
 
+    // Determine which role_name to search for
+    // If old_role_name is provided, it means we're updating/renaming the role
+    const searchRoleName = old_role_name || role_name;
+
     // Check if role with department exists, if not create it
     let role = await models.Role.findOne({
       where: {
-        role_name,
+        role_name: searchRoleName,
         department_id
       },
       transaction
     });
 
+    // If role found and role_name has changed, update it
+    if (role && old_role_name && old_role_name !== role_name) {
+      await role.update(
+        { role_name },
+        { transaction }
+      );
+
+      // Also update all role_permissions with the new role_name
+      await models.RolePermission.update(
+        { role_name },
+        {
+          where: { role_name: old_role_name, department_id },
+          transaction,
+          paranoid: false
+        }
+      );
+    }
+
+    // If role doesn't exist and no old_role_name provided, create new role
     if (!role) {
       role = await models.Role.create({
         role_name,
@@ -295,7 +318,10 @@ const updateRolePermissionsBulk = async (req, res) => {
     });
 
     return commonService.okResponse(res, {
-      message: "Role permissions updated successfully",
+      message: old_role_name && old_role_name !== role_name 
+        ? `Role renamed from '${old_role_name}' to '${role_name}' and permissions updated successfully`
+        : "Role permissions updated successfully",
+      old_role_name: old_role_name || null,
       role_name,
       department_id,
       updated: updatedRows.length,
