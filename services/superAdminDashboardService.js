@@ -276,49 +276,60 @@ const getSuperAdminDashboard = async (req, res) => {
       "_profit"
     );
 
-    const profitKpiQuery = `
-      WITH sold_out_products AS (
-        SELECT p.id AS product_id
-        FROM products p
-        LEFT JOIN "productItemDetails" pid
-          ON pid.product_id = p.id
-          AND pid.deleted_at IS NULL
-        WHERE p.deleted_at IS NULL
-        GROUP BY p.id
-        HAVING COALESCE(SUM(pid.quantity), 0) = 0
-      ),
-      sales_values AS (
-        SELECT
-          sibi.product_id,
-          SUM(sibi.amount) AS selling_amount
-        FROM sales_invoice_bill_items sibi
-        JOIN sales_invoice_bills sib
-          ON sib.id = sibi.invoice_bill_id
-          AND sib.deleted_at IS NULL
-          AND sib.status NOT IN ('Draft', 'Cancelled')
-          ${profitBranch}
-          ${profitDateCond}
-        WHERE sibi.deleted_at IS NULL
-        GROUP BY sibi.product_id
-      ),
-      purchase_values AS (
-        SELECT
-          p.id AS product_id,
-          COALESCE(pgni.total_amount, 0) AS purchase_cost
-        FROM products p
-        LEFT JOIN product_grn_infos pgni
-          ON pgni.id = p.ref_no_id
-          AND pgni.deleted_at IS NULL
-        WHERE p.deleted_at IS NULL
-      )
-      SELECT
-        COALESCE(SUM(sv.selling_amount), 0)                                       AS total_sales,
-        COALESCE(SUM(pv.purchase_cost), 0)                                        AS total_purchase,
-        COALESCE(SUM(sv.selling_amount), 0) - COALESCE(SUM(pv.purchase_cost), 0)  AS total_profit
-      FROM sold_out_products sop
-      JOIN sales_values sv ON sv.product_id = sop.product_id
-      JOIN purchase_values pv ON pv.product_id = sop.product_id
-    `;
+const profitKpiQuery = `
+  WITH sold_out_products AS (
+    SELECT
+      p.id AS product_id,
+      p.ref_no_id
+    FROM products p
+    JOIN "productItemDetails" pid
+      ON pid.product_id = p.id
+     AND pid.deleted_at IS NULL
+    WHERE p.deleted_at IS NULL
+    GROUP BY p.id, p.ref_no_id
+    HAVING
+      COALESCE(SUM(pid.quantity), 0) = 0
+      AND COUNT(*) FILTER (
+        WHERE pid.stock_out_reason = 'SOLD'
+      ) > 0
+  ),
+  sales_values AS (
+    SELECT
+      sibi.product_id,
+      SUM(sibi.amount) AS selling_amount
+    FROM sales_invoice_bill_items sibi
+    JOIN sales_invoice_bills sib
+      ON sib.id = sibi.invoice_bill_id
+     AND sib.deleted_at IS NULL
+     AND sib.status = 'Invoice'
+     ${profitBranch}
+     ${profitDateCond}
+    WHERE sibi.deleted_at IS NULL
+    GROUP BY sibi.product_id
+  ),
+  purchase_values AS (
+    SELECT
+      gi.id AS ref_no_id,
+      COALESCE(SUM(gi.total_amount), 0) AS purchase_cost
+    FROM "grnItems" gi
+    JOIN grns g
+      ON g.id = gi.grn_id
+     AND g.deleted_at IS NULL
+    WHERE gi.deleted_at IS NULL
+    GROUP BY gi.id
+  )
+  SELECT
+    COALESCE(SUM(sv.selling_amount), 0) AS total_sales,
+    COALESCE(SUM(pv.purchase_cost), 0)  AS total_purchase,
+    COALESCE(SUM(sv.selling_amount), 0) - COALESCE(SUM(pv.purchase_cost), 0) AS total_profit
+  FROM sold_out_products sop
+  -- must have sales (otherwise it was SOLD but no invoice in filter)
+  JOIN sales_values sv
+    ON sv.product_id = sop.product_id
+  -- purchase from grnItems using ref_no_id mapping
+  LEFT JOIN purchase_values pv
+    ON pv.ref_no_id = sop.ref_no_id
+`;
 
     // ============================================================
     // 5. AMOUNT COLLECTION – UPDATED (REFUND DEDUCT like branch-wise-report)
