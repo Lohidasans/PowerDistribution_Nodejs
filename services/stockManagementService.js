@@ -1447,6 +1447,24 @@ const getBranchCategoryStock = async (req, res) => {
 
 const getVendorContributionReport = async (req, res) => {
   try {
+    const { from_date, to_date, date_filter, branch_id } = req.query;
+
+    const replacements = {};
+    let whereClause = ` WHERE v.deleted_at IS NULL `;
+
+    // ✅ Date filter (grn_date)
+    whereClause += dateFilter(
+      { from_date, to_date, date_filter },
+      "g.grn_date",
+      replacements
+    );
+
+    // ✅ Branch filter
+    if (branch_id) {
+      whereClause += ` AND g.branch_id = :branch_id`;
+      replacements.branch_id = branch_id;
+    }
+
     const query = `
       SELECT
         v.id AS vendor_id,
@@ -1467,15 +1485,19 @@ const getVendorContributionReport = async (req, res) => {
         AND gi.material_type_id = ANY(v.material_type_ids)
       JOIN "materialTypes" mt ON mt.id = gi.material_type_id AND mt.deleted_at IS NULL
 
-      WHERE v.deleted_at IS NULL
+      ${whereClause}
+
       GROUP BY v.id, v.vendor_name, mt.material_type, gi.material_type_id
+
       ORDER BY v.vendor_name;
     `;
 
     const rows = await sequelize.query(query, {
       type: sequelize.QueryTypes.SELECT,
+      replacements,
     });
 
+    // 🔹 Grouping logic (unchanged)
     const grouped = {};
     for (const row of rows) {
       if (!grouped[row.vendor_id]) {
@@ -1505,6 +1527,8 @@ const getVendorContributionReport = async (req, res) => {
     });
   }
 };
+
+module.exports = { getVendorContributionReport };
 
 const getStockByMaterialTypeReport = async (req, res) => {
   try {
