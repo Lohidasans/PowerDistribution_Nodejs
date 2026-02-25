@@ -94,7 +94,13 @@ module.exports = {
   updateBankAccountByEntity: async (transaction, entity_type, entity_id, data) => {
     if (!data || typeof data !== "object") return null;
     const existing = await models.BankAccount.findOne({ where: { entity_type, entity_id }, transaction });
-    if (!existing) return null; // no create on update-only path
+    
+    if (!existing) {
+      // Create if doesn't exist (upsert behavior)
+      return models.BankAccount.create({ ...data, entity_type, entity_id }, { transaction });
+    }
+    
+    // Update if exists
     await existing.update(
       {
         account_holder_name: data.account_holder_name ?? existing.account_holder_name,

@@ -77,9 +77,16 @@ const createEmployee = async (req, res) => {
     // Create contact if provided
     let createdContact = null;
     if (contact && typeof contact === "object") {
+      // Ensure IDs are strings to match database schema
+      const normalizedContact = {
+        ...contact,
+        country_id: contact.country_id ? String(contact.country_id) : contact.country_id,
+        state_id: contact.state_id ? String(contact.state_id) : contact.state_id,
+        district_id: contact.district_id ? String(contact.district_id) : null,
+      };
       createdContact = await createEmployeeContact(
         employee.id,
-        contact,
+        normalizedContact,
         transaction
       );
     }
@@ -98,7 +105,12 @@ const createEmployee = async (req, res) => {
     // Optional: KYC
     let createdKycDocs = [];
     if (Array.isArray(kyc_documents) && kyc_documents.length > 0) {
-      createdKycDocs = await kycSvc.createKycByEntity(transaction, "employee", employee.id, kyc_documents);
+      // Normalize doc_type to string for consistency
+      const normalizedKycDocs = kyc_documents.map(doc => ({
+        ...doc,
+        doc_type: String(doc.doc_type)
+      }));
+      createdKycDocs = await kycSvc.createKycByEntity(transaction, "employee", employee.id, normalizedKycDocs);
     }
 
     // Optional: Login via helper
@@ -162,9 +174,9 @@ const createEmployeeContact = async (
       mobile_number: contactData.mobile_number,
       email_id: contactData.email_id,
       address: contactData.address,
-      country_id: contactData.country_id,
-      state_id: contactData.state_id,
-      district_id: contactData.district_id,
+      country_id: String(contactData.country_id),
+      state_id: String(contactData.state_id),
+      district_id: contactData.district_id ? String(contactData.district_id) : null,
       pin_code: contactData.pin_code,
       emergency_contact_person: contactData.emergency_contact_person,
       relationship: contactData.relationship,
@@ -191,26 +203,48 @@ const createEmployeeExperiences = async (transaction, employee_id, experiences) 
 };
 
 const updateEmployeeExperiences = async (transaction, employee_id, experiences) => {
-  // Update-only: require id for each experience to update
-  const updated = [];
-  if (!Array.isArray(experiences) || !experiences.length) return updated;
-  for (const exp of experiences) {
-    if (!exp.id) continue;
-    const row = await models.EmployeeExperience.findOne({ where: { id: exp.id, employee_id }, transaction });
-    if (!row) continue;
-    await row.update(
-      {
-        organization_name: exp.organization_name ?? row.organization_name,
-        role: exp.role ?? row.role,
-        duration_from: exp.duration_from ?? row.duration_from,
-        duration_to: exp.duration_to ?? row.duration_to,
-        location: exp.location ?? row.location,
-      },
-      { transaction }
-    );
-    updated.push(row);
+  // Delete all existing experiences and replace with new ones
+  // This prevents duplicate accumulation on each update
+  if (!Array.isArray(experiences)) {
+    // If experiences is null/undefined, delete all existing experiences
+    await models.EmployeeExperience.destroy({ 
+      where: { employee_id }, 
+      transaction 
+    });
+    return [];
   }
-  return updated;
+
+  // If empty array, delete all
+  if (experiences.length === 0) {
+    await models.EmployeeExperience.destroy({ 
+      where: { employee_id }, 
+      transaction 
+    });
+    return [];
+  }
+
+  // Delete all existing experiences for this employee
+  await models.EmployeeExperience.destroy({ 
+    where: { employee_id }, 
+    transaction 
+  });
+
+  // Create new experiences from the incoming array
+  const newExperiences = experiences.map((exp) => ({
+    employee_id,
+    organization_name: exp.organization_name,
+    role: exp.role,
+    duration_from: exp.duration_from,
+    duration_to: exp.duration_to,
+    location: exp.location ?? null,
+  }));
+
+  const created = await models.EmployeeExperience.bulkCreate(newExperiences, { 
+    transaction, 
+    returning: true 
+  });
+
+  return created;
 };
 
 // List employees with optional simple filters
@@ -613,14 +647,22 @@ const updateEmployee = async (req, res) => {
     ======================== */
     let updatedContact = null;
     if (contact && typeof contact === "object") {
+      // Ensure IDs are strings to match database schema
+      const normalizedContact = {
+        ...contact,
+        country_id: contact.country_id ? String(contact.country_id) : contact.country_id,
+        state_id: contact.state_id ? String(contact.state_id) : contact.state_id,
+        district_id: contact.district_id ? String(contact.district_id) : null,
+      };
+
       const existingContact = await models.EmployeeContact.findOne({
         where: { employee_id: id },
         transaction
       });
 
       updatedContact = existingContact
-        ? await existingContact.update(contact, { transaction })
-        : await createEmployeeContact(id, contact, transaction);
+        ? await existingContact.update(normalizedContact, { transaction })
+        : await createEmployeeContact(id, normalizedContact, transaction);
     }
 
     /* =======================
@@ -637,16 +679,31 @@ const updateEmployee = async (req, res) => {
     }
 
     /* =======================
-       6. KYC Documents (Update Only)
+       6. KYC Documents (Replace All)
     ======================== */
     let updatedKyc = [];
     if (Array.isArray(kyc_documents)) {
-      updatedKyc = await kycSvc.updateKycByEntity(
-        transaction,
-        "employee",
-        employee.id,
-        kyc_documents
-      );
+      // Delete all existing KYC documents for this employee
+      await models.KycDocument.destroy({
+        where: { entity_type: "employee", entity_id: employee.id },
+        transaction
+      });
+
+      // Create new KYC documents from the incoming array
+      if (kyc_documents.length > 0) {
+        const normalizedKycDocs = kyc_documents.map(doc => ({
+          entity_type: "employee",
+          entity_id: employee.id,
+          doc_type: String(doc.doc_type),
+          doc_number: doc.doc_number,
+          file_url: doc.file_url
+        }));
+
+        updatedKyc = await models.KycDocument.bulkCreate(normalizedKycDocs, {
+          transaction,
+          returning: true
+        });
+      }
     }
 
     /* =======================
