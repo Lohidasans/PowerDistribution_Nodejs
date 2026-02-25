@@ -67,7 +67,7 @@ const buildDateCondition = ({ period, from_date, to_date }, column, replacements
 ========================================================= */
 const getSuperAdminDashboard = async (req, res) => {
     try {
-        const { branch_id, period, from_date, to_date } = req.query;
+        const { branch_id, period, from_date, to_date, statistics_period } = req.query;
 
         const dateOpts = { period, from_date, to_date };
 
@@ -184,43 +184,58 @@ const getSuperAdminDashboard = async (req, res) => {
         `;
 
         // ============================================================
-        // 3. STATISTICS – Monthly Sales / Purchase / Profit (last 12 months)
+        // 3. STATISTICS – Sales / Purchase / Profit based on statistics_period filter
+        //    Supports: monthly (1 month), half_yearly (6 months), yearly (12 months)
         // ============================================================
         const statsRep = {};
         const statsBranch = branch_id ? `AND sib.branch_id = :stat_branch` : '';
         if (branch_id) statsRep.stat_branch = branch_id;
-        const statsBranchGrn = ''; // GRN has no branch_id column
+
+        // Determine the interval and format based on statistics_period
+        let monthsInterval = 11; // Default: 12 months
+        let dateFormat = 'YYYY-MM';
+
+        if (statistics_period === 'monthly') {
+            monthsInterval = 0; // Current month only
+            dateFormat = 'YYYY-MM-DD';
+        } else if (statistics_period === 'half_yearly') {
+            monthsInterval = 5; // 6 months
+            dateFormat = 'YYYY-MM';
+        } else if (statistics_period === 'yearly' || statistics_period === 'year') {
+            monthsInterval = 11; // 12 months
+            dateFormat = 'YYYY-MM';
+        }
 
         const statisticsQuery = `
             WITH months AS (
                 SELECT
                     TO_CHAR(generate_series(
-                        DATE_TRUNC('month', NOW() - INTERVAL '11 months'),
+                        DATE_TRUNC('month', NOW() - INTERVAL '${monthsInterval} months'),
                         DATE_TRUNC('month', NOW()),
                         '1 month'::interval
-                    ), 'YYYY-MM') AS month_key
+                    ), '${dateFormat}') AS month_key
             ),
             monthly_sales AS (
                 SELECT
-                    TO_CHAR(sib.invoice_date, 'YYYY-MM')    AS month_key,
+                    TO_CHAR(sib.invoice_date, '${dateFormat}')    AS month_key,
                     COALESCE(SUM(sib.total_amount), 0)       AS sales_amount
                 FROM sales_invoice_bills sib
                 WHERE sib.deleted_at IS NULL
                   AND sib.status NOT IN ('Draft', 'Cancelled')
                   ${statsBranch}
-                GROUP BY TO_CHAR(sib.invoice_date, 'YYYY-MM')
+                GROUP BY TO_CHAR(sib.invoice_date, '${dateFormat}')
             ),
             monthly_purchase AS (
                 SELECT
-                    TO_CHAR(g.grn_date, 'YYYY-MM')          AS month_key,
+                    TO_CHAR(g.grn_date, '${dateFormat}')          AS month_key,
                     COALESCE(SUM(g.total_amount), 0)         AS purchase_amount
                 FROM grns g
                 WHERE g.deleted_at IS NULL
-                GROUP BY TO_CHAR(g.grn_date, 'YYYY-MM')
+                GROUP BY TO_CHAR(g.grn_date, '${dateFormat}')
             )
             SELECT
                 m.month_key,
-                TO_CHAR(TO_DATE(m.month_key, 'YYYY-MM'), 'Mon YYYY') AS month_label,
+                TO_CHAR(TO_DATE(m.month_key, '${dateFormat}'), '${statistics_period === 'monthly' ? 'DD Mon YYYY' : 'Mon YYYY'}') AS month_label,
                 COALESCE(ms.sales_amount, 0)    AS sales,
                 COALESCE(mp.purchase_amount, 0) AS purchase,
                 GREATEST(COALESCE(ms.sales_amount, 0) - COALESCE(mp.purchase_amount, 0), 0) AS profit
@@ -519,6 +534,7 @@ const getSuperAdminDashboard = async (req, res) => {
             filters_applied: {
                 branch_id: branch_id || null,
                 period: period || null,
+                statistics_period: statistics_period || 'yearly',
                 from_date: from_date || null,
                 to_date: to_date || null,
             },
