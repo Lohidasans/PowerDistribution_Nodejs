@@ -553,7 +553,7 @@ const getVendorGrnView = async (req, res) => {
             AND vp.deleted_at IS NULL
 
             LEFT JOIN branches b 
-                ON b.id = vp.branch_id
+                ON b.id = g.branch_id
             AND b.deleted_at IS NULL
 
             WHERE g.id = :grnId
@@ -574,23 +574,51 @@ const getVendorGrnView = async (req, res) => {
         const items = await sequelize.query(
             `
             SELECT
-                id,
-                quantity,
-                gross_wt_in_g,
-                net_wt_in_g,
-                rate_per_g,
-                total_amount,
-                comments AS product_description
-            FROM "grnItems"
-            WHERE grn_id = :grnId
-                AND deleted_at IS NULL
-            ORDER BY id
+                gi.id,
+                gi.ref_no,
+
+                mt.material_type,
+                gi.purity,
+                gi.material_price_per_g,
+
+                c.category_name AS category,
+                sc.subcategory_name AS sub_category,
+
+                gi.type,
+                gi.quantity,
+
+                gi.net_wt_in_g      AS total_wt_in_g,      --need to replace with total_wt_in_gm column when available
+                COALESCE(gi.others_wt_in_g, 0) AS bag_wt_in_g, -- need to replace with bag_wt column when available
+                gi.gross_wt_in_g,
+                COALESCE(gi.stone_wt_in_g, 0)  AS stone_wt_in_g,
+
+                gi.others,
+                gi.total_amount
+
+            FROM "grnItems" gi
+
+            LEFT JOIN "materialTypes" mt
+                ON mt.id = gi.material_type_id
+                AND mt.deleted_at IS NULL
+
+            LEFT JOIN categories c
+                ON c.id = gi.category_id
+                AND c.deleted_at IS NULL
+
+            LEFT JOIN subcategories sc
+                ON sc.id = gi.subcategory_id
+                AND sc.deleted_at IS NULL
+
+            WHERE gi.grn_id = :grnId
+                AND gi.deleted_at IS NULL
+
+            ORDER BY gi.id
             `,
-                    {
-                        replacements: { grnId },
-                        type: sequelize.QueryTypes.SELECT,
-                    }
-                );
+            {
+                replacements: { grnId },
+                type: sequelize.QueryTypes.SELECT,
+            }
+        );
 
         // Payment Details
         const payments = await sequelize.query(
@@ -600,8 +628,10 @@ const getVendorGrnView = async (req, res) => {
             vp.payment_no,
             vp.payment_mode,
             vp.transaction_no,
-            vp.amount
+            vp.amount,
+            pm.payment_mode AS payment_mode_name
         FROM vendor_payments vp
+        LEFT JOIN payment_modes pm ON pm.id = vp.payment_mode AND pm.deleted_at IS NULL
         WHERE vp.purchase_id::int = :grnId
             AND vp.bill_type_id = 1
             AND vp.user_type_id = 1
