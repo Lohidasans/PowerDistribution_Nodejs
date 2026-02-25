@@ -4,8 +4,11 @@ const svc = require('../services/payrollMasterService');
 
 // CRUD operations
 router.post('/payroll-masters', svc.createPayrollMaster);
+router.post('/payroll-masters/bulk', svc.createPayrollMasterBulk);  // Bulk create - must be before /:id
 router.get('/payroll-masters/grouped', svc.getPayrollMastersGrouped);  // ← must be before /:id
 router.get('/payroll-masters', svc.getPayrollMasters);
+router.put('/payroll-masters/bulk', svc.updatePayrollMasterBulk);  // Bulk update - must be before /:id
+router.patch('/payroll-masters/bulk', svc.updatePayrollMasterBulk);  // Bulk update - must be before /:id
 router.get('/payroll-masters/:id', svc.getPayrollMasterById);
 router.put('/payroll-masters/:id', svc.updatePayrollMaster);
 router.delete('/payroll-masters/:id', svc.deletePayrollMaster);
@@ -59,6 +62,163 @@ router.delete('/payroll-masters/:id', svc.deletePayrollMaster);
  *         description: Payroll master created successfully
  *       400:
  *         description: Invalid input or payroll master already exists
+ */
+
+/**
+ * @openapi
+ * /api/v1/payroll-masters/bulk:
+ *   post:
+ *     summary: Create multiple payroll masters in bulk
+ *     tags: [Payroll Masters]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - payroll_masters
+ *             properties:
+ *               payroll_masters:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   required:
+ *                     - payroll_master_type_id
+ *                     - pay_type_name
+ *                     - calculation_type_id
+ *                     - payroll_value
+ *                     - branch_id
+ *                   properties:
+ *                     payroll_master_type_id:
+ *                       type: integer
+ *                       description: ID of the payroll master type (1=Earning, 2=Deduction)
+ *                     pay_type_name:
+ *                       type: string
+ *                       description: Name of the pay type
+ *                     calculation_type_id:
+ *                       type: integer
+ *                       description: ID of the calculation type
+ *                     payroll_value:
+ *                       type: number
+ *                       format: decimal
+ *                       description: Value for the payroll
+ *                     branch_id:
+ *                       type: integer
+ *                       description: ID of the branch
+ *             example:
+ *               payroll_masters:
+ *                 - payroll_master_type_id: 1
+ *                   pay_type_name: "Basic Salary"
+ *                   calculation_type_id: 1
+ *                   payroll_value: 50000
+ *                   branch_id: 1
+ *                 - payroll_master_type_id: 2
+ *                   pay_type_name: "House Rent Allowance"
+ *                   calculation_type_id: 2
+ *                   payroll_value: 20000
+ *                   branch_id: 1
+ *     responses:
+ *       200:
+ *         description: Payroll masters created with summary
+ *       400:
+ *         description: Invalid input
+ */
+
+/**
+ * @openapi
+ * /api/v1/payroll-masters/bulk:
+ *   put:
+ *     summary: Update multiple payroll masters in bulk
+ *     tags: [Payroll Masters]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - payroll_masters
+ *             properties:
+ *               payroll_masters:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   required:
+ *                     - id
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                       description: ID of the payroll master to update
+ *                     payroll_master_type_id:
+ *                       type: integer
+ *                     pay_type_name:
+ *                       type: string
+ *                     calculation_type_id:
+ *                       type: integer
+ *                     payroll_value:
+ *                       type: number
+ *                       format: decimal
+ *                     branch_id:
+ *                       type: integer
+ *             example:
+ *               payroll_masters:
+ *                 - id: 1
+ *                   payroll_value: 55000
+ *                   pay_type_name: "Basic Salary Updated"
+ *                 - id: 2
+ *                   calculation_type_id: 3
+ *                   payroll_value: 22000
+ *                 - id: 3
+ *                   branch_id: 1
+ *                   payroll_value: 6000
+ *     responses:
+ *       200:
+ *         description: Payroll masters updated with summary
+ *       400:
+ *         description: Invalid input
+ */
+
+/**
+ * @openapi
+ * /api/v1/payroll-masters/bulk:
+ *   patch:
+ *     summary: Update multiple payroll masters in bulk (PATCH alternative)
+ *     tags: [Payroll Masters]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - payroll_masters
+ *             properties:
+ *               payroll_masters:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   required:
+ *                     - id
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                     payroll_master_type_id:
+ *                       type: integer
+ *                     pay_type_name:
+ *                       type: string
+ *                     calculation_type_id:
+ *                       type: integer
+ *                     payroll_value:
+ *                       type: number
+ *                       format: decimal
+ *                     branch_id:
+ *                       type: integer
+ *     responses:
+ *       200:
+ *         description: Payroll masters updated with summary
+ *       400:
+ *         description: Invalid input
  */
 
 /**

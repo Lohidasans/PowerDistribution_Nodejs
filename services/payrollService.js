@@ -239,7 +239,19 @@ const getPayrollById = async (req, res) => {
                 {
                     model: models.Branch,
                     as: "branch",
-                    attributes: ["id", "branch_name"],
+                    attributes: ["id", "branch_name", "gst_no", "mobile", "signature_url", "district_id", "state_id","address"],
+                    include: [
+                        {
+                            model: models.District,
+                            as: "district",
+                            attributes: ["id", "district_name"],
+                        },
+                        {
+                            model: models.State,
+                            as: "state",
+                            attributes: ["id", "state_name"],
+                        },
+                    ],
                 },
                 {
                     model: models.PayrollItem,
@@ -279,7 +291,24 @@ const getPayrollById = async (req, res) => {
                 id: p.id,
                 pay_date: p.pay_date,
                 branch_id: p.branch_id,
-                branch_name: p.branch?.branch_name || null,
+                branch: p.branch ? {
+                    id: p.branch.id,
+                    branch_name: p.branch.branch_name,
+                    gst_no: p.branch.gst_no || null,
+                    mobile: p.branch.mobile || null,
+                    signature_url: p.branch.signature_url || null,
+                    address: p.branch.address || null,
+                    district_id: p.branch.district_id || null,
+                    district: p.branch.district ? {
+                        id: p.branch.district.id,
+                        district_name: p.branch.district.district_name,
+                    } : null,
+                    state_id: p.branch.state_id || null,
+                    state: p.branch.state ? {
+                        id: p.branch.state.id,
+                        state_name: p.branch.state.state_name,
+                    } : null,
+                } : null,
                 employee_id: p.employee_id,
                 employee_no: p.employee_no,
                 employee_name: p.employee?.employee_name || null,
