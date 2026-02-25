@@ -8,17 +8,23 @@ const createPayrollMaster = async (req, res) => {
     try {
         const { payroll_master_type_id, pay_type_name, calculation_type_id, payroll_value, branch_id } = req.body;
 
-        // Check if payroll master with same name already exists
+        // Validate required fields
+        if (!payroll_master_type_id || !pay_type_name || !calculation_type_id || payroll_value === undefined || !branch_id) {
+            return commonService.badRequest(res, 'Missing required fields: payroll_master_type_id, pay_type_name, calculation_type_id, payroll_value, branch_id');
+        }
+
+        // Check if payroll master with same name already exists FOR THIS BRANCH
         const existingPayroll = await models.PayrollMaster.findOne({
             where: {
                 pay_type_name: {
                     [Op.iLike]: pay_type_name
-                }
+                },
+                branch_id: branch_id
             }
         });
 
         if (existingPayroll) {
-            return commonService.badRequest(res, 'Payroll master with this name already exists');
+            return commonService.badRequest(res, `Payroll master '${pay_type_name}' already exists for branch ${branch_id}`);
         }
 
         const payrollMaster = await models.PayrollMaster.create({
@@ -55,12 +61,23 @@ const createPayrollMasterBulk = async (req, res) => {
             const { payroll_master_type_id, pay_type_name, calculation_type_id, payroll_value, branch_id } = item;
 
             try {
-                // Check if payroll master with same name already exists
+                // Validate required fields
+                if (!payroll_master_type_id || !pay_type_name || !calculation_type_id || payroll_value === undefined || !branch_id) {
+                    errors.push({
+                        index: i,
+                        pay_type_name: pay_type_name || 'N/A',
+                        error: 'Missing required fields: payroll_master_type_id, pay_type_name, calculation_type_id, payroll_value, branch_id'
+                    });
+                    continue;
+                }
+
+                // Check if payroll master with same name already exists FOR THIS BRANCH
                 const existingPayroll = await models.PayrollMaster.findOne({
                     where: {
                         pay_type_name: {
                             [Op.iLike]: pay_type_name
-                        }
+                        },
+                        branch_id: branch_id
                     }
                 });
 
@@ -68,7 +85,8 @@ const createPayrollMasterBulk = async (req, res) => {
                     errors.push({
                         index: i,
                         pay_type_name,
-                        error: 'Payroll master with this name already exists'
+                        branch_id,
+                        error: `Payroll master already exists for this branch`
                     });
                     continue;
                 }
@@ -165,19 +183,21 @@ const updatePayrollMaster = async (req, res) => {
             return commonService.notFound(res, 'Payroll master not found');
         }
 
-        // Check if another payroll master with the same name exists
+        // Check if another payroll master with the same name exists FOR THIS BRANCH
         if (req.body.pay_type_name) {
+            const branchId = req.body.branch_id || payrollMaster.branch_id;
             const existingPayroll = await models.PayrollMaster.findOne({
                 where: {
                     id: { [Op.ne]: req.params.id },
                     pay_type_name: {
                         [Op.iLike]: req.body.pay_type_name
-                    }
+                    },
+                    branch_id: branchId
                 }
             });
 
             if (existingPayroll) {
-                return commonService.badRequest(res, 'Another payroll master with this name already exists');
+                return commonService.badRequest(res, `Payroll master '${req.body.pay_type_name}' already exists for branch ${branchId}`);
             }
         }
 
@@ -226,14 +246,16 @@ const updatePayrollMasterBulk = async (req, res) => {
                     continue;
                 }
 
-                // Check if another payroll master with the same name exists
+                // Check if another payroll master with the same name exists FOR THIS BRANCH
                 if (updateData.pay_type_name) {
+                    const branchId = updateData.branch_id || payrollMaster.branch_id;
                     const existingPayroll = await models.PayrollMaster.findOne({
                         where: {
                             id: { [Op.ne]: id },
                             pay_type_name: {
                                 [Op.iLike]: updateData.pay_type_name
-                            }
+                            },
+                            branch_id: branchId
                         }
                     });
 
@@ -242,7 +264,8 @@ const updatePayrollMasterBulk = async (req, res) => {
                             index: i,
                             id,
                             pay_type_name: updateData.pay_type_name,
-                            error: 'Another payroll master with this name already exists'
+                            branch_id: branchId,
+                            error: 'Payroll master with this name already exists for this branch'
                         });
                         continue;
                     }
