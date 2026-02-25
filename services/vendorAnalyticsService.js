@@ -812,16 +812,42 @@ const getVendorDashboard = async (req, res) => {
       ${branchFilter}
     `;
 
-        // 4. Vendor Sales Contribution
+        // 4. Vendor Sales Contribution (with Purchase & Sales data)
         const salesContributionQuery = `
       SELECT 
         v.id,
         v.vendor_name,
         v.vendor_code,
         v.vendor_image_url,
+        -- Purchase metrics (from GRN)
         COALESCE(SUM(CASE WHEN mt.material_type = 'Gold' THEN gi.gross_wt_in_g ELSE 0 END), 0) as gold_weight,
         COALESCE(SUM(CASE WHEN mt.material_type = 'Silver' THEN gi.gross_wt_in_g ELSE 0 END), 0) as silver_weight,
-        COALESCE(SUM(g.total_amount), 0) as total_value
+        COALESCE(SUM(gi.total_amount), 0) as total_purchase,
+        -- Sales metrics (from Sales Invoice Bills)
+        COALESCE(
+          (
+            SELECT SUM(sibi.amount)
+            FROM sales_invoice_bill_items sibi
+            JOIN products p ON p.id = sibi.product_id AND p.deleted_at IS NULL
+            JOIN sales_invoice_bills sib ON sib.id = sibi.invoice_bill_id AND sib.deleted_at IS NULL
+            WHERE p.vendor_id = v.id
+              AND sibi.deleted_at IS NULL
+              AND sib.status != 'Cancelled'
+          ), 0
+        ) as total_sales,
+        -- Payment metrics (from Vendor Payments - filtered by same date and branch criteria)
+        COALESCE(
+          (
+            SELECT SUM(vp.amount)
+            FROM vendor_payments vp
+            JOIN grns g2 ON g2.grn_no = vp.ref_id AND g2.deleted_at IS NULL
+            WHERE vp.deleted_at IS NULL
+              AND vp.status = 'Completed'
+              AND g2.vendor_id = v.id
+              ${dateFilter ? dateFilter.replace('g.grn_date', 'vp.payment_date') : ''}
+              ${branch_id ? 'AND vp.branch_id = :branch_id' : ''}
+          ), 0
+        ) as total_paid
       FROM vendors v
       LEFT JOIN grns g ON g.vendor_id = v.id 
         AND g.deleted_at IS NULL
@@ -831,8 +857,8 @@ const getVendorDashboard = async (req, res) => {
       WHERE v.deleted_at IS NULL
       ${branchFilter}
       GROUP BY v.id, v.vendor_name, v.vendor_code, v.vendor_image_url
-      HAVING COALESCE(SUM(g.total_amount), 0) > 0
-      ORDER BY total_value DESC
+      HAVING COALESCE(SUM(gi.total_amount), 0) > 0
+      ORDER BY total_purchase DESC
     `;
 
         // 5. Purchase by Material Type
@@ -890,15 +916,26 @@ const getVendorDashboard = async (req, res) => {
         const outstandingPayables = totalGrnAmount - totalPayments;
 
         // Format vendor sales contribution
-        const formattedVendors = salesContribution[0].map((vendor) => ({
-            id: vendor.id,
-            vendor_name: vendor.vendor_name,
-            vendor_code: vendor.vendor_code,
-            vendor_image_url: vendor.vendor_image_url,
-            gold: parseFloat(vendor.gold_weight).toFixed(2) + " g",
-            silver: parseFloat(vendor.silver_weight).toFixed(2) + " g",
-            total_value: parseFloat(vendor.total_value).toFixed(2),
-        }));
+        const formattedVendors = salesContribution[0].map((vendor) => {
+            const totalPurchase = parseFloat(vendor.total_purchase) || 0;
+            const totalSales = parseFloat(vendor.total_sales) || 0;
+            const totalPaid = parseFloat(vendor.total_paid) || 0;
+            const outstandingPayment = totalPurchase - totalPaid;
+            
+            return {
+                id: vendor.id,
+                vendor_name: vendor.vendor_name,
+                vendor_code: vendor.vendor_code,
+                vendor_image_url: vendor.vendor_image_url,
+                gold: parseFloat(vendor.gold_weight).toFixed(2) + " g",
+                silver: parseFloat(vendor.silver_weight).toFixed(2) + " g",
+                total_purchase: totalPurchase.toFixed(2),
+                total_sales: totalSales.toFixed(2),
+                total_paid: totalPaid.toFixed(2),
+                outstanding: outstandingPayment.toFixed(2),
+                profit_margin: totalSales > 0 ? ((totalSales - totalPurchase) / totalSales * 100).toFixed(2) : "0.00",
+            };
+        });
 
         // Format purchase by material with percentages
         const materials = purchaseByMaterial[0];
@@ -926,6 +963,8 @@ const getVendorDashboard = async (req, res) => {
             metrics: {
                 total_vendors: parseInt(totalVendorResult[0].total_vendors),
                 active_vendors: parseInt(activeVendorResult[0].active_vendors),
+                total_purchase: totalGrnAmount.toFixed(2),
+                total_paid: totalPayments.toFixed(2),
                 outstanding_payables: {
                     amount: outstandingPayables.toFixed(2),
                     total_grn_amount: totalGrnAmount.toFixed(2),
