@@ -863,7 +863,7 @@ const getOutOfStockSummary = async (req, res) => {
         0 AS quantity
       FROM subcategories sc
       LEFT JOIN products p ON p.subcategory_id = sc.id AND p.deleted_at IS NULL
-      LEFT JOIN branches b ON b.id = 81  ---Fixed branch for out of stock
+      LEFT JOIN branches b ON b.id = 1  ---Fixed branch for out of stock
       LEFT JOIN "materialTypes" mt ON mt.id = sc.materialtype_id
       LEFT JOIN categories c ON c.id = sc.category_id
       ${filterSql}
@@ -1274,7 +1274,7 @@ const getOutOfStockList = async (query, usePagination, limit, offset) => {
       0 AS quantity
     FROM subcategories sc
     LEFT JOIN products p ON p.subcategory_id = sc.id AND p.deleted_at IS NULL
-    LEFT JOIN branches b ON b.id = 81  ---Fixed branch for out of stock
+    LEFT JOIN branches b ON b.id = 1  ---Fixed branch for out of stock
     LEFT JOIN "materialTypes" mt ON mt.id = sc.materialtype_id
     LEFT JOIN categories c ON c.id = sc.category_id
     ${where}
