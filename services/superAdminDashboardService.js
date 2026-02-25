@@ -153,50 +153,67 @@ const getSuperAdminDashboard = async (req, res) => {
     const stockKpiRep = {};
     if (branch_id) stockKpiRep.sk_branch = branch_id;
 
-    const grnPurchaseQuery = `
-      SELECT
-        COUNT(g.id)::int                        AS grn_count,
-        COALESCE(SUM(g.total_amount), 0)        AS total_amount,
-        COALESCE(SUM(g.total_gross_wt_in_g), 0) AS total_weight
-      FROM grns g
-      WHERE g.deleted_at IS NULL
-    `;
+ const grnPurchaseQuery = `
+  SELECT
+    COALESCE(SUM(gi.total_amount), 0)      AS total_amount,
+    COALESCE(SUM(gi.quantity), 0)::int     AS total_quantity,
+    COALESCE(SUM(gi.net_wt_in_g), 0)       AS total_weight
+  FROM "grnItems" gi
+  JOIN grns g
+    ON g.id = gi.grn_id
+   AND g.deleted_at IS NULL
+  WHERE gi.deleted_at IS NULL
+  ${branch_id ? `AND g.branch_id = :sk_branch` : ``}
+`;
 
-    const totalStockQuery = `
-      SELECT
-        COALESCE(SUM(pid.quantity), 0)                  AS total_quantity,
-        COALESCE(SUM(pid.quantity * pid.net_weight), 0) AS total_weight
-      FROM products p
-      JOIN "productItemDetails" pid
-        ON pid.product_id = p.id
-        AND pid.deleted_at IS NULL
-        AND pid.quantity > 0
-      WHERE p.deleted_at IS NULL
-        AND p.status = 'Active'
-        ${branch_id ? `AND p.branch_id = :sk_branch` : ""}
-    `;
+const totalStockQuery = `
+  SELECT
+    COALESCE(SUM(pid.quantity),0)::int AS total_quantity,
+    COALESCE(SUM(pid.quantity * pid.net_weight),0) AS total_weight,
+    COALESCE(SUM(
+      pid.quantity * (
+        (COALESCE(pid.rate_per_gram,0) * COALESCE(pid.net_weight,0)) +
+        COALESCE(pid.making_charge,0) +
+        COALESCE(pid.wastage,0) +
+        COALESCE(pid.stone_value,0)
+      )
+    ),0) AS total_amount
+  FROM products p
+  JOIN "productItemDetails" pid
+    ON pid.product_id = p.id
+   AND pid.deleted_at IS NULL
+   AND pid.quantity > 0
+  WHERE p.deleted_at IS NULL
+    AND p.status = 'Active'
+    ${branch_id ? `AND p.branch_id = :sk_branch` : ``}
+`;
+const grnUpdatedQuery = `
+  SELECT
+    COALESCE(SUM(gi.total_amount), 0)      AS total_amount,
+    COALESCE(SUM(gi.quantity), 0)::int     AS total_quantity,
+    COALESCE(SUM(gi.net_wt_in_g), 0)       AS total_weight
+  FROM grns g
+  JOIN "grnItems" gi
+    ON gi.grn_id = g.id
+   AND gi.deleted_at IS NULL
+  WHERE g.deleted_at IS NULL
+    AND g.status_id = 2
+  ${branch_id ? `AND g.branch_id = :sk_branch` : ``}
+`;
 
-    const grnUpdatedQuery = `
-      SELECT
-        COUNT(g.id)::int                        AS grn_count,
-        COALESCE(SUM(gi.quantity), 0)::int      AS total_quantity,
-        COALESCE(SUM(g.total_gross_wt_in_g), 0) AS total_weight
-      FROM grns g
-      LEFT JOIN "grnItems" gi ON gi.grn_id = g.id AND gi.deleted_at IS NULL
-      WHERE g.deleted_at IS NULL
-        AND g.status_id = 2
-    `;
-
-    const grnPendingQuery = `
-      SELECT
-        COUNT(g.id)::int                        AS grn_count,
-        COALESCE(SUM(gi.quantity), 0)::int      AS total_quantity,
-        COALESCE(SUM(g.total_gross_wt_in_g), 0) AS total_weight
-      FROM grns g
-      LEFT JOIN "grnItems" gi ON gi.grn_id = g.id AND gi.deleted_at IS NULL
-      WHERE g.deleted_at IS NULL
-        AND g.status_id = 1
-    `;
+const grnPendingQuery = `
+  SELECT
+    COALESCE(SUM(gi.total_amount), 0)      AS total_amount,
+    COALESCE(SUM(gi.quantity), 0)::int     AS total_quantity,
+    COALESCE(SUM(gi.net_wt_in_g), 0)       AS total_weight
+  FROM grns g
+  JOIN "grnItems" gi
+    ON gi.grn_id = g.id
+   AND gi.deleted_at IS NULL
+  WHERE g.deleted_at IS NULL
+    AND g.status_id = 1
+  ${branch_id ? `AND g.branch_id = :sk_branch` : ``}
+`;
 
     // ============================================================
     // 3. STATISTICS – (OPTIONAL) You may want to match sales-report here too:
@@ -689,25 +706,26 @@ const profitKpiQuery = `
       },
 
       stock_kpi: {
-        total_purchase: {
-          grn_count: int(grnPurchaseResult?.grn_count),
-          total_amount: money(grnPurchaseResult?.total_amount),
-          total_weight: Number(Number(grnPurchaseResult?.total_weight || 0).toFixed(3)),
-        },
-        total_stock: {
-          total_quantity: int(totalStockResult?.total_quantity),
-          total_weight: Number(Number(totalStockResult?.total_weight || 0).toFixed(3)),
-        },
-        updated: {
-          grn_count: int(grnUpdatedResult?.grn_count),
-          total_quantity: int(grnUpdatedResult?.total_quantity),
-          total_weight: Number(Number(grnUpdatedResult?.total_weight || 0).toFixed(3)),
-        },
-        yet_to_update: {
-          grn_count: int(grnPendingResult?.grn_count),
-          total_quantity: int(grnPendingResult?.total_quantity),
-          total_weight: Number(Number(grnPendingResult?.total_weight || 0).toFixed(3)),
-        },
+     total_purchase: {
+  total_amount: money(grnPurchaseResult?.total_amount),
+  total_quantity: int(grnPurchaseResult?.total_quantity),
+  total_weight: Number(Number(grnPurchaseResult?.total_weight || 0).toFixed(3)),
+},
+total_stock: {
+  total_amount: money(totalStockResult?.total_amount),   // ✅ must exist
+  total_quantity: int(totalStockResult?.total_quantity),
+  total_weight: Number(Number(totalStockResult?.total_weight || 0).toFixed(3)),
+},
+       updated: {
+  total_amount: money(grnUpdatedResult?.total_amount),
+  total_quantity: int(grnUpdatedResult?.total_quantity),
+  total_weight: Number(Number(grnUpdatedResult?.total_weight || 0).toFixed(3)),
+},
+yet_to_update: {
+  total_amount: money(grnPendingResult?.total_amount),
+  total_quantity: int(grnPendingResult?.total_quantity),
+  total_weight: Number(Number(grnPendingResult?.total_weight || 0).toFixed(3)),
+},
       },
 
       statistics: (statisticsResult || []).map((r) => ({
