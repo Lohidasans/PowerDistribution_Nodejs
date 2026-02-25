@@ -28,6 +28,11 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.INTEGER,
         allowNull: false,
       },
+      branch_id: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 1, // Default to HO branch
+      },
       order_by_user_id: {
         type: DataTypes.INTEGER, // User who created/approved
         allowNull: true,
