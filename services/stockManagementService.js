@@ -387,7 +387,7 @@ const getStockAgeingReport = async (req, res) => {
         b.branch_name,
 
         SUM(pid.quantity) AS quantity,
-        SUM(pid.quantity * pid.net_weight) AS total_weight,
+        SUM(pid.quantity * pid.gross_weight) AS total_weight,
         (CURRENT_DATE - p.created_at::date) AS age_days,
 
         JSON_AGG(
@@ -396,7 +396,8 @@ const getStockAgeingReport = async (req, res) => {
             'product_id', pid.product_id,
             'sku_id', p.sku_id,
             'quantity', pid.quantity,
-            'net_weight', pid.net_weight
+            'net_weight', pid.net_weight,
+            'gross_weight', pid.gross_weight
             ) ORDER BY pid.id
         ) AS itemDetails
 
