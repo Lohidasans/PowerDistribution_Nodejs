@@ -81,69 +81,71 @@ const getSuperAdminDashboard = async (req, res) => {
     const int = (v) => Number(v || 0);
 
     // ============================================================
-    // 1. SALES KPI – FIXED (No double count)
-    //    IMPORTANT FIX:
-    //    - We DO NOT join items directly and then SUM bill columns
-    //    - We filter bills in a CTE, aggregate items per bill, then SUM safely
+    // 1. SALES KPI – FIXED (No double count) + MATCH SALES-REPORT RULES
+    //    - status = 'Invoice'
+    //    - date uses created_at (same as sales-report config)
     // ============================================================
-const buildSalesKPI = (labelPeriod, rep) => {
-  // build same period logic
-  const today = new Date();
-  const yyyy = today.getFullYear();
-  const mm = String(today.getMonth() + 1).padStart(2, "0");
-  const dd = String(today.getDate()).padStart(2, "0");
-  const todayStr = `${yyyy}-${mm}-${dd}`;
-  const fyStart = (today.getMonth() + 1) >= 4 ? `${yyyy}-04-01` : `${yyyy - 1}-04-01`;
+    const buildSalesKPI = (labelPeriod, rep) => {
+      const today = new Date();
+      const yyyy = today.getFullYear();
+      const mm = String(today.getMonth() + 1).padStart(2, "0");
+      const dd = String(today.getDate()).padStart(2, "0");
+      const todayStr = `${yyyy}-${mm}-${dd}`;
+      const fyStart =
+        today.getMonth() + 1 >= 4 ? `${yyyy}-04-01` : `${yyyy - 1}-04-01`;
 
-  let dateClause = "";
-  if (labelPeriod === "today") {
-    rep.s_from = todayStr; rep.s_to = todayStr;
-    dateClause = `AND DATE(sib.created_at) BETWEEN :s_from AND :s_to`;
-  } else if (labelPeriod === "month") {
-    rep.s_from = `${yyyy}-${mm}-01`; rep.s_to = todayStr;
-    dateClause = `AND DATE(sib.created_at) BETWEEN :s_from AND :s_to`;
-  } else if (labelPeriod === "ytd") {
-    rep.s_from = fyStart; rep.s_to = todayStr;
-    dateClause = `AND DATE(sib.created_at) BETWEEN :s_from AND :s_to`;
-  }
-  // total => no date clause
+      let dateClause = "";
+      if (labelPeriod === "today") {
+        rep.s_from = todayStr;
+        rep.s_to = todayStr;
+        dateClause = `AND DATE(sib.created_at) BETWEEN :s_from AND :s_to`;
+      } else if (labelPeriod === "month") {
+        rep.s_from = `${yyyy}-${mm}-01`;
+        rep.s_to = todayStr;
+        dateClause = `AND DATE(sib.created_at) BETWEEN :s_from AND :s_to`;
+      } else if (labelPeriod === "ytd") {
+        rep.s_from = fyStart;
+        rep.s_to = todayStr;
+        dateClause = `AND DATE(sib.created_at) BETWEEN :s_from AND :s_to`;
+      }
+      // total => no date clause
 
-  let branchClause = "";
-  if (branch_id) {
-    rep.s_branch = branch_id;
-    branchClause = `AND sib.branch_id = :s_branch`;
-  }
+      let branchClause = "";
+      if (branch_id) {
+        rep.s_branch = branch_id;
+        branchClause = `AND sib.branch_id = :s_branch`;
+      }
 
-  return `
-    WITH bills AS (
-      SELECT sib.id, sib.net_total, sib.total_amount
-      FROM sales_invoice_bills sib
-      WHERE sib.deleted_at IS NULL
-        AND sib.status = 'Invoice'     -- ✅ match sales-report
-        ${dateClause}                 -- ✅ uses created_at
-        ${branchClause}
-    ),
-    items AS (
-      SELECT
-        i.invoice_bill_id,
-        COALESCE(SUM(i.quantity), 0)     AS total_quantity,
-        COALESCE(SUM(i.gross_weight), 0) AS total_gross_weight,
-        COALESCE(SUM(i.net_weight), 0)   AS total_net_weight
-      FROM sales_invoice_bill_items i
-      WHERE i.deleted_at IS NULL
-      GROUP BY i.invoice_bill_id
-    )
-    SELECT
-      COUNT(b.id)::int                      AS bill_count,
-      COALESCE(SUM(it.total_quantity), 0)   AS total_quantity,
-      COALESCE(SUM(it.total_gross_weight), 0) AS total_gross_weight,
-      COALESCE(SUM(it.total_net_weight), 0)   AS total_net_weight,
-      COALESCE(SUM(b.net_total), 0)         AS net_total,
-      COALESCE(SUM(b.total_amount), 0)      AS total_amount
-    FROM bills b
-    LEFT JOIN items it ON it.invoice_bill_id = b.id
-  `;
-};
+      return `
+        WITH bills AS (
+          SELECT sib.id, sib.net_total, sib.total_amount
+          FROM sales_invoice_bills sib
+          WHERE sib.deleted_at IS NULL
+            AND sib.status = 'Invoice'
+            ${dateClause}
+            ${branchClause}
+        ),
+        items AS (
+          SELECT
+            i.invoice_bill_id,
+            COALESCE(SUM(i.quantity), 0)      AS total_quantity,
+            COALESCE(SUM(i.gross_weight), 0)  AS total_gross_weight,
+            COALESCE(SUM(i.net_weight), 0)    AS total_net_weight
+          FROM sales_invoice_bill_items i
+          WHERE i.deleted_at IS NULL
+          GROUP BY i.invoice_bill_id
+        )
+        SELECT
+          COUNT(b.id)::int                                  AS bill_count,
+          COALESCE(SUM(it.total_quantity), 0)               AS total_quantity,
+          COALESCE(SUM(it.total_gross_weight), 0)           AS total_gross_weight,
+          COALESCE(SUM(it.total_net_weight), 0)             AS total_net_weight,
+          COALESCE(SUM(b.net_total), 0)                     AS net_total,
+          COALESCE(SUM(b.total_amount), 0)                  AS total_amount
+        FROM bills b
+        LEFT JOIN items it ON it.invoice_bill_id = b.id
+      `;
+    };
 
     // ============================================================
     // 2. STOCK KPI
@@ -151,7 +153,6 @@ const buildSalesKPI = (labelPeriod, rep) => {
     const stockKpiRep = {};
     if (branch_id) stockKpiRep.sk_branch = branch_id;
 
-    // GRN total purchase
     const grnPurchaseQuery = `
       SELECT
         COUNT(g.id)::int                        AS grn_count,
@@ -161,7 +162,6 @@ const buildSalesKPI = (labelPeriod, rep) => {
       WHERE g.deleted_at IS NULL
     `;
 
-    // Total stock in hand (products with qty > 0)
     const totalStockQuery = `
       SELECT
         COALESCE(SUM(pid.quantity), 0)                  AS total_quantity,
@@ -176,7 +176,6 @@ const buildSalesKPI = (labelPeriod, rep) => {
         ${branch_id ? `AND p.branch_id = :sk_branch` : ""}
     `;
 
-    // GRN Updated (status_id = 2)
     const grnUpdatedQuery = `
       SELECT
         COUNT(g.id)::int                        AS grn_count,
@@ -188,7 +187,6 @@ const buildSalesKPI = (labelPeriod, rep) => {
         AND g.status_id = 2
     `;
 
-    // GRN Yet to Update (status_id = 1)
     const grnPendingQuery = `
       SELECT
         COUNT(g.id)::int                        AS grn_count,
@@ -201,23 +199,25 @@ const buildSalesKPI = (labelPeriod, rep) => {
     `;
 
     // ============================================================
-    // 3. STATISTICS – Sales / Purchase / Profit based on statistics_period
+    // 3. STATISTICS – (OPTIONAL) You may want to match sales-report here too:
+    //    If you want: use created_at + status='Invoice'
+    //    For now keeping your existing logic (invoice_date + not in Draft/Cancelled)
     // ============================================================
     const statsRep = {};
     const statsBranch = branch_id ? `AND sib.branch_id = :stat_branch` : "";
     if (branch_id) statsRep.stat_branch = branch_id;
 
-    let monthsInterval = 11; // Default: 12 months
+    let monthsInterval = 11;
     let dateFormat = "YYYY-MM";
 
     if (statistics_period === "monthly") {
-      monthsInterval = 0; // Current month only
+      monthsInterval = 0;
       dateFormat = "YYYY-MM-DD";
     } else if (statistics_period === "half_yearly") {
-      monthsInterval = 5; // 6 months
+      monthsInterval = 5;
       dateFormat = "YYYY-MM";
     } else if (statistics_period === "yearly" || statistics_period === "year") {
-      monthsInterval = 11; // 12 months
+      monthsInterval = 11;
       dateFormat = "YYYY-MM";
     }
 
@@ -264,7 +264,7 @@ const buildSalesKPI = (labelPeriod, rep) => {
     `;
 
     // ============================================================
-    // 4. PROFIT KPI – Only fully sold-out products
+    // 4. PROFIT KPI – unchanged
     // ============================================================
     const profitRep = {};
     const profitBranch = branch_id ? `AND sib.branch_id = :profit_branch` : "";
@@ -321,29 +321,45 @@ const buildSalesKPI = (labelPeriod, rep) => {
     `;
 
     // ============================================================
-    // 5. AMOUNT COLLECTION – Pie chart (payments)
+    // 5. AMOUNT COLLECTION – UPDATED (REFUND DEDUCT like branch-wise-report)
+    //    - deduct SUM(DISTINCT sib.refund_amount) from cash + total
     // ============================================================
     const collRep = {};
-    const collDateCond = buildDateCondition(
-      dateOpts,
-      "p.payment_date",
-      collRep,
-      "_coll"
-    );
+    const collDateCond = buildDateCondition(dateOpts, "p.payment_date", collRep, "_coll");
     const collBranch = branch_id
       ? `AND COALESCE(sib.branch_id, jr.branch_id) = :coll_branch`
       : "";
     if (branch_id) collRep.coll_branch = branch_id;
 
     const amountCollectionQuery = `
+      WITH refund_sum AS (
+        SELECT
+          COALESCE(SUM(DISTINCT sib_inner.refund_amount), 0) AS refund_amount
+        FROM payments p_inner
+        LEFT JOIN sales_invoice_bills sib_inner
+          ON sib_inner.id = p_inner.invoice_bill_id
+          AND sib_inner.deleted_at IS NULL
+        LEFT JOIN jewel_repairs jr_inner
+          ON jr_inner.id = p_inner.jewel_repair_id
+          AND jr_inner.deleted_at IS NULL
+        WHERE p_inner.deleted_at IS NULL
+          AND p_inner.status = 'Completed'
+          AND sib_inner.id IS NOT NULL
+          ${collDateCond.replace(/p\./g, "p_inner.")}
+          ${collBranch
+            .replace(/sib\./g, "sib_inner.")
+            .replace(/jr\./g, "jr_inner.")}
+      )
       SELECT
-        COALESCE(SUM(CASE WHEN p.payment_mode = 'Cash'          THEN p.amount_received ELSE 0 END), 0) AS cash,
+        COALESCE(SUM(CASE WHEN p.payment_mode = 'Cash'          THEN p.amount_received ELSE 0 END), 0)
+          - (SELECT refund_amount FROM refund_sum) AS cash,
         COALESCE(SUM(CASE WHEN p.payment_mode = 'UPI'           THEN p.amount_received ELSE 0 END), 0) AS upi,
         COALESCE(SUM(CASE WHEN p.payment_mode = 'Card'          THEN p.amount_received ELSE 0 END), 0) AS card,
         COALESCE(SUM(CASE WHEN p.payment_mode = 'Bank Transfer' THEN p.amount_received ELSE 0 END), 0) AS bank_transfer,
         COALESCE(SUM(CASE WHEN p.payment_mode = 'Cheque'        THEN p.amount_received ELSE 0 END), 0) AS cheque,
         COALESCE(SUM(CASE WHEN p.payment_mode = 'Other'         THEN p.amount_received ELSE 0 END), 0) AS other,
-        COALESCE(SUM(p.amount_received), 0)                                                             AS total
+        COALESCE(SUM(p.amount_received), 0)
+          - (SELECT refund_amount FROM refund_sum) AS total
       FROM payments p
       LEFT JOIN sales_invoice_bills sib
         ON sib.id = p.invoice_bill_id AND sib.deleted_at IS NULL
@@ -391,9 +407,9 @@ const buildSalesKPI = (labelPeriod, rep) => {
 
     const oldJewelQuery = `
       SELECT
-        COUNT(DISTINCT oj.id)::int       AS bill_count,
-        COUNT(oji.id)::int               AS total_quantity,
-        COALESCE(SUM(oji.net_weight), 0) AS total_weight,
+        COUNT(DISTINCT oj.id)::int        AS bill_count,
+        COUNT(oji.id)::int                AS total_quantity,
+        COALESCE(SUM(oji.net_weight), 0)  AS total_weight,
         COALESCE(SUM(oj.total_amount), 0) AS total_amount
       FROM old_jewels oj
       LEFT JOIN old_jewel_items oji
@@ -630,61 +646,42 @@ const buildSalesKPI = (labelPeriod, rep) => {
         today: {
           bill_count: int(todayResult?.bill_count),
           total_quantity: int(todayResult?.total_quantity),
-          total_gross_weight: Number(
-            Number(todayResult?.total_gross_weight || 0).toFixed(3)
-          ),
-          total_net_weight: Number(
-            Number(todayResult?.total_net_weight || 0).toFixed(3)
-          ),
+          total_gross_weight: Number(Number(todayResult?.total_gross_weight || 0).toFixed(3)),
+          total_net_weight: Number(Number(todayResult?.total_net_weight || 0).toFixed(3)),
           net_total: money(todayResult?.net_total),
           total_amount: money(todayResult?.total_amount),
         },
         this_month: {
           bill_count: int(monthResult?.bill_count),
           total_quantity: int(monthResult?.total_quantity),
-          total_gross_weight: Number(
-            Number(monthResult?.total_gross_weight || 0).toFixed(3)
-          ),
-          total_net_weight: Number(
-            Number(monthResult?.total_net_weight || 0).toFixed(3)
-          ),
+          total_gross_weight: Number(Number(monthResult?.total_gross_weight || 0).toFixed(3)),
+          total_net_weight: Number(Number(monthResult?.total_net_weight || 0).toFixed(3)),
           net_total: money(monthResult?.net_total),
           total_amount: money(monthResult?.total_amount),
         },
         ytd: {
           bill_count: int(ytdResult?.bill_count),
           total_quantity: int(ytdResult?.total_quantity),
-          total_gross_weight: Number(
-            Number(ytdResult?.total_gross_weight || 0).toFixed(3)
-          ),
-          total_net_weight: Number(
-            Number(ytdResult?.total_net_weight || 0).toFixed(3)
-          ),
+          total_gross_weight: Number(Number(ytdResult?.total_gross_weight || 0).toFixed(3)),
+          total_net_weight: Number(Number(ytdResult?.total_net_weight || 0).toFixed(3)),
           net_total: money(ytdResult?.net_total),
           total_amount: money(ytdResult?.total_amount),
         },
         total: {
           bill_count: int(totalResult?.bill_count),
           total_quantity: int(totalResult?.total_quantity),
-          total_gross_weight: Number(
-            Number(totalResult?.total_gross_weight || 0).toFixed(3)
-          ),
-          total_net_weight: Number(
-            Number(totalResult?.total_net_weight || 0).toFixed(3)
-          ),
+          total_gross_weight: Number(Number(totalResult?.total_gross_weight || 0).toFixed(3)),
+          total_net_weight: Number(Number(totalResult?.total_net_weight || 0).toFixed(3)),
           net_total: money(totalResult?.net_total),
           total_amount: money(totalResult?.total_amount),
         },
       },
 
-      // ── Stock KPI ──────────────────────────────────────────
       stock_kpi: {
         total_purchase: {
           grn_count: int(grnPurchaseResult?.grn_count),
           total_amount: money(grnPurchaseResult?.total_amount),
-          total_weight: Number(
-            Number(grnPurchaseResult?.total_weight || 0).toFixed(3)
-          ),
+          total_weight: Number(Number(grnPurchaseResult?.total_weight || 0).toFixed(3)),
         },
         total_stock: {
           total_quantity: int(totalStockResult?.total_quantity),
@@ -693,20 +690,15 @@ const buildSalesKPI = (labelPeriod, rep) => {
         updated: {
           grn_count: int(grnUpdatedResult?.grn_count),
           total_quantity: int(grnUpdatedResult?.total_quantity),
-          total_weight: Number(
-            Number(grnUpdatedResult?.total_weight || 0).toFixed(3)
-          ),
+          total_weight: Number(Number(grnUpdatedResult?.total_weight || 0).toFixed(3)),
         },
         yet_to_update: {
           grn_count: int(grnPendingResult?.grn_count),
           total_quantity: int(grnPendingResult?.total_quantity),
-          total_weight: Number(
-            Number(grnPendingResult?.total_weight || 0).toFixed(3)
-          ),
+          total_weight: Number(Number(grnPendingResult?.total_weight || 0).toFixed(3)),
         },
       },
 
-      // ── Statistics (bar chart) ──────────────────────────────
       statistics: (statisticsResult || []).map((r) => ({
         month_key: r.month_key,
         month_label: r.month_label,
@@ -715,14 +707,13 @@ const buildSalesKPI = (labelPeriod, rep) => {
         profit: money(r.profit),
       })),
 
-      // ── Profit KPI ─────────────────────────────────────────
       profit_kpi: {
         total_sales: money(profitResult?.total_sales),
         total_purchase: money(profitResult?.total_purchase),
         total_profit: money(profitResult?.total_profit),
       },
 
-      // ── Amount Collection ───────────────────────────────────
+      // refund deducted
       amount_collection: {
         cash: money(collectionResult?.cash),
         upi: money(collectionResult?.upi),
@@ -733,14 +724,11 @@ const buildSalesKPI = (labelPeriod, rep) => {
         total: money(collectionResult?.total),
       },
 
-      // ── Jewel Activity KPI ─────────────────────────────────
       jewel_activity: {
         sales_return: {
           bill_count: int(srResult?.bill_count),
           total_quantity: int(srResult?.total_quantity),
-          total_gross_weight: Number(
-            Number(srResult?.total_gross_weight || 0).toFixed(3)
-          ),
+          total_gross_weight: Number(Number(srResult?.total_gross_weight || 0).toFixed(3)),
           total_net_weight: Number(Number(srResult?.total_net_weight || 0).toFixed(3)),
           total_amount: money(srResult?.total_amount),
         },
@@ -762,14 +750,12 @@ const buildSalesKPI = (labelPeriod, rep) => {
         },
       },
 
-      // ── Vendor Overview ────────────────────────────────────
       vendor_overview: {
         total_purchase: totalPurchase,
         total_paid: totalPaid,
         outstanding_payable: money(totalPurchase - totalPaid),
       },
 
-      // ── Purchase vs Sales (vendor-wise chart) ─────────────
       purchase_vs_sales: (purchaseVsSalesResult || []).map((r) => ({
         vendor_id: r.vendor_id,
         vendor_name: r.vendor_name,
