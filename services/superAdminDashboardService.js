@@ -859,41 +859,58 @@ const getSalesSummary = async (req, res) => {
 
 const getProfitKPISummary = async (req, res) => {
   try {
-    const { branch_id, from_date, to_date, date_filter } = req.query;
+    const {
+      branch_id,      // OPTIONAL now
+      from_date,
+      to_date,
+      date_filter
+    } = req.query;
 
-    if (!branch_id) {
-      return res.status(400).json({ message: "branch_id is required" });
-    }
+    const replacements = {};
 
-    const replacements = { branch_id };
-
+    // Date condition (shared)
     const dateCondition = dateFilter(
       { from_date, to_date, date_filter },
       "sib.invoice_date",
       replacements
     );
 
+    // Optional branch condition
+    let branchCondition = "";
+    if (branch_id) {
+      branchCondition = " AND sib.branch_id = :branch_id";
+      replacements.branch_id = branch_id;
+    }
+
     const query = `
       SELECT
+        /* TOTAL SALES */
         COALESCE((
             SELECT SUM(sib.subtotal_amount)
             FROM sales_invoice_bills sib
             WHERE sib.status = 'Invoice'
               AND sib.deleted_at IS NULL
-              AND sib.branch_id = :branch_id
+              ${branchCondition}
               ${dateCondition}
         ), 0) AS total_sales,
 
+        /* TOTAL PURCHASE (ONLY SOLD ITEMS, WITH QUANTITY) */
         COALESCE((
             SELECT SUM(
                 COALESCE(gi.rate_per_g, 0)
                 * COALESCE(pid.net_weight, 0)
+                * COALESCE(sibi.quantity, 1)
             )
             FROM sales_invoice_bill_items sibi
-            INNER JOIN sales_invoice_bills sib ON sib.id = sibi.invoice_bill_id
-            INNER JOIN products p ON p.id = sibi.product_id
-            INNER JOIN "grnItems" gi ON gi.grn_id = p.grn_id AND gi.id = p.ref_no_id
-            INNER JOIN "productItemDetails" pid ON pid.id = sibi.product_item_detail_id
+            INNER JOIN sales_invoice_bills sib
+                ON sib.id = sibi.invoice_bill_id
+            INNER JOIN products p
+                ON p.id = sibi.product_id
+            INNER JOIN "grnItems" gi
+                ON gi.grn_id = p.grn_id
+               AND gi.id = p.ref_no_id
+            INNER JOIN "productItemDetails" pid
+                ON pid.id = sibi.product_item_detail_id
             WHERE sib.status = 'Invoice'
               AND sib.deleted_at IS NULL
               AND sibi.deleted_at IS NULL
@@ -901,7 +918,7 @@ const getProfitKPISummary = async (req, res) => {
               AND gi.deleted_at IS NULL
               AND pid.deleted_at IS NULL
               AND sibi.is_returned = false
-              AND sib.branch_id = :branch_id
+              ${branchCondition}
               ${dateCondition}
         ), 0) AS total_purchase
     `;
@@ -923,9 +940,11 @@ const getProfitKPISummary = async (req, res) => {
       }
     });
 
-  } catch (err) {
-    console.error("Profit KPI Error:", err);
-    return res.status(500).json({ message: "Internal server error" });
+  } catch (error) {
+    console.error("Profit KPI Error:", error);
+    return res.status(500).json({
+      message: "Internal server error"
+    });
   }
 };
 
