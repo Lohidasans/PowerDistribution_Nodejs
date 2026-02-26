@@ -23,6 +23,9 @@ const generateStockCode = async (req, res) => {
 
 //BASIC REQUEST VALIDATION
 const validateRequiredFields = async (req, transaction) => {
+  console.log('[validateRequiredFields] Starting validation');
+  console.log('[validateRequiredFields] Request body:', JSON.stringify(req.body, null, 2));
+  
   const requiredFields = [
     "transfer_no",
     "date",
@@ -34,26 +37,37 @@ const validateRequiredFields = async (req, transaction) => {
 
   for (const field of requiredFields) {
     if (!req.body[field]) {
+      console.log(`[validateRequiredFields] Missing field: ${field}`);
       throw new Error(`${field} is required`);
     }
   }
+  
+  console.log('[validateRequiredFields] All required fields present');
 };
 
 //UNIQUE TRANSFER NO
 const validateUniqueTransferNo = async (transfer_no, transaction) => {
+  console.log('[validateUniqueTransferNo] Checking transfer_no:', transfer_no);
+  
   const existing = await models.StockTransfer.findOne({
     where: { transfer_no, deleted_at: null },
     transaction,
   });
 
   if (existing) {
+    console.log('[validateUniqueTransferNo] Duplicate found:', existing.id);
     throw new Error("Stock Transfer code already exists");
   }
+  
+  console.log('[validateUniqueTransferNo] Transfer number is unique');
 };
 
 //BRANCH VALIDATION
 const validateBranches = async (branch_from, branch_to, transaction) => {
+  console.log('[validateBranches] Validating branches - from:', branch_from, 'to:', branch_to);
+  
   if (branch_from === branch_to) {
+    console.log('[validateBranches] Same branch error');
     throw new Error("Source and destination branch cannot be the same");
   }
 
@@ -67,15 +81,20 @@ const validateBranches = async (branch_from, branch_to, transaction) => {
     transaction,
   });
 
+  console.log('[validateBranches] Found branches:', branches.map(b => b.id));
   const ids = branches.map(b => b.id);
 
   if (!ids.includes(branch_from)) {
+    console.log('[validateBranches] Invalid branch_from:', branch_from);
     throw new Error("Invalid branch_from Id");
   }
 
   if (!ids.includes(branch_to)) {
+    console.log('[validateBranches] Invalid branch_to:', branch_to);
     throw new Error("Invalid branch_to Id");
   }
+  
+  console.log('[validateBranches] Branch validation successful');
 };
 
 // PRODUCT & ITEM DETAIL VALIDATION
@@ -85,6 +104,9 @@ const validateProductsAndItemDetails = async (
   itemDetailIds,
   transaction
 ) => {
+  console.log('[validateProductsAndItemDetails] Validating products:', productIds);
+  console.log('[validateProductsAndItemDetails] Validating item details:', itemDetailIds);
+  
   // Products
   const products = await models.Product.findAll({
     where: { id: { [Op.in]: productIds }, deleted_at: null },
@@ -93,10 +115,12 @@ const validateProductsAndItemDetails = async (
     transaction,
   });
 
+  console.log('[validateProductsAndItemDetails] Found products:', products.map(p => p.id));
   const validProductIds = products.map(p => p.id);
   const invalidProduct = items.find(i => !validProductIds.includes(i.product_id));
 
   if (invalidProduct) {
+    console.log('[validateProductsAndItemDetails] Invalid product found:', invalidProduct.product_id);
     await transaction.rollback();
     throw new Error(`Invalid product_id: ${invalidProduct.product_id}`);
   }
@@ -109,6 +133,7 @@ const validateProductsAndItemDetails = async (
     transaction,
   });
 
+  console.log('[validateProductsAndItemDetails] Found item details:', itemDetails.length);
   const itemDetailMap = Object.fromEntries(
     itemDetails.map(d => [d.id, d.product_id])
   );
@@ -118,6 +143,7 @@ const validateProductsAndItemDetails = async (
   );
 
   if (invalidDetail) {
+    console.log('[validateProductsAndItemDetails] Invalid item detail:', invalidDetail.product_item_detail_id);
     await transaction.rollback();
     throw new Error(
       `Invalid product_item_detail_id : ${invalidDetail.product_item_detail_id }`
@@ -129,23 +155,33 @@ const validateProductsAndItemDetails = async (
   );
 
   if (mismatch) {
+    console.log('[validateProductsAndItemDetails] Product-item mismatch:', mismatch);
     await transaction.rollback();
     throw new Error(
       `Product item detail ID ${mismatch.product_item_detail_id } does not belong to product_id ${mismatch.product_id}`
     );
   }
+  
+  console.log('[validateProductsAndItemDetails] All products and items validated successfully');
 };
 
 //ITEM STRUCTURE VALIDATION
 const validateItemsPayload = async (items, transaction) => {
+  console.log('[validateItemsPayload] Validating items count:', items.length);
+  
   if (!items.length) {
+    console.log('[validateItemsPayload] No items provided');
     throw new Error("At least one item is required");
   }
 
   const productIds = [...new Set(items.map(i => i.product_id).filter(Boolean))];
   const itemDetailIds = [...new Set(items.map(i => i.product_item_detail_id).filter(Boolean))];
 
+  console.log('[validateItemsPayload] Unique product IDs:', productIds);
+  console.log('[validateItemsPayload] Unique item detail IDs:', itemDetailIds);
+  
   if (!productIds.length || !itemDetailIds.length) {
+    console.log('[validateItemsPayload] Missing product_id or item_detail_id');
     throw new Error("product_id and product_item_detail_id are required in items");
   }
 
@@ -156,39 +192,51 @@ const validateItemsPayload = async (items, transaction) => {
 const createStockTransfer = async (req, res) => {
   const transaction = await sequelize.transaction();
   try {
+    console.log('========== CREATE STOCK TRANSFER START ==========');
     const { items = [], remarks, created_by, ...transferData } = req.body;
     const { transfer_no, branch_from, branch_to } = transferData;
 
+    console.log('[createStockTransfer] Transfer data:', { transfer_no, branch_from, branch_to, items_count: items.length });
+    
     await validateRequiredFields(req);
     await validateUniqueTransferNo(transfer_no, transaction);
     await validateBranches(branch_from, branch_to, transaction);
     const { productIds, itemDetailIds } = await validateItemsPayload(items);
     await validateProductsAndItemDetails(items, productIds, itemDetailIds, transaction);
+    
+    console.log('[createStockTransfer] All validations passed');
 
     // Group by product
     const grouped = {};
     for (const i of items) (grouped[i.product_id] ||= []).push(i);
+    console.log('[createStockTransfer] Grouped items by product:', Object.keys(grouped));
 
     const stockTransfer = await models.StockTransfer.create(
       { ...transferData, created_by, remarks, status_id: 1 },
       { transaction }
     );
+    console.log('[createStockTransfer] Stock transfer created with ID:', stockTransfer.id);
 
     // sourceItemId → destination ids
     const transferMap = {};
 
     for (const productId of Object.keys(grouped)) {
       const rows = grouped[productId];
+      console.log(`[createStockTransfer] Processing product ID: ${productId} with ${rows.length} items`);
 
       const sourceProduct = await models.Product.findByPk(productId, { transaction });
+      console.log(`[createStockTransfer] Source product found:`, sourceProduct.product_name);
+      
       const additionals = await models.ProductAdditionalDetail.findAll({ where: { product_id: productId }, transaction });
       const variants = await models.ProductVariant.findAll({ where: { product_id: productId }, transaction });
+      console.log(`[createStockTransfer] Found ${additionals.length} additionals, ${variants.length} variants`);
 
       let destinationProduct = null;
       const newItemPayloads = [];
 
       for (const row of rows) {
         const { product_item_detail_id, transfer_quantity } = row;
+        console.log(`[createStockTransfer] Processing item ${product_item_detail_id}, qty: ${transfer_quantity}`);
 
         const sourceItem = await models.ProductItemDetail.findOne({
           where: {
@@ -199,9 +247,15 @@ const createStockTransfer = async (req, res) => {
           transaction
         });
 
-        if (!sourceItem) throw new Error("Insufficient stock for item " + product_item_detail_id);
+        if (!sourceItem) {
+          console.log(`[createStockTransfer] Insufficient stock for item ${product_item_detail_id}`);
+          throw new Error("Insufficient stock for item " + product_item_detail_id);
+        }
+        console.log(`[createStockTransfer] Source item current qty: ${sourceItem.quantity}`);
 
         const newQty = Number(sourceItem.quantity) - Number(transfer_quantity);
+        console.log(`[createStockTransfer] Updating source item qty from ${sourceItem.quantity} to ${newQty}`);
+        
         await sourceItem.update(
           {
             quantity: newQty,
@@ -215,6 +269,7 @@ const createStockTransfer = async (req, res) => {
           where: { sku_id: sourceItem.sku_id, is_stock_transferred: true },
           transaction
         });
+        console.log(`[createStockTransfer] Existing transferred item found:`, !!existingItem);
 
         let existingProduct = null;
         if (existingItem) {
@@ -222,9 +277,12 @@ const createStockTransfer = async (req, res) => {
             where: { id: existingItem.product_id, branch_id: branch_to },
             transaction
           });
+          console.log(`[createStockTransfer] Existing product in destination branch:`, !!existingProduct);
         }
 
         if (existingProduct) {
+          console.log(`[createStockTransfer] Updating existing item qty from ${existingItem.quantity} to ${Number(existingItem.quantity) + Number(transfer_quantity)}`);
+          
           await existingItem.update(
             { quantity: Number(existingItem.quantity) + Number(transfer_quantity) },
             { transaction }
@@ -236,6 +294,7 @@ const createStockTransfer = async (req, res) => {
             item_id: existingItem.id
           };
         } else {
+          console.log(`[createStockTransfer] Creating new item payload for destination`);
             newItemPayloads.push({
               _source_item_id: sourceItem.id,
               sku_id: sourceItem.sku_id,
@@ -273,6 +332,8 @@ const createStockTransfer = async (req, res) => {
 
       // Create destination product if needed
       if (newItemPayloads.length) {
+        console.log(`[createStockTransfer] Creating new product with ${newItemPayloads.length} items`);
+        
         const newProduct = await ProductService.createProductInternal({
           product_name: sourceProduct.product_name,
           product_code: sourceProduct.product_code,
@@ -295,6 +356,7 @@ const createStockTransfer = async (req, res) => {
           branch_id: branch_to,
           item_details: newItemPayloads
         }, transaction);
+        console.log(`[createStockTransfer] New product created with ID: ${newProduct.id}`);
 
         destinationProduct = newProduct;
 
@@ -303,6 +365,7 @@ const createStockTransfer = async (req, res) => {
           order: [["id", "ASC"]],
           transaction
         });
+        console.log(`[createStockTransfer] Retrieved ${newItems.length} new items for mapping`);
 
         for (let i = 0; i < newItems.length; i++) {
           const srcId = newItemPayloads[i]._source_item_id;
@@ -310,9 +373,12 @@ const createStockTransfer = async (req, res) => {
             product_id: newProduct.id,
             item_id: newItems[i].id
           };
+          console.log(`[createStockTransfer] Mapped source item ${srcId} to new item ${newItems[i].id}`);
         }
 
         if (variants.length) {
+          console.log(`[createStockTransfer] Creating ${variants.length} variants for new product`);
+          
           await models.ProductVariant.bulkCreate(
             variants.map(v => ({
               product_id: newProduct.id,
@@ -323,11 +389,14 @@ const createStockTransfer = async (req, res) => {
           );
         }
 
+        console.log(`[createStockTransfer] Cloning product add-ons`);
         await ProductService.cloneProductAddOns(productId, newProduct.id, transaction);
       }
     }
 
     // Save transfer items
+    console.log(`[createStockTransfer] Creating ${items.length} stock transfer items`);
+    
     await models.StockTransferItem.bulkCreate(
       items.map(i => ({
         ...i,
@@ -337,16 +406,27 @@ const createStockTransfer = async (req, res) => {
       })),
       { transaction }
     );
+    console.log(`[createStockTransfer] Stock transfer items created`);
 
     await models.StockTransferStatusHistory.create(
       { stock_transfer_id: stockTransfer.id, status_id: 1, updated_by: created_by, remarks: "Stock Transfer Created" },
       { transaction }
     );
+    console.log(`[createStockTransfer] Status history created`);
 
     await transaction.commit();
+    console.log(`[createStockTransfer] Transaction committed successfully`);
+    console.log('========== CREATE STOCK TRANSFER END ==========');
+    
     return commonService.createdResponse(res, await getStockTransferWithItems(stockTransfer.id));
   } catch (err) {
+    console.error('[createStockTransfer] ERROR:', err.message);
+    console.error('[createStockTransfer] Stack:', err.stack);
+    
     if (!transaction.finished) await transaction.rollback();
+    console.log('[createStockTransfer] Transaction rolled back');
+    console.log('========== CREATE STOCK TRANSFER FAILED ==========');
+    
     return commonService.badRequest(res, err.message);
   }
 };

@@ -172,6 +172,7 @@ const getPayrolls = async (req, res) => {
             pageSize = 10,
             branch_id,
             employee_id,
+            employee_status,  // filter by employee status (any value)
             pay_month,   // exact match  e.g. "2026-02"
             month,       // e.g. "2"  or "02"
             year,        // e.g. "2026"
@@ -199,22 +200,28 @@ const getPayrolls = async (req, res) => {
             where.pay_month = { [Op.like]: `%-${mm}` };
         }
 
+        // Build employee where clause
+        const employeeWhere = {};
+        if (employee_status) {
+            employeeWhere.status = employee_status;
+        }
+        
+        if (search) {
+            employeeWhere[Op.or] = [
+                { employee_name: { [Op.iLike]: `%${search}%` } },
+                { employee_no: { [Op.iLike]: `%${search}%` } },
+            ];
+        }
+
         const { count, rows } = await models.Payroll.findAndCountAll({
             where,
             include: [
                 {
                     model: models.Employee,
                     as: "employee",
-                    attributes: ["id", "employee_name", "employee_no", "profile_image_url"],
-                    where: search
-                        ? {
-                            [Op.or]: [
-                                { employee_name: { [Op.iLike]: `%${search}%` } },
-                                { employee_no: { [Op.iLike]: `%${search}%` } },
-                            ],
-                        }
-                        : undefined,
-                    required: !!search,
+                    attributes: ["id", "employee_name", "employee_no", "profile_image_url", "status"],
+                    where: Object.keys(employeeWhere).length > 0 ? employeeWhere : undefined,
+                    required: !!search || !!employee_status,
                 },
                 {
                     model: models.Branch,
