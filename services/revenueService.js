@@ -3,6 +3,7 @@ const commonService = require('./commonService');
 const { sequelize } = require('../models/index');
 const { dateFilter } = require("../helpers/dateHelper");
 
+/*Old Revenue logic - Sales + Repair Payments
 const getBranchwiseRevenue = async (req, res) => {
     try {
         const {
@@ -62,8 +63,8 @@ const getBranchwiseRevenue = async (req, res) => {
         // ===============================
         // 1️⃣ TABLE ROWS QUERY (WITH payment_mode)
         // ===============================
-        const rowRefundDeduction = shouldDeductRefunds 
-            ? '- COALESCE(SUM(DISTINCT sib.refund_amount), 0)' 
+        const rowRefundDeduction = shouldDeductRefunds
+            ? '- COALESCE(SUM(DISTINCT sib.refund_amount), 0)'
             : '';
 
         let rowsQuery = `
@@ -426,6 +427,361 @@ const getBranchRevenueDetails = async (req, res) => {
                 totalItems,
                 rows
             }
+        });
+
+    } catch (error) {
+        console.error("getBranchRevenueDetails Error:", error);
+        return commonService.handleError(res, error);
+    }
+};
+
+*/
+
+const getBranchwiseRevenue = async (req, res) => {
+    try {
+        const {
+            branch_id,
+            from_date,
+            to_date,
+            date_filter,
+            page,
+            limit,
+            search,
+            payment_mode
+        } = req.query;
+
+        const replacements = {};
+        const dateReplacements = {};
+
+        const dateCondition = dateFilter(
+            { from_date, to_date, date_filter },
+            "rs.txn_date",
+            dateReplacements
+        );
+
+        let branchCondition = "";
+        if (branch_id) {
+            branchCondition = `AND rs.branch_id = :branch_id`;
+            replacements.branch_id = branch_id;
+            dateReplacements.branch_id = branch_id;
+        }
+
+        let paymentModeCondition = "";
+        if (payment_mode) {
+            paymentModeCondition = `AND rs.payment_mode = :payment_mode`;
+            replacements.payment_mode = payment_mode;
+            dateReplacements.payment_mode = payment_mode;
+        }
+
+        let searchCondition = "";
+        if (search) {
+            searchCondition = `AND b.branch_name ILIKE :search`;
+            replacements.search = `%${search}%`;
+            dateReplacements.search = `%${search}%`;
+        }
+
+        const hasPagination = page && limit;
+        const limitNum = hasPagination ? Number(limit) : null;
+        const offset = hasPagination ? (Number(page) - 1) * limitNum : null;
+
+        const query = `
+      WITH revenue_stream AS (
+
+  /* 1️⃣ SALES + REPAIR PAYMENTS (ENUM payment_mode, refund applied) */
+  SELECT
+    COALESCE(sib.branch_id, jr.branch_id) AS branch_id,
+    p.payment_date AS txn_date,
+    p.payment_mode::text AS payment_mode,
+    CASE
+      WHEN sib.id IS NOT NULL
+           AND p.payment_mode = 'Cash'
+      THEN
+        p.amount_received
+        - COALESCE(
+            MAX(sib.refund_amount) OVER (PARTITION BY sib.id),
+            0
+          )
+      ELSE p.amount_received
+    END AS amount
+  FROM payments p
+  LEFT JOIN sales_invoice_bills sib
+    ON sib.id = p.invoice_bill_id
+    AND sib.deleted_at IS NULL
+  LEFT JOIN jewel_repairs jr
+    ON jr.id = p.jewel_repair_id
+    AND jr.deleted_at IS NULL
+  WHERE p.deleted_at IS NULL
+    AND p.status = 'Completed'
+
+  UNION ALL
+
+  /* 2️⃣ VOUCHER RECEIPTS (FK → payment_modes) */
+  SELECT
+    vr.branch_id,
+    vr.receipt_date AS txn_date,
+    pm.payment_mode,
+    vr.amount
+  FROM voucher_receipts vr
+  JOIN payment_modes pm ON pm.id = vr.payment_mode_id
+  WHERE vr.deleted_at IS NULL
+
+  UNION ALL
+
+  /* 3️⃣ VENDOR PAYMENTS (FK → payment_modes, NEGATIVE) */
+  SELECT
+    vp.branch_id,
+    vp.payment_date AS txn_date,
+    pm.payment_mode,
+    -vp.amount
+  FROM vendor_payments vp
+  JOIN payment_modes pm ON pm.id = vp.payment_mode
+  WHERE vp.deleted_at IS NULL
+    AND vp.status = 'Completed'
+)
+
+      SELECT
+        b.id AS branch_id,
+        b.branch_name,
+
+        ROUND(SUM(CASE WHEN rs.payment_mode = 'Cash' THEN rs.amount ELSE 0 END), 2) AS cash,
+        ROUND(SUM(CASE WHEN rs.payment_mode = 'UPI' THEN rs.amount ELSE 0 END), 2) AS upi,
+        ROUND(SUM(CASE WHEN rs.payment_mode = 'Card' THEN rs.amount ELSE 0 END), 2) AS card,
+
+        ROUND(SUM(rs.amount), 2) AS total_amount
+
+      FROM revenue_stream rs
+      JOIN branches b ON b.id = rs.branch_id AND b.deleted_at IS NULL
+
+      WHERE 1=1
+        ${dateCondition}
+        ${branchCondition}
+        ${paymentModeCondition}
+        ${searchCondition}
+
+      GROUP BY b.id, b.branch_name
+      ORDER BY total_amount DESC
+      ${hasPagination ? "LIMIT :limit OFFSET :offset" : ""}
+    `;
+
+        if (hasPagination) {
+            dateReplacements.limit = limitNum;
+            dateReplacements.offset = offset;
+        }
+
+        const rows = await sequelize.query(query, {
+            replacements: { ...dateReplacements, ...replacements },
+            type: sequelize.QueryTypes.SELECT
+        });
+
+        const summaryQuery = `
+      WITH revenue_stream AS (
+
+  /* 1️⃣ SALES + REPAIR PAYMENTS (ENUM payment_mode, refund applied) */
+  SELECT
+    COALESCE(sib.branch_id, jr.branch_id) AS branch_id,
+    p.payment_date AS txn_date,
+    p.payment_mode::text AS payment_mode,
+    CASE
+      WHEN sib.id IS NOT NULL
+           AND p.payment_mode = 'Cash'
+      THEN
+        p.amount_received
+        - COALESCE(
+            MAX(sib.refund_amount) OVER (PARTITION BY sib.id),
+            0
+          )
+      ELSE p.amount_received
+    END AS amount
+  FROM payments p
+  LEFT JOIN sales_invoice_bills sib
+    ON sib.id = p.invoice_bill_id
+    AND sib.deleted_at IS NULL
+  LEFT JOIN jewel_repairs jr
+    ON jr.id = p.jewel_repair_id
+    AND jr.deleted_at IS NULL
+  WHERE p.deleted_at IS NULL
+    AND p.status = 'Completed'
+
+  UNION ALL
+
+  /* 2️⃣ VOUCHER RECEIPTS (FK → payment_modes) */
+  SELECT
+    vr.branch_id,
+    vr.receipt_date AS txn_date,
+    pm.payment_mode,
+    vr.amount
+  FROM voucher_receipts vr
+  JOIN payment_modes pm ON pm.id = vr.payment_mode_id
+  WHERE vr.deleted_at IS NULL
+
+  UNION ALL
+
+  /* 3️⃣ VENDOR PAYMENTS (FK → payment_modes, NEGATIVE) */
+  SELECT
+    vp.branch_id,
+    vp.payment_date AS txn_date,
+    pm.payment_mode,
+    -vp.amount
+  FROM vendor_payments vp
+  JOIN payment_modes pm ON pm.id = vp.payment_mode
+  WHERE vp.deleted_at IS NULL
+    AND vp.status = 'Completed'
+)
+      SELECT
+        ROUND(SUM(amount), 2) AS total_collection,
+        ROUND(SUM(CASE WHEN payment_mode = 'Cash' THEN amount ELSE 0 END), 2) AS cash,
+        ROUND(SUM(CASE WHEN payment_mode = 'UPI' THEN amount ELSE 0 END), 2) AS upi,
+        ROUND(SUM(CASE WHEN payment_mode = 'Card' THEN amount ELSE 0 END), 2) AS card
+      FROM revenue_stream rs
+      WHERE 1=1
+        ${dateCondition}
+        ${branchCondition}
+        ${paymentModeCondition}
+    `;
+
+        const [summary] = await sequelize.query(summaryQuery, {
+            replacements: { ...dateReplacements, ...replacements },
+            type: sequelize.QueryTypes.SELECT
+        });
+
+        return commonService.okResponse(res, {
+            summary,
+            totalItems: rows.length,
+            rows
+        });
+
+    } catch (error) {
+        console.error("getBranchwiseRevenue Error:", error);
+        return commonService.handleError(res, error);
+    }
+};
+
+
+const getBranchRevenueDetails = async (req, res) => {
+    try {
+        const {
+            branch_id,
+            from_date,
+            to_date,
+            date_filter,
+            search,
+            page,
+            limit,
+            payment_mode
+        } = req.query;
+
+        if (!branch_id) {
+            return commonService.badRequest(res, "branch_id is required");
+        }
+
+        const replacements = { branch_id };
+
+        const dateCondition = dateFilter(
+            { from_date, to_date, date_filter },
+            "rs.txn_date",
+            replacements
+        );
+
+        let paymentModeCondition = "";
+        if (payment_mode) {
+            paymentModeCondition = `AND rs.payment_mode = :payment_mode`;
+            replacements.payment_mode = payment_mode;
+        }
+
+        let searchCondition = "";
+        if (search) {
+            searchCondition = `AND rs.description ILIKE :search`;
+            replacements.search = `%${search}%`;
+        }
+
+        const hasPagination = page && limit;
+        const limitNum = hasPagination ? Number(limit) : null;
+        const offset = hasPagination ? (Number(page) - 1) * limitNum : null;
+
+        const query = `
+            WITH revenue_stream AS (
+
+            /* 1️⃣ SALES + REPAIR PAYMENTS (refund applied, ENUM payment_mode) */
+            SELECT
+                COALESCE(sib.branch_id, jr.branch_id) AS branch_id,
+                p.payment_date AS txn_date,
+                p.payment_mode::text AS payment_mode,
+                COALESCE(sib.invoice_no, jr.repair_code) AS description,
+                CASE
+                WHEN sib.id IS NOT NULL
+                    AND p.payment_mode = 'Cash'
+                THEN
+                    p.amount_received
+                    - COALESCE(
+                        MAX(sib.refund_amount) OVER (PARTITION BY sib.id),
+                        0
+                    )
+                ELSE p.amount_received
+                END AS amount
+            FROM payments p
+            LEFT JOIN sales_invoice_bills sib
+                ON sib.id = p.invoice_bill_id
+                AND sib.deleted_at IS NULL
+            LEFT JOIN jewel_repairs jr
+                ON jr.id = p.jewel_repair_id
+                AND jr.deleted_at IS NULL
+            WHERE p.deleted_at IS NULL
+                AND p.status = 'Completed'
+
+            UNION ALL
+
+            /* 2️⃣ VOUCHER RECEIPTS */
+            SELECT
+                vr.branch_id,
+                vr.receipt_date AS txn_date,
+                pm.payment_mode,
+                vr.receipt_no AS description,
+                vr.amount
+            FROM voucher_receipts vr
+            JOIN payment_modes pm ON pm.id = vr.payment_mode_id
+            WHERE vr.deleted_at IS NULL
+
+            UNION ALL
+
+            /* 3️⃣ VENDOR PAYMENTS (NEGATIVE) */
+            SELECT
+                vp.branch_id,
+                vp.payment_date AS txn_date,
+                pm.payment_mode,
+                vp.payment_no AS description,
+                -vp.amount
+            FROM vendor_payments vp
+            JOIN payment_modes pm ON pm.id = vp.payment_mode
+            WHERE vp.deleted_at IS NULL
+                AND vp.status = 'Completed'
+            )
+        SELECT
+            description,
+            payment_mode,
+            ROUND(amount, 2) AS amount,
+            txn_date
+        FROM revenue_stream rs
+        WHERE rs.branch_id = :branch_id
+            ${dateCondition}
+            ${paymentModeCondition}
+            ${searchCondition}
+        ORDER BY txn_date DESC
+        ${hasPagination ? "LIMIT :limit OFFSET :offset" : ""}
+        `;
+
+        if (hasPagination) {
+            replacements.limit = limitNum;
+            replacements.offset = offset;
+        }
+
+        const rows = await sequelize.query(query, {
+            replacements,
+            type: sequelize.QueryTypes.SELECT
+        });
+
+        return commonService.okResponse(res, {
+            rows,
+            totalItems: rows.length
         });
 
     } catch (error) {
