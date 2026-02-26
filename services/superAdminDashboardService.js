@@ -804,7 +804,7 @@ yet_to_update: {
 };
 
 
-const getProfitKPISummary = async (req, res) => {
+const getSalesSummary = async (req, res) => {
   try {
     const {
       branch_id,
@@ -856,7 +856,81 @@ const getProfitKPISummary = async (req, res) => {
   }
 };
 
+
+const getProfitKPISummary = async (req, res) => {
+  try {
+    const { branch_id, from_date, to_date, date_filter } = req.query;
+
+    if (!branch_id) {
+      return res.status(400).json({ message: "branch_id is required" });
+    }
+
+    const replacements = { branch_id };
+
+    const dateCondition = dateFilter(
+      { from_date, to_date, date_filter },
+      "sib.invoice_date",
+      replacements
+    );
+
+    const query = `
+      SELECT
+        COALESCE((
+            SELECT SUM(sib.subtotal_amount)
+            FROM sales_invoice_bills sib
+            WHERE sib.status = 'Invoice'
+              AND sib.deleted_at IS NULL
+              AND sib.branch_id = :branch_id
+              ${dateCondition}
+        ), 0) AS total_sales,
+
+        COALESCE((
+            SELECT SUM(
+                COALESCE(gi.rate_per_g, 0)
+                * COALESCE(pid.net_weight, 0)
+            )
+            FROM sales_invoice_bill_items sibi
+            INNER JOIN sales_invoice_bills sib ON sib.id = sibi.invoice_bill_id
+            INNER JOIN products p ON p.id = sibi.product_id
+            INNER JOIN "grnItems" gi ON gi.grn_id = p.grn_id AND gi.id = p.ref_no_id
+            INNER JOIN "productItemDetails" pid ON pid.id = sibi.product_item_detail_id
+            WHERE sib.status = 'Invoice'
+              AND sib.deleted_at IS NULL
+              AND sibi.deleted_at IS NULL
+              AND p.deleted_at IS NULL
+              AND gi.deleted_at IS NULL
+              AND pid.deleted_at IS NULL
+              AND sibi.is_returned = false
+              AND sib.branch_id = :branch_id
+              ${dateCondition}
+        ), 0) AS total_purchase
+    `;
+
+    const [result] = await sequelize.query(query, {
+      replacements,
+      type: sequelize.QueryTypes.SELECT
+    });
+
+    const sales = Number(result.total_sales);
+    const purchase = Number(result.total_purchase);
+
+    return res.json({
+      success: true,
+      data: {
+        sales,
+        purchase,
+        profit: sales - purchase
+      }
+    });
+
+  } catch (err) {
+    console.error("Profit KPI Error:", err);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+};
+
 module.exports = {
   getSuperAdminDashboard,
+  getSalesSummary,
   getProfitKPISummary
 };

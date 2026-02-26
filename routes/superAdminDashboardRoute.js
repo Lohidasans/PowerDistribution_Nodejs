@@ -12,6 +12,7 @@ const dashboardService = require('../services/superAdminDashboardService');
  *   to_date     – YYYY-MM-DD  (used when period is absent)
  */
 router.get('/super-admin-dashboard', dashboardService.getSuperAdminDashboard);
+router.get('/super-admin-dashboard/sales-kpi', dashboardService.getSalesSummary);
 router.get('/super-admin-dashboard/profit-kpi', dashboardService.getProfitKPISummary);
 
 module.exports = router;
