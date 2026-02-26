@@ -3,20 +3,22 @@ const commonService = require("./commonService");
 const { Op } = require("sequelize");
 const moment = require("moment");
 
+const MAX_FREE_LEAVE_DAYS = 6;
+
 /**
- * Calculate worked_days and absent_days for a given employee and pay_month
- * using the employee_tracking table.
- * 
+ * Calculate worked_days, absent_days, and loss_of_pay_days for a given
+ * employee and pay_month using employee_tracking and leaves tables.
+ *
  * @param {number} refEmployeeId  – employees.ref_employee_id
+ * @param {number} employeeId     – employees.id
  * @param {string} payMonth       – "YYYY-MM"
- * @returns {{ worked_days, absent_days, total_days }}
+ * @returns {{ worked_days, absent_days, total_days, loss_of_pay_days }}
  */
-const calculateAttendanceForMonth = async (refEmployeeId, payMonth) => {
+const calculateAttendanceForMonth = async (refEmployeeId, employeeId, payMonth) => {
     const startDate = moment(payMonth, "YYYY-MM").startOf("month").format("YYYY-MM-DD");
     const endDate = moment(payMonth, "YYYY-MM").endOf("month").format("YYYY-MM-DD");
 
-    // Count distinct dates that have at least one IN punch (status_id = 1)
-    const [result] = await sequelize.query(
+    const [trackResult] = await sequelize.query(
         `SELECT COUNT(DISTINCT date) AS worked_days
          FROM employee_tracking
          WHERE ref_employee_id = :refEmployeeId
@@ -28,15 +30,31 @@ const calculateAttendanceForMonth = async (refEmployeeId, payMonth) => {
         }
     );
 
-    const workedDays = parseInt(result.worked_days, 10) || 0;
-    // Total calendar days in the month
+    const workedDays = parseInt(trackResult.worked_days, 10) || 0;
     const totalDays = moment(payMonth, "YYYY-MM").daysInMonth();
-    const absentDays = totalDays - workedDays;
+    const absentDays = Math.max(0, totalDays - workedDays);
+
+    const [leaveResult] = await sequelize.query(
+        `SELECT COUNT(*) AS leave_days
+         FROM leaves
+         WHERE employee_id = :employeeId
+           AND status_id = 3
+           AND deleted_at IS NULL
+           AND leave_date BETWEEN :startDate AND :endDate`,
+        {
+            replacements: { employeeId, startDate, endDate },
+            type: sequelize.QueryTypes.SELECT,
+        }
+    );
+
+    const leaveDays = parseInt(leaveResult.leave_days, 10) || 0;
+    const lossOfPayDays = Math.max(0, leaveDays - MAX_FREE_LEAVE_DAYS);
 
     return {
         worked_days: workedDays,
-        absent_days: absentDays < 0 ? 0 : absentDays,
+        absent_days: absentDays,
         total_days: totalDays,
+        loss_of_pay_days: lossOfPayDays,
     };
 };
 
@@ -85,9 +103,10 @@ const createPayroll = async (req, res) => {
         }
 
         // Auto-calculate worked_days and absent_days from employee_tracking
-        const attendance = await calculateAttendanceForMonth(employee.ref_employee_id, pay_month);
+        const attendance = await calculateAttendanceForMonth(employee.ref_employee_id, employee_id, pay_month);
         const worked_days = attendance.worked_days;
         const absent_days = attendance.absent_days;
+        const loss_of_pay_days_calc = attendance.loss_of_pay_days;
 
         // Compute totals
         const total_earnings = earnings.reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
@@ -106,7 +125,7 @@ const createPayroll = async (req, res) => {
                 worked_days,
                 absent_days,
                 comp_off_days,
-                loss_of_pay_days,
+                loss_of_pay_days: loss_of_pay_days_calc,
                 total_earnings,
                 total_deductions,
                 net_salary,
@@ -360,14 +379,16 @@ const updatePayroll = async (req, res) => {
         // If pay_month changed, re-calculate attendance
         let worked_days = payroll.worked_days;
         let absent_days = payroll.absent_days;
+        let loss_of_pay_days_recalc = payroll.loss_of_pay_days;
         const targetMonth = pay_month || payroll.pay_month;
 
         if (pay_month && pay_month !== payroll.pay_month) {
             const employee = await models.Employee.findByPk(payroll.employee_id);
             if (employee) {
-                const attendance = await calculateAttendanceForMonth(employee.ref_employee_id, targetMonth);
+                const attendance = await calculateAttendanceForMonth(employee.ref_employee_id, payroll.employee_id, targetMonth);
                 worked_days = attendance.worked_days;
                 absent_days = attendance.absent_days;
+                loss_of_pay_days_recalc = attendance.loss_of_pay_days;
             }
         }
 
@@ -416,7 +437,7 @@ const updatePayroll = async (req, res) => {
                 ...(pay_month !== undefined && { pay_month }),
                 ...(pf_number !== undefined && { pf_number }),
                 ...(comp_off_days !== undefined && { comp_off_days }),
-                ...(loss_of_pay_days !== undefined && { loss_of_pay_days }),
+                loss_of_pay_days: loss_of_pay_days_recalc,
                 worked_days,
                 absent_days,
                 total_earnings,
@@ -481,7 +502,7 @@ const getPayrollAttendancePreview = async (req, res) => {
         const employee = await models.Employee.findByPk(employee_id);
         if (!employee) return commonService.notFound(res, "Employee not found");
 
-        const attendance = await calculateAttendanceForMonth(employee.ref_employee_id, pay_month);
+        const attendance = await calculateAttendanceForMonth(employee.ref_employee_id, employee_id, pay_month);
 
         return commonService.okResponse(res, {
             data: {

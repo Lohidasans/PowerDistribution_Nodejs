@@ -8,6 +8,16 @@ const kycSvc = require("./kycDocumentService");
 const bankSvc = require("./bankAccountService");
 const userSvc = require("./userLoginService");
 
+const createDefaultPayrollMasters = async (transaction, branchId) => {
+  const defaults = [
+    { payroll_master_type_id: 1, pay_type_name: 'Basic Salary', calculation_type_id: 1, payroll_value: 0 },
+    { payroll_master_type_id: 1, pay_type_name: 'Incentive',    calculation_type_id: 1, payroll_value: 0 },
+    { payroll_master_type_id: 2, pay_type_name: 'LOP',          calculation_type_id: 1, payroll_value: 0 },
+  ];
+  const data = defaults.map(d => ({ ...d, branch_id: branchId }));
+  return models.PayrollMaster.bulkCreate(data, { transaction });
+};
+
 // Helper function to create default invoice settings for a branch
 const createDefaultInvoiceSettings = async (transaction, branchId) => {
   try {
@@ -139,6 +149,8 @@ const createBranch = async (req, res) => {
         "Failed to create default invoice settings"
       );
     }
+
+    await createDefaultPayrollMasters(t, branch.id);
 
     await t.commit();
 

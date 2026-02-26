@@ -27,12 +27,10 @@ module.exports = {
 
         // ── 2. Insert payroll_masters for each branch (skip if already exists) ─
         // payroll_master_type_id: 1 = Earning, 2 = Deduction
-        // calculation_type_id:   1 = Fixed amount (assumed)
         const masterTemplates = [
-            { payroll_master_type_id: 1, pay_type_name: 'Basic Salary', calculation_type_id: 1, payroll_value: 20000 },
-            { payroll_master_type_id: 1, pay_type_name: 'Incentives', calculation_type_id: 1, payroll_value: 1000 },
-            { payroll_master_type_id: 2, pay_type_name: 'Loss of Pay', calculation_type_id: 1, payroll_value: 0 },
-            { payroll_master_type_id: 2, pay_type_name: 'PF Deduction', calculation_type_id: 1, payroll_value: 100 },
+            { payroll_master_type_id: 1, pay_type_name: 'Basic Salary', calculation_type_id: 1, payroll_value: 0 },
+            { payroll_master_type_id: 1, pay_type_name: 'Incentive',    calculation_type_id: 1, payroll_value: 0 },
+            { payroll_master_type_id: 2, pay_type_name: 'LOP',          calculation_type_id: 1, payroll_value: 0 },
         ];
 
         for (const branch of branches) {
@@ -129,7 +127,7 @@ module.exports = {
         );
         // Remove seeded payroll_masters
         await queryInterface.bulkDelete('payroll_masters', {
-            pay_type_name: ['Basic Salary', 'Incentives', 'Loss of Pay', 'PF Deduction']
+            pay_type_name: ['Basic Salary', 'Incentive', 'LOP']
         }, {});
         console.log('✅ Rollback complete.');
     }

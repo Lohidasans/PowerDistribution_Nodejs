@@ -74,6 +74,11 @@ module.exports = (sequelize, DataTypes) => {
                 type: DataTypes.INTEGER,
                 allowNull: true,
             },
+            salary: {
+                type: DataTypes.DECIMAL(12, 2),
+                allowNull: true,
+                defaultValue: 0,
+            },
         },
         {
             timestamps: true,

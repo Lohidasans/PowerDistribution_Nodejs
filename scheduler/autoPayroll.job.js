@@ -26,7 +26,7 @@ const autoGenerateMonthlyPayroll = async () => {
     // Fetch all active employees
     const employees = await models.Employee.findAll({
         where: { status: 'Active', deleted_at: null },
-        attributes: ['id', 'employee_no', 'employee_name', 'branch_id', 'ref_employee_id'],
+        attributes: ['id', 'employee_no', 'employee_name', 'branch_id', 'ref_employee_id', 'salary'],
         raw: true,
     });
 
@@ -73,6 +73,24 @@ const autoGenerateMonthlyPayroll = async () => {
             const workedDays = parseInt(trackResult.worked_days, 10) || 0;
             const absentDays = Math.max(0, totalDaysInMonth - workedDays);
 
+            // ── loss_of_pay_days from approved leaves ─────────────────────────
+            const MAX_FREE_LEAVE_DAYS = 6;
+            const [leaveResult] = await sequelize.query(
+                `SELECT COUNT(*) AS leave_days
+                 FROM leaves
+                 WHERE employee_id = :employeeId
+                   AND status_id = 3
+                   AND deleted_at IS NULL
+                   AND leave_date BETWEEN :startDate AND :endDate`,
+                {
+                    replacements: { employeeId: employee.id, startDate, endDate },
+                    type: sequelize.QueryTypes.SELECT,
+                    transaction: t,
+                }
+            );
+            const leaveDays = parseInt(leaveResult.leave_days, 10) || 0;
+            const lossOfPayDays = Math.max(0, leaveDays - MAX_FREE_LEAVE_DAYS);
+
             // ── Fetch earnings/deductions from payroll_masters for this branch ─
             // Query fresh for each employee's branch_id to avoid any caching issues
             const payrollMasters = await models.PayrollMaster.findAll({
@@ -92,9 +110,28 @@ const autoGenerateMonthlyPayroll = async () => {
             const earningMasters = payrollMasters.filter(pm => parseInt(pm.payroll_master_type_id, 10) === 1);
             const deductionMasters = payrollMasters.filter(pm => parseInt(pm.payroll_master_type_id, 10) === 2);
 
-            // Use the actual payroll_value from payroll_masters — no 0 fallback
-            const total_earnings = earningMasters.reduce((s, pm) => s + parseFloat(pm.payroll_value), 0);
-            const total_deductions = deductionMasters.reduce((s, pm) => s + parseFloat(pm.payroll_value), 0);
+            const incentiveAmount = await getIncentiveAmountForEmployee(employee.id, payMonth);
+
+            const LOP_NAMES = ['lop'];
+            const INCENTIVE_NAMES = ['incentive', 'incentives'];
+            const BASIC_SALARY_NAMES = ['basic salary', 'basic'];
+            const empSalary = parseFloat(employee.salary || 0);
+
+            const dailyRate = totalDaysInMonth > 0 ? empSalary / totalDaysInMonth : 0;
+            const lopAmount = parseFloat((lossOfPayDays * dailyRate).toFixed(2));
+
+            const total_earnings = earningMasters.reduce((s, pm) => {
+                const name = (pm.pay_type_name || '').toLowerCase().trim();
+                const isIncentiveItem = INCENTIVE_NAMES.includes(name);
+                const isBasicSalaryItem = BASIC_SALARY_NAMES.includes(name);
+                if (isIncentiveItem) return s + incentiveAmount;
+                if (isBasicSalaryItem) return s + empSalary;
+                return s + parseFloat(pm.payroll_value);
+            }, 0);
+            const total_deductions = deductionMasters.reduce((s, pm) => {
+                const name = (pm.pay_type_name || '').toLowerCase().trim();
+                return s + (LOP_NAMES.includes(name) ? lopAmount : parseFloat(pm.payroll_value));
+            }, 0);
             const net_salary = total_earnings - total_deductions;
 
             // ── Create payroll header ─────────────────────────────────────────
@@ -109,7 +146,7 @@ const autoGenerateMonthlyPayroll = async () => {
                     worked_days: workedDays,
                     absent_days: absentDays,
                     comp_off_days: 0,
-                    loss_of_pay_days: 0,
+                    loss_of_pay_days: lossOfPayDays,
                     total_earnings,
                     total_deductions,
                     net_salary,
@@ -117,32 +154,33 @@ const autoGenerateMonthlyPayroll = async () => {
                 { transaction: t }
             );
 
-            // ── Fetch incentive amount for this employee for the pay month ───
-            const incentiveAmount = await getIncentiveAmountForEmployee(employee.id, payMonth);
-
             // ── Create payroll_items ─────────────────────────────────────────
-            // For Incentive-type earning masters → use computed incentiveAmount
-            // For all other masters → use payroll_value from payroll_masters
-            const INCENTIVE_NAMES = ['incentive', 'incentives'];
 
             const items = [
                 ...earningMasters.map(pm => {
-                    const isIncentiveItem = INCENTIVE_NAMES.includes(
-                        (pm.pay_type_name || '').toLowerCase().trim()
-                    );
+                    const name = (pm.pay_type_name || '').toLowerCase().trim();
+                    const isIncentiveItem = INCENTIVE_NAMES.includes(name);
+                    const isBasicSalaryItem = BASIC_SALARY_NAMES.includes(name);
+                    let amount;
+                    if (isIncentiveItem) amount = incentiveAmount;
+                    else if (isBasicSalaryItem) amount = empSalary;
+                    else amount = parseFloat(pm.payroll_value);
                     return {
                         payroll_id: payroll.id,
                         payroll_master_id: pm.id,
                         item_type: 'earning',
-                        amount: isIncentiveItem ? incentiveAmount : parseFloat(pm.payroll_value),
+                        amount,
                     };
                 }),
-                ...deductionMasters.map(pm => ({
-                    payroll_id: payroll.id,
-                    payroll_master_id: pm.id,
-                    item_type: 'deduction',
-                    amount: parseFloat(pm.payroll_value),
-                })),
+                ...deductionMasters.map(pm => {
+                    const name = (pm.pay_type_name || '').toLowerCase().trim();
+                    return {
+                        payroll_id: payroll.id,
+                        payroll_master_id: pm.id,
+                        item_type: 'deduction',
+                        amount: LOP_NAMES.includes(name) ? lopAmount : parseFloat(pm.payroll_value),
+                    };
+                }),
             ];
 
             if (items.length > 0) {

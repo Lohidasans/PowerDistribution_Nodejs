@@ -22,6 +22,7 @@ const createEmployee = async (req, res) => {
       date_of_birth,
       branch_id,
       status,
+      salary,
       contact,
       bank_account,
       kyc_documents,
@@ -70,6 +71,7 @@ const createEmployee = async (req, res) => {
         branch_id,
         status,
         ref_employee_id,
+        salary: salary || 0,
       },
       { transaction }
     );
@@ -615,6 +617,7 @@ const updateEmployee = async (req, res) => {
       date_of_birth,
       branch_id,
       status,
+      salary,
       contact,
       bank_account,
       kyc_documents,
@@ -637,7 +640,8 @@ const updateEmployee = async (req, res) => {
         gender,
         date_of_birth,
         branch_id,
-        status
+        status,
+        ...(salary !== undefined && { salary })
       },
       { transaction }
     );
