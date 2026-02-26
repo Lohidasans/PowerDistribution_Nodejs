@@ -126,7 +126,7 @@ const getEstimateById = async (req, res) => {
 // List estimates (simple filters)
 const listEstimates = async (req, res) => {
   try {
-    const { from, to, employee_id, customer_id, search, estimate_no } = req.query || {};
+    const { from, to, employee_id, customer_id, search, branch_id, estimate_no } = req.query || {};
 
     // 1) Header rows with employee_no via join
     let sql = `
@@ -160,7 +160,8 @@ const listEstimates = async (req, res) => {
     if (employee_id) { sql += ` AND e.employee_id = :employee_id`; replacements.employee_id = employee_id; }
     if (customer_id) { sql += ` AND e.customer_id = :customer_id`; replacements.customer_id = customer_id; }
     if (estimate_no) { sql += ` AND e.estimate_no = :estimate_no`; replacements.estimate_no = estimate_no; }
-    if (search) { sql += ` AND e.estimate_no ILIKE :search`; replacements.search = `%${search}%`; }
+    if (branch_id) { sql += ` AND e.branch_id = :branch_id`; replacements.branch_id = branch_id; }
+    if (search) { sql += ` AND e.estimate_no ILIKE :search`; replacements.search = `%${search}%`; } 
     sql += ` ORDER BY e.created_at DESC`;
 
     const [estimates] = await sequelize.query(sql, { replacements });
