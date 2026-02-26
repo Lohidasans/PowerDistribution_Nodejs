@@ -71,7 +71,7 @@ const getSalesReport = async (req, res) => {
             limit
         } = req.query;
 
-        // Validate grid report type
+        /* ---------------- VALIDATE TYPE ---------------- */
         const gridConfig = REPORT_CONFIG[type];
         if (!gridConfig) {
             return commonService.badRequest(res, "Invalid report type");
@@ -81,7 +81,7 @@ const getSalesReport = async (req, res) => {
         const finalPageSize = pageSize || limit;
         const hasPagination = page && finalPageSize;
         const perPage = hasPagination ? Number(finalPageSize) : null;
-        const offset = hasPagination ? (page - 1) * perPage : null;
+        const offset = hasPagination ? (Number(page) - 1) * perPage : null;
 
         /* ---------------- WHERE SQL ---------------- */
         const replacements = {};
@@ -98,14 +98,24 @@ const getSalesReport = async (req, res) => {
             replacements.branch_id = branch_id;
         }
 
+        /* ---------------- GRID WHERE ---------------- */
+        let gridWhereSql = `
+            ${baseWhereSql}
+            ${gridConfig.statusCondition || ""}
+        `;
+
+        /* ---------------- SEARCH ---------------- */
         if (search) {
-            baseWhereSql += `
+
+            gridWhereSql += `
             AND (
-                t.${gridConfig.codeColumn} ILIKE :search
+                b.branch_name ILIKE :search
                 OR c.customer_name ILIKE :search
                 OR e.employee_name ILIKE :search
+                OR t.${gridConfig.codeColumn} ILIKE :search
             )
         `;
+
             replacements.search = `%${search}%`;
         }
 
@@ -116,7 +126,13 @@ const getSalesReport = async (req, res) => {
             const cfg = REPORT_CONFIG[reportType];
 
             const scorecardWhereSql = `
-                ${baseWhereSql}
+                1=1
+                ${dateFilter(
+                { from_date, to_date, date_filter },
+                cfg.dateColumn,
+                replacements
+            )}
+                ${branch_id ? " AND t.branch_id = :branch_id" : ""}
                 ${cfg.statusCondition || ""}
             `;
 
@@ -126,12 +142,6 @@ const getSalesReport = async (req, res) => {
                 replacements
             });
         }
-        
-        /* ---------------- GRID WHERE (SELECTED TYPE) ---------------- */
-        const gridWhereSql = `
-            ${baseWhereSql}
-            ${gridConfig.statusCondition || ""}
-        `;
 
         /* ---------------- GRID QUERY ---------------- */
         let gridSql = `
@@ -178,7 +188,7 @@ const getSalesReport = async (req, res) => {
             type: QueryTypes.SELECT
         });
 
-        /* ---------------- PAGINATION---------------- */
+        /* ---------------- COUNT QUERY ---------------- */
         let pagination = null;
 
         if (hasPagination) {
@@ -186,6 +196,8 @@ const getSalesReport = async (req, res) => {
                 SELECT COUNT(*)::int AS total
                 FROM ${gridConfig.table} t
                 LEFT JOIN customers c ON c.id = t.customer_id
+                LEFT JOIN employees e ON e.id = t.employee_id
+                LEFT JOIN branches b ON b.id = t.branch_id
                 WHERE ${gridWhereSql}
             `;
 
@@ -214,8 +226,6 @@ const getSalesReport = async (req, res) => {
         return commonService.handleError(res, error);
     }
 };
-
-
 // get the sold out product based on its subcategory
 const getFastMovingSubCategories = async (req, res) => {
     try {
