@@ -521,8 +521,11 @@ const listStockTransfers = async (req, res) => {
       to_date,
     } = req.query;
 
-    // GLOBAL COUNTS (UNFILTERED)
+    // BASE WHERE WITH BRANCH FILTERS (FOR SUMMARY COUNTS)
     const baseWhere = { deleted_at: null };
+
+    if (branch_from) baseWhere.branch_from = parseInt(branch_from);
+    if (branch_to) baseWhere.branch_to = parseInt(branch_to);
 
     const [newCount, inProgressCount, deliveredCount] = await Promise.all([
       models.StockTransfer.count({ where: { ...baseWhere, status_id: 1 } }),
@@ -530,12 +533,10 @@ const listStockTransfers = async (req, res) => {
       models.StockTransfer.count({ where: { ...baseWhere, status_id: 3 } }),
     ]);
 
-    // FILTERED WHERE
-    const where = { deleted_at: null };
+    // FILTERED WHERE (INCLUDES ALL FILTERS)
+    const where = { ...baseWhere };
 
-    if (status_id) where.status_id = status_id;
-    if (branch_from) where.branch_from = branch_from;
-    if (branch_to) where.branch_to = branch_to;
+    if (status_id) where.status_id = parseInt(status_id);
 
     // Date logic
     if (from_date && to_date) {
