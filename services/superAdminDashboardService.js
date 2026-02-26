@@ -1,5 +1,6 @@
 const { sequelize } = require("../models/index");
 const commonService = require("./commonService");
+const { dateFilter } = require("../helpers/dateHelper");
 
 /* =========================================================
    HELPER – build date condition SQL from query params
@@ -802,6 +803,60 @@ yet_to_update: {
   }
 };
 
+
+const getProfitKPISummary = async (req, res) => {
+  try {
+    const {
+      branch_id,
+      from_date,
+      to_date,
+      date_filter
+    } = req.query;
+
+    if (!branch_id) {
+      return res.status(400).json({
+        message: "branch_id is required"
+      });
+    }
+
+    const replacements = { branch_id };
+
+    const dateCondition = dateFilter(
+      { from_date, to_date, date_filter },
+      "sib.invoice_date",
+      replacements
+    );
+
+    const query = `
+            SELECT 
+                COALESCE(SUM(sib.subtotal_amount), 0) AS total_sales
+            FROM sales_invoice_bills sib
+            WHERE sib.status = 'Invoice' and sib.deleted_at IS NULL
+              AND sib.branch_id = :branch_id
+              ${dateCondition}
+        `;
+
+    const [result] = await sequelize.query(query, {
+      replacements,
+      type: sequelize.QueryTypes.SELECT
+    });
+
+    return res.json({
+      success: true,
+      data: {
+        total_sales: Number(result.total_sales)
+      }
+    });
+
+  } catch (error) {
+    console.error("Sales Summary Error:", error);
+    return res.status(500).json({
+      message: "Internal server error"
+    });
+  }
+};
+
 module.exports = {
   getSuperAdminDashboard,
+  getProfitKPISummary
 };
