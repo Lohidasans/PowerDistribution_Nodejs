@@ -264,23 +264,40 @@ const createStockTransfer = async (req, res) => {
           { transaction }
         );
 
-        // Find existing transferred SKU
-        const existingItem = await models.ProductItemDetail.findOne({
-          where: { sku_id: sourceItem.sku_id, is_stock_transferred: true },
+        // Find existing transferred product in destination branch
+        // Search by product_code and branch to find if this product was already transferred
+        const existingProduct = await models.Product.findOne({
+          where: { 
+            product_code: sourceProduct.product_code,
+            branch_id: branch_to,
+            deleted_at: null
+          },
           transaction
         });
-        console.log(`[createStockTransfer] Existing transferred item found:`, !!existingItem);
-
-        let existingProduct = null;
-        if (existingItem) {
-          existingProduct = await models.Product.findOne({
-            where: { id: existingItem.product_id, branch_id: branch_to },
-            transaction
-          });
-          console.log(`[createStockTransfer] Existing product in destination branch:`, !!existingProduct);
+        console.log(`[createStockTransfer] Existing product in destination branch:`, !!existingProduct);
+        if (existingProduct) {
+          console.log(`[createStockTransfer] Found existing product ID: ${existingProduct.id}, code: ${existingProduct.product_code}`);
         }
 
+        let existingItem = null;
         if (existingProduct) {
+          // Find existing item with same SKU in the existing product
+          existingItem = await models.ProductItemDetail.findOne({
+            where: { 
+              product_id: existingProduct.id,
+              sku_id: sourceItem.sku_id,
+              is_stock_transferred: true,
+              deleted_at: null
+            },
+            transaction
+          });
+          console.log(`[createStockTransfer] Existing item in product:`, !!existingItem);
+          if (existingItem) {
+            console.log(`[createStockTransfer] Found existing item ID: ${existingItem.id}, SKU: ${existingItem.sku_id}`);
+          }
+        }
+
+        if (existingProduct && existingItem) {
           console.log(`[createStockTransfer] Updating existing item qty from ${existingItem.quantity} to ${Number(existingItem.quantity) + Number(transfer_quantity)}`);
           
           await existingItem.update(
@@ -293,6 +310,43 @@ const createStockTransfer = async (req, res) => {
             product_id: existingProduct.id,
             item_id: existingItem.id
           };
+        } else if (existingProduct && !existingItem) {
+          console.log(`[createStockTransfer] Product exists but item doesn't - adding new item to existing product`);
+          // Product exists but this specific item doesn't - add item to existing product
+          newItemPayloads.push({
+            _source_item_id: sourceItem.id,
+            _existing_product_id: existingProduct.id,
+            sku_id: sourceItem.sku_id,
+            variation: sourceItem.variation,
+            quantity: transfer_quantity,
+            net_weight: sourceItem.net_weight,
+            gross_weight: sourceItem.gross_weight,
+            actual_stone_weight: sourceItem.actual_stone_weight,
+            stone_weight: sourceItem.stone_weight,
+            stone_value: sourceItem.stone_value,
+            rate_per_gram: sourceItem.rate_per_gram,
+            base_price: sourceItem.base_price,
+            item_price: sourceItem.item_price,
+            making_charge_type: sourceItem.making_charge_type,
+            making_charge: sourceItem.making_charge,
+            wastage_type: sourceItem.wastage_type,
+            wastage: sourceItem.wastage,
+            is_visible: sourceItem.is_visible,
+            website_price_type: sourceItem.website_price_type,
+            website_price: sourceItem.website_price,
+            measurement_details: sourceItem.measurement_details,
+            is_stock_transferred: true,
+
+            additional_details: additionals
+              .filter(a => a.item_detail_id === sourceItem.id)
+              .map(a => ({
+                ...a.get({ plain: true }),
+                id: undefined,
+                product_id: undefined,
+                item_detail_id: undefined
+              }))
+          });
+          destinationProduct = existingProduct;
         } else {
           console.log(`[createStockTransfer] Creating new item payload for destination`);
             newItemPayloads.push({
@@ -330,9 +384,48 @@ const createStockTransfer = async (req, res) => {
         }
       }
 
-      // Create destination product if needed
-      if (newItemPayloads.length) {
-        console.log(`[createStockTransfer] Creating new product with ${newItemPayloads.length} items`);
+      // Separate items for existing product vs new product
+      const itemsForExistingProduct = newItemPayloads.filter(p => p._existing_product_id);
+      const itemsForNewProduct = newItemPayloads.filter(p => !p._existing_product_id);
+
+      // Add items to existing product
+      if (itemsForExistingProduct.length) {
+        const existingProdId = itemsForExistingProduct[0]._existing_product_id;
+        console.log(`[createStockTransfer] Adding ${itemsForExistingProduct.length} items to existing product ${existingProdId}`);
+        
+        for (const itemPayload of itemsForExistingProduct) {
+          const { _source_item_id, _existing_product_id, additional_details, ...itemData } = itemPayload;
+          
+          const createdItem = await models.ProductItemDetail.create({
+            ...itemData,
+            product_id: existingProdId
+          }, { transaction });
+          
+          console.log(`[createStockTransfer] Created item ${createdItem.id} in existing product`);
+          
+          transferMap[_source_item_id] = {
+            product_id: existingProdId,
+            item_id: createdItem.id
+          };
+
+          // Add additional details if any
+          if (additional_details && additional_details.length) {
+            await models.ProductAdditionalDetail.bulkCreate(
+              additional_details.map(ad => ({
+                ...ad,
+                product_id: existingProdId,
+                item_detail_id: createdItem.id
+              })),
+              { transaction }
+            );
+          }
+        }
+        destinationProduct = await models.Product.findByPk(existingProdId, { transaction });
+      }
+
+      // Create new product if needed
+      if (itemsForNewProduct.length) {
+        console.log(`[createStockTransfer] Creating new product with ${itemsForNewProduct.length} items`);
         
         const newProduct = await ProductService.createProductInternal({
           product_name: sourceProduct.product_name,
@@ -354,7 +447,7 @@ const createStockTransfer = async (req, res) => {
           qr_image_url: sourceProduct.qr_image_url,
           is_published: sourceProduct.is_published,
           branch_id: branch_to,
-          item_details: newItemPayloads
+          item_details: itemsForNewProduct
         }, transaction);
         console.log(`[createStockTransfer] New product created with ID: ${newProduct.id}`);
 
@@ -368,7 +461,7 @@ const createStockTransfer = async (req, res) => {
         console.log(`[createStockTransfer] Retrieved ${newItems.length} new items for mapping`);
 
         for (let i = 0; i < newItems.length; i++) {
-          const srcId = newItemPayloads[i]._source_item_id;
+          const srcId = itemsForNewProduct[i]._source_item_id;
           transferMap[srcId] = {
             product_id: newProduct.id,
             item_id: newItems[i].id

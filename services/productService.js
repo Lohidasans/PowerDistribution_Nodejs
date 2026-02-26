@@ -2810,19 +2810,36 @@ const getProductStockCounts = async (req, res) => {
 };
 
 const createProductInternal = async (payload, transaction) => {
+  console.log('[createProductInternal] Starting product creation');
+  console.log('[createProductInternal] Payload:', {
+    product_code: payload.product_code,
+    product_name: payload.product_name,
+    branch_id: payload.branch_id,
+    item_details_count: payload.item_details?.length || 0
+  });
+  
   const { item_details, ...productData } = payload;
 
   const product = await models.Product.create(productData, { transaction });
+  console.log('[createProductInternal] Product created with ID:', product.id);
 
   for (const d of item_details) {
     const { additional_details = [], _source_item_id, ...fields } = d;
+    console.log('[createProductInternal] Creating item detail:', {
+      sku_id: fields.sku_id,
+      quantity: fields.quantity,
+      has_additional_details: additional_details.length > 0
+    });
 
     const item = await models.ProductItemDetail.create(
       { ...fields, product_id: product.id },
       { transaction }
     );
+    console.log('[createProductInternal] Item detail created with ID:', item.id);
 
     if (additional_details.length) {
+      console.log(`[createProductInternal] Creating ${additional_details.length} additional details`);
+      
       await models.ProductAdditionalDetail.bulkCreate(
         additional_details.map((a) => ({
           ...a,
@@ -2838,9 +2855,13 @@ const createProductInternal = async (payload, transaction) => {
     where: { product_id: product.id },
     transaction,
   });
+  console.log(`[createProductInternal] Retrieved ${items.length} items for summary computation`);
 
   const summary = computeSummaries(items, product.product_type);
+  console.log('[createProductInternal] Summary computed:', summary);
+  
   await product.update(summary, { transaction });
+  console.log('[createProductInternal] Product updated with summary');
 
   return product;
 };
@@ -2850,24 +2871,35 @@ const cloneProductAddOns = async (
   destinationProductId,
   transaction
 ) => {
+  console.log('[cloneProductAddOns] Starting add-ons cloning');
+  console.log('[cloneProductAddOns] Source product ID:', sourceProductId);
+  console.log('[cloneProductAddOns] Destination product ID:', destinationProductId);
+  
   const addons = await models.ProductAddOn.findAll({
     where: { product_id: sourceProductId, deleted_at: null },
     transaction,
   });
+  console.log(`[cloneProductAddOns] Found ${addons.length} add-ons to clone`);
 
-  if (!addons.length) return;
+  if (!addons.length) {
+    console.log('[cloneProductAddOns] No add-ons to clone, skipping');
+    return;
+  }
 
+  console.log('[cloneProductAddOns] Marking destination product as add-on');
   await models.Product.update(
     { is_addOn: true },
     { where: { id: destinationProductId }, transaction }
   );
 
+  console.log('[cloneProductAddOns] Removing existing add-ons from destination');
   await models.ProductAddOn.destroy({
     where: { product_id: destinationProductId },
     force: true,
     transaction,
   });
 
+  console.log(`[cloneProductAddOns] Creating ${addons.length} add-ons for destination product`);
   await models.ProductAddOn.bulkCreate(
     addons.map((a) => ({
       product_id: destinationProductId,
@@ -2875,6 +2907,7 @@ const cloneProductAddOns = async (
     })),
     { transaction }
   );
+  console.log('[cloneProductAddOns] Add-ons cloned successfully');
 };
 
 // Get top-selling subcategories based on invoice count
