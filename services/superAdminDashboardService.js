@@ -807,19 +807,13 @@ yet_to_update: {
 const getSalesSummary = async (req, res) => {
   try {
     const {
-      branch_id,
+      branch_id,     // OPTIONAL
       from_date,
       to_date,
       date_filter
     } = req.query;
 
-    if (!branch_id) {
-      return res.status(400).json({
-        message: "branch_id is required"
-      });
-    }
-
-    const replacements = { branch_id };
+    const replacements = {};
 
     const dateCondition = dateFilter(
       { from_date, to_date, date_filter },
@@ -827,14 +821,21 @@ const getSalesSummary = async (req, res) => {
       replacements
     );
 
+    let branchCondition = "";
+    if (branch_id) {
+      branchCondition = " AND sib.branch_id = :branch_id";
+      replacements.branch_id = branch_id;
+    }
+
     const query = `
-            SELECT 
-                COALESCE(SUM(sib.subtotal_amount), 0) AS total_sales
-            FROM sales_invoice_bills sib
-            WHERE sib.status = 'Invoice' and sib.deleted_at IS NULL
-              AND sib.branch_id = :branch_id
-              ${dateCondition}
-        `;
+      SELECT 
+          COALESCE(SUM(sib.subtotal_amount), 0) AS total_sales
+      FROM sales_invoice_bills sib
+      WHERE sib.status = 'Invoice'
+        AND sib.deleted_at IS NULL
+        ${branchCondition}
+        ${dateCondition}
+    `;
 
     const [result] = await sequelize.query(query, {
       replacements,
