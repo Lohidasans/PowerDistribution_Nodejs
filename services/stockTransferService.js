@@ -265,18 +265,24 @@ const createStockTransfer = async (req, res) => {
         );
 
         // Find existing transferred product in destination branch
-        // Search by product_code and branch to find if this product was already transferred
-        const existingProduct = await models.Product.findOne({
-          where: { 
-            product_code: sourceProduct.product_code,
-            branch_id: branch_to,
-            deleted_at: null
-          },
-          transaction
-        });
-        console.log(`[createStockTransfer] Existing product in destination branch:`, !!existingProduct);
-        if (existingProduct) {
-          console.log(`[createStockTransfer] Found existing product ID: ${existingProduct.id}, code: ${existingProduct.product_code}`);
+        // Match by sku_id + grn_id + branch to identify if this product was already transferred
+        let existingProduct = null;
+        if (sourceProduct.sku_id && sourceProduct.grn_id) {
+          existingProduct = await models.Product.findOne({
+            where: { 
+              sku_id: sourceProduct.sku_id,
+              grn_id: sourceProduct.grn_id,
+              branch_id: branch_to,
+              deleted_at: null
+            },
+            transaction
+          });
+          console.log(`[createStockTransfer] Existing product in destination branch:`, !!existingProduct);
+          if (existingProduct) {
+            console.log(`[createStockTransfer] Found existing product ID: ${existingProduct.id}, SKU: ${existingProduct.sku_id}`);
+          }
+        } else {
+          console.log(`[createStockTransfer] Source product missing sku_id or grn_id - will create new product`);
         }
 
         let existingItem = null;
@@ -286,7 +292,6 @@ const createStockTransfer = async (req, res) => {
             where: { 
               product_id: existingProduct.id,
               sku_id: sourceItem.sku_id,
-              is_stock_transferred: true,
               deleted_at: null
             },
             transaction
