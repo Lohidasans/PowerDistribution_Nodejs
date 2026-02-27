@@ -949,8 +949,209 @@ const getProfitKPISummary = async (req, res) => {
   }
 };
 
+
+const getStockKpiSummary = async (req, res) => {
+  try {
+    const {
+      branch_id,
+      from_date,
+      to_date,
+      start_date,
+      end_date,
+      date_filter, // today | week | month | year
+    } = req.query;
+
+    // normalize date params
+    const normalizedFromDate = from_date || start_date;
+    const normalizedToDate = to_date || end_date;
+
+    const money = (v) => Number(Number(v || 0).toFixed(2));
+    const int = (v) => Number(v || 0);
+
+    const replacements = {};
+    if (branch_id) replacements.branch_id = branch_id;
+
+    // Date filter on GRN date
+    const grnDateCondition = dateFilter(
+      {
+        from_date: normalizedFromDate,
+        to_date: normalizedToDate,
+        date_filter,
+      },
+      "g.grn_date",
+      replacements
+    );
+
+    /* =====================================================
+       SOURCE OF TRUTH (SAME AS getAllGrns)
+       ===================================================== */
+    const grnWeightsCTE = `
+      WITH grn_weights AS (
+        SELECT
+          g.id AS grn_id,
+          p.branch_id,
+
+          -- ORDERED WEIGHT (from GRN items)
+          COALESCE(SUM(DISTINCT gi.net_wt_in_g), 0) AS ordered_weight,
+
+          -- UPDATED WEIGHT (from product items)
+          COALESCE(SUM(pid.net_weight), 0) AS updated_weight
+
+        FROM grns g
+        JOIN "grnItems" gi
+          ON gi.grn_id = g.id
+         AND gi.deleted_at IS NULL
+
+        JOIN products p
+          ON p.grn_id = g.id
+         AND p.deleted_at IS NULL
+
+        LEFT JOIN "productItemDetails" pid
+          ON pid.product_id = p.id
+         AND pid.deleted_at IS NULL
+
+        WHERE g.deleted_at IS NULL
+          ${branch_id ? `AND p.branch_id = :branch_id` : ``}
+          ${grnDateCondition}
+
+        GROUP BY g.id, p.branch_id
+      )
+    `;
+
+    /* =====================================================
+       1. TOTAL PURCHASE (ORDERED)
+       ===================================================== */
+    const totalPurchaseQuery = `
+      ${grnWeightsCTE}
+      SELECT
+        COUNT(*)::int AS total_quantity,
+        COALESCE(SUM(ordered_weight), 0) AS total_weight
+      FROM grn_weights
+    `;
+
+    /* =====================================================
+       2. UPDATED (ORDERED ≈ UPDATED)
+       ===================================================== */
+    const updatedQuery = `
+      ${grnWeightsCTE}
+      SELECT
+        COUNT(*)::int AS total_quantity,
+        COALESCE(SUM(ordered_weight), 0) AS total_weight
+      FROM grn_weights
+      WHERE (ordered_weight - updated_weight) <= 0.001
+    `;
+
+    /* =====================================================
+       3. YET TO UPDATE (ORDERED > UPDATED)
+       ===================================================== */
+    const pendingQuery = `
+      ${grnWeightsCTE}
+      SELECT
+        COUNT(*)::int AS total_quantity,
+        COALESCE(SUM(ordered_weight - updated_weight), 0) AS total_weight
+      FROM grn_weights
+      WHERE (ordered_weight - updated_weight) > 0.001
+    `;
+
+    /* =====================================================
+       4. TOTAL STOCK (CURRENT INVENTORY)
+       ===================================================== */
+    const totalStockQuery = `
+      SELECT
+        COALESCE(SUM(pid.quantity), 0)::int AS total_quantity,
+        COALESCE(SUM(pid.quantity * pid.net_weight), 0) AS total_weight,
+        COALESCE(SUM(
+          pid.quantity * (
+            (COALESCE(pid.rate_per_gram, 0) * COALESCE(pid.net_weight, 0)) +
+            COALESCE(pid.making_charge, 0) +
+            COALESCE(pid.wastage, 0) +
+            COALESCE(pid.stone_value, 0)
+          )
+        ), 0) AS total_amount
+      FROM products p
+      JOIN "productItemDetails" pid
+        ON pid.product_id = p.id
+       AND pid.deleted_at IS NULL
+       AND pid.quantity > 0
+      WHERE p.deleted_at IS NULL
+        AND p.status = 'Active'
+        ${branch_id ? `AND p.branch_id = :branch_id` : ``}
+    `;
+
+    /* =====================================================
+       EXECUTION
+       ===================================================== */
+    const [
+      [purchaseResult],
+      [updatedResult],
+      [pendingResult],
+      [totalStockResult],
+    ] = await Promise.all([
+      sequelize.query(totalPurchaseQuery, {
+        replacements,
+        type: sequelize.QueryTypes.SELECT,
+      }),
+      sequelize.query(updatedQuery, {
+        replacements,
+        type: sequelize.QueryTypes.SELECT,
+      }),
+      sequelize.query(pendingQuery, {
+        replacements,
+        type: sequelize.QueryTypes.SELECT,
+      }),
+      sequelize.query(totalStockQuery, {
+        replacements,
+        type: sequelize.QueryTypes.SELECT,
+      }),
+    ]);
+
+    /* =====================================================
+       RESPONSE (MATCHES UI)
+       ===================================================== */
+    return commonService.okResponse(res, {
+      filters_applied: {
+        branch_id: branch_id || null,
+        date_filter: date_filter || null,
+        from_date: normalizedFromDate || null,
+        to_date: normalizedToDate || null,
+      },
+      data: {
+        total_purchase: {
+          total_quantity: int(purchaseResult?.total_quantity),
+          total_weight: Number(
+            Number(purchaseResult?.total_weight || 0).toFixed(3)
+          ),
+        },
+        updated: {
+          total_quantity: int(updatedResult?.total_quantity),
+          total_weight: Number(
+            Number(updatedResult?.total_weight || 0).toFixed(3)
+          ),
+        },
+        yet_to_update: {
+          total_quantity: int(pendingResult?.total_quantity),
+          total_weight: Number(
+            Number(pendingResult?.total_weight || 0).toFixed(3)
+          ),
+        },
+        total_stock: {
+          total_quantity: int(totalStockResult?.total_quantity),
+          total_weight: Number(
+            Number(totalStockResult?.total_weight || 0).toFixed(3)
+          ),
+          total_amount: money(totalStockResult?.total_amount),
+        },
+      },
+    });
+  } catch (error) {
+    console.error("getStockKpiSummary Error:", error);
+    return commonService.handleError(res, error);
+  }
+};
 module.exports = {
   getSuperAdminDashboard,
+  getStockKpiSummary,
   getSalesSummary,
-  getProfitKPISummary
+  getProfitKPISummary,
+
 };

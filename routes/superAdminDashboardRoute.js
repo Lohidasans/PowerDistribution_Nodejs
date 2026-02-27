@@ -14,5 +14,6 @@ const dashboardService = require('../services/superAdminDashboardService');
 router.get('/super-admin-dashboard', dashboardService.getSuperAdminDashboard);
 router.get('/super-admin-dashboard/sales-kpi', dashboardService.getSalesSummary);
 router.get('/super-admin-dashboard/profit-kpi', dashboardService.getProfitKPISummary);
+router.get('/super-admin-dashboard/stock-kpi', dashboardService.getStockKpiSummary);
 
 module.exports = router;
