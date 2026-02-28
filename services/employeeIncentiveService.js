@@ -213,7 +213,9 @@ const getEmployeeIncentiveReport = async (req, res) => {
           dept.department_name,
           r.id                              AS role_id_ref,
           r.role_name                       AS designation,
-          COALESCE(SUM(sib.net_total), 0)::numeric AS sales_amount,
+          COALESCE(SUM(
+            CASE WHEN COALESCE(sib.net_total, 0) = 0 THEN COALESCE(sib.subtotal_amount, 0) ELSE sib.net_total END
+          ), 0)::numeric AS sales_amount,
           COUNT(DISTINCT sib.id)::int        AS total_no_of_invoice
         FROM employees e
         LEFT JOIN branches b
@@ -320,7 +322,9 @@ const getIncentiveAmountForEmployee = async (employeeId, payMonth) => {
         e.id            AS employee_id,
         e.department_id,
         e.role_id,
-        COALESCE(SUM(sib.net_total), 0)::numeric AS sales_amount
+        COALESCE(SUM(
+          CASE WHEN COALESCE(sib.net_total, 0) = 0 THEN COALESCE(sib.subtotal_amount, 0) ELSE sib.net_total END
+        ), 0)::numeric AS sales_amount
       FROM employees e
       LEFT JOIN sales_invoice_bills sib
         ON sib.employee_id = e.id
