@@ -13,13 +13,16 @@ const { getIncentiveAmountForEmployee } = require('../services/employeeIncentive
  * 
  * Cron schedule: Runs on the 1st of every month at 00:30 AM.
  */
-const autoGenerateMonthlyPayroll = async () => {
-    // Target = previous month  e.g. if today is March 1, process February
-    const payMonth = moment().subtract(1, 'month').format('YYYY-MM');
+const autoGenerateMonthlyPayroll = async (overridePayMonth = null) => {
+    // IMPORTANT: The cron fires at 00:30 IST on the 1st = 19:00 UTC on the last day of previous month.
+    // The VPS runs UTC, so moment() would see "Feb 28" and subtract(1,'month') would give January.
+    // We must work in IST (UTC+5:30) to correctly get "March 1" and compute payMonth = February.
+    const nowIST = moment().utcOffset('+05:30');
+    const payMonth = overridePayMonth || nowIST.clone().subtract(1, 'month').format('YYYY-MM');
     const startDate = moment(payMonth, 'YYYY-MM').startOf('month').format('YYYY-MM-DD');
     const endDate = moment(payMonth, 'YYYY-MM').endOf('month').format('YYYY-MM-DD');
     const totalDaysInMonth = moment(payMonth, 'YYYY-MM').daysInMonth();
-    const payDate = moment().format('YYYY-MM-DD'); // today = pay date
+    const payDate = nowIST.format('YYYY-MM-DD'); // IST date as pay date
 
     console.log(`🚀 Auto-payroll job started | pay_month: ${payMonth}`);
 
@@ -44,7 +47,7 @@ const autoGenerateMonthlyPayroll = async () => {
         try {
             // Skip if already generated
             const existing = await models.Payroll.findOne({
-                where: { employee_id: employee.id, pay_month },
+                where: { employee_id: employee.id, pay_month: payMonth },
                 transaction: t,
             });
             if (existing) {
@@ -141,7 +144,7 @@ const autoGenerateMonthlyPayroll = async () => {
                     branch_id: employee.branch_id,
                     employee_id: employee.id,
                     employee_no: employee.employee_no,
-                    pay_month,
+                    pay_month: payMonth,
                     pf_number: null,
                     worked_days: workedDays,
                     absent_days: absentDays,

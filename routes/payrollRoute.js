@@ -1,6 +1,32 @@
 const express = require("express");
 const router = express.Router();
 const svc = require("../services/payrollService");
+const autoGenerateMonthlyPayroll = require("../scheduler/autoPayroll.job");
+const moment = require("moment");
+
+// ── Manual Payroll Trigger ────────────────────────────────────────────────────
+// POST /api/v1/payrolls/auto-generate
+// Body: { pay_month: "2026-02" }  (optional — defaults to previous IST month)
+router.post("/payrolls/auto-generate", async (req, res) => {
+    try {
+        const { pay_month } = req.body || {};
+        // If a specific month is passed, temporarily override the job
+        if (pay_month) {
+            if (!/^\d{4}-\d{2}$/.test(pay_month)) {
+                return res.status(400).json({ success: false, message: "pay_month must be in YYYY-MM format" });
+            }
+            // Run the job with overridden month
+            const result = await autoGenerateMonthlyPayroll(pay_month);
+            return res.json({ success: true, pay_month, result });
+        }
+        // Run with default (previous IST month)
+        const result = await autoGenerateMonthlyPayroll();
+        const defaultMonth = moment().utcOffset('+05:30').subtract(1, 'month').format('YYYY-MM');
+        return res.json({ success: true, pay_month: defaultMonth, result });
+    } catch (err) {
+        return res.status(500).json({ success: false, message: err.message });
+    }
+});
 
 // ── CRUD ──────────────────────────────────────────────────────────────────────
 router.post("/payrolls", svc.createPayroll);

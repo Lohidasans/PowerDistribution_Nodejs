@@ -13,6 +13,7 @@ const { validateProductItemDetails,
   markEstimateAsConverted } = require('../helpers/billingValidations');
 const { calculateItemsAndSubtotal, calculateInvoiceTotals, calculatePaymentSummary } = require("../helpers/billingCalculations");
 const { Op } = require("sequelize");
+const ExcelJS = require("exceljs");
 
 // Generate invoice number (series)
 const generateSalesInvoiceNo = async (req, res) => {
@@ -1583,6 +1584,155 @@ const getSalesInvoicesByCustomerId = async (req, res) => {
 };
 
 
+// Export sales invoices as Excel
+const exportSalesInvoicesExcel = async (req, res) => {
+  try {
+    const { from, to, date, employee_id, customer_id, branch_id, status } = req.query || {};
+
+    let sql = `
+      SELECT
+        i.id,
+        i.invoice_no,
+        i.invoice_date,
+        i.net_total,
+        i.subtotal_amount,
+        i.discount_amount,
+        i.total_amount,
+        e.employee_name AS sales_person_name,
+        c.customer_name,
+
+        -- Sum of net_weight from items
+        COALESCE((
+          SELECT SUM(sii.net_weight)
+          FROM sales_invoice_bill_items sii
+          WHERE sii.invoice_bill_id = i.id
+          AND sii.deleted_at IS NULL
+        ), 0) AS total_net_weight,
+
+        -- Sales Return adjustment amount
+        COALESCE((
+          SELECT SUM(a.adjustment_amount)
+          FROM sales_invoice_adjustments a
+          LEFT JOIN bill_adjustment_types bat ON bat.id = a.adjustment_type_id::integer
+          WHERE a.sales_invoice_id = i.id
+          AND a.deleted_at IS NULL
+          AND bat.type_name = 'Sales Return'
+        ), 0) AS sales_return_amount,
+
+        -- Old Jewel adjustment amount
+        COALESCE((
+          SELECT SUM(a.adjustment_amount)
+          FROM sales_invoice_adjustments a
+          LEFT JOIN bill_adjustment_types bat ON bat.id = a.adjustment_type_id::integer
+          WHERE a.sales_invoice_id = i.id
+          AND a.deleted_at IS NULL
+          AND bat.type_name = 'Old Jewel'
+        ), 0) AS old_jewel_amount
+
+      FROM sales_invoice_bills i
+      LEFT JOIN employees e ON e.id = i.employee_id
+      LEFT JOIN customers c ON c.id = i.customer_id
+      WHERE i.deleted_at IS NULL
+    `;
+
+    const replacements = {};
+
+    if (from) {
+      sql += ` AND i.invoice_date >= :from`;
+      replacements.from = from;
+    }
+    if (to) {
+      sql += ` AND i.invoice_date <= :to`;
+      replacements.to = to;
+    }
+    if (date) {
+      sql += ` AND DATE(i.invoice_date) = :date`;
+      replacements.date = date;
+    }
+    if (employee_id) {
+      sql += ` AND i.employee_id = :employee_id`;
+      replacements.employee_id = employee_id;
+    }
+    if (customer_id) {
+      sql += ` AND i.customer_id = :customer_id`;
+      replacements.customer_id = customer_id;
+    }
+    if (branch_id) {
+      sql += ` AND i.branch_id = :branch_id`;
+      replacements.branch_id = branch_id;
+    }
+    if (status) {
+      sql += ` AND i.status = :status`;
+      replacements.status = status;
+    }
+
+    sql += ` ORDER BY i.invoice_date DESC, i.created_at DESC`;
+
+    const invoices = await sequelize.query(sql, {
+      replacements,
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    // Build Excel workbook
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("Sales Invoices");
+
+    // Define columns
+    sheet.columns = [
+      { header: "S.No.", key: "sno", width: 8 },
+      { header: "Customer Name", key: "customer_name", width: 25 },
+      { header: "Date of Invoice", key: "invoice_date", width: 16 },
+      { header: "Invoice Number", key: "invoice_no", width: 18 },
+      { header: "Gross Total", key: "gross_total", width: 15 },
+      { header: "Net Total", key: "net_total", width: 15 },
+      { header: "Discount", key: "discount", width: 12 },
+      { header: "Sales Return Amount", key: "sales_return_amount", width: 20 },
+      { header: "Old Jewel Amount", key: "old_jewel_amount", width: 18 },
+      { header: "Total", key: "total", width: 15 },
+      { header: "Sales Person Name", key: "sales_person_name", width: 22 },
+      { header: "Net Weight", key: "net_weight", width: 14 },
+    ];
+
+    // Style header row
+    sheet.getRow(1).font = { bold: true };
+    sheet.getRow(1).alignment = { horizontal: "center" };
+
+    // Add data rows
+    invoices.forEach((inv, index) => {
+      sheet.addRow({
+        sno: index + 1,
+        customer_name: inv.customer_name || "",
+        invoice_date: inv.invoice_date || "",
+        invoice_no: inv.invoice_no || "",
+        gross_total: parseFloat(inv.net_total || 0),
+        net_total: parseFloat(inv.subtotal_amount || 0),
+        discount: parseFloat(inv.discount_amount || 0),
+        sales_return_amount: parseFloat(inv.sales_return_amount || 0),
+        old_jewel_amount: parseFloat(inv.old_jewel_amount || 0),
+        total: parseFloat(inv.total_amount || 0),
+        sales_person_name: inv.sales_person_name || "",
+        net_weight: parseFloat(inv.total_net_weight || 0),
+      });
+    });
+
+    // Set response headers for Excel download
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=sales_invoices.xlsx"
+    );
+
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (err) {
+    console.error("Error in exportSalesInvoicesExcel:", err);
+    return commonService.handleError(res, err);
+  }
+};
+
 module.exports = {
   generateSalesInvoiceNo,
   createSalesInvoice,
@@ -1591,5 +1741,6 @@ module.exports = {
   getSalesInvoicesByCustomerId,
   deleteSalesInvoice,
   searchInvoices,
-  updateSalesInvoice
+  updateSalesInvoice,
+  exportSalesInvoicesExcel
 };
