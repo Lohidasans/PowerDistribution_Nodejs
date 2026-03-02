@@ -291,6 +291,9 @@ const getPayrollById = async (req, res) => {
                     ],
                 },
             ],
+            order: [
+                [{ model: models.PayrollItem, as: "items" }, "payroll_master_id", "ASC"],
+            ],
         });
 
         if (!payroll) return commonService.notFound(res, "Payroll not found");
