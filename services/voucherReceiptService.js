@@ -119,7 +119,7 @@ const getVoucherReceiptById = async (req, res) => {
       LEFT JOIN branches b ON b.id = vr.branch_id AND b.deleted_at IS NULL
       LEFT JOIN districts d ON d.id = b.district_id AND d.deleted_at IS NULL
       LEFT JOIN states s ON s.id = b.state_id AND s.deleted_at IS NULL
-      WHERE vr.id = :receiptId AND vr.deleted_at IS NULL`;
+      WHERE vr.id = :receiptId AND vr.deleted_at IS NULL AND vr.is_active = true`;
 
     const [receipt] = await sequelize.query(sql, {
       replacements: { receiptId: req.params.id },

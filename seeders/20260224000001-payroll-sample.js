@@ -108,6 +108,7 @@ module.exports = {
                     LEFT JOIN sales_invoice_bills sib
                         ON sib.employee_id = e.id
                         AND sib.deleted_at IS NULL
+                        AND sib.is_active = true
                         AND sib.status = 'Invoice'
                         AND EXTRACT(MONTH FROM sib.invoice_date) = :month
                         AND EXTRACT(YEAR  FROM sib.invoice_date) = :year

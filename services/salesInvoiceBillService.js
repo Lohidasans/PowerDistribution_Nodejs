@@ -379,7 +379,7 @@ const listSalesInvoices = async (req, res) => {
       -- Items join
       LEFT JOIN invoice_items ii ON ii.invoice_bill_id = i.id
 
-      WHERE i.deleted_at IS NULL
+      WHERE i.deleted_at IS NULL AND i.is_active = true
     `;
 
     const replacements = {};
@@ -1448,7 +1448,7 @@ const getSalesInvoicesByCustomerId = async (req, res) => {
       -- Items join
       LEFT JOIN invoice_items ii ON ii.invoice_bill_id = i.id
 
-      WHERE i.deleted_at IS NULL
+      WHERE i.deleted_at IS NULL and i.is_active = true
       AND i.customer_id = :customer_id
     `;
 
@@ -1632,7 +1632,7 @@ const exportSalesInvoicesExcel = async (req, res) => {
       FROM sales_invoice_bills i
       LEFT JOIN employees e ON e.id = i.employee_id
       LEFT JOIN customers c ON c.id = i.customer_id
-      WHERE i.deleted_at IS NULL
+      WHERE i.deleted_at IS NULL AND i.is_active = true
     `;
 
     const replacements = {};

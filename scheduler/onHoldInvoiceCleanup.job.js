@@ -8,7 +8,7 @@ const deleteExpiredOnHoldInvoices = async () => {
         const expiredInvoices = await sequelize.query(
             `SELECT id
             FROM sales_invoice_bills
-            WHERE status = 'On Hold'
+            WHERE status = 'On Hold' and is_active = true
                 AND created_at <= NOW() - INTERVAL '24 HOURS'`,
             {
                 type: sequelize.QueryTypes.SELECT,

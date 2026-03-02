@@ -868,6 +868,7 @@ const getAllProductDetails = async (req, res) => {
           ON sib.id = sii.invoice_bill_id
           AND sib.deleted_at IS NULL
           AND sib.status = 'Invoice'
+          AND sib.is_active = true
         WHERE sii.deleted_at IS NULL
           AND sii.product_id = p.id
       )
@@ -2785,6 +2786,7 @@ const getProductStockCounts = async (req, res) => {
           ON sib.id = sii.invoice_bill_id
           AND sib.deleted_at IS NULL
           AND sib.status = 'Invoice'
+          AND sib.is_active = true
         WHERE sii.deleted_at IS NULL
           AND sii.product_id = p.id
       )
@@ -2938,7 +2940,7 @@ const getTopSellingSubcategories = async (req, res) => {
         sales_invoice_bill_items sibi ON sibi.product_id = p.id AND sibi.deleted_at IS NULL
       INNER JOIN 
         sales_invoice_bills sib ON sib.id = sibi.invoice_bill_id 
-        AND sib.deleted_at IS NULL 
+        AND sib.deleted_at IS NULL AND sib.is_active = true
         AND sib.status != 'Cancelled'
         ${branchFilter}
       WHERE 

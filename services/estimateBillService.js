@@ -151,7 +151,7 @@ const listEstimates = async (req, res) => {
       LEFT JOIN branches b ON b.id = e.branch_id AND b.deleted_at IS NULL
       LEFT JOIN districts bd ON bd.id = b.district_id
       LEFT JOIN states bs ON bs.id = b.state_id
-      WHERE e.deleted_at IS NULL
+      WHERE e.deleted_at IS NULL and e.is_active = true
     `;
 
     const replacements = {};

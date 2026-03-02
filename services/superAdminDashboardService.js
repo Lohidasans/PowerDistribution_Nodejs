@@ -122,6 +122,7 @@ const getSuperAdminDashboard = async (req, res) => {
           SELECT sib.id, sib.net_total, sib.total_amount
           FROM sales_invoice_bills sib
           WHERE sib.deleted_at IS NULL
+            AND sib.is_active = true
             AND sib.status = 'Invoice'
             ${dateClause}
             ${branchClause}
@@ -253,7 +254,8 @@ const grnPendingQuery = `
           TO_CHAR(sib.invoice_date, '${dateFormat}') AS month_key,
           COALESCE(SUM(sib.total_amount), 0)         AS sales_amount
         FROM sales_invoice_bills sib
-        WHERE sib.deleted_at IS NULL
+        WHERE sib.deleted_at IS NULL 
+          AND sib.is_active = true
           AND sib.status NOT IN ('Draft', 'Cancelled')
           ${statsBranch}
         GROUP BY TO_CHAR(sib.invoice_date, '${dateFormat}')
@@ -319,6 +321,7 @@ const profitKpiQuery = `
     JOIN sales_invoice_bills sib
       ON sib.id = sibi.invoice_bill_id
      AND sib.deleted_at IS NULL
+     AND sib.is_active = true
      AND sib.status = 'Invoice'
      ${profitBranch}
      ${profitDateCond}
@@ -367,10 +370,10 @@ const profitKpiQuery = `
         FROM payments p_inner
         LEFT JOIN sales_invoice_bills sib_inner
           ON sib_inner.id = p_inner.invoice_bill_id
-          AND sib_inner.deleted_at IS NULL
+          AND sib_inner.deleted_at IS NULL AND sib_inner.is_active = true
         LEFT JOIN jewel_repairs jr_inner
           ON jr_inner.id = p_inner.jewel_repair_id
-          AND jr_inner.deleted_at IS NULL
+          AND jr_inner.deleted_at IS NULL AND jr_inner.is_active = true
         WHERE p_inner.deleted_at IS NULL
           AND p_inner.status = 'Completed'
           AND sib_inner.id IS NOT NULL
@@ -391,9 +394,9 @@ const profitKpiQuery = `
           - (SELECT refund_amount FROM refund_sum) AS total
       FROM payments p
       LEFT JOIN sales_invoice_bills sib
-        ON sib.id = p.invoice_bill_id AND sib.deleted_at IS NULL
+        ON sib.id = p.invoice_bill_id AND sib.deleted_at IS NULL AND sib.is_active = true
       LEFT JOIN jewel_repairs jr
-        ON jr.id = p.jewel_repair_id AND jr.deleted_at IS NULL
+        ON jr.id = p.jewel_repair_id AND jr.deleted_at IS NULL and jr.is_active = true
       WHERE p.deleted_at IS NULL
         AND p.status = 'Completed'
         ${collDateCond}
@@ -423,7 +426,7 @@ const profitKpiQuery = `
       FROM sales_returns sr
       LEFT JOIN sales_return_items sri
         ON sri.sales_return_id = sr.id AND sri.deleted_at IS NULL
-      WHERE sr.deleted_at IS NULL
+      WHERE sr.deleted_at IS NULL AND sr.is_active = true
         AND sr.status NOT IN ('Cancelled')
         ${jewDateCond}
         ${jewBranch}
@@ -443,7 +446,7 @@ const profitKpiQuery = `
       FROM old_jewels oj
       LEFT JOIN old_jewel_items oji
         ON oji.old_jewel_id = oj.id AND oji.deleted_at IS NULL
-      WHERE oj.deleted_at IS NULL
+      WHERE oj.deleted_at IS NULL AND oj.is_active = true
         AND oj.status NOT IN ('Cancelled')
         ${ojDateCond}
         ${ojBranch}
@@ -463,7 +466,7 @@ const profitKpiQuery = `
       FROM jewel_repairs jr
       LEFT JOIN jewel_repair_items jri
         ON jri.repair_id = jr.id AND jri.deleted_at IS NULL
-      WHERE jr.deleted_at IS NULL
+      WHERE jr.deleted_at IS NULL AND jr.is_active = true
         AND jr.status NOT IN ('Cancelled')
         ${jrDateCond}
         ${jrBranch}
@@ -501,6 +504,7 @@ const profitKpiQuery = `
       WHERE vp.deleted_at IS NULL
         AND vp.bill_type_id = 1
         AND vp.user_type_id = 1
+        AND vp.is_active = true
         AND vp.status = 'Completed'
     `;
 
@@ -534,7 +538,7 @@ const profitKpiQuery = `
           ON p.id = sibi.product_id AND p.deleted_at IS NULL
         JOIN sales_invoice_bills sib
           ON sib.id = sibi.invoice_bill_id
-          AND sib.deleted_at IS NULL
+          AND sib.deleted_at IS NULL AND sib.is_active = true
           AND sib.status NOT IN ('Draft', 'Cancelled')
           ${pvSalesBranch}
         WHERE sibi.deleted_at IS NULL
@@ -832,6 +836,7 @@ const getSalesSummary = async (req, res) => {
           COALESCE(SUM(sib.subtotal_amount), 0) AS total_sales
       FROM sales_invoice_bills sib
       WHERE sib.status = 'Invoice'
+        AND sib.is_active = true
         AND sib.deleted_at IS NULL
         ${branchCondition}
         ${dateCondition}
@@ -890,6 +895,7 @@ const getProfitKPISummary = async (req, res) => {
             SELECT SUM(sib.subtotal_amount)
             FROM sales_invoice_bills sib
             WHERE sib.status = 'Invoice'
+              AND sib.is_active = true
               AND sib.deleted_at IS NULL
               ${branchCondition}
               ${dateCondition}
@@ -914,6 +920,7 @@ const getProfitKPISummary = async (req, res) => {
                 ON pid.id = sibi.product_item_detail_id
             WHERE sib.status = 'Invoice'
               AND sib.deleted_at IS NULL
+              AND sib.is_active = true
               AND sibi.deleted_at IS NULL
               AND p.deleted_at IS NULL
               AND gi.deleted_at IS NULL

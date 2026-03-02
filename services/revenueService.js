@@ -304,9 +304,10 @@ const getBranchRevenueDetails = async (req, res) => {
             LEFT JOIN sales_invoice_bills sib
                 ON sib.id = p.invoice_bill_id
                 AND sib.deleted_at IS NULL
+                AND sib.is_active = true
             LEFT JOIN jewel_repairs jr
                 ON jr.id = p.jewel_repair_id
-                AND jr.deleted_at IS NULL
+                AND jr.deleted_at IS NULL AND jr.is_active = true
 
             WHERE p.deleted_at IS NULL
                 AND p.status = 'Completed'
@@ -339,9 +340,10 @@ const getBranchRevenueDetails = async (req, res) => {
                     LEFT JOIN sales_invoice_bills sib_inner
                         ON sib_inner.id = p_inner.invoice_bill_id
                         AND sib_inner.deleted_at IS NULL
+                        AND sib_inner.is_active = true
                     LEFT JOIN jewel_repairs jr_inner
                         ON jr_inner.id = p_inner.jewel_repair_id
-                        AND jr_inner.deleted_at IS NULL
+                        AND jr_inner.deleted_at IS NULL AND jr_inner.is_active = true
                     WHERE p_inner.deleted_at IS NULL
                         AND p_inner.status = 'Completed'
                         AND COALESCE(sib_inner.branch_id, jr_inner.branch_id) = :branch_id
@@ -356,9 +358,10 @@ const getBranchRevenueDetails = async (req, res) => {
                     LEFT JOIN sales_invoice_bills sib_inner
                         ON sib_inner.id = p_inner.invoice_bill_id
                         AND sib_inner.deleted_at IS NULL
+                        AND sib_inner.is_active = true
                     LEFT JOIN jewel_repairs jr_inner
                         ON jr_inner.id = p_inner.jewel_repair_id
-                        AND jr_inner.deleted_at IS NULL
+                        AND jr_inner.deleted_at IS NULL AND jr_inner.is_active = true
                     WHERE p_inner.deleted_at IS NULL
                         AND p_inner.status = 'Completed'
                         AND COALESCE(sib_inner.branch_id, jr_inner.branch_id) = :branch_id
@@ -373,9 +376,10 @@ const getBranchRevenueDetails = async (req, res) => {
             LEFT JOIN sales_invoice_bills sib
                 ON sib.id = p.invoice_bill_id
                 AND sib.deleted_at IS NULL
+                AND sib.is_active = true
             LEFT JOIN jewel_repairs jr
                 ON jr.id = p.jewel_repair_id
-                AND jr.deleted_at IS NULL
+                AND jr.deleted_at IS NULL AND jr.is_active = true
             WHERE p.deleted_at IS NULL
                 AND p.status = 'Completed'
                 AND COALESCE(sib.branch_id, jr.branch_id) = :branch_id
@@ -399,9 +403,10 @@ const getBranchRevenueDetails = async (req, res) => {
                 LEFT JOIN sales_invoice_bills sib
                     ON sib.id = p.invoice_bill_id
                     AND sib.deleted_at IS NULL
+                    AND sib.is_active = true
                 LEFT JOIN jewel_repairs jr
                     ON jr.id = p.jewel_repair_id
-                    AND jr.deleted_at IS NULL
+                    AND jr.deleted_at IS NULL AND jr.is_active = true
                 WHERE p.deleted_at IS NULL
                     AND p.status = 'Completed'
                     AND COALESCE(sib.branch_id, jr.branch_id) = :branch_id
@@ -507,9 +512,10 @@ const getBranchwiseRevenue = async (req, res) => {
   LEFT JOIN sales_invoice_bills sib
     ON sib.id = p.invoice_bill_id
     AND sib.deleted_at IS NULL
+    AND sib.is_active = true
   LEFT JOIN jewel_repairs jr
     ON jr.id = p.jewel_repair_id
-    AND jr.deleted_at IS NULL
+    AND jr.deleted_at IS NULL AND jr.is_active = true
   WHERE p.deleted_at IS NULL
     AND p.status = 'Completed'
 
@@ -523,7 +529,7 @@ const getBranchwiseRevenue = async (req, res) => {
     vr.amount
   FROM voucher_receipts vr
   JOIN payment_modes pm ON pm.id = vr.payment_mode_id
-  WHERE vr.deleted_at IS NULL
+  WHERE vr.deleted_at IS NULL and vr.is_active = true
 
   UNION ALL
 
@@ -535,7 +541,7 @@ const getBranchwiseRevenue = async (req, res) => {
     -vp.amount
   FROM vendor_payments vp
   JOIN payment_modes pm ON pm.id = vp.payment_mode
-  WHERE vp.deleted_at IS NULL
+  WHERE vp.deleted_at IS NULL and vp.is_active = true
     AND vp.status = 'Completed'
 )
 
@@ -596,9 +602,10 @@ const getBranchwiseRevenue = async (req, res) => {
   LEFT JOIN sales_invoice_bills sib
     ON sib.id = p.invoice_bill_id
     AND sib.deleted_at IS NULL
+    AND sib.is_active = true
   LEFT JOIN jewel_repairs jr
     ON jr.id = p.jewel_repair_id
-    AND jr.deleted_at IS NULL
+    AND jr.deleted_at IS NULL AND jr.is_active = true
   WHERE p.deleted_at IS NULL
     AND p.status = 'Completed'
 
@@ -612,7 +619,7 @@ const getBranchwiseRevenue = async (req, res) => {
     vr.amount
   FROM voucher_receipts vr
   JOIN payment_modes pm ON pm.id = vr.payment_mode_id
-  WHERE vr.deleted_at IS NULL
+  WHERE vr.deleted_at IS NULL ans vr.is_active = true
 
   UNION ALL
 
@@ -624,7 +631,7 @@ const getBranchwiseRevenue = async (req, res) => {
     -vp.amount
   FROM vendor_payments vp
   JOIN payment_modes pm ON pm.id = vp.payment_mode
-  WHERE vp.deleted_at IS NULL
+  WHERE vp.deleted_at IS NULL AND vp.is_active = true
     AND vp.status = 'Completed'
 )
       SELECT
@@ -730,9 +737,10 @@ const getBranchRevenueDetailsNew = async (req, res) => {
         LEFT JOIN sales_invoice_bills sib
             ON sib.id = p.invoice_bill_id
             AND sib.deleted_at IS NULL
+            AND sib.is_active = true
         LEFT JOIN jewel_repairs jr
             ON jr.id = p.jewel_repair_id
-            AND jr.deleted_at IS NULL
+            AND jr.deleted_at IS NULL AND jr.is_active = true
         WHERE p.deleted_at IS NULL
           AND p.status = 'Completed'
 
@@ -748,7 +756,7 @@ const getBranchRevenueDetailsNew = async (req, res) => {
         FROM voucher_receipts vr
         JOIN payment_modes pm
             ON pm.id = vr.payment_mode_id
-        WHERE vr.deleted_at IS NULL
+        WHERE vr.deleted_at IS NULL and vr.is_active = true
 
         UNION ALL
 
@@ -762,7 +770,7 @@ const getBranchRevenueDetailsNew = async (req, res) => {
         FROM vendor_payments vp
         JOIN payment_modes pm
             ON pm.id = vp.payment_mode
-        WHERE vp.deleted_at IS NULL
+        WHERE vp.deleted_at IS NULL AND vp.is_active = true
           AND vp.status = 'Completed'
       )
     `;
@@ -920,6 +928,7 @@ const getVendorGrnRevenueList = async (req, res) => {
             INNER JOIN vendor_payments vp
             ON vp.purchase_id::int = g.id
             AND vp.deleted_at IS NULL
+            AND vp.is_active = true
             AND vp.bill_type_id = 1
             AND vp.user_type_id = 1
             AND vp.purchase_id IS NOT NULL
@@ -995,6 +1004,7 @@ const getVendorGrnView = async (req, res) => {
                 ON vp.purchase_id::int = g.id
             AND vp.bill_type_id = 1
             AND vp.user_type_id = 1
+            AND vp.is_active = true
             AND vp.deleted_at IS NULL
 
             LEFT JOIN branches b 
@@ -1080,6 +1090,7 @@ const getVendorGrnView = async (req, res) => {
         WHERE vp.purchase_id::int = :grnId
             AND vp.bill_type_id = 1
             AND vp.user_type_id = 1
+            AND vp.is_active = true
             AND vp.deleted_at IS NULL
         ORDER BY vp.payment_date
         `,

@@ -289,6 +289,7 @@ const getFastMovingSubCategories = async (req, res) => {
         JOIN sales_invoice_bills sib
           ON sib.id = sii.invoice_bill_id
           AND sib.deleted_at IS NULL
+          AND sib.is_active = true
           AND sib.status = 'Invoice'
           ${dateCondition}
         GROUP BY
@@ -428,6 +429,7 @@ const getFastMovingSoldProducts = async (req, res) => {
       JOIN sales_invoice_bills sib
         ON sib.id = sii.invoice_bill_id
         AND sib.deleted_at IS NULL
+        AND sib.is_active = true
         AND sib.status = 'Invoice'
         ${dateCondition}
 
@@ -584,6 +586,7 @@ const getTopBuyingCustomers = async (req, res) => {
                 AND c.deleted_at IS NULL
 
                 WHERE sib.deleted_at IS NULL
+                AND sib.is_active = true
                 AND sib.status = 'Invoice'
                 ${dateCondition}
 
@@ -622,7 +625,7 @@ const getBranchWiseSalesCount = async (req, res) => {
         } = req.query;
 
         const replacements = {};
-        let whereSql = `WHERE t.deleted_at IS NULL`;
+        let whereSql = `WHERE t.deleted_at IS NULL AND t.is_active = true`;
 
         whereSql += dateFilter(
             { from_date, to_date, date_filter },
@@ -650,7 +653,7 @@ const getBranchWiseSalesCount = async (req, res) => {
       FROM sales_invoice_bills t
       JOIN branches b ON b.id = t.branch_id
       ${whereSql}
-        AND t.status = 'Invoice'
+        AND t.status = 'Invoice' AND t.is_active = true
       GROUP BY b.id, b.branch_name, b.branch_no
     `;
 
@@ -663,7 +666,7 @@ const getBranchWiseSalesCount = async (req, res) => {
       FROM sales_returns t
       JOIN branches b ON b.id = t.branch_id
       ${whereSql}
-        AND t.status = 'Printed'
+        AND t.status = 'Printed' AND t.is_active = true
       GROUP BY b.id, b.branch_no
     `;
 
@@ -676,7 +679,7 @@ const getBranchWiseSalesCount = async (req, res) => {
       FROM estimate_bills t
       JOIN branches b ON b.id = t.branch_id
       ${whereSql}
-        AND t.status = 'Printed'
+        AND t.status = 'Printed' AND t.is_active = true
       GROUP BY b.id, b.branch_no
     `;
 
@@ -689,6 +692,7 @@ const getBranchWiseSalesCount = async (req, res) => {
       FROM old_jewels t
       JOIN branches b ON b.id = t.branch_id
       ${whereSql}
+        AND t.is_active = true
       GROUP BY b.id,b.branch_no
     `;
 
@@ -701,6 +705,7 @@ const getBranchWiseSalesCount = async (req, res) => {
       FROM jewel_repairs t
       JOIN branches b ON b.id = t.branch_id
       ${whereSql}
+        AND t.is_active = true
       GROUP BY b.id, b.branch_no
     `;
 
@@ -783,6 +788,7 @@ const getBranchwiseSalesAndCustomerStats = async (req, res) => {
       FROM sales_invoice_bills t
       JOIN branches b ON b.id = t.branch_id
       WHERE t.status = 'Invoice'
+        AND t.is_active = true
         AND t.deleted_at IS NULL
       GROUP BY b.id, b.branch_name
     `;
@@ -798,13 +804,14 @@ const getBranchwiseSalesAndCustomerStats = async (req, res) => {
           SELECT COUNT(DISTINCT customer_id)
           FROM sales_invoice_bills
           WHERE status = 'Invoice'
+            AND is_active = true
             AND deleted_at IS NULL
         ) AS buying_customers,
 
         (
           SELECT COUNT(DISTINCT customer_id)
           FROM sales_returns
-          WHERE status = 'Printed'
+          WHERE status = 'Printed' AND is_active = true
             AND deleted_at IS NULL
         ) AS returning_customers,
 
@@ -817,6 +824,7 @@ const getBranchwiseSalesAndCustomerStats = async (req, res) => {
             )
           FROM sales_invoice_bills
           WHERE status = 'Invoice'
+            AND is_active = true
             AND deleted_at IS NULL
         ) AS avg_customer_per_day
     `;
@@ -843,6 +851,7 @@ const getSalesByMaterialType = async (req, res) => {
         const replacements = {};
         let whereSql = `
             t.status = 'Invoice'
+            AND t.is_active = true
             AND t.deleted_at IS NULL
             `;
 
@@ -967,6 +976,7 @@ const getFastMovingCategoryStats = async (req, res) => {
             JOIN sales_invoice_bills sib
             ON sib.id = sii.invoice_bill_id
             AND sib.deleted_at IS NULL
+            AND sib.is_active = true
             AND sib.status = 'Invoice'
             ${dateCondition}
             JOIN invoice_totals it
@@ -1025,6 +1035,7 @@ const getFastMovingCategoryStats = async (req, res) => {
           JOIN sales_invoice_bills sib
             ON sib.id = sii.invoice_bill_id
             AND sib.deleted_at IS NULL
+            AND sib.is_active = true
             AND sib.status = 'Invoice'
             ${dateCondition}
           JOIN invoice_totals it

@@ -73,6 +73,11 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.DECIMAL(15, 2),
         allowNull: true
       },
+      is_active: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: true,
+      },
     },
     {
       timestamps: true,

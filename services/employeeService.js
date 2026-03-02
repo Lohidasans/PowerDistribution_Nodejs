@@ -863,6 +863,7 @@ const getTopEmployeePerformers = async (req, res) => {
       LEFT JOIN 
         sales_invoice_bills sib ON sib.employee_id = e.id 
         AND sib.deleted_at IS NULL
+        AND sib.is_active = true
         AND sib.status != 'Cancelled'
         ${branchFilter}
       LEFT JOIN

@@ -169,7 +169,7 @@ const getVendorPayments = async (req, res) => {
 
       -- ✅ NEW JOINS
       LEFT JOIN grns g ON vp.purchase_id IS NOT NULL AND g.id = vp.purchase_id:: int AND g.deleted_at IS NULL
-      LEFT JOIN sales_invoice_bills si ON vp.invoice_id IS NOT NULL AND si.id = vp.invoice_id:: int AND si.deleted_at IS NULL
+      LEFT JOIN sales_invoice_bills si ON vp.invoice_id IS NOT NULL AND si.id = vp.invoice_id:: int AND si.deleted_at IS NULL AND si.is_active = true
       LEFT JOIN branches b ON b.id = vp.branch_id AND b.deleted_at IS NULL
       LEFT JOIN districts d ON d.id = b.district_id AND d.deleted_at IS NULL
       LEFT JOIN states s ON s.id = b.state_id AND s.deleted_at IS NULL
@@ -261,11 +261,11 @@ const getVendorPaymentById = async (req, res) => {
       LEFT JOIN vendors v ON v.id = vp.account_name_id AND vp.user_type_id = 1 AND vp.bill_type_id NOT IN (2, 3) AND v.deleted_at IS NULL
       LEFT JOIN customers c ON c.id = vp.account_name_id AND vp.user_type_id = 2 AND vp.bill_type_id NOT IN (2, 3) AND c.deleted_at IS NULL
       LEFT JOIN grns g ON vp.bill_type_id = 1 AND vp.user_type_id = 1 AND g.id = vp.purchase_id::int AND g.deleted_at IS NULL
-      LEFT JOIN sales_invoice_bills si ON vp.bill_type_id = 1 AND vp.user_type_id = 2 AND si.id = vp.invoice_id::int AND si.deleted_at IS NULL
+      LEFT JOIN sales_invoice_bills si ON vp.bill_type_id = 1 AND vp.user_type_id = 2 AND si.id = vp.invoice_id::int AND si.deleted_at IS NULL AND si.is_active = true
       LEFT JOIN branches b ON b.id = vp.branch_id AND b.deleted_at IS NULL
       LEFT JOIN districts d ON d.id = b.district_id AND d.deleted_at IS NULL
       LEFT JOIN states s ON s.id = b.state_id AND s.deleted_at IS NULL
-      WHERE vp.id = :paymentId AND vp.deleted_at IS NULL`;
+      WHERE vp.id = :paymentId AND vp.deleted_at IS NULL AND vp.is_active = true`;
 
     const [payment] = await sequelize.query(sql, {
       replacements: { paymentId: req.params.id },

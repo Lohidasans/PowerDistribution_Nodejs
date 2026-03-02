@@ -52,6 +52,7 @@ const getOutstandingPayables = async (req, res) => {
       SELECT COALESCE(SUM(amount), 0) as total_payments
       FROM vendor_payments
       WHERE deleted_at IS NULL
+        AND is_active = true
         AND status = 'Completed'
     `;
 
@@ -250,6 +251,7 @@ const getTransactionHistory = async (req, res) => {
             FROM vendor_payments vp
             WHERE vp.deleted_at IS NULL
               AND vp.status = 'Completed'
+              AND vp.is_active = true
               AND vp.ref_id = g.grn_no
           ), 0
         ) as total_paid,
@@ -259,6 +261,7 @@ const getTransactionHistory = async (req, res) => {
             FROM vendor_payments vp
             WHERE vp.deleted_at IS NULL
               AND vp.status = 'Completed'
+              AND vp.is_active = true
               AND vp.ref_id = g.grn_no
           ), 0
         )) as outstanding
@@ -364,6 +367,7 @@ const getVendorList = async (req, res) => {
             JOIN grns g ON g.grn_no = vp.ref_id
             WHERE vp.deleted_at IS NULL
               AND vp.status = 'Completed'
+              AND vp.is_active = true
               AND g.vendor_id = v.id
               AND g.deleted_at IS NULL
           ), 0
@@ -382,6 +386,7 @@ const getVendorList = async (req, res) => {
               JOIN grns g ON g.grn_no = vp.ref_id
               WHERE vp.deleted_at IS NULL
                 AND vp.status = 'Completed'
+                AND vp.is_active = true
                 AND g.vendor_id = v.id
                 AND g.deleted_at IS NULL
             ), 0
@@ -533,6 +538,7 @@ const getVendorOverview = async (req, res) => {
       JOIN grns g ON g.grn_no = vp.ref_id
       WHERE g.vendor_id = :vendor_id
         AND vp.status = 'Completed'
+        AND vp.is_active = true
         AND vp.deleted_at IS NULL
         AND g.deleted_at IS NULL
         ${dateFilter.replace('DATE', 'vp.payment_date')}
@@ -802,6 +808,7 @@ const getVendorDashboard = async (req, res) => {
           FROM vendor_payments vp
           WHERE vp.deleted_at IS NULL
             AND vp.status = 'Completed'
+            AND vp.is_active = true
             ${start_date || end_date ? `AND vp.payment_date BETWEEN CAST(COALESCE(:start_date, '1900-01-01') AS DATE) AND CAST(COALESCE(:end_date, '2100-12-31') AS DATE)` : ''}
             ${branch_id ? 'AND vp.branch_id = :branch_id' : ''}
         ) as total_payments
@@ -832,6 +839,7 @@ const getVendorDashboard = async (req, res) => {
             JOIN sales_invoice_bills sib ON sib.id = sibi.invoice_bill_id AND sib.deleted_at IS NULL
             WHERE p.vendor_id = v.id
               AND sibi.deleted_at IS NULL
+              AND sib.is_active = true
               AND sib.status != 'Cancelled'
           ), 0
         ) as total_sales,
@@ -842,6 +850,7 @@ const getVendorDashboard = async (req, res) => {
             FROM vendor_payments vp
             JOIN grns g2 ON g2.grn_no = vp.ref_id AND g2.deleted_at IS NULL
             WHERE vp.deleted_at IS NULL
+              AND vp.is_active = true
               AND vp.status = 'Completed'
               AND g2.vendor_id = v.id
               ${dateFilter ? dateFilter.replace('g.grn_date', 'vp.payment_date') : ''}

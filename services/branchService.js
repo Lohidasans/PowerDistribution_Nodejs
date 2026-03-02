@@ -552,7 +552,7 @@ const getBranchDashboard = async (req, res) => {
         customers c
       LEFT JOIN 
         sales_invoice_bills sib ON sib.customer_id = c.id 
-        AND sib.deleted_at IS NULL
+        AND sib.deleted_at IS NULL AND sib.is_active = true
         AND sib.status != 'Cancelled'
         ${branchFilter}
       WHERE 
@@ -584,7 +584,7 @@ const getBranchDashboard = async (req, res) => {
         employees e
       LEFT JOIN 
         sales_invoice_bills sib ON sib.employee_id = e.id 
-        AND sib.deleted_at IS NULL
+        AND sib.deleted_at IS NULL AND sib.is_active = true
         AND sib.status != 'Cancelled'
         ${branchFilter}
       LEFT JOIN
@@ -720,7 +720,7 @@ const getBranchRevenueComparison = async (req, res) => {
         branches b
       LEFT JOIN 
         sales_invoice_bills sib ON sib.branch_id = b.id 
-        AND sib.deleted_at IS NULL
+        AND sib.deleted_at IS NULL AND sib.is_active = true
         AND sib.status != 'Cancelled'
         ${dateFilter}
       WHERE 
@@ -868,7 +868,7 @@ const getBranchStats = async (req, res) => {
         branches b
       LEFT JOIN 
         sales_invoice_bills sib ON sib.branch_id = b.id 
-        AND sib.deleted_at IS NULL
+        AND sib.deleted_at IS NULL AND sib.is_active = true
         AND sib.status != 'Cancelled'
         ${dateFilter}
       WHERE 
@@ -997,6 +997,7 @@ const getBranchOverview = async (req, res) => {
           SELECT COUNT(DISTINCT sib.customer_id)
           FROM sales_invoice_bills sib
           WHERE sib.branch_id = b.id
+          ANS sib.is_active = true
           AND sib.deleted_at IS NULL
           AND sib.customer_id IS NOT NULL
         ), 0) AS total_customers,
@@ -1006,6 +1007,7 @@ const getBranchOverview = async (req, res) => {
           FROM sales_invoice_bills sib
           WHERE sib.branch_id = b.id
           AND sib.deleted_at IS NULL
+          AND sib.is_active = true
           AND sib.status != 'Cancelled'
         ), 0) AS sales_revenue,
         -- Total Revenue from Jewel Repairs
@@ -1013,7 +1015,7 @@ const getBranchOverview = async (req, res) => {
           SELECT SUM(jr.total_amount)
           FROM jewel_repairs jr
           WHERE jr.branch_id = b.id
-          AND jr.deleted_at IS NULL
+          AND jr.deleted_at IS NULL AND jr.is_active = true
           AND jr.status != 'Cancelled'
         ), 0) AS repair_revenue,
         -- Total Stock Value (purchase value of products)
@@ -1151,6 +1153,7 @@ const getSalesStatistics = async (req, res) => {
       WHERE 
         sib.branch_id = :branch_id
         AND sib.deleted_at IS NULL
+        AND sib.is_active = true
         AND sib.status != 'Cancelled'
         ${dateFilter}
       ${groupByClause}
@@ -1215,7 +1218,7 @@ const getCustomerVisits = async (req, res) => {
   try {
     const { branch_id, start_date, end_date } = req.query;
     const replacements = {};
-    let whereClause = "sib.deleted_at IS NULL AND sib.status != 'Cancelled'";
+    let whereClause = "sib.deleted_at IS NULL AND sib.is_active = true AND sib.status != 'Cancelled'";
 
     if (branch_id) {
       whereClause += " AND sib.branch_id = :branch_id";
@@ -1331,6 +1334,7 @@ const getBranchSalesAnalytics = async (req, res) => {
       FROM sales_invoice_bills sib
       WHERE sib.branch_id = :branch_id
         AND sib.deleted_at IS NULL
+        AND sib.is_active = true
         AND sib.status != 'Cancelled'
         ${dateFilter}
     `;
@@ -1366,11 +1370,12 @@ const getBranchSalesAnalytics = async (req, res) => {
             SELECT 1 FROM sales_invoice_bills sib 
             WHERE sib.id = p.invoice_bill_id 
               AND sib.branch_id = :branch_id 
+              AND sib.is_active = true
               ${dateFilter}
           )
           OR EXISTS (
             SELECT 1 FROM jewel_repairs jr 
-            WHERE jr.id = p.jewel_repair_id 
+            WHERE jr.id = p.jewel_repair_id AND jr.is_active = true
               AND jr.branch_id = :branch_id 
               ${dateFilter.replace(/sib\./g, 'jr.')}
           )
@@ -1386,6 +1391,7 @@ const getBranchSalesAnalytics = async (req, res) => {
       FROM sales_invoice_bills
       WHERE branch_id = :branch_id
         AND deleted_at IS NULL
+        AND is_active = true
         AND status != 'Cancelled'
         ${dateFilter}
       
@@ -1396,7 +1402,7 @@ const getBranchSalesAnalytics = async (req, res) => {
         COALESCE(SUM(total_amount), 0) AS total_amount
       FROM jewel_repairs
       WHERE branch_id = :branch_id
-        AND deleted_at IS NULL
+        AND deleted_at IS NULL AND is_active = true
         AND status != 'Cancelled'
         ${dateFilter.replace(/sib\./g, 'jewel_repairs.')}
       
@@ -1425,6 +1431,7 @@ const getBranchSalesAnalytics = async (req, res) => {
       WHERE sib.branch_id = :branch_id
         AND sibi.deleted_at IS NULL
         AND sib.deleted_at IS NULL
+        AND sib.is_active = true
         AND sib.status != 'Cancelled'
         ${dateFilter}
     `;
@@ -1435,6 +1442,7 @@ const getBranchSalesAnalytics = async (req, res) => {
       FROM old_jewel_items oji
       INNER JOIN old_jewels oj ON oj.id = oji.old_jewel_id
       WHERE oj.branch_id = :branch_id
+        AND oj.is_active = true
         AND oji.deleted_at IS NULL
         AND oj.deleted_at IS NULL
         AND oj.status != 'Cancelled'
@@ -1543,7 +1551,7 @@ const getRecentSales = async (req, res) => {
     const { branch_id, start_date, end_date, limit = 10 } = req.query;
 
     const replacements = { limit: parseInt(limit, 10) };
-    let whereClause = 'sib.deleted_at IS NULL AND sib.status != \'Cancelled\'';
+    let whereClause = 'sib.deleted_at IS NULL AND sib.is_active = true AND sib.status != \'Cancelled\'';
 
     if (branch_id) {
       whereClause += ' AND sib.branch_id = :branch_id';
@@ -1632,7 +1640,7 @@ const getTopSellingCategories = async (req, res) => {
     const { branch_id, start_date, end_date, limit = 10 } = req.query;
 
     const replacements = { limit: parseInt(limit, 10) };
-    let whereClause = 'sib.deleted_at IS NULL AND sib.status != \'Cancelled\'';
+    let whereClause = 'sib.deleted_at IS NULL AND sib.is_active = true AND sib.status != \'Cancelled\'';
 
     if (branch_id) {
       whereClause += ' AND sib.branch_id = :branch_id';
@@ -2027,6 +2035,7 @@ const getBranchCustomers = async (req, res) => {
         sales_invoice_bills sib ON sib.customer_id = c.id 
           AND sib.branch_id = :branch_id
           AND sib.deleted_at IS NULL
+          AND sib.is_active = true
           AND sib.status != 'Cancelled'
       WHERE 
         c.deleted_at IS NULL
@@ -2044,6 +2053,7 @@ const getBranchCustomers = async (req, res) => {
       INNER JOIN sales_invoice_bills sib ON sib.customer_id = c.id 
         AND sib.branch_id = :branch_id
         AND sib.deleted_at IS NULL
+        AND sib.is_active = true
         AND sib.status != 'Cancelled'
       WHERE c.deleted_at IS NULL
     `;
@@ -2120,6 +2130,7 @@ const getCustomerInvoices = async (req, res) => {
       WHERE 
         sib.customer_id = :customer_id
         AND sib.deleted_at IS NULL
+        AND sib.is_active = true
       GROUP BY 
         sib.id, sib.invoice_no, sib.invoice_date, b.branch_name, sib.total_amount, sib.status
       ORDER BY 
@@ -2308,6 +2319,7 @@ const getVendorPaymentDetails = async (req, res) => {
       LEFT JOIN 
         vendor_payments vp ON vp.purchase_id = g.id::text 
           AND vp.branch_id = :branch_id
+          AND vp.is_active = true
           AND vp.deleted_at IS NULL
           AND vp.status != 'Cancelled'
       WHERE 

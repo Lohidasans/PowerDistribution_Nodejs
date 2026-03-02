@@ -352,6 +352,7 @@ const listCustomers = async (req, res) => {
           FROM sales_invoice_bills sib2 
           WHERE sib2.customer_id = c.id 
             AND sib2.deleted_at IS NULL
+            AND sib2.is_active = true
             ${mode ? 'AND sib2.order_type = :mode' : ''}
             ${branch_id ? 'AND sib2.branch_id = :branch_id' : ''}
           ORDER BY sib2.created_at DESC 
@@ -365,6 +366,7 @@ const listCustomers = async (req, res) => {
             FROM sales_invoice_bills sib2
             WHERE sib2.customer_id = c.id
               AND sib2.deleted_at IS NULL
+              AND sib2.is_active = true
               ${branch_id ? 'AND sib2.branch_id = :branch_id' : ''}
             ORDER BY sib2.created_at DESC
             LIMIT 1
@@ -380,6 +382,7 @@ const listCustomers = async (req, res) => {
             LEFT JOIN branches b ON b.id = sib2.branch_id
             WHERE sib2.customer_id = c.id
               AND sib2.deleted_at IS NULL
+              AND sib2.is_active = true
               ${branch_id ? 'AND sib2.branch_id = :branch_id' : ''}
             ORDER BY sib2.created_at DESC
             LIMIT 1
@@ -393,6 +396,7 @@ const listCustomers = async (req, res) => {
           FROM sales_invoice_bills sib3
           WHERE sib3.customer_id = c.id
             AND sib3.deleted_at IS NULL
+            AND sib3.is_active = true
             ${branch_id ? 'AND sib3.branch_id = :branch_id' : ''}
         ), 0) AS purchase_amount,
 
@@ -409,6 +413,7 @@ const listCustomers = async (req, res) => {
       LEFT JOIN sales_invoice_bills sib 
         ON sib.customer_id = c.id 
         AND sib.deleted_at IS NULL
+        AND sib.is_active = true
 
       WHERE c.deleted_at IS NULL
     `;
@@ -433,6 +438,7 @@ const listCustomers = async (req, res) => {
         WHERE sib4.customer_id = c.id
           AND sib4.order_type = :mode
           AND sib4.deleted_at IS NULL
+          AND sib4.is_active = true
       )`;
       replacements.mode = mode;
     }
@@ -445,6 +451,7 @@ const listCustomers = async (req, res) => {
         WHERE sib5.customer_id = c.id
           AND sib5.branch_id = :branch_id
           AND sib5.deleted_at IS NULL
+          AND sib5.is_active = true
       )`;
       replacements.branch_id = branch_id;
     }
@@ -509,6 +516,7 @@ const getTopBuyingCustomers = async (req, res) => {
       LEFT JOIN 
         sales_invoice_bills sib ON sib.customer_id = c.id 
         AND sib.deleted_at IS NULL
+        AND sib.is_active = true
         AND sib.status != 'Cancelled'
         ${branchFilter}
       WHERE 

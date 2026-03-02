@@ -54,7 +54,7 @@ const getOldJewelReport = async (req, res) => {
     const offset = hasPagination ? (Number(page) - 1) * perPage : null;
 
     const replacements = {};
-    let whereSql = `1=1`;
+    let whereSql = `t.is_active = true`; // Base condition to only consider active records
 
     whereSql += dateFilter(
       { from_date, to_date, date_filter },
@@ -1714,7 +1714,7 @@ const getBranchwiseStockCount = async (req, res) => {
           JOIN old_jewel_items oi
             ON oi.old_jewel_id = t.id
             AND oi.deleted_at IS NULL
-          WHERE 1=1
+          WHERE t.is_active = true
             ${branch_id ? "AND t.branch_id = :branch_id" : ""}
             ${billingDateCondition}
           GROUP BY t.branch_id
@@ -1731,7 +1731,7 @@ const getBranchwiseStockCount = async (req, res) => {
           JOIN jewel_repair_items ri
             ON ri.repair_id = t.id
             AND ri.deleted_at IS NULL
-          WHERE 1=1
+          WHERE t.is_active = true
             ${branch_id ? "AND t.branch_id = :branch_id" : ""}
             ${billingDateCondition}
           GROUP BY t.branch_id
