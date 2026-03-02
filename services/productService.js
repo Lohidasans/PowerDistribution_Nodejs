@@ -770,6 +770,8 @@ const getAllProductDetails = async (req, res) => {
     const limitNum = usePagination ? parseInt(limit || 10, 10) : null;
     const offset = usePagination ? (pageNum - 1) * limitNum : null;
 
+    const isNumericSearch = search !== undefined && search !== null && search !== "" && !isNaN(search);
+
     // COMMON WHERE CLAUSE
     let whereClause = `
       WHERE p.status = 'Active'
@@ -875,7 +877,7 @@ const getAllProductDetails = async (req, res) => {
       `;
     }
 
-    if (search) {
+    if (search && !isNumericSearch) {
       const like = `%${search}%`;
       whereClause += `
         AND (
@@ -895,6 +897,17 @@ const getAllProductDetails = async (req, res) => {
       replacements.like = like;
     }
 
+    let havingClause = "";
+    if (isNumericSearch) {
+      havingClause = `
+        HAVING
+          ROUND(
+            COALESCE(SUM(COALESCE(pid.quantity, 0) * COALESCE(pid.net_weight, 0)), 0),
+            3
+          ) = :exact_weight
+      `;
+      replacements.exact_weight = Number(search);
+    }
     // COUNT QUERY (only if pagination is used)
     let total = null;
     if (usePagination) {
@@ -991,6 +1004,7 @@ const getAllProductDetails = async (req, res) => {
         sc.subcategory_name,
         g.grn_no, g.grn_date, g.total_gross_wt_in_g, g.total_amount,
         gi.ref_no, gi.gross_wt_in_g, b.branch_name, gi.net_wt_in_g, gi.quantity, gi.type
+      ${havingClause}
       ORDER BY p.id DESC
     `;
 
