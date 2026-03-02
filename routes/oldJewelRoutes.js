@@ -9,6 +9,7 @@ router.get('/old-jewels/dropdown', svc.listOldJewelDropdown);
 router.get('/old-jewels/:id', svc.getOldJewelById);
 router.put('/old-jewels/:id', svc.updateOldJewel);
 router.delete('/old-jewels/:id', svc.deleteOldJewel);
+router.patch('/old-jewels/:id/toggle-active', svc.toggleOldJewelActive);
 
 
 module.exports = router;

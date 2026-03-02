@@ -456,6 +456,32 @@ const listOldJewelDropdown = async (req, res) => {
 };
 
 
+// Toggle active status for old jewel
+const toggleOldJewelActive = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { is_active } = req.body;
+
+    if (typeof is_active !== 'boolean') {
+      return commonService.badRequest(res, "is_active must be a boolean value");
+    }
+
+    const oldJewel = await models.OldJewel.findByPk(id);
+    if (!oldJewel) {
+      return commonService.notFound(res, "Old jewel not found");
+    }
+
+    await oldJewel.update({ is_active });
+
+    return commonService.okResponse(res, {
+      message: "Old jewel active status updated successfully",
+      is_active
+    });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
 module.exports = {
   createOldJewel,
   getAllOldJewels,
@@ -463,5 +489,6 @@ module.exports = {
   updateOldJewel,
   deleteOldJewel,
   generateOldJewelCode,
-  listOldJewelDropdown
+  listOldJewelDropdown,
+  toggleOldJewelActive
 };

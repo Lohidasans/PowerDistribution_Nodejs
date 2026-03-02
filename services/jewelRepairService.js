@@ -575,6 +575,32 @@ const generateRepairCode = async (req, res) => {
   }
 };
 
+// Toggle active status for jewel repair
+const toggleJewelRepairActive = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { is_active } = req.body;
+
+    if (typeof is_active !== 'boolean') {
+      return commonService.badRequest(res, "is_active must be a boolean value");
+    }
+
+    const jewelRepair = await models.JewelRepair.findByPk(id);
+    if (!jewelRepair) {
+      return commonService.notFound(res, "Jewel repair not found");
+    }
+
+    await jewelRepair.update({ is_active });
+
+    return commonService.okResponse(res, {
+      message: "Jewel repair active status updated successfully",
+      is_active
+    });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
 module.exports = {
   createJewelRepair,
   getAllJewelRepairs,
@@ -582,4 +608,5 @@ module.exports = {
   updateJewelRepair,
   deleteJewelRepair,
   generateRepairCode,
+  toggleJewelRepairActive
 };

@@ -689,6 +689,32 @@ const validateSalesReturnInvoices = async ({
 
 
 
+// Toggle active status for sales return
+const toggleSalesReturnActive = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { is_active } = req.body;
+
+    if (typeof is_active !== 'boolean') {
+      return commonService.badRequest(res, "is_active must be a boolean value");
+    }
+
+    const salesReturn = await models.SalesReturn.findByPk(id);
+    if (!salesReturn) {
+      return commonService.notFound(res, "Sales return not found");
+    }
+
+    await salesReturn.update({ is_active });
+
+    return commonService.okResponse(res, {
+      message: "Sales return active status updated successfully",
+      is_active
+    });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
 module.exports = {
   generateSalesReturnNo,
   createSalesReturn,
@@ -697,5 +723,6 @@ module.exports = {
   deleteSalesReturn,
   listSalesReturnDropdown,
   updateSalesReturn,
-  validateSalesReturnInvoices
+  validateSalesReturnInvoices,
+  toggleSalesReturnActive
 };

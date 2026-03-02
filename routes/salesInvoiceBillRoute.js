@@ -11,6 +11,7 @@ router.get("/sales-invoice-bills/export-excel", svc.exportSalesInvoicesExcel);
 router.get("/sales-invoice-bills/customer/:customer_id", svc.getSalesInvoicesByCustomerId);
 router.get("/sales-invoice-bills/:id", svc.getSalesInvoiceById);
 router.delete("/sales-invoice-bills/:id", svc.deleteSalesInvoice);
+router.patch("/sales-invoice-bills/:id/toggle-active", svc.toggleSalesInvoiceActive);
 
 module.exports = router;
 

@@ -9,6 +9,7 @@ router.get('/jewel-repairs/:id', svc.getJewelRepairById);
 router.put('/jewel-repairs/:id', svc.updateJewelRepair);
 router.delete('/jewel-repairs/:id', svc.deleteJewelRepair);
 router.post('/jewel-repairs/code', svc.generateRepairCode);
+router.patch('/jewel-repairs/:id/toggle-active', svc.toggleJewelRepairActive);
 
 module.exports = router;
 

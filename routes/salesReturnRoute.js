@@ -9,5 +9,6 @@ router.get('/sales-returns', svc.listSalesReturns);
 router.get("/sales-returns/dropdown", svc.listSalesReturnDropdown);
 router.get('/sales-returns/:id', svc.getSalesReturnById);
 router.delete('/sales-returns/:id', svc.deleteSalesReturn);
+router.patch('/sales-returns/:id/toggle-active', svc.toggleSalesReturnActive);
 
 module.exports = router;

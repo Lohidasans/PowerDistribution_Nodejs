@@ -242,10 +242,37 @@ const deleteEstimate = async (req, res) => {
 };
 
 
+// Toggle active status for estimate bill
+const toggleEstimateActive = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { is_active } = req.body;
+
+    if (typeof is_active !== 'boolean') {
+      return commonService.badRequest(res, "is_active must be a boolean value");
+    }
+
+    const estimate = await models.EstimateBill.findByPk(id);
+    if (!estimate) {
+      return commonService.notFound(res, "Estimate bill not found");
+    }
+
+    await estimate.update({ is_active });
+
+    return commonService.okResponse(res, {
+      message: "Estimate bill active status updated successfully",
+      is_active
+    });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
 module.exports = {
   generateEstimateNo,
   createEstimate,
   getEstimateById,
   listEstimates,
   deleteEstimate,
+  toggleEstimateActive
 };
