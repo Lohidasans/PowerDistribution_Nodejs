@@ -1002,16 +1002,16 @@ const getStockInHandSummary = async (where, replacements) => {
 
 //Subcategory is low stock when SUM of all available quantities(for that subcategory + branch)  < reorder_level defined in subcategory table
 const getLowStockSummaryInternal = async (where, replacements) => {
-  // Optimization: filter products early using the same base where (status/branch/material/category/search/date)
   const [rows] = await sequelize.query(
     `
     WITH filtered_products AS (
-      SELECT p.id, p.subcategory_id, p.branch_id
+      SELECT p.id, p.subcategory_id, p.branch_id, p.material_type_id, p.category_id
       FROM products p
       ${where}
     ),
-    subcategory_stock AS (
+    product_stock AS (
       SELECT
+        fp.id AS product_id,
         fp.subcategory_id,
         fp.branch_id,
         SUM(pid.quantity) AS total_qty
@@ -1019,21 +1019,33 @@ const getLowStockSummaryInternal = async (where, replacements) => {
       JOIN "productItemDetails" pid
         ON pid.product_id = fp.id
         AND pid.deleted_at IS NULL
-      GROUP BY fp.subcategory_id, fp.branch_id
+      GROUP BY fp.id, fp.subcategory_id, fp.branch_id
     ),
-    low_stock_rows AS (
+    grouped_low_stock AS (
       SELECT
-        ss.subcategory_id,
-        ss.branch_id,
-        ss.total_qty
-      FROM subcategory_stock ss
-      JOIN subcategories sc ON sc.id = ss.subcategory_id
-      WHERE ss.total_qty < sc.reorder_level
+        p.branch_id,
+        p.material_type_id,
+        p.category_id,
+        sc.id AS subcategory_id,
+        sc.reorder_level,
+        SUM(ps.total_qty) AS quantity
+      FROM product_stock ps
+      JOIN products p ON p.id = ps.product_id
+      JOIN subcategories sc
+        ON sc.id = ps.subcategory_id
+       AND sc.deleted_at IS NULL
+      WHERE ps.total_qty < sc.reorder_level
+      GROUP BY
+        p.branch_id,
+        p.material_type_id,
+        p.category_id,
+        sc.id,
+        sc.reorder_level
     )
     SELECT
       COUNT(*) AS subcategory_count,
-      COALESCE(SUM(total_qty), 0) AS total_quantity
-    FROM low_stock_rows;
+      COALESCE(SUM(quantity), 0) AS total_quantity
+    FROM grouped_low_stock;
     `,
     { replacements }
   );
