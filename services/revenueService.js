@@ -619,7 +619,7 @@ const getBranchwiseRevenue = async (req, res) => {
     vr.amount
   FROM voucher_receipts vr
   JOIN payment_modes pm ON pm.id = vr.payment_mode_id
-  WHERE vr.deleted_at IS NULL ans vr.is_active = true
+  WHERE vr.deleted_at IS NULL and vr.is_active = true
 
   UNION ALL
 
