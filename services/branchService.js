@@ -505,15 +505,73 @@ const generateBranchCode = async (req, res) => {
 // Get branch dashboard statistics with top customers and top employees (optionally filtered by branch)
 const getBranchDashboard = async (req, res) => {
   try {
-    const { top_limit = 5, branch_id } = req.query; // Default to top 5 for dashboard
+    const { top_limit = 5, branch_id, period, start_date, end_date } = req.query; // Default to top 5 for dashboard
 
     // Build WHERE clause for branch filter
     let branchFilter = '';
+    let dateFilter = '';
     const replacements = { limit: parseInt(top_limit, 10) };
+    const currentDate = new Date();
 
     if (branch_id) {
       branchFilter = 'AND sib.branch_id = :branch_id';
       replacements.branch_id = parseInt(branch_id, 10);
+    }
+
+    // Build date filter based on period or custom date range
+    if (period) {
+      const periodValue = parseInt(period, 10);
+      switch (periodValue) {
+        case 1: // Today
+          const today = currentDate.toISOString().split('T')[0];
+          dateFilter = 'AND sib.invoice_date = :today';
+          replacements.today = today;
+          break;
+
+        case 2: // This Week
+          // Get start of current week (Sunday)
+          const startOfWeek = new Date(currentDate);
+          startOfWeek.setDate(currentDate.getDate() - currentDate.getDay());
+          const weekStart = startOfWeek.toISOString().split('T')[0];
+          const weekEnd = currentDate.toISOString().split('T')[0];
+          dateFilter = 'AND sib.invoice_date BETWEEN :week_start AND :week_end';
+          replacements.week_start = weekStart;
+          replacements.week_end = weekEnd;
+          break;
+
+        case 3: // This Month
+          const monthStart = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).toISOString().split('T')[0];
+          const monthEnd = currentDate.toISOString().split('T')[0];
+          dateFilter = 'AND sib.invoice_date BETWEEN :month_start AND :month_end';
+          replacements.month_start = monthStart;
+          replacements.month_end = monthEnd;
+          break;
+
+        case 4: // This Year
+          const yearStart = new Date(currentDate.getFullYear(), 0, 1).toISOString().split('T')[0];
+          const yearEnd = currentDate.toISOString().split('T')[0];
+          dateFilter = 'AND sib.invoice_date BETWEEN :year_start AND :year_end';
+          replacements.year_start = yearStart;
+          replacements.year_end = yearEnd;
+          break;
+
+        default:
+          // Invalid period, ignore
+          break;
+      }
+    } else if (start_date && end_date) {
+      // Custom date range
+      dateFilter = 'AND sib.invoice_date BETWEEN :start_date AND :end_date';
+      replacements.start_date = start_date;
+      replacements.end_date = end_date;
+    } else if (start_date) {
+      // Only start date provided
+      dateFilter = 'AND sib.invoice_date >= :start_date';
+      replacements.start_date = start_date;
+    } else if (end_date) {
+      // Only end date provided
+      dateFilter = 'AND sib.invoice_date <= :end_date';
+      replacements.end_date = end_date;
     }
 
     // Get total branches (excluding soft deleted)
@@ -541,27 +599,28 @@ const getBranchDashboard = async (req, res) => {
 
     // Get top buying customers
     const topCustomersQuery = `
-      SELECT 
+      SELECT
         c.id AS customer_id,
         c.customer_code,
         c.customer_name,
         c.mobile_number,
         COALESCE(SUM(sib.total_amount), 0) AS total_amount,
         COUNT(sib.id) AS total_invoices
-      FROM 
+      FROM
         customers c
-      LEFT JOIN 
-        sales_invoice_bills sib ON sib.customer_id = c.id 
+      LEFT JOIN
+        sales_invoice_bills sib ON sib.customer_id = c.id
         AND sib.deleted_at IS NULL AND sib.is_active = true
         AND sib.status != 'Cancelled'
         ${branchFilter}
-      WHERE 
+        ${dateFilter}
+      WHERE
         c.deleted_at IS NULL
-      GROUP BY 
+      GROUP BY
         c.id, c.customer_code, c.customer_name, c.mobile_number
-      HAVING 
+      HAVING
         COALESCE(SUM(sib.total_amount), 0) > 0
-      ORDER BY 
+      ORDER BY
         total_amount DESC
       LIMIT :limit
     `;
@@ -573,30 +632,31 @@ const getBranchDashboard = async (req, res) => {
 
     // Get top employee performers
     const topEmployeesQuery = `
-      SELECT 
+      SELECT
         e.id AS employee_id,
         e.employee_no,
         e.employee_name,
         COALESCE(SUM(DISTINCT sib.total_amount), 0) AS sales_amount,
         COALESCE(SUM(sibi.net_weight), 0) AS total_weight,
         COUNT(DISTINCT sib.id) AS total_invoices
-      FROM 
+      FROM
         employees e
-      LEFT JOIN 
-        sales_invoice_bills sib ON sib.employee_id = e.id 
+      LEFT JOIN
+        sales_invoice_bills sib ON sib.employee_id = e.id
         AND sib.deleted_at IS NULL AND sib.is_active = true
         AND sib.status != 'Cancelled'
         ${branchFilter}
+        ${dateFilter}
       LEFT JOIN
         sales_invoice_bill_items sibi ON sibi.invoice_bill_id = sib.id
         AND sibi.deleted_at IS NULL
-      WHERE 
+      WHERE
         e.deleted_at IS NULL
-      GROUP BY 
+      GROUP BY
         e.id, e.employee_no, e.employee_name
-      HAVING 
+      HAVING
         COALESCE(SUM(DISTINCT sib.total_amount), 0) > 0
-      ORDER BY 
+      ORDER BY
         sales_amount DESC
       LIMIT :limit
     `;
@@ -652,14 +712,15 @@ const getBranchRevenueComparison = async (req, res) => {
     const currentDate = new Date();
 
     if (period) {
-      switch (period.toLowerCase()) {
-        case 'today':
+      const periodValue = parseInt(period, 10);
+      switch (periodValue) {
+        case 1: // Today
           const today = currentDate.toISOString().split('T')[0];
           dateFilter = 'AND sib.invoice_date = :today';
           replacements.today = today;
           break;
 
-        case 'this_week':
+        case 2: // This Week
           // Get start of current week (Sunday)
           const startOfWeek = new Date(currentDate);
           startOfWeek.setDate(currentDate.getDate() - currentDate.getDay());
@@ -670,7 +731,7 @@ const getBranchRevenueComparison = async (req, res) => {
           replacements.week_end = weekEnd;
           break;
 
-        case 'this_month':
+        case 3: // This Month
           const monthStart = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).toISOString().split('T')[0];
           const monthEnd = currentDate.toISOString().split('T')[0];
           dateFilter = 'AND sib.invoice_date BETWEEN :month_start AND :month_end';
@@ -678,7 +739,7 @@ const getBranchRevenueComparison = async (req, res) => {
           replacements.month_end = monthEnd;
           break;
 
-        case 'this_year':
+        case 4: // This Year
           const yearStart = new Date(currentDate.getFullYear(), 0, 1).toISOString().split('T')[0];
           const yearEnd = currentDate.toISOString().split('T')[0];
           dateFilter = 'AND sib.invoice_date BETWEEN :year_start AND :year_end';
@@ -776,22 +837,29 @@ const getBranchRevenueComparison = async (req, res) => {
 // Get comprehensive branch statistics (Sales, Purchase, Stock, Revenue, Employees)
 const getBranchStats = async (req, res) => {
   try {
-    const { period, start_date, end_date } = req.query;
+    const { period, start_date, end_date, branch_id } = req.query;
 
     // Build date filter based on period or custom date range
     let dateFilter = '';
+    let branchFilter = '';
     const replacements = {};
     const currentDate = new Date();
 
+    if (branch_id) {
+      branchFilter = 'AND b.id = :branch_id';
+      replacements.branch_id = parseInt(branch_id, 10);
+    }
+
     if (period) {
-      switch (period.toLowerCase()) {
-        case 'today':
+      const periodValue = parseInt(period, 10);
+      switch (periodValue) {
+        case 1: // Today
           const today = currentDate.toISOString().split('T')[0];
           dateFilter = 'AND sib.invoice_date = :today';
           replacements.today = today;
           break;
 
-        case 'this_week':
+        case 2: // This Week
           const startOfWeek = new Date(currentDate);
           startOfWeek.setDate(currentDate.getDate() - currentDate.getDay());
           const weekStart = startOfWeek.toISOString().split('T')[0];
@@ -801,7 +869,7 @@ const getBranchStats = async (req, res) => {
           replacements.week_end = weekEnd;
           break;
 
-        case 'this_month':
+        case 3: // This Month
           const monthStart = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).toISOString().split('T')[0];
           const monthEnd = currentDate.toISOString().split('T')[0];
           dateFilter = 'AND sib.invoice_date BETWEEN :month_start AND :month_end';
@@ -809,7 +877,7 @@ const getBranchStats = async (req, res) => {
           replacements.month_end = monthEnd;
           break;
 
-        case 'this_year':
+        case 4: // This Year
           const yearStart = new Date(currentDate.getFullYear(), 0, 1).toISOString().split('T')[0];
           const yearEnd = currentDate.toISOString().split('T')[0];
           dateFilter = 'AND sib.invoice_date BETWEEN :year_start AND :year_end';
@@ -866,16 +934,17 @@ const getBranchStats = async (req, res) => {
         ), 0) AS total_employee
       FROM 
         branches b
-      LEFT JOIN 
-        sales_invoice_bills sib ON sib.branch_id = b.id 
+      LEFT JOIN
+        sales_invoice_bills sib ON sib.branch_id = b.id
         AND sib.deleted_at IS NULL AND sib.is_active = true
         AND sib.status != 'Cancelled'
         ${dateFilter}
-      WHERE 
+      WHERE
         b.deleted_at IS NULL
-      GROUP BY 
+        ${branchFilter}
+      GROUP BY
         b.id, b.branch_no, b.branch_name, b.status
-      ORDER BY 
+      ORDER BY
         b.id ASC
     `;
 
