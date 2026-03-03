@@ -6,6 +6,7 @@ const svc = require("../services/vendorPaymentService");
 router.post("/vendor-payments", svc.createVendorPayment);
 router.post("/vendor-payments/code", svc.generatePaymentNumber);
 router.get("/vendor-payments", svc.getVendorPayments);
+router.get("/vendor-payments/by-purchase", svc.getVendorPaymentsByPurchase);
 router.get("/vendor-payments/bill-type-dropdown", svc.getBillTypeDropdown);
 router.get("/vendor-payments/payment-mode-dropdown", svc.getPaymentModeDropdown);
 router.get("/vendor-payments/invoice-dropdown", svc.getInvoiceDropdown);
