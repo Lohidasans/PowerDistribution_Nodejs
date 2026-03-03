@@ -1096,7 +1096,7 @@ const getBranchOverview = async (req, res) => {
           SELECT COUNT(DISTINCT sib.customer_id)
           FROM sales_invoice_bills sib
           WHERE sib.branch_id = b.id
-          ANS sib.is_active = true
+          AND sib.is_active = true
           AND sib.deleted_at IS NULL
           AND sib.customer_id IS NOT NULL
         ), 0) AS total_customers,
