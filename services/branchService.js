@@ -983,8 +983,36 @@ const getBranchStats = async (req, res) => {
 // Get branch details with location information
 const getBranchDetails = async (req, res) => {
   try {
+    const { state_id, district_id, search } = req.query;
+
+    // Build filters
+    let filters = [];
+    const replacements = {};
+
+    if (state_id) {
+      filters.push('b.state_id = :state_id');
+      replacements.state_id = parseInt(state_id, 10);
+    }
+
+    if (district_id) {
+      filters.push('b.district_id = :district_id');
+      replacements.district_id = parseInt(district_id, 10);
+    }
+
+    if (search) {
+      filters.push(`(
+        b.branch_name ILIKE :search OR
+        b.branch_no ILIKE :search OR
+        b.contact_person ILIKE :search OR
+        d.district_name ILIKE :search
+      )`);
+      replacements.search = `%${search}%`;
+    }
+
+    const whereClause = filters.length > 0 ? `AND ${filters.join(' AND ')}` : '';
+
     const query = `
-      SELECT 
+      SELECT
         b.id AS branch_id,
         b.branch_no,
         b.branch_name,
@@ -998,17 +1026,19 @@ const getBranchDetails = async (req, res) => {
         b.state_id,
         b.pin_code,
         b.gst_no
-      FROM 
+      FROM
         branches b
-      LEFT JOIN 
+      LEFT JOIN
         districts d ON d.id = b.district_id
-      WHERE 
+      WHERE
         b.deleted_at IS NULL
-      ORDER BY 
+        ${whereClause}
+      ORDER BY
         b.id ASC
     `;
 
     const branchDetails = await sequelize.query(query, {
+      replacements,
       type: sequelize.QueryTypes.SELECT,
     });
 
