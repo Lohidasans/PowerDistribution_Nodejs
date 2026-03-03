@@ -264,6 +264,33 @@ const markEstimateAsConverted = async (
     );
 };
 
+const restoreStockForSalesReturn = async (items, transaction) => {
+    for (const item of items) {
+        if (!item.product_item_detail_id || Number(item.quantity) <= 0) continue;
+
+        const productItemDetail = await models.ProductItemDetail.findByPk(
+            item.product_item_detail_id,
+            { transaction }
+        );
+
+        if (!productItemDetail) {
+            throw new ValidationError(
+                `Invalid product_item_detail_id: ${item.product_item_detail_id}`
+            );
+        }
+
+        await productItemDetail.update(
+            {
+                quantity: productItemDetail.quantity + Number(item.quantity),
+                stock_out_reason: null,
+            },
+            { transaction }
+        );
+    }
+};
+
+
+
 module.exports = {
     validateProductItemDetails,
     validateProducts,
@@ -274,4 +301,5 @@ module.exports = {
     validateEstimateForInvoice,
     markEstimateAsConverted,
     restoreStockForInvoice,
+    restoreStockForSalesReturn,
 };

@@ -3,6 +3,7 @@ const commonService = require("./commonService");
 const enMessage = require("../constants/en.json");
 const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
 const { Op } = require("sequelize");
+const { restoreStockForSalesReturn } = require('../helpers/billingValidations');
 
 // Generate sales return number (series)
 const generateSalesReturnNo = async (req, res) => {
@@ -149,8 +150,13 @@ const createSalesReturn = async (req, res) => {
         }
       }
     }
-    // === END UPDATE ===
 
+    // 🔺 RESTORE STOCK (ONLY IF FINALIZED)
+    if (salesReturn.status !== "On Hold") {
+      await restoreStockForSalesReturn(createdItems, t);
+    }
+
+    // === END UPDATE ===
     await t.commit();
 
     return commonService.createdResponse(res, {
@@ -408,6 +414,8 @@ const updateSalesReturn = async (req, res) => {
       return commonService.notFound(res, "Sales return not found");
     }
 
+    const previousStatus = salesReturn.status;
+
     // 2. ITEMS VALIDATION
     if (!Array.isArray(items) || items.length === 0) {
       await t.rollback();
@@ -604,6 +612,15 @@ const updateSalesReturn = async (req, res) => {
       }
     }
 
+    // 🔺 RESTORE STOCK ONLY WHEN FINALIZING
+    if (previousStatus === "On Hold" && header.status === "Printed") {
+      const finalItems = await models.SalesReturnItem.findAll({
+        where: { sales_return_id: salesReturn.id },
+        transaction: t,
+      });
+
+      await restoreStockForSalesReturn(finalItems, t);
+    }
 
     await t.commit();
     return commonService.okResponse(res, {
