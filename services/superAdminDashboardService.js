@@ -154,7 +154,7 @@ const getSuperAdminDashboard = async (req, res) => {
     // ============================================================
     const stockKpiRep = {};
     if (branch_id) stockKpiRep.sk_branch = branch_id;
-
+   
  const grnPurchaseQuery = `
   SELECT
     COALESCE(SUM(gi.total_amount), 0)      AS total_amount,
@@ -1028,12 +1028,25 @@ const getStockKpiSummary = async (req, res) => {
     /* =====================================================
        1. TOTAL PURCHASE (ORDERED)
        ===================================================== */
-    const totalPurchaseQuery = `
-      ${grnWeightsCTE}
-      SELECT
-        COUNT(*)::int AS total_quantity,
-        COALESCE(SUM(ordered_weight), 0) AS total_weight
-      FROM grn_weights
+    // const totalPurchaseQuery = `
+    //   ${grnWeightsCTE}
+    //   SELECT
+    //     COUNT(*)::int AS total_quantity,
+    //     COALESCE(SUM(ordered_weight), 0) AS total_weight
+    //   FROM grn_weights
+    // `;
+
+    const totalPurchaseQuery = `SELECT
+        COALESCE(SUM(gi.total_amount), 0)      AS total_amount,
+        COALESCE(SUM(gi.quantity), 0)::int     AS total_quantity,
+        COALESCE(SUM(gi.net_wt_in_g), 0)       AS total_weight
+      FROM "grnItems" gi
+      JOIN grns g
+        ON g.id = gi.grn_id
+      AND g.deleted_at IS NULL
+      WHERE gi.deleted_at IS NULL
+      ${branch_id ? `AND g.branch_id = :sk_branch` : ``}
+      ${grnDateCondition}
     `;
 
     /* =====================================================
@@ -1124,6 +1137,7 @@ const getStockKpiSummary = async (req, res) => {
       },
       data: {
         total_purchase: {
+          total_amount: money(purchaseResult?.total_amount),
           total_quantity: int(purchaseResult?.total_quantity),
           total_weight: Number(
             Number(purchaseResult?.total_weight || 0).toFixed(3)
