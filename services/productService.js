@@ -843,25 +843,7 @@ const getAllProductDetails = async (req, res) => {
 
     if (stock === "out_of_stock") {
       whereClause += `
-       AND EXISTS (
-        SELECT 1
-        FROM "productItemDetails" pid_sold
-        WHERE pid_sold.product_id = p.id
-        AND pid_sold.quantity = 0
-        AND pid_sold.stock_out_reason = 'SOLD'
-        AND pid_sold.deleted_at IS NULL
-      )
-
-      -- Exclude transferred-only products
-      AND NOT EXISTS (
-        SELECT 1
-        FROM "productItemDetails" pid_tr
-        WHERE pid_tr.product_id = p.id
-        AND pid_tr.quantity = 0
-        AND pid_tr.stock_out_reason = 'TRANSFERRED'
-        AND pid_tr.deleted_at IS NULL
-      )
-
+   
       -- Must be invoiced
       AND EXISTS (
         SELECT 1
@@ -1033,9 +1015,9 @@ const getAllProductDetails = async (req, res) => {
       if (!stock) itemWhere.quantity = { [Op.gt]: 0 };
       if (stock === "stock_in_hand") itemWhere.quantity = { [Op.gt]: 0 };
       if (stock === "out_of_stock") {
-        itemWhere.quantity = 0;
-        itemWhere.stock_out_reason = "SOLD";
-      };
+        // allow quantity 0 items
+        itemWhere.quantity = { [Op.gte]: 0 };
+      }
 
       const itemDetails = await models.ProductItemDetail.findAll({
         where: itemWhere,
@@ -1045,6 +1027,33 @@ const getAllProductDetails = async (req, res) => {
 
       const itemIds = itemDetails.map((it) => it.id);
 
+      // GET SOLD QUANTITY FROM INVOICE ITEMS----------
+      let soldMap = {};
+
+      if (itemIds.length) {
+        const soldRows = await sequelize.query(
+          `
+          SELECT
+            product_item_detail_id,
+            SUM(quantity) AS sold_quantity
+          FROM sales_invoice_bill_items
+          WHERE deleted_at IS NULL
+            AND product_item_detail_id IN (:itemIds)
+          GROUP BY product_item_detail_id
+          `,
+          {
+            replacements: { itemIds },
+            type: sequelize.QueryTypes.SELECT,
+          }
+        );
+
+        soldMap = soldRows.reduce((acc, row) => {
+          acc[row.product_item_detail_id] = Number(row.sold_quantity);
+          return acc;
+        }, {});
+      }
+      //-------------
+      
       const additionalDetails = itemIds.length
         ? await models.ProductAdditionalDetail.findAll({
             where: { item_detail_id: itemIds },
@@ -1084,6 +1093,7 @@ const getAllProductDetails = async (req, res) => {
         const productItems = itemsByProduct[product.id] || [];
 
         const enrichedItems = productItems.map((item) => {
+          const soldQuantity = soldMap[item.id] || 0;
           const priceDetails = calculateSellingPriceSync(
             product,
             item,
@@ -1093,6 +1103,7 @@ const getAllProductDetails = async (req, res) => {
 
           return {
             ...item,
+            sold_quantity: soldQuantity, // ✅ ADD THIS
             additional_details: addsByItem[item.id] || [],
             price_details: priceDetails,
           };
@@ -2773,24 +2784,6 @@ const getProductStockCounts = async (req, res) => {
       FROM "products" p
       ${searchJoins}
       ${whereClause}
-      AND EXISTS (
-        SELECT 1
-        FROM "productItemDetails" pid_sold
-        WHERE pid_sold.product_id = p.id
-        AND pid_sold.quantity = 0
-        AND pid_sold.stock_out_reason = 'SOLD'
-        AND pid_sold.deleted_at IS NULL
-      )
-
-      -- Exclude transferred-only products
-      AND NOT EXISTS (
-        SELECT 1
-        FROM "productItemDetails" pid_tr
-        WHERE pid_tr.product_id = p.id
-        AND pid_tr.quantity = 0
-        AND pid_tr.stock_out_reason = 'TRANSFERRED'
-        AND pid_tr.deleted_at IS NULL
-      )
 
       -- Must be invoiced
       AND EXISTS (
