@@ -408,6 +408,113 @@ const activateDeactivateVendorPayment = async (req, res) => {
 };
 
 
+const getVendorPaymentsByPurchase = async (req, res) => {
+  try {
+    const { purchase_id, page, pageSize } = req.query;
+
+    if (!purchase_id) {
+      return commonService.badRequest(res, {
+        message: "purchase_id is required",
+      });
+    }
+
+    const replacements = {
+      purchase_id,
+      user_type_id: 1,
+    };
+
+    let whereSql = "WHERE vp.deleted_at IS NULL AND vp.is_active = true AND vp.user_type_id = :user_type_id AND vp.purchase_id = :purchase_id";
+
+    // Pagination
+    let paginationSql = "";
+    let offset = 0;
+
+    if (pageSize) {
+      const limit = parseInt(pageSize);
+      offset = ((parseInt(page || 1) - 1) * limit);
+      paginationSql = " LIMIT :limit OFFSET :offset";
+      replacements.limit = limit;
+      replacements.offset = offset;
+    }
+
+    const dataQuery = `
+      SELECT
+        vp.id,
+        vp.payment_no,
+        vp.payment_date,
+        vp.bill_type_id,
+        vp.branch_id,
+        vp.payment_mode,
+        vp.account_name_id,
+        vp.user_type_id,
+        vp.amount,
+        vp.transaction_no,
+        vp.status,
+        vp.invoice_id,
+        vp.purchase_id,
+        g.grn_no AS reference_no,
+        'GRN' AS reference_type,
+        v.vendor_name AS account_name,
+        v.mobile AS account_mobile,
+        b.branch_name,
+        b.address AS branch_address,
+        b.gst_no AS branch_gst_no,
+        b.mobile AS branch_mobile,
+        b.signature_url AS branch_signature_url,
+        b.pin_code AS branch_pin_code,
+        d.district_name,
+        s.state_name
+      FROM vendor_payments vp
+      LEFT JOIN grns g ON vp.purchase_id IS NOT NULL AND g.id = vp.purchase_id::int AND g.deleted_at IS NULL
+      LEFT JOIN vendors v ON v.id = vp.account_name_id AND vp.user_type_id = 1 AND v.deleted_at IS NULL
+      LEFT JOIN branches b ON b.id = vp.branch_id AND b.deleted_at IS NULL
+      LEFT JOIN districts d ON d.id = b.district_id AND d.deleted_at IS NULL
+      LEFT JOIN states s ON s.id = b.state_id AND s.deleted_at IS NULL
+      ${whereSql}
+      ORDER BY vp.created_at DESC
+      ${paginationSql}
+    `;
+
+    const data = await sequelize.query(dataQuery, {
+      replacements,
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    // Count query (for pagination only)
+    let total = data.length;
+
+    if (pageSize) {
+      const countQuery = `
+        SELECT COUNT(*)::int AS count
+        FROM vendor_payments vp
+        WHERE vp.deleted_at IS NULL AND vp.is_active = true AND vp.user_type_id = :user_type_id AND vp.purchase_id = :purchase_id
+      `;
+
+      const countResult = await sequelize.query(countQuery, {
+        replacements,
+        type: sequelize.QueryTypes.SELECT,
+      });
+
+      total = countResult[0]?.count || 0;
+    }
+
+    return commonService.okResponse(res, {
+      data,
+      ...(pageSize && {
+        pagination: {
+          total,
+          page: Number(page || 1),
+          pageSize: Number(pageSize),
+          totalPages: Math.ceil(total / pageSize),
+        },
+      }),
+    });
+  } catch (error) {
+    return commonService.handleError(res, error, 'Error fetching vendor payments by purchase');
+  }
+};
+
+
 module.exports = {
   createVendorPayment,
   getVendorPayments,
@@ -418,5 +525,6 @@ module.exports = {
   getBillTypeDropdown,
   getPaymentModeDropdown,
   getInvoiceDropdown,
-  activateDeactivateVendorPayment
+  activateDeactivateVendorPayment,
+  getVendorPaymentsByPurchase
 };
