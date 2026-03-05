@@ -6,7 +6,7 @@ const svc = require('../services/jewelRepairService');
 router.post('/jewel-repairs', svc.createJewelRepair);
 router.get('/jewel-repairs', svc.getAllJewelRepairs);
 router.get('/jewel-repairs/:id', svc.getJewelRepairById);
-router.put('/jewel-repairs/:id', svc.updateJewelRepair);
+router.put('/jewel-repairs/:repair_id', svc.updateJewelRepair);
 router.delete('/jewel-repairs/:id', svc.deleteJewelRepair);
 router.post('/jewel-repairs/code', svc.generateRepairCode);
 router.patch('/jewel-repairs/:id/toggle-active', svc.toggleJewelRepairActive);

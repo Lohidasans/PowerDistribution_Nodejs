@@ -455,72 +455,190 @@ const updateJewelRepair = async (req, res) => {
   const transaction = await sequelize.transaction();
 
   try {
-    const { id } = req.params;
-    const { items = [], ...updateData } = req.body;
+    const { repair_id } = req.params;
+    const { items = [], payment = [], ...repairData } = req.body;
 
-    // Find existing repair record
-    const repair = await models.JewelRepair.findByPk(id, { transaction });
+    if (!items.length) {
+      return commonService.badRequest(res, "At least one item is required");
+    }
+
+    const repair = await models.JewelRepair.findByPk(repair_id, { transaction });
+
     if (!repair) {
-      await transaction.rollback();
-      return commonService.notFound(res, "Jewel repair record not found");
+      return commonService.badRequest(res, "Jewel Repair not found");
     }
 
-    // Recalculate totals if item data is passed
-    if (items.length > 0) {
-      const subTotal = items.reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0);
-      const totalQuantity = items.reduce((sum, item) => sum + (parseInt(item.quantity) || 0), 0);
-      const discount = parseFloat(updateData.discount) || 0;
-      const totalAmount = subTotal - discount;
+    /* -------------------------
+       CALCULATE TOTALS
+    ------------------------- */
 
-      updateData.sub_total_amount = subTotal;
-      updateData.total_amount = totalAmount;
-      updateData.total_quantity = totalQuantity;
+    const subTotal = items.reduce(
+      (sum, item) => sum + Number(item.amount || 0),
+      0
+    );
+
+    const totalQuantity = items.reduce(
+      (sum, item) => sum + Number(item.quantity || 0),
+      0
+    );
+
+    let discountCalculated = 0;
+
+    if (repairData.discount_type === "Percentage" && repairData.discount) {
+      discountCalculated = (subTotal * Number(repairData.discount)) / 100;
     }
 
-    // Update repair header fields
-    await repair.update(updateData, { transaction });
+    if (repairData.discount_type === "Amount" && repairData.discount) {
+      discountCalculated = Number(repairData.discount);
+    }
 
-    // Update each existing item (only if ID is provided)
+    if (discountCalculated > subTotal) discountCalculated = subTotal;
+
+    const totalAmount = subTotal - discountCalculated;
+
+    /* -------------------------
+       UPDATE HEADER
+    ------------------------- */
+
+    await repair.update(
+      {
+        repair_code: repairData.repair_code ?? repair.repair_code,
+        customer_id: repairData.customer_id ?? repair.customer_id,
+        employee_id: repairData.employee_id ?? repair.employee_id,
+        branch_id: repairData.branch_id ?? repair.branch_id,
+        date: repairData.date ?? repair.date,
+        time: repairData.time ?? repair.time,
+
+        sub_total_amount: subTotal,
+        discount_type: repairData.discount_type ?? repair.discount_type,
+        discount: repairData.discount ?? repair.discount,
+        total_amount: totalAmount,
+        total_quantity: totalQuantity,
+        amount_in_words: repairData.amount_in_words ?? repair.amount_in_words,
+        amount_due: repairData.amount_due ?? repair.amount_due,
+        refund_amount: repairData.refund_amount ?? repair.refund_amount,
+      },
+      { transaction }
+    );
+
+    /* -------------------------
+       HANDLE ITEMS (UPSERT)
+    ------------------------- */
+
+    const existingItems = await models.JewelRepairItem.findAll({
+      where: { repair_id },
+      transaction,
+      raw: true,
+    });
+
+    const existingItemIds = existingItems.map((i) => i.id);
+    const incomingItemIds = items.filter((i) => i.id).map((i) => i.id);
+
+    // DELETE removed items
+    const itemsToDelete = existingItemIds.filter(
+      (id) => !incomingItemIds.includes(id)
+    );
+
+    if (itemsToDelete.length) {
+      await models.JewelRepairItem.destroy({
+        where: { id: itemsToDelete },
+        transaction,
+      });
+    }
+
+    // UPSERT items
     for (const item of items) {
-      if (item && item.id) {
-        const existingItem = await models.JewelRepairItem.findOne({
-          where: { id: item.id, repair_id: id },
+      const payload = {
+        repair_id,
+        material_type_id: item.material_type_id,
+        description: item.description,
+        quantity: Number(item.quantity || 1),
+        weight: Number(item.weight || 0),
+        amount: Number(item.amount || 0),
+        remarks: item.remarks || null,
+      };
+
+      if (item.id) {
+        await models.JewelRepairItem.update(payload, {
+          where: { id: item.id },
           transaction,
         });
-
-        if (existingItem) {
-          const { id: _omit, repair_id: _omit2, created_at, updated_at, deleted_at, ...updatableFields } = item;
-          await existingItem.update(updatableFields, { transaction });
-        }
+      } else {
+        await models.JewelRepairItem.create(payload, { transaction });
       }
     }
 
-    await transaction.commit();
+    /* -------------------------
+       HANDLE PAYMENTS (UPSERT)
+    ------------------------- */
 
-    // Fetch updated record with items
-    const [updatedRepair, updatedItems] = await Promise.all([
-      models.JewelRepair.findByPk(id, {
-        include: [
-          { model: models.Customer, as: 'customer', attributes: ['id', 'customer_name', 'mobile_number'] },
-          { model: models.Employee, as: 'employee', attributes: ['id', 'employee_name'] },
-          { model: models.Branch, as: 'branch', attributes: ['id', 'branch_name'] }
-        ]
-      }),
+    const existingPayments = await models.Payment.findAll({
+      where: { jewel_repair_id: repair_id },
+      transaction,
+      raw: true,
+    });
+
+    const existingPaymentIds = existingPayments.map((p) => p.id);
+    const incomingPaymentIds = payment.filter((p) => p.id).map((p) => p.id);
+
+    const paymentsToDelete = existingPaymentIds.filter(
+      (id) => !incomingPaymentIds.includes(id)
+    );
+
+    if (paymentsToDelete.length) {
+      await models.Payment.destroy({
+        where: { id: paymentsToDelete },
+        transaction,
+      });
+    }
+
+    for (const p of payment) {
+      const payload = {
+        jewel_repair_id: repair_id,
+        payment_mode: p.payment_mode,
+        amount_received: Number(p.amount_received || 0),
+        transaction_id: p.transaction_id || null,
+        payment_date: new Date(),
+        status: "Completed",
+      };
+
+      if (p.id) {
+        await models.Payment.update(payload, {
+          where: { id: p.id },
+          transaction,
+        });
+      } else {
+        await models.Payment.create(payload, { transaction });
+      }
+    }
+
+    /* -------------------------
+       FETCH UPDATED DATA
+    ------------------------- */
+
+    const [repairRecord, repairItems, payments] = await Promise.all([
+      models.JewelRepair.findByPk(repair_id, { transaction }),
       models.JewelRepairItem.findAll({
-        where: { repair_id: id },
-        include: [
-          { model: models.Product, as: 'product', attributes: ['id', 'product_name', 'product_code'] }
-        ]
+        where: { repair_id },
+        transaction,
+      }),
+      models.Payment.findAll({
+        where: { jewel_repair_id: repair_id },
+        transaction,
       }),
     ]);
 
+    await transaction.commit();
+
     return commonService.okResponse(res, {
-      ...updatedRepair.get({ plain: true }),
-      items: updatedItems,
+      ...repairRecord.get({ plain: true }),
+      items: repairItems,
+      payments,
     });
+
   } catch (error) {
     await transaction.rollback();
-    console.error("Error updating Jewel Repair:", error);
+    console.error("Update Jewel Repair Error:", error);
     return commonService.handleError(res, error);
   }
 };
