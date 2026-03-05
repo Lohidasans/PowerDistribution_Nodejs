@@ -268,11 +268,149 @@ const toggleEstimateActive = async (req, res) => {
   }
 };
 
+const updateEstimate = async (req, res) => {
+  const t = await sequelize.transaction();
+
+  try {
+    const { estimate_id } = req.params;
+    const { header = {}, items = [] } = req.body || {};
+
+    if (!Array.isArray(items) || items.length === 0) {
+      return commonService.badRequest(res, "At least one item is required");
+    }
+
+    const bill = await models.EstimateBill.findByPk(estimate_id, { transaction: t });
+
+    if (!bill) {
+      return commonService.badRequest(res, "Estimate not found");
+    }
+
+    await validateProducts(items, t);
+    await validateProductItemDetails(items, t);
+
+    let subtotal = 0;
+    let totalQty = 0;
+
+    const preparedItems = items.map((it) => {
+      const qty = Number(it.quantity || 0);
+      const rate = Number(it.rate || 0);
+      const amount = Number(it.amount != null ? it.amount : qty * rate);
+
+      subtotal += amount;
+      totalQty += qty;
+
+      return {
+        id: it.id ?? null, // EstimateBillItem id
+        product_id: it.product_id,
+        product_item_detail_id: it.product_item_detail_id ?? null,
+        hsn_code: it.hsn_code ?? null,
+        product_name_snapshot: it.product_name_snapshot ?? null,
+        purity_snapshot: it.purity_snapshot ?? null,
+        quantity: qty,
+        rate,
+        amount,
+        cgst_percent: it.cgst_percent ?? null,
+        sgst_percent: it.sgst_percent ?? null,
+        cgst_amount: it.cgst_amount ?? 0,
+        sgst_amount: it.sgst_amount ?? 0,
+      };
+    });
+
+    const cgstAmt = Number(header.cgst_amount ?? 0);
+    const sgstAmt = Number(header.sgst_amount ?? 0);
+    const total = subtotal + cgstAmt + sgstAmt;
+
+    /* -------------------------
+       UPDATE HEADER
+    ------------------------- */
+
+    await bill.update(
+      {
+        estimate_no: header.estimate_no ?? bill.estimate_no,
+        estimate_date: header.estimate_date ?? bill.estimate_date,
+        estimate_time: header.estimate_time ?? bill.estimate_time,
+        employee_id: header.employee_id ?? bill.employee_id,
+        customer_id: header.customer_id ?? bill.customer_id,
+        branch_id: header.branch_id ?? bill.branch_id,
+        subtotal_amount: subtotal,
+        cgst_percent: header.cgst_percent ?? bill.cgst_percent,
+        sgst_percent: header.sgst_percent ?? bill.sgst_percent,
+        cgst_amount: cgstAmt,
+        sgst_amount: sgstAmt,
+        total_amount: total,
+        total_quantity: totalQty,
+        status: header.status ?? bill.status,
+      },
+      { transaction: t }
+    );
+
+    /* -------------------------
+       EXISTING ITEMS
+    ------------------------- */
+
+    const existingItems = await models.EstimateBillItem.findAll({
+      where: { estimate_bill_id: estimate_id },
+      transaction: t,
+      raw: true,
+    });
+
+    const existingIds = existingItems.map((i) => i.id);
+    const incomingIds = preparedItems.filter((i) => i.id).map((i) => i.id);
+
+    /* -------------------------
+       DELETE REMOVED ITEMS
+    ------------------------- */
+
+    const toDelete = existingIds.filter((id) => !incomingIds.includes(id));
+
+    if (toDelete.length) {
+      await models.EstimateBillItem.destroy({
+        where: { id: toDelete },
+        transaction: t,
+      });
+    }
+
+    /* -------------------------
+       UPSERT ITEMS
+    ------------------------- */
+
+    for (const item of preparedItems) {
+      if (item.id) {
+        await models.EstimateBillItem.update(item, {
+          where: { id: item.id },
+          transaction: t,
+        });
+      } else {
+        await models.EstimateBillItem.create(
+          { ...item, estimate_bill_id: estimate_id },
+          { transaction: t }
+        );
+      }
+    }
+
+    await t.commit();
+
+    const updatedItems = await models.EstimateBillItem.findAll({
+      where: { estimate_bill_id: estimate_id },
+    });
+
+    return commonService.okResponse(res, {
+      estimate: bill,
+      items: updatedItems,
+    });
+
+  } catch (err) {
+    if (!t.finished) await t.rollback();
+    return commonService.handleError(res, err);
+  }
+};
+
 module.exports = {
   generateEstimateNo,
   createEstimate,
   getEstimateById,
   listEstimates,
   deleteEstimate,
-  toggleEstimateActive
+  toggleEstimateActive,
+  updateEstimate
 };

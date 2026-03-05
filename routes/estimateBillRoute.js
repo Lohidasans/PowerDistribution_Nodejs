@@ -6,6 +6,7 @@ router.post("/estimate-bills/code", svc.generateEstimateNo);
 router.post("/estimate-bills", svc.createEstimate);
 router.get("/estimate-bills", svc.listEstimates);
 router.get("/estimate-bills/:id", svc.getEstimateById);
+router.put("/estimate-bills/:estimate_id", svc.updateEstimate);
 router.delete("/estimate-bills/:id", svc.deleteEstimate);
 router.patch("/estimate-bills/:id/toggle-active", svc.toggleEstimateActive);
 
