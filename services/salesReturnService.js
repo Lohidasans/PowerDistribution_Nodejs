@@ -416,6 +416,10 @@ const updateSalesReturn = async (req, res) => {
 
     const previousStatus = salesReturn.status;
 
+    // On hold - stock not added
+    // Printed - stock added
+    // If changing from On Hold to Printed - add stock for all items
+
     // 2. ITEMS VALIDATION
     if (!Array.isArray(items) || items.length === 0) {
       await t.rollback();
@@ -425,14 +429,14 @@ const updateSalesReturn = async (req, res) => {
       );
     }
 
-    if (salesReturn.status != "On Hold") {
+    if (salesReturn.status === "Cancelled") {
       await t.rollback();
       return commonService.badRequest(
         res,
-        "Finalized sales return cannot be edited"
+        "Cancelled sales return cannot be edited"
       );
     }
-    
+
     // INVOICE + ITEM VALIDATION
     const valid = await validateSalesReturnInvoices({
       items,
@@ -612,7 +616,7 @@ const updateSalesReturn = async (req, res) => {
       }
     }
 
-    // 🔺 RESTORE STOCK ONLY WHEN FINALIZING
+    // 🔺 RESTORE STOCK WHEN FINALIZING HOLD RETURN
     if (previousStatus === "On Hold" && header.status === "Printed") {
       const finalItems = await models.SalesReturnItem.findAll({
         where: { sales_return_id: salesReturn.id },
@@ -620,6 +624,23 @@ const updateSalesReturn = async (req, res) => {
       });
 
       await restoreStockForSalesReturn(finalItems, t);
+    }
+
+    // 🔺 RESTORE STOCK ONLY FOR NEW ITEMS WHEN EDITING PRINTED RETURN
+    if (previousStatus === "Printed" && header.status === "Printed") {
+
+      const existingItems = await models.SalesReturnItem.findAll({
+        where: { sales_return_id: salesReturn.id },
+        transaction: t
+      });
+
+      const existingIds = existingItems.map(i => i.id);
+
+      const newItems = itemRows.filter(i => !existingIds.includes(i.id));
+
+      if (newItems.length) {
+        await restoreStockForSalesReturn(newItems, t);
+      }
     }
 
     await t.commit();
