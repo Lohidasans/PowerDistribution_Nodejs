@@ -255,25 +255,14 @@ const updateOldJewel = async (req, res) => {
     });
 
     if (!oldJewel) {
-      await transaction.rollback();``
-      return commonService.notFound(res, "Old jewel not found");
-    }
-
-    if (oldJewel.status != "On Hold") {
       await transaction.rollback();
-      return commonService.badRequest(
-        res,
-        "Finalized invoice cannot be edited"
-      );
+      return commonService.notFound(res, "Old jewel not found");
     }
 
     // 2. ITEMS VALIDATION
     if (!Array.isArray(items) || items.length === 0) {
       await transaction.rollback();
-      return commonService.badRequest(
-        res,
-        "At least one item is required"
-      );
+      return commonService.badRequest(res, "At least one item is required");
     }
 
     // 3. CALCULATE TOTAL & ITEM VALUES
@@ -284,7 +273,6 @@ const updateOldJewel = async (req, res) => {
       const wastage = parseFloat(item.wastage) || 0;
       const dustWeight = parseFloat(item.dust_weight) || 0;
 
-      // Net weight calculation (backend controlled)
       const netWeight = grsWeight - wastage - dustWeight;
 
       const rate = parseFloat(item.rate) || 0;
@@ -296,29 +284,30 @@ const updateOldJewel = async (req, res) => {
       totalAmount += amount;
 
       return {
-        id: item.id || null,
-        material_type_id: item.material_type_id || null,
-        hsn_code: item.hsn_code || null,
-        jewel_description: item.jewel_description || null,
+        id: item.id ?? undefined,
+        old_jewel_id: oldJewel.id,
+        material_type_id: item.material_type_id ?? null,
+        hsn_code: item.hsn_code ?? null,
+        jewel_description: item.jewel_description ?? null,
         grs_weight: grsWeight,
         wastage,
         dust_weight: dustWeight,
         net_weight: netWeight,
         rate,
         amount
-      };
+      }
     });
 
     // 4. UPDATE OLD JEWEL HEADER
     await oldJewel.update(
       {
         old_jewel_code: jewelData.old_jewel_code ?? oldJewel.old_jewel_code,
-        employee_id: jewelData.employee_id,
-        customer_id: jewelData.customer_id,
-        branch_id: jewelData.branch_id,
-        date: jewelData.date || oldJewel.date,
-        time: jewelData.time || oldJewel.time,
-        status: jewelData.status || oldJewel.status,
+        employee_id: jewelData.employee_id ?? oldJewel.employee_id,
+        customer_id: jewelData.customer_id ?? oldJewel.customer_id,
+        branch_id: jewelData.branch_id ?? oldJewel.branch_id,
+        date: jewelData.date ?? oldJewel.date,
+        time: jewelData.time ?? oldJewel.time,
+        status: jewelData.status ?? oldJewel.status,
         discount_type: jewelData.discount_type ?? oldJewel.discount_type,
         total_amount: totalAmount
       },
@@ -326,16 +315,11 @@ const updateOldJewel = async (req, res) => {
     );
 
     // 5. UPSERT OLD JEWEL ITEMS
-    const existingItems = await models.OldJewelItem.findAll({
-      where: { old_jewel_id: oldJewel.id },
-      transaction
-    });
 
     const payloadItemIds = itemRows
       .filter(i => i.id)
       .map(i => i.id);
 
-    // DELETE omitted items
     await models.OldJewelItem.destroy({
       where: {
         old_jewel_id: oldJewel.id,
@@ -344,36 +328,22 @@ const updateOldJewel = async (req, res) => {
       transaction
     });
 
-    // UPSERT items
-    for (const row of itemRows) {
-      if (row.id) {
-        await models.OldJewelItem.update(
-          {
-            material_type_id: row.material_type_id,
-            hsn_code: row.hsn_code,
-            jewel_description: row.jewel_description,
-            grs_weight: row.grs_weight,
-            wastage: row.wastage,
-            dust_weight: row.dust_weight,
-            net_weight: row.net_weight,
-            rate: row.rate,
-            amount: row.amount
-          },
-          {
-            where: { id: row.id },
-            transaction
-          }
-        );
-      } else {
-        await models.OldJewelItem.create(
-          {
-            ...row,
-            old_jewel_id: oldJewel.id
-          },
-          { transaction }
-        );
-      }
-    }
+    // 6.BULK UPSERT ITEMS
+    await models.OldJewelItem.bulkCreate(itemRows, {
+      transaction,
+      updateOnDuplicate: [
+        "material_type_id",
+        "hsn_code",
+        "jewel_description",
+        "grs_weight",
+        "wastage",
+        "dust_weight",
+        "net_weight",
+        "rate",
+        "amount",
+        "updated_at"
+      ]
+    });
 
     await transaction.commit();
     return commonService.okResponse(res, {
