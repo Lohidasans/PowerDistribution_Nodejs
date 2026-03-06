@@ -635,12 +635,7 @@ const updateStockTransfer = async (req, res) => {
       throw new Error("Only NEW transfers can be updated");
     }
 
-    /*
-    =================================
-    STEP 1: RESTORE OLD STOCK
-    =================================
-    */
-
+    // STEP 1: RESTORE OLD STOCK
     const oldItems = await models.StockTransferItem.findAll({
       where: { stock_transfer_id: transferId },
       transaction
@@ -659,14 +654,13 @@ const updateStockTransfer = async (req, res) => {
       );
 
       if (sourceItem) {
-        await sourceItem.update(
-          {
-            quantity:
-              Number(sourceItem.quantity) +
-              Number(item.transfer_quantity)
-          },
-          { transaction }
-        );
+        const restoredQty =
+          Number(sourceItem.quantity) + Number(item.transfer_quantity);
+
+        await sourceItem.update({
+          quantity: restoredQty,
+          stock_out_reason: restoredQty === 0 ? "TRANSFERRED" : null
+        }, { transaction });
       }
 
       if (destinationItem) {
@@ -681,23 +675,13 @@ const updateStockTransfer = async (req, res) => {
       }
     }
 
-    /*
-    =================================
-    STEP 2: DELETE OLD TRANSFER ITEMS
-    =================================
-    */
-
+    // STEP 2: DELETE OLD TRANSFER ITEMS
     await models.StockTransferItem.destroy({
       where: { stock_transfer_id: transferId },
       transaction
     });
 
-    /*
-    =================================
-    STEP 3: VALIDATION
-    =================================
-    */
-
+    // STEP 3: VALIDATION
     await validateRequiredFields(req);
     await validateBranches(branch_from, branch_to, transaction);
 
@@ -711,12 +695,7 @@ const updateStockTransfer = async (req, res) => {
       transaction
     );
 
-    /*
-    =================================
-    STEP 4: UPDATE HEADER
-    =================================
-    */
-
+    // STEP 4: UPDATE HEADER
     await stockTransfer.update(
       {
         ...transferData,
@@ -726,12 +705,7 @@ const updateStockTransfer = async (req, res) => {
       { transaction }
     );
 
-    /*
-    =================================
-    STEP 5: APPLY NEW TRANSFER
-    =================================
-    */
-
+    // STEP 5: APPLY NEW TRANSFER
     const transferMap = {};
 
     const grouped = {};
@@ -776,24 +750,15 @@ const updateStockTransfer = async (req, res) => {
           );
         }
 
-        /*
-        Reduce source stock
-        */
+        // Reduce source stock
+        const newQty = Number(sourceItem.quantity) - Number(transfer_quantity);
 
-        await sourceItem.update(
-          {
-            quantity:
-              Number(sourceItem.quantity) -
-              Number(transfer_quantity),
-            stock_out_reason: "TRANSFERRED"
-          },
-          { transaction }
-        );
+        await sourceItem.update({
+          quantity: newQty,
+          stock_out_reason: newQty === 0 ? "TRANSFERRED" : null
+        }, { transaction });
 
-        /*
-        Find destination product
-        */
-
+        // Find destination product
         let destinationProduct = await models.Product.findOne({
           where: {
             sku_id: sourceProduct.sku_id,
@@ -806,10 +771,7 @@ const updateStockTransfer = async (req, res) => {
 
         let destinationItem = null;
 
-        /*
-        CASE 1: Product Exists
-        */
-
+        // CASE 1: Product Exists
         if (destinationProduct) {
 
           destinationItem =
@@ -870,11 +832,7 @@ const updateStockTransfer = async (req, res) => {
 
         } else {
 
-          /*
-          CASE 2: Product DOES NOT EXIST
-          clone everything
-          */
-
+          // CASE 2: Product DOES NOT EXIST clone everything
           const newProduct =
             await ProductService.createProductInternal(
               {
@@ -979,12 +937,7 @@ const updateStockTransfer = async (req, res) => {
       }
     }
 
-    /*
-    =================================
-    STEP 6: INSERT TRANSFER ITEMS
-    =================================
-    */
-
+    // STEP 6: INSERT TRANSFER ITEMS
     await models.StockTransferItem.bulkCreate(
       items.map(i => ({
         ...i,
