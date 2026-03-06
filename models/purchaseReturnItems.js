@@ -8,52 +8,116 @@ module.exports = (sequelize, DataTypes) => {
         primaryKey: true,
         type: DataTypes.INTEGER,
       },
-      // Parent Purchase Return
+
       pr_id: {
         type: DataTypes.INTEGER,
         allowNull: false,
       },
+
       ref_no: {
         type: DataTypes.STRING,
         allowNull: true,
       },
-      // From other master tables (store only IDs)
+
       material_type_id: {
         type: DataTypes.INTEGER,
         allowNull: false,
       },
-      category_id: {
-        type: DataTypes.INTEGER,
-        allowNull: false,
-      },
-      subcategory_id: {
-        type: DataTypes.INTEGER,
-        allowNull: false,
-      },
-      description: {
-        type: DataTypes.STRING,
-        allowNull: true,
-      },
+
       purity: {
         type: DataTypes.DECIMAL(10, 3),
         allowNull: true,
       },
-      weight: {
-        type: DataTypes.DECIMAL(15, 3),
+
+      material_price_per_gram: {
+        type: DataTypes.DECIMAL(15, 2),
         allowNull: true,
       },
+
+      category_id: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+      },
+
+      subcategory_id: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+      },
+
+      type: {
+        type: DataTypes.ENUM("Weight", "Piece"),
+        allowNull: true,
+      },
+
       quantity: {
         type: DataTypes.INTEGER,
         allowNull: true,
       },
-      rate: {
+
+      total_weight: {
+        type: DataTypes.DECIMAL(15, 3),
+        allowNull: true,
+      },
+
+      bag_weight: {
+        type: DataTypes.DECIMAL(15, 3),
+        allowNull: true,
+      },
+
+      gross_weight: {
+        type: DataTypes.DECIMAL(15, 3),
+        allowNull: true,
+      },
+
+      stone_weight: {
+        type: DataTypes.DECIMAL(15, 3),
+        allowNull: true,
+      },
+
+      others: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+
+      others_weight: {
+        type: DataTypes.DECIMAL(15, 3),
+        allowNull: true,
+      },
+
+      others_value: {
         type: DataTypes.DECIMAL(15, 2),
         allowNull: true,
       },
-      amount: {
+
+      net_weight: {
+        type: DataTypes.DECIMAL(15, 3),
+        allowNull: true,
+      },
+
+      purchase_rate: {
         type: DataTypes.DECIMAL(15, 2),
         allowNull: true,
       },
+
+      stone_value: {
+        type: DataTypes.DECIMAL(15, 2),
+        allowNull: true,
+      },
+
+      making_charge: {
+        type: DataTypes.DECIMAL(15, 2),
+        allowNull: true,
+      },
+
+      rate_per_gram: {
+        type: DataTypes.DECIMAL(15, 2),
+        allowNull: true,
+      },
+
+      total_amount: {
+        type: DataTypes.DECIMAL(15, 2),
+        allowNull: true,
+      }
     },
     {
       timestamps: true,
@@ -66,4 +130,3 @@ module.exports = (sequelize, DataTypes) => {
 
   return PurchaseReturnItem;
 };
-
