@@ -75,12 +75,23 @@ const getPurchaseReturnWithItems = async (prId) => {
         pri.material_type_id,
         pri.category_id,
         pri.subcategory_id,
-        pri.description,
+        pri.type,
         pri.purity,
-        pri.weight,
+        pri.material_price_per_gram,
         pri.quantity,
-        pri.rate,
-        pri.amount,
+        pri.total_weight,
+        pri.bag_weight,
+        pri.gross_weight,
+        pri.stone_weight,
+        pri.others,
+        pri.others_weight,
+        pri.others_value,
+        pri.net_weight,
+        pri.purchase_rate,
+        pri.stone_value,
+        pri.making_charge,
+        pri.rate_per_gram,
+        pri.total_amount,
         mt.material_type as material_type_name,
         c.category_name as category_name,
         sc.subcategory_name as subcategory_name
@@ -278,8 +289,8 @@ const getAllPurchaseReturns = async (req, res) => {
         v.vendor_name,
         v.vendor_image_url,
         COALESCE(SUM(pri.quantity), 0) AS quantity,
-        COALESCE(SUM(pri.weight), 0) AS weight,
-        COALESCE(SUM(pri.amount), 0) AS total_amount,
+        COALESCE(SUM(pri.net_weight), 0) AS weight,
+        COALESCE(SUM(pri.total_amount), 0) AS total_amount,
         u.email_id as created_by
       FROM purchase_returns pr
       ${joinVendors}
@@ -385,19 +396,30 @@ const getPurchaseReturnView = async (req, res) => {
         SELECT 
           pri.id,
           pri.ref_no,
-          pri.description,
+          pri.type,
           pri.purity,
-          pri.weight,
+          pri.material_price_per_gram,
           pri.quantity,
-          pri.rate,
-          pri.amount,
-          mt.material_type   AS material_type_name,
-          c.category_name    AS category_name,
+          pri.total_weight,
+          pri.bag_weight,
+          pri.gross_weight,
+          pri.stone_weight,
+          pri.others,
+          pri.others_weight,
+          pri.others_value,
+          pri.net_weight,
+          pri.purchase_rate,
+          pri.stone_value,
+          pri.making_charge,
+          pri.rate_per_gram,
+          pri.total_amount,
+          mt.material_type AS material_type_name,
+          c.category_name AS category_name,
           sc.subcategory_name AS subcategory_name
         FROM purchase_return_items pri
         LEFT JOIN "materialTypes" mt ON pri.material_type_id = mt.id
-        LEFT JOIN categories c       ON pri.category_id = c.id
-        LEFT JOIN subcategories sc   ON pri.subcategory_id = sc.id
+        LEFT JOIN categories c ON pri.category_id = c.id
+        LEFT JOIN subcategories sc ON pri.subcategory_id = sc.id
         WHERE pri.pr_id = :id AND pri.deleted_at IS NULL
         ORDER BY pri.id ASC;
       `, { replacements: { id } });
@@ -405,8 +427,8 @@ const getPurchaseReturnView = async (req, res) => {
     // Totals (weights and amount)
     const [totalsRows] = await sequelize.query(`
         SELECT 
-          COALESCE(SUM(pri.weight), 0)  AS total_weight,
-          COALESCE(SUM(pri.amount), 0)  AS total_amount
+          COALESCE(SUM(pri.net_weight), 0) AS total_weight,
+          COALESCE(SUM(pri.total_amount), 0) AS total_amount
         FROM purchase_return_items pri
         WHERE pri.pr_id = :id AND pri.deleted_at IS NULL;
       `, { replacements: { id } });
