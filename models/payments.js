@@ -18,7 +18,7 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true, // FK → customer_scheme_payments.id
     },
     payment_mode: {
-      type: DataTypes.ENUM('Cash', 'Card', 'UPI', 'Bank Transfer', 'Cheque', 'Other'),
+      type: DataTypes.ENUM('Cash', 'Card', 'UPI', 'Bank Transfer', 'Cheque', 'Other', 'Advance'), // Added Advance for Receipt Payments
       allowNull: false
     },
     amount_received: {

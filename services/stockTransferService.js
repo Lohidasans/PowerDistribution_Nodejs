@@ -616,42 +616,334 @@ const updateStockTransfer = async (req, res) => {
   const transaction = await sequelize.transaction();
 
   try {
-    const { id } = req.params;
-    const { items = [], ...updateData } = req.body;
+    const transferId = req.params.id;
+    const { items = [], remarks, created_by, ...transferData } = req.body;
 
-    // Find existing Stock Transfer
-    const stockTransfer = await models.StockTransfer.findByPk(id, { transaction });
-    if (!stockTransfer) {
-      await transaction.rollback();
-      return commonService.notFound(res, "Stock Transfer not found");
-    }
-
-    // Update Stock Transfer header fields
-    await stockTransfer.update(updateData, { transaction });
-
-    // HARD DELETE old items
-    await models.StockTransferItem.destroy({
-      where: { stock_transfer_id: id },
-      force: true,
-      transaction,
+    const existingTransfer = await models.StockTransfer.findByPk(transferId, {
+      transaction
     });
 
-    // Insert new items
-    const newItems = items.map((item) => ({
-      ...item,
-      stock_transfer_id: id,
-    }));
-
-    if (newItems.length > 0) {
-      await models.StockTransferItem.bulkCreate(newItems, { transaction });
+    if (!existingTransfer) {
+      throw new Error("Stock transfer not found");
     }
 
+    // Only NEW transfers can be edited
+    if (existingTransfer.status_id !== 1) {
+      throw new Error("Only NEW transfers can be updated");
+    }
+
+    // Fetch existing transfer items
+    const oldItems = await models.StockTransferItem.findAll({
+      where: { stock_transfer_id: transferId },
+      transaction
+    });
+
+    /*
+    ===============================
+    STEP 1 — RESTORE PREVIOUS STOCK
+    ===============================
+    */
+
+    for (const item of oldItems) {
+
+      const sourceItem = await models.ProductItemDetail.findByPk(
+        item.product_item_detail_id,
+        { transaction }
+      );
+
+      const destinationItem = await models.ProductItemDetail.findByPk(
+        item.transferred_product_item_id,
+        { transaction }
+      );
+
+      if (sourceItem) {
+        await sourceItem.update(
+          {
+            quantity:
+              Number(sourceItem.quantity) + Number(item.transfer_quantity)
+          },
+          { transaction }
+        );
+      }
+
+      if (destinationItem) {
+        await destinationItem.update(
+          {
+            quantity:
+              Number(destinationItem.quantity) -
+              Number(item.transfer_quantity)
+          },
+          { transaction }
+        );
+      }
+    }
+
+    /*
+    ===============================
+    STEP 2 — DELETE OLD TRANSFER ITEMS
+    ===============================
+    */
+
+    await models.StockTransferItem.destroy({
+      where: { stock_transfer_id: transferId },
+      transaction
+    });
+
+    /*
+    ===============================
+    STEP 3 — VALIDATIONS
+    ===============================
+    */
+
+    await validateRequiredFields(req);
+    await validateBranches(
+      transferData.branch_from,
+      transferData.branch_to,
+      transaction
+    );
+
+    const { productIds, itemDetailIds } = await validateItemsPayload(items);
+
+    await validateProductsAndItemDetails(
+      items,
+      productIds,
+      itemDetailIds,
+      transaction
+    );
+
+    /*
+    ===============================
+    STEP 4 — UPDATE HEADER
+    ===============================
+    */
+
+    await existingTransfer.update(
+      {
+        ...transferData,
+        remarks,
+        created_by
+      },
+      { transaction }
+    );
+
+    /*
+    ===============================
+    STEP 5 — APPLY NEW TRANSFER
+    ===============================
+    */
+
+    const transferMap = {};
+
+    const grouped = {};
+    for (const item of items) {
+      (grouped[item.product_id] ||= []).push(item);
+    }
+
+    for (const productId of Object.keys(grouped)) {
+
+      const rows = grouped[productId];
+
+      const sourceProduct = await models.Product.findByPk(productId, {
+        transaction
+      });
+
+      for (const row of rows) {
+
+        const { product_item_detail_id, transfer_quantity } = row;
+
+        const sourceItem = await models.ProductItemDetail.findOne({
+          where: {
+            id: product_item_detail_id,
+            product_id: productId,
+            quantity: { [Op.gte]: transfer_quantity }
+          },
+          transaction
+        });
+
+        if (!sourceItem) {
+          throw new Error(
+            "Insufficient stock for item " + product_item_detail_id
+          );
+        }
+
+        /*
+        ===============================
+        REDUCE SOURCE STOCK
+        ===============================
+        */
+
+        await sourceItem.update(
+          {
+            quantity:
+              Number(sourceItem.quantity) -
+              Number(transfer_quantity),
+            stock_out_reason: "TRANSFERRED"
+          },
+          { transaction }
+        );
+
+        /*
+        ===============================
+        FIND DESTINATION PRODUCT
+        ===============================
+        */
+
+        let destinationProduct = await models.Product.findOne({
+          where: {
+            sku_id: sourceProduct.sku_id,
+            grn_id: sourceProduct.grn_id,
+            branch_id: transferData.branch_to,
+            deleted_at: null
+          },
+          transaction
+        });
+
+        if (!destinationProduct) {
+
+          destinationProduct = await ProductService.createProductInternal(
+            {
+              product_name: sourceProduct.product_name,
+              product_code: sourceProduct.product_code,
+              description: sourceProduct.description,
+              vendor_id: sourceProduct.vendor_id,
+              material_type_id: sourceProduct.material_type_id,
+              category_id: sourceProduct.category_id,
+              subcategory_id: sourceProduct.subcategory_id,
+              grn_id: sourceProduct.grn_id,
+              hsn_code: sourceProduct.hsn_code,
+              purity: sourceProduct.purity,
+              product_type: sourceProduct.product_type,
+              variation_type: sourceProduct.variation_type,
+              sku_id: sourceProduct.sku_id,
+              product_variations: sourceProduct.product_variations,
+              ref_no_id: sourceProduct.ref_no_id,
+              image_urls: sourceProduct.image_urls,
+              qr_image_url: sourceProduct.qr_image_url,
+              is_published: sourceProduct.is_published,
+              branch_id: transferData.branch_to,
+              item_details: []
+            },
+            transaction
+          );
+        }
+
+        /*
+        ===============================
+        FIND EXISTING DESTINATION ITEM
+        ===============================
+        */
+
+        let destinationItem = await models.ProductItemDetail.findOne({
+          where: {
+            product_id: destinationProduct.id,
+            sku_id: sourceItem.sku_id,
+            deleted_at: null
+          },
+          transaction
+        });
+
+        /*
+        ===============================
+        OPTION 1 (RECOMMENDED)
+        REUSE DESTINATION ITEM
+        ===============================
+        */
+
+        if (destinationItem) {
+
+          await destinationItem.update(
+            {
+              quantity:
+                Number(destinationItem.quantity) +
+                Number(transfer_quantity)
+            },
+            { transaction }
+          );
+
+        } else {
+
+          destinationItem = await models.ProductItemDetail.create(
+            {
+              product_id: destinationProduct.id,
+              sku_id: sourceItem.sku_id,
+              variation: sourceItem.variation,
+              quantity: transfer_quantity,
+              net_weight: sourceItem.net_weight,
+              gross_weight: sourceItem.gross_weight,
+              actual_stone_weight: sourceItem.actual_stone_weight,
+              stone_weight: sourceItem.stone_weight,
+              stone_value: sourceItem.stone_value,
+              rate_per_gram: sourceItem.rate_per_gram,
+              base_price: sourceItem.base_price,
+              item_price: sourceItem.item_price,
+              making_charge_type: sourceItem.making_charge_type,
+              making_charge: sourceItem.making_charge,
+              wastage_type: sourceItem.wastage_type,
+              wastage: sourceItem.wastage,
+              is_visible: sourceItem.is_visible,
+              website_price_type: sourceItem.website_price_type,
+              website_price: sourceItem.website_price,
+              measurement_details: sourceItem.measurement_details,
+              is_stock_transferred: true
+            },
+            { transaction }
+          );
+        }
+
+        transferMap[sourceItem.id] = {
+          product_id: destinationProduct.id,
+          item_id: destinationItem.id
+        };
+      }
+    }
+
+    /*
+    ===============================
+    STEP 6 — INSERT TRANSFER ITEMS
+    ===============================
+    */
+
+    await models.StockTransferItem.bulkCreate(
+      items.map(i => ({
+        ...i,
+        stock_transfer_id: existingTransfer.id,
+        transferred_product_id:
+          transferMap[i.product_item_detail_id].product_id,
+        transferred_product_item_id:
+          transferMap[i.product_item_detail_id].item_id
+      })),
+      { transaction }
+    );
+
+    /*
+    ===============================
+    STATUS HISTORY
+    ===============================
+    */
+
+    await models.StockTransferStatusHistory.create(
+      {
+        stock_transfer_id: existingTransfer.id,
+        status_id: 1,
+        updated_by: created_by,
+        remarks: "Stock Transfer Updated"
+      },
+      { transaction }
+    );
+
     await transaction.commit();
-    const result = await getStockTransferWithItems(id);
-    return commonService.okResponse(res, result);
-  } catch (error) {
-    await transaction.rollback();
-    return commonService.handleError(res, error);
+
+    return commonService.okResponse(res, {
+      message: "Stock transfer updated successfully"
+    });
+
+  } catch (err) {
+
+    if (!transaction.finished) {
+      await transaction.rollback();
+    }
+
+    return commonService.badRequest(res, err.message);
   }
 };
 
@@ -1072,6 +1364,7 @@ const searchProductBySku = async (req, res) => {
     return commonService.handleError(res, error);
   }
 };
+
 module.exports = {
   generateStockCode,
   createStockTransfer,
