@@ -6,6 +6,7 @@ const offerService = require("../services/offerService");
 offerRouter.post("/offers", offerService.createOffer);
 offerRouter.get("/offers", offerService.listOffers);
 offerRouter.get("/offers/dropdown", offerService.listOffersDropdown);
+offerRouter.get("/offers/products", offerService.getProducts);
 offerRouter.get("/offers/:id", offerService.getOfferById);
 offerRouter.put("/offers/:id", offerService.updateOffer);
 offerRouter.delete("/offers/:id", offerService.deleteOffer);

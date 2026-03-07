@@ -1,4 +1,4 @@
-const { models,  } = require("../models");
+const { models, sequelize } = require("../models");
 const { Op } = require("sequelize");
 const commonService = require("../services/commonService");
 const enMessage = require("../constants/en.json");
@@ -294,6 +294,53 @@ const generateOfferCode = async (req, res) => {
     return commonService.handleError(res, err);
   }
 };
+
+const getProducts = async (req, res) => {
+  try {
+
+    const query = `
+      SELECT 
+        p.id,
+        p.product_name,
+        p.sku_id,
+        p.image_urls,
+        mt.material_image_url,
+        mt.material_type AS material_type,
+        c.category_image_url,
+        c.category_name,
+        s.subcategory_image_url,
+        s.subcategory_name
+      FROM products p
+      LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
+      LEFT JOIN categories c ON c.id = p.category_id
+      LEFT JOIN subcategories s ON s.id = p.subcategory_id
+      WHERE 
+        p.deleted_at IS NULL
+        AND p.status = 'Active'
+        AND s.deleted_at IS NULL
+      ORDER BY p.created_at DESC
+    `;
+
+    const result = await sequelize.query(query, {
+      type: sequelize.QueryTypes.SELECT
+    });
+
+    return res.status(200).json({
+      status: true,
+      message: "Products fetched successfully",
+      data: result
+    });
+
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      status: false,
+      message: "Something went wrong",
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   createOffer,
   listOffers,
@@ -301,5 +348,6 @@ module.exports = {
   updateOffer,
   deleteOffer,
   listOffersDropdown,
-  generateOfferCode
+  generateOfferCode,
+  getProducts
 };
