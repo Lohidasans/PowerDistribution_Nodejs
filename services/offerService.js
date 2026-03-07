@@ -6,8 +6,11 @@ const { buildSearchCondition } = require("../helpers/queryHelper");
 const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
 
 const createOffer = async (req, res) => {
+  const transaction = await sequelize.transaction();
+
   try {
-    const { 
+
+    const {
       offer_code,
       offer_plan_id,
       offer_description,
@@ -17,21 +20,20 @@ const createOffer = async (req, res) => {
       valid_to,
       applicable_type_id,
       status = "Active",
-      branch_id
+      branch_id,
+      applicables = []
     } = req.body;
 
-    // Required field validation
     if (!offer_code || !offer_plan_id || !offer_type || !offer_value || !valid_from || !valid_to || !applicable_type_id) {
       return commonService.badRequest(res, enMessage.common.requiredFields);
     }
 
-    // Check if offer code already exists (only among non-deleted records)
     const existingOffer = await models.Offer.findOne({
       where: {
-        offer_code: offer_code,
-        deleted_at: null,
+        offer_code,
+        deleted_at: null
       },
-      paranoid: false,
+      paranoid: false
     });
 
     if (existingOffer) {
@@ -41,12 +43,11 @@ const createOffer = async (req, res) => {
       );
     }
 
-    // Validate date range
     if (new Date(valid_from) >= new Date(valid_to)) {
       return commonService.badRequest(res, "Valid To date must be after Valid From date");
     }
 
-    const offerData = {
+    const offer = await models.Offer.create({
       offer_code,
       offer_plan_id,
       offer_description,
@@ -56,13 +57,30 @@ const createOffer = async (req, res) => {
       valid_to,
       applicable_type_id,
       status,
-      branch_id: branch_id || 1, // default to 1 if not provided
-    };
+      branch_id: branch_id || 1
+    }, { transaction });
 
-    const row = await models.Offer.create(offerData);
-    
-    return commonService.createdResponse(res, { offer: row });
+    /* -------- store applicable mapping ---------- */
+
+    if (Array.isArray(applicables) && applicables.length) {
+
+      const rows = applicables.map(a => ({
+        offer_id: offer.id,
+        material_type_id: a.material_type_id || null,
+        category_id: a.category_id || null,
+        subcategory_id: a.subcategory_id || null,
+        product_id: a.product_id || null
+      }));
+
+      await models.OfferApplicable.bulkCreate(rows, { transaction });
+    }
+
+    await transaction.commit();
+
+    return commonService.createdResponse(res, { offer });
+
   } catch (err) {
+    await transaction.rollback();
     return commonService.handleError(res, err);
   }
 };
@@ -135,25 +153,102 @@ const listOffers = async (req, res) => {
 const getOfferById = async (req, res) => {
   try {
     const { id } = req.params;
-    
-    const entity = await models.Offer.findOne({
+
+    // 1️⃣ Get Offer
+    const offer = await models.Offer.findOne({
       where: { id, deleted_at: null },
-      paranoid: false
+      raw: true
     });
-    
-    if (!entity) {
+
+    if (!offer) {
       return commonService.notFound(res, enMessage.offer.notFound);
     }
-    
-    return commonService.okResponse(res, { offer: entity });
+
+    // 2️⃣ Get Applicables
+    const applicables = await models.OfferApplicable.findAll({
+      where: { offer_id: id },
+      raw: true
+    });
+
+    let materialIds = [];
+    let categoryIds = [];
+    let subcategoryIds = [];
+    let productIds = [];
+
+    applicables.forEach(a => {
+      if (a.material_type_id) materialIds.push(a.material_type_id);
+      if (a.category_id) categoryIds.push(a.category_id);
+      if (a.subcategory_id) subcategoryIds.push(a.subcategory_id);
+      if (a.product_id) productIds.push(a.product_id);
+    });
+
+    // 3️⃣ Fetch related data
+    const [materials, categories, subcategories, products] = await Promise.all([
+      materialIds.length
+        ? models.MaterialType.findAll({
+          where: { id: materialIds },
+          attributes: ["id", "material_type"],
+          raw: true
+        })
+        : [],
+
+      categoryIds.length
+        ? models.Category.findAll({
+          where: { id: categoryIds },
+          attributes: ["id", "category_name"],
+          raw: true
+        })
+        : [],
+
+      subcategoryIds.length
+        ? models.Subcategory.findAll({
+          where: { id: subcategoryIds },
+          attributes: ["id", "subcategory_name"],
+          raw: true
+        })
+        : [],
+
+      productIds.length
+        ? models.Product.findAll({
+          where: { id: productIds },
+          attributes: ["id", "product_name", "sku_id"],
+          raw: true
+        })
+        : []
+    ]);
+
+    // 4️⃣ Convert to maps
+    const materialMap = Object.fromEntries(materials.map(m => [m.id, m]));
+    const categoryMap = Object.fromEntries(categories.map(c => [c.id, c]));
+    const subcategoryMap = Object.fromEntries(subcategories.map(s => [s.id, s]));
+    const productMap = Object.fromEntries(products.map(p => [p.id, p]));
+
+    // 5️⃣ Build response
+    const applicableList = applicables.map(a => ({
+      id: a.id,
+      material_type: materialMap[a.material_type_id]?.material_type || null,
+      category: categoryMap[a.category_id]?.category_name || null,
+      subcategory: subcategoryMap[a.subcategory_id]?.subcategory_name || null,
+      sku_id: productMap[a.product_id]?.sku_id || null,
+      product_name: productMap[a.product_id]?.product_name || null
+    }));
+
+    return commonService.okResponse(res, {
+      offer,
+      applicables: applicableList
+    });
+
   } catch (err) {
     return commonService.handleError(res, err);
   }
 };
 
 const updateOffer = async (req, res) => {
+  const transaction = await sequelize.transaction();
+
   try {
     const { id } = req.params;
+
     const {
       offer_code,
       offer_plan_id,
@@ -163,60 +258,125 @@ const updateOffer = async (req, res) => {
       valid_from,
       valid_to,
       applicable_type_id,
-      status
+      status,
+      applicables = []
     } = req.body;
 
-    // Find the offer
-    const entity = await models.Offer.findByPk(id, { paranoid: false });
-    
-    if (!entity || entity.deleted_at) {
+    const entity = await models.Offer.findByPk(id, { transaction });
+
+    if (!entity) {
+      await transaction.rollback();
       return commonService.notFound(res, enMessage.offer.notFound);
     }
 
-    // Unique offer_code check (case-insensitive, only if changing)
-    if (offer_code !== undefined) {
-      const trimmedNewCode = offer_code.trim();
-
-      if (trimmedNewCode !== (entity.offer_code || '').trim()) {
-        const existingOffer = await models.Offer.findOne({
-          where: {
-            offer_code: { [Op.iLike]: trimmedNewCode },
-            id: { [Op.ne]: id },
-            deleted_at: null,
-          },
-        });
-
-        if (existingOffer) {
-          return commonService.badRequest(res, enMessage.offer.alreadyExists);
+    // Unique code validation
+    if (offer_code && offer_code !== entity.offer_code) {
+      const exists = await models.Offer.findOne({
+        where: {
+          offer_code: { [Op.iLike]: offer_code },
+          id: { [Op.ne]: id },
+          deleted_at: null
         }
+      });
+
+      if (exists) {
+        await transaction.rollback();
+        return commonService.badRequest(res, enMessage.offer.alreadyExists);
       }
     }
 
-    // Validate date range if either date is being updated
-    if ((valid_from || valid_to) && 
-        new Date(valid_from || entity.valid_from) >= new Date(valid_to || entity.valid_to)) {
-      return commonService.badRequest(res, "Valid To date must be after Valid From date");
+    // Date validation
+    if (
+      (valid_from || valid_to) &&
+      new Date(valid_from || entity.valid_from) >=
+      new Date(valid_to || entity.valid_to)
+    ) {
+      await transaction.rollback();
+      return commonService.badRequest(
+        res,
+        "Valid To date must be after Valid From date"
+      );
     }
 
-    // Only update fields that are provided in the request
-    const updateData = {};
-    const fields = [
-      'offer_code', 'offer_plan_id', 'offer_description', 'offer_type',
-      'offer_value', 'valid_from', 'valid_to', 'applicable_type_id', 'status'
-    ];
-    
-    fields.forEach(field => {
-      if (req.body[field] !== undefined) {
-        updateData[field] = req.body[field];
-      }
+    // Update offer header
+    await entity.update(
+      {
+        offer_code,
+        offer_plan_id,
+        offer_description,
+        offer_type,
+        offer_value,
+        valid_from,
+        valid_to,
+        applicable_type_id,
+        status
+      },
+      { transaction }
+    );
+
+    const payloadIds = applicables
+      .filter(a => a.id)
+      .map(a => a.id);
+
+    // DELETE removed applicables
+    if (payloadIds.length) {
+      await models.OfferApplicable.destroy({
+        where: {
+          offer_id: id,
+          id: { [Op.notIn]: payloadIds }
+        },
+        transaction
+      });
+    } else {
+      await models.OfferApplicable.destroy({
+        where: { offer_id: id },
+        transaction
+      });
+    }
+
+    // UPDATE existing
+    for (const item of applicables.filter(a => a.id)) {
+
+      await models.OfferApplicable.update(
+        {
+          material_type_id: item.material_type_id || null,
+          category_id: item.category_id || null,
+          subcategory_id: item.subcategory_id || null,
+          product_id: item.product_id || null
+        },
+        {
+          where: { id: item.id, offer_id: id },
+          transaction
+        }
+      );
+
+    }
+
+    // CREATE new
+    const newItems = applicables.filter(a => !a.id);
+
+    if (newItems.length) {
+
+      const rows = newItems.map(a => ({
+        offer_id: id,
+        material_type_id: a.material_type_id || null,
+        category_id: a.category_id || null,
+        subcategory_id: a.subcategory_id || null,
+        product_id: a.product_id || null
+      }));
+
+      await models.OfferApplicable.bulkCreate(rows, { transaction });
+
+    }
+
+    await transaction.commit();
+
+    return commonService.okResponse(res, {
+      message: "Offer updated successfully"
     });
 
-    await entity.update(updateData);
-    
-    const updatedOffer = await models.Offer.findByPk(id);
-    
-    return commonService.okResponse(res, { offer: updatedOffer });
   } catch (err) {
+    await transaction.rollback();
     return commonService.handleError(res, err);
   }
 };
@@ -306,10 +466,13 @@ const getProducts = async (req, res) => {
         p.image_urls,
         mt.material_image_url,
         mt.material_type AS material_type,
+        mt.id AS material_type_id,
         c.category_image_url,
         c.category_name,
+        c.id AS category_id,
         s.subcategory_image_url,
-        s.subcategory_name
+        s.subcategory_name,
+        s.id AS subcategory_id
       FROM products p
       LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
       LEFT JOIN categories c ON c.id = p.category_id

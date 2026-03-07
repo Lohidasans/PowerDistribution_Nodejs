@@ -164,6 +164,7 @@ const CustomerAddress = require("./customerAddresses")(sequelize, Sequelize.Data
 
 // Offer Related models
 const OfferPlan = require("./offerPlans")(sequelize, Sequelize.DataTypes);
+const OfferApplicable = require("./offerApplicables")(sequelize, Sequelize.DataTypes);
 const OfferApplicableType = require("./offerApplicableTypes")(sequelize, Sequelize.DataTypes);
 const Offer = require("./offers")(sequelize, Sequelize.DataTypes);
 
@@ -281,6 +282,7 @@ const models = {
   CustomerAddress,
   Purity,
   OfferPlan,
+  OfferApplicable,
   OfferApplicableType,
   Offer,
   Maintenance,
