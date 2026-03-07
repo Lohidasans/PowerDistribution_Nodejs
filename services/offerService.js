@@ -504,6 +504,39 @@ const getProducts = async (req, res) => {
   }
 };
 
+const updateOfferStatus = async (req, res) => {
+  try {
+
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!status) {
+      return commonService.badRequest(res, "Status is required");
+    }
+
+    if (!["Active", "Inactive"].includes(status)) {
+      return commonService.badRequest(res, "Invalid status value");
+    }
+
+    const offer = await models.Offer.findOne({
+      where: { id, deleted_at: null }
+    });
+
+    if (!offer) {
+      return commonService.notFound(res, enMessage.offer.notFound);
+    }
+
+    await offer.update({ status });
+
+    return commonService.okResponse(res, {
+      message: `Offer ${status === "Active" ? "activated" : "deactivated"} successfully`
+    });
+
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
 module.exports = {
   createOffer,
   listOffers,
@@ -512,5 +545,6 @@ module.exports = {
   deleteOffer,
   listOffersDropdown,
   generateOfferCode,
-  getProducts
+  getProducts,
+  updateOfferStatus
 };

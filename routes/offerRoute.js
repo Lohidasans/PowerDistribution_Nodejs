@@ -11,6 +11,8 @@ offerRouter.get("/offers/:id", offerService.getOfferById);
 offerRouter.put("/offers/:id", offerService.updateOffer);
 offerRouter.delete("/offers/:id", offerService.deleteOffer);
 offerRouter.post("/offers/code", offerService.generateOfferCode);
+offerRouter.patch("/offers/:id/status", offerService.updateOfferStatus);
+
 module.exports = offerRouter;
 
 /**
