@@ -47,6 +47,14 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.INTEGER,
         allowNull: true,
       },
+      total_wt_in_g: {
+        type: DataTypes.DECIMAL(15, 4),
+        allowNull: true,
+      },
+      bag_wt_in_g: {
+        type: DataTypes.DECIMAL(15, 4),
+        allowNull: true,
+      },
       gross_wt_in_g: {
         type: DataTypes.DECIMAL(15, 4),
         allowNull: true,
