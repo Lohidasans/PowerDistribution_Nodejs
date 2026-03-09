@@ -78,8 +78,16 @@ const getGrnById = async (req, res) => {
 
 const getGrnWithItems = async (grnId) => {
   try {
-    // Get GRN details
+    // Get GRN details with explicit attributes to ensure entity_type and timestamps are included
     const grn = await models.Grn.findByPk(grnId, {
+      attributes: [
+        'id', 'grn_no', 'grn_date', 'grn_info_ids', 'po_id', 'vendor_id', 
+        'branch_id', 'order_by_user_id', 'reference_id', 'gst_no', 
+        'billing_address', 'shipping_address', 'subtotal_amount', 
+        'sgst_percent', 'cgst_percent', 'discount_percent', 'total_amount', 
+        'total_gross_wt_in_g', 'remarks', 'status_id', 'is_active', 
+        'entity_type', 'created_at', 'updated_at'
+      ],
       raw: true,
       nest: true,
     });
@@ -259,7 +267,7 @@ const deleteGrn = async (req, res) => {
   }
 };
 
-// List all GRNs (NO pagination)
+  // List all GRNs (NO pagination)
 const getAllGrns = async (req, res) => {
   try {
     const {
@@ -308,17 +316,28 @@ const getAllGrns = async (req, res) => {
          g.grn_no,
          g.grn_date AS date,
          g.status_id,
+         g.entity_type,
          v.id AS vendor_id,
          v.vendor_name,
          v.vendor_image_url,
          COALESCE(gi.total_net_weight, 0) AS "order",
-         u.email_id AS created_by,
+         CASE 
+           WHEN g.entity_type = 'superadmin' THEN sp.company_name
+           WHEN g.entity_type = 'branch' THEN b.branch_name
+           WHEN g.entity_type = 'employee' THEN e.employee_name
+           ELSE 'Unknown'
+         END AS created_by,
          d.district_name AS location,
          COALESCE(pi.total_updated_weight, 0) AS updated_weight
        FROM grns g
        LEFT JOIN vendors v ON v.id = g.vendor_id
-       LEFT JOIN superadmin_profiles u ON u.id = g.order_by_user_id
-       LEFT JOIN districts d ON d.id = u.district_id  -- Join with districts table
+       LEFT JOIN superadmin_profiles sp ON sp.id = g.order_by_user_id AND g.entity_type = 'superadmin'
+       LEFT JOIN branches b ON b.id = g.order_by_user_id AND g.entity_type = 'branch'
+       LEFT JOIN employees e ON e.id = g.order_by_user_id AND g.entity_type = 'employee'
+       LEFT JOIN districts d ON (
+         (g.entity_type = 'superadmin' AND d.id = sp.district_id) OR
+         (g.entity_type = 'branch' AND d.id = b.district_id)
+       )
        LEFT JOIN (
          SELECT 
            grn_id, 
@@ -337,7 +356,7 @@ const getAllGrns = async (req, res) => {
         GROUP BY p.grn_id
       ) pi ON pi.grn_id = g.id
        ${whereSql}
-       GROUP BY g.id, v.id, v.vendor_name, v.vendor_image_url, u.email_id, gi.total_net_weight, pi.total_updated_weight, d.district_name
+       GROUP BY g.id, g.entity_type, v.id, v.vendor_name, v.vendor_image_url, sp.company_name, b.branch_name, e.employee_name, gi.total_net_weight, pi.total_updated_weight, d.district_name
        ORDER BY g.created_at DESC, g.grn_date DESC, g.grn_no DESC`,
       { replacements, type: sequelize.QueryTypes.SELECT }
     );
@@ -485,6 +504,9 @@ const getGrnView = async (req, res) => {
           g.gst_no,
           g.billing_address,
           g.shipping_address,
+          g.entity_type,
+          g.created_at,
+          g.updated_at,
           po.po_no,
           po.po_date,
           v.id               AS vendor_id,

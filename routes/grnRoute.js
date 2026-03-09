@@ -105,6 +105,17 @@ module.exports = router;
  *           format: float
  *         remarks:
  *           type: string
+ *         entity_type:
+ *           type: string
+ *           description: Type of entity (default - superadmin)
+ *         created_at:
+ *           type: string
+ *           format: date-time
+ *           description: Creation timestamp
+ *         updated_at:
+ *           type: string
+ *           format: date-time
+ *           description: Last update timestamp
  *         items:
  *           type: array
  *           items:

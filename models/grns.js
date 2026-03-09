@@ -92,6 +92,11 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
         defaultValue: true,
       },
+      entity_type:{
+        type: DataTypes.STRING,
+        allowNull: true,
+        defaultValue: 'superadmin',
+      }
     },
     {
       timestamps: true,
