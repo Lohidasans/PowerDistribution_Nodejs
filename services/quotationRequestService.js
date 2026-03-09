@@ -208,6 +208,7 @@ const createQuotationRequest = async (req, res) => {
       vendor_id: vendorId,
       status: "pending",
       created_by: quotationData.created_by,
+      branch_id: quotationData.branch_id || 1, // Pass branch_id from quotation data or default to 1
     }));
     await models.VendorQuotation.bulkCreate(vendorQuotations, { transaction });
 
@@ -282,6 +283,7 @@ const updateQuotationRequest = async (req, res) => {
           vendor_id: vendorId,
           status: "pending",
           created_by: updateData.updated_by,
+          branch_id: quotationRequest.branch_id || updateData.branch_id || 1, // Use existing branch_id, or from update data, or default
         }));
         await models.VendorQuotation.bulkCreate(newVendorQuotations, {
           transaction,
@@ -389,7 +391,7 @@ const deleteQuotationRequest = async (req, res) => {
 // List all Quotation Requests with pagination
 const getAllQuotationRequests = async (req, res) => {
   try {
-    const { page, limit, type = "sent", status_id, vendor_id, date, search } = req.query;
+    const { page, limit, type = "sent", status_id, vendor_id, date, search, branch_id } = req.query;
 
     // --- Optional Pagination ---
     const isPaginated = page && limit;
@@ -400,6 +402,11 @@ const getAllQuotationRequests = async (req, res) => {
     // --- Base WHERE clause for SENT list ---
     let whereSql = `WHERE q.deleted_at IS NULL`;
     const replacements = {};
+    
+    if (branch_id) {
+      whereSql += ` AND q.branch_id = :branch_id`;
+      replacements.branch_id = parseInt(branch_id);
+    }
 
     if (status_id) {
       whereSql += ` AND q.status_id = :status_id`;
@@ -425,6 +432,12 @@ const getAllQuotationRequests = async (req, res) => {
     let sentWhereSql = `WHERE q.deleted_at IS NULL`;
     let receivedWhereSql = `WHERE vq.deleted_at IS NULL AND vq.status = 'accepted'`;
     const scoreReplacements = {};
+    
+    if (branch_id) {
+      sentWhereSql += ` AND q.branch_id = :branch_id`;
+      receivedWhereSql += ` AND q.branch_id = :branch_id`;
+      scoreReplacements.branch_id = parseInt(branch_id);
+    }
 
     if (vendor_id) {
       sentWhereSql += ` AND :vendor_id = ANY(q.vendor_ids)`;
@@ -478,6 +491,11 @@ const getAllQuotationRequests = async (req, res) => {
       // ---------------- RECEIVED ----------------
       let vqWhereSql = `WHERE vq.deleted_at IS NULL AND vq.status = 'accepted'`;
       const vqReplacements = {};
+      
+      if (branch_id) {
+        vqWhereSql += ` AND q.branch_id = :branch_id`;
+        vqReplacements.branch_id = parseInt(branch_id);
+      }
 
       if (vendor_id) {
         vqWhereSql += ` AND vq.vendor_id = :vendor_id`;
@@ -1085,7 +1103,7 @@ const submitVendorRates = async (req, res) => {
 // Get All Vendor Quotations with Score Cards and Filtering
 const getAllVendorQuotations = async (req, res) => {
   try {
-    const { page, limit, status = "received", search, vendor_id, date } = req.query;
+    const { page, limit, status = "received", search, vendor_id, date, branch_id } = req.query;
 
     // vendor_id is REQUIRED
     if (!vendor_id) {
@@ -1106,6 +1124,11 @@ const getAllVendorQuotations = async (req, res) => {
         AND vq.vendor_id = :vendor_id
     `;
     const replacements = { vendor_id: vendorId };
+    
+    if (branch_id) {
+      whereSql += ` AND vq.branch_id = :branch_id`;
+      replacements.branch_id = parseInt(branch_id);
+    }
 
     // STATUS FILTER (CORRECTED)
     if (status === "received") {
