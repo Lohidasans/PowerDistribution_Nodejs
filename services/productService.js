@@ -854,7 +854,7 @@ const getAllProductDetails = async (req, res) => {
           AND sib.status = 'Invoice'
           AND sib.is_active = true
         WHERE sii.deleted_at IS NULL
-          AND sii.product_id = p.id
+          AND sii.product_item_detail_id = pid.id
       )
       `;
     }
@@ -1092,7 +1092,13 @@ const getAllProductDetails = async (req, res) => {
       const itemsWithPrices = products.map((product) => {
         const productItems = itemsByProduct[product.id] || [];
 
-        const enrichedItems = productItems.map((item) => {
+        const enrichedItems = productItems.filter(item => {
+          if (stock === "out_of_stock") {
+            return (soldMap[item.id] || 0) > 0;
+          }
+          return true;
+        })
+        .map((item) => {
           const soldQuantity = soldMap[item.id] || 0;
           const priceDetails = calculateSellingPriceSync(
             product,
@@ -2783,9 +2789,11 @@ const getProductStockCounts = async (req, res) => {
       SELECT COUNT(DISTINCT p.id) as count
       FROM "products" p
       ${searchJoins}
+      INNER JOIN "productItemDetails" pid 
+        ON pid.product_id = p.id
+        AND pid.deleted_at IS NULL
       ${whereClause}
 
-      -- Must be invoiced
       AND EXISTS (
         SELECT 1
         FROM sales_invoice_bill_items sii
@@ -2795,9 +2803,9 @@ const getProductStockCounts = async (req, res) => {
           AND sib.status = 'Invoice'
           AND sib.is_active = true
         WHERE sii.deleted_at IS NULL
-          AND sii.product_id = p.id
+          AND sii.product_item_detail_id = pid.id
       )
-    `,
+      `,
       {
         type: sequelize.QueryTypes.SELECT,
         replacements
