@@ -1074,6 +1074,55 @@ const getFastMovingCategoryStats = async (req, res) => {
     }
 };
 
+const getEstimateConversionRate = async (req, res) => {
+    try {
+
+        const { branch_id, from_date, to_date } = req.query;
+
+        let whereSql = `
+      WHERE eb.deleted_at IS NULL
+      AND eb.is_active = true
+    `;
+
+        const replacements = {};
+
+        /* ---------- DATE FILTER ---------- */
+        if (from_date && to_date) {
+            whereSql += ` AND eb.estimate_date BETWEEN :from_date AND :to_date`;
+            replacements.from_date = from_date;
+            replacements.to_date = to_date;
+        }
+
+        /* ---------- BRANCH FILTER ---------- */
+        if (branch_id) {
+            whereSql += ` AND eb.branch_id = :branch_id`;
+            replacements.branch_id = branch_id;
+        }
+
+        const [result] = await sequelize.query(
+            `
+      SELECT
+        COUNT(*) AS total_estimates,
+        COUNT(*) FILTER (WHERE eb.is_converted = true) AS converted_estimates,
+        ROUND(
+          (COUNT(*) FILTER (WHERE eb.is_converted = true)::decimal / NULLIF(COUNT(*),0)) * 100,
+          2
+        ) AS conversion_rate
+      FROM estimate_bills eb
+      ${whereSql}
+      `,
+            {
+                replacements,
+                type: sequelize.QueryTypes.SELECT
+            }
+        );
+
+        return commonService.okResponse(res, result);
+
+    } catch (error) {
+        return commonService.handleError(res, error);
+    }
+};
 
 
 
@@ -1085,5 +1134,6 @@ module.exports = {
     getTopBuyingCustomers,
     getBranchWiseSalesCount,
     getBranchwiseSalesAndCustomerStats,
-    getSalesByMaterialType
+    getSalesByMaterialType,
+    getEstimateConversionRate
 };

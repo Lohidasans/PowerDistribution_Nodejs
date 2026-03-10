@@ -932,7 +932,7 @@ const createSalesInvoice = async (req, res) => {
         created_by: req.user?.id || null,
       }));
 
-    validateCashPayment(paymentRows);
+    validateCashPayment(paymentRows, req.body.customer?.pan_no);
 
     const hasHeaderIgst = header.igst_amount !== undefined && Number(header.igst_amount) > 0;
     const cgstAmt = hasHeaderIgst ? 0 : Number(header.cgst_amount || 0);
@@ -1034,7 +1034,7 @@ const createSalesInvoice = async (req, res) => {
     }
 
     if (estimateBill) {
-      await markEstimateAsConverted(estimateBill, { transaction: t });
+      await markEstimateAsConverted(estimateBill, { transaction: t, employee_id: header.employee_id });
     }
 
     await t.commit();
@@ -1101,7 +1101,7 @@ const updateSalesInvoice = async (req, res) => {
       })),
     ];
 
-    validateCashPayment(allPayments);
+    validateCashPayment(allPayments, req.body.customer?.pan_no);
 
     // Determine IGST vs CGST/SGST
     const hasIgst = Number(header.igst_amount || 0) > 0;

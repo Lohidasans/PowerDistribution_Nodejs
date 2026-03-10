@@ -125,15 +125,18 @@ const restoreStockForInvoice = async (items, transaction) => {
 };
 
 
-const validateCashPayment = (payments) => {
+const validateCashPayment = (payments, panNo) => {
+
     const totalCash = payments
         .filter(p => p.payment_mode?.toLowerCase() === 'cash')
         .reduce((sum, p) => sum + (Number(p.amount_received) || 0), 0);
 
-    if (totalCash >= 200000) {
-        throw new ValidationError('PAN card is required for cash payments of ₹2,00,000 or more');
+    if (totalCash >= 200000 && !panNo) {
+        throw new ValidationError(
+            'PAN card is required for cash payments of ₹2,00,000 or more'
+        );
     }
-};
+}
 
 const updateBillAdjustmentFlags = async (adjustments, transaction) => {
     if (!Array.isArray(adjustments) || adjustments.length === 0) return;
@@ -250,7 +253,7 @@ const validateEstimateForInvoice = async (
 
 const markEstimateAsConverted = async (
     estimateBill,
-    { transaction }
+    { transaction, employee_id }
 ) => {
     if (!estimateBill) return;
 
@@ -258,6 +261,7 @@ const markEstimateAsConverted = async (
         {
             is_converted: true,
             converted_at: new Date(),
+            converted_by: employee_id,
             status: "Converted",
         },
         { transaction }

@@ -12,5 +12,6 @@ router.get("/sales-management/dashboard/fast-moving-category-stats", svc.getFast
 router.get("/sales-management/dashboard/branch-wise-sales-count", svc.getBranchWiseSalesCount);
 router.get("/sales-management/dashboard/branchwise-sales-and-customer-stats", svc.getBranchwiseSalesAndCustomerStats);
 router.get("/sales-management/dashboard/sales-by-material-type", svc.getSalesByMaterialType);
+router.get("/sales-management/dashboard/estimate-sales-conversion-rate", svc.getEstimateConversionRate);
 
 module.exports = router;
