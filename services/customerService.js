@@ -414,6 +414,7 @@ const listCustomers = async (req, res) => {
         ON sib.customer_id = c.id 
         AND sib.deleted_at IS NULL
         AND sib.is_active = true
+        ${branch_id ? 'AND sib.branch_id = :branch_id' : ''}
 
       WHERE c.deleted_at IS NULL
     `;
@@ -445,15 +446,18 @@ const listCustomers = async (req, res) => {
 
     // 🏢 Branch ID Filter
     if (branch_id) {
-      sql += ` AND EXISTS (
-        SELECT 1
-        FROM sales_invoice_bills sib5
-        WHERE sib5.customer_id = c.id
-          AND sib5.branch_id = :branch_id
-          AND sib5.deleted_at IS NULL
-          AND sib5.is_active = true
+      sql += ` AND (
+        c.branch_id = :branch_id
+        OR EXISTS (
+          SELECT 1
+          FROM sales_invoice_bills sib5
+          WHERE sib5.customer_id = c.id
+            AND sib5.branch_id = :branch_id
+            AND sib5.deleted_at IS NULL
+            AND sib5.is_active = true
+        )
       )`;
-      replacements.branch_id = branch_id;
+      replacements.branch_id = parseInt(branch_id, 10);
     }
 
     sql += `

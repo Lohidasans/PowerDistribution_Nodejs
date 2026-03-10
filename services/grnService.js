@@ -632,6 +632,178 @@ const getAllGrnInfos = async (req, res) => {
   }
 };
 
+// Export GRN items to Excel with the columns:
+// Date / Vendor Name / GRN No. / Ref No. / Material Type / Purity /
+// Category / Sub Category / Type / Qty / Grs Wt. / Net Wt. /
+// Purchase Rate / Making Charge / Rate Per g / Total Amount
+const exportGrnReport = async (req, res) => {
+  try {
+    const ExcelJS = require("exceljs");
+
+    const {
+      vendor_id,
+      branch_id,
+      start_date,
+      end_date,
+      material_type_id,
+      category_id,
+      subcategory_id,
+    } = req.query;
+
+    const replacements = {};
+    const whereConditions = [
+      `g.deleted_at IS NULL`,
+      `gi.deleted_at IS NULL`,
+    ];
+
+    if (vendor_id) {
+      whereConditions.push(`g.vendor_id = :vendor_id`);
+      replacements.vendor_id = parseInt(vendor_id);
+    }
+    if (branch_id) {
+      whereConditions.push(`g.branch_id = :branch_id`);
+      replacements.branch_id = parseInt(branch_id);
+    }
+    if (start_date) {
+      whereConditions.push(`g.grn_date >= :start_date`);
+      replacements.start_date = start_date;
+    }
+    if (end_date) {
+      whereConditions.push(`g.grn_date <= :end_date`);
+      replacements.end_date = end_date;
+    }
+    if (material_type_id) {
+      whereConditions.push(`gi.material_type_id = :material_type_id`);
+      replacements.material_type_id = parseInt(material_type_id);
+    }
+    if (category_id) {
+      whereConditions.push(`gi.category_id = :category_id`);
+      replacements.category_id = parseInt(category_id);
+    }
+    if (subcategory_id) {
+      whereConditions.push(`gi.subcategory_id = :subcategory_id`);
+      replacements.subcategory_id = parseInt(subcategory_id);
+    }
+
+    const whereSql = `WHERE ${whereConditions.join(" AND ")}`;
+
+    const rows = await sequelize.query(
+      `SELECT
+         g.grn_date          AS "Date",
+         v.vendor_name       AS "Vendor Name",
+         g.grn_no            AS "GRN No",
+         gi.ref_no           AS "Ref No",
+         mt.material_type    AS "Material Type",
+         gi.purity           AS "Purity",
+         c.category_name     AS "Category",
+         sc.subcategory_name AS "Sub Category",
+         gi.type             AS "Type",
+         gi.quantity         AS "Qty",
+         gi.gross_wt_in_g    AS "Grs Wt",
+         gi.net_wt_in_g      AS "Net Wt",
+         gi.purchase_rate    AS "Purchase Rate",
+         gi.making_charge    AS "Making Charge",
+         gi.rate_per_g       AS "Rate Per g",
+         gi.total_amount     AS "Total Amount"
+       FROM grns g
+       LEFT JOIN vendors v           ON v.id = g.vendor_id
+       INNER JOIN "grnItems" gi      ON gi.grn_id = g.id
+       LEFT JOIN "materialTypes" mt  ON mt.id = gi.material_type_id
+       LEFT JOIN categories c        ON c.id = gi.category_id
+       LEFT JOIN subcategories sc    ON sc.id = gi.subcategory_id
+       ${whereSql}
+       ORDER BY g.grn_date DESC, g.grn_no, gi.id`,
+      { replacements, type: sequelize.QueryTypes.SELECT }
+    );
+
+    // ── Build Workbook ──────────────────────────────────────────────
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = "PowerDistribution";
+    workbook.created = new Date();
+
+    const sheet = workbook.addWorksheet("GRN Report");
+
+    sheet.columns = [
+      { header: "Date",          key: "Date",          width: 14 },
+      { header: "Vendor Name",   key: "Vendor Name",   width: 24 },
+      { header: "GRN No.",       key: "GRN No",        width: 16 },
+      { header: "Ref No.",       key: "Ref No",        width: 16 },
+      { header: "Material Type", key: "Material Type", width: 16 },
+      { header: "Purity",        key: "Purity",        width: 10 },
+      { header: "Category",      key: "Category",      width: 20 },
+      { header: "Sub Category",  key: "Sub Category",  width: 20 },
+      { header: "Type",          key: "Type",          width: 10 },
+      { header: "Qty",           key: "Qty",           width: 8  },
+      { header: "Grs Wt.",       key: "Grs Wt",        width: 12 },
+      { header: "Net Wt.",       key: "Net Wt",        width: 12 },
+      { header: "Purchase Rate", key: "Purchase Rate", width: 16 },
+      { header: "Making Charge", key: "Making Charge", width: 16 },
+      { header: "Rate Per g",    key: "Rate Per g",    width: 14 },
+      { header: "Total Amount",  key: "Total Amount",  width: 16 },
+    ];
+
+    // Style header row
+    const headerRow = sheet.getRow(1);
+    headerRow.height = 22;
+    headerRow.eachCell((cell) => {
+      cell.font      = { bold: true, color: { argb: "FFFFFFFF" }, size: 11 };
+      cell.fill      = { type: "pattern", pattern: "solid", fgColor: { argb: "FF2F5496" } };
+      cell.alignment = { horizontal: "center", vertical: "middle" };
+      cell.border    = {
+        top:    { style: "thin" }, bottom: { style: "thin" },
+        left:   { style: "thin" }, right:  { style: "thin" },
+      };
+    });
+
+    // Data rows
+    rows.forEach((row) => {
+      const r = sheet.addRow(row);
+      r.height = 18;
+      r.eachCell({ includeEmpty: true }, (cell) => {
+        cell.alignment = { vertical: "middle" };
+        cell.border    = {
+          top:    { style: "hair" }, bottom: { style: "hair" },
+          left:   { style: "hair" }, right:  { style: "hair" },
+        };
+      });
+    });
+
+    // Totals row
+    if (rows.length > 0) {
+      const sumGrsWt       = rows.reduce((s, r) => s + (parseFloat(r["Grs Wt"])       || 0), 0);
+      const sumNetWt       = rows.reduce((s, r) => s + (parseFloat(r["Net Wt"])       || 0), 0);
+      const sumTotalAmount = rows.reduce((s, r) => s + (parseFloat(r["Total Amount"]) || 0), 0);
+
+      const totalRow = sheet.addRow({
+        "Date":         "TOTAL",
+        "Grs Wt":       parseFloat(sumGrsWt.toFixed(4)),
+        "Net Wt":       parseFloat(sumNetWt.toFixed(4)),
+        "Total Amount": parseFloat(sumTotalAmount.toFixed(2)),
+      });
+      totalRow.height = 20;
+      totalRow.eachCell({ includeEmpty: true }, (cell) => {
+        cell.font      = { bold: true, size: 11 };
+        cell.fill      = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD9E1F2" } };
+        cell.alignment = { vertical: "middle" };
+        cell.border    = {
+          top:    { style: "thin" }, bottom: { style: "thin" },
+          left:   { style: "thin" }, right:  { style: "thin" },
+        };
+      });
+    }
+
+    // Stream response
+    const fileName = `GRN_Report_${new Date().toISOString().split("T")[0]}.xlsx`;
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (error) {
+    console.error("exportGrnReport Error:", error);
+    return commonService.handleError(res, error);
+  }
+};
+
 const updateGrnStatus = async (req, res) => {
   const { grn_id } = req.params;
   const { is_active } = req.body;  
@@ -690,5 +862,6 @@ module.exports = {
   generateGrnCode,
   getGrnView,
   getAllGrnInfos,
-  updateGrnStatus
+  updateGrnStatus,
+  exportGrnReport,
 };
