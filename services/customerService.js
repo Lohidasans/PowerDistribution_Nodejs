@@ -6,6 +6,7 @@ const { Op } = require("sequelize");
 
 // Create customer
 const createCustomer = async (req, res) => {
+  const transaction = await sequelize.transaction();
   try {
     const required = ["customer_name", "mobile_number"];
     for (const f of required) {
@@ -18,6 +19,7 @@ const createCustomer = async (req, res) => {
       customer_code: req.body.customer_code,
       customer_name: req.body.customer_name || null,
       mobile_number: req.body.mobile_number,
+      branch_id: +req.body.branch_id || null, // Ensure branch_id is a number or null
       // Optional fields
       email_id: req.body.email_id || null,
       gst_no: req.body.gst_no || null,
@@ -41,31 +43,62 @@ const createCustomer = async (req, res) => {
 
     if (existingMobile) {
       return commonService.badRequest(res, {
-        message: "Mobile number already exists",
+        message: "Mobile number already exists"
       });
     }
 
-    // Check if a non-deleted customer already uses this code
+    // Duplicate code check
     if (payload.customer_code) {
       const existing = await models.Customer.findOne({
         where: {
           customer_code: payload.customer_code,
-          deleted_at: null,     // only check active (non-deleted) records
-        },
+          deleted_at: null
+        }
       });
 
       if (existing) {
         return commonService.badRequest(res, {
-          message: "Customer code already exists",
+          message: "Customer code already exists"
         });
       }
     }
 
+    // 1️⃣ Create Customer
+    const customer = await models.Customer.create(payload, { transaction });
 
-    const customer = await models.Customer.create(payload);
+    // 2️⃣ Generate Ledger Number (Using your helper)
+    const ledger_no = await generateFiscalSeriesCode(
+      models.Ledger,
+      "ledger_no",
+      "LAID",
+      { pad: 3 }
+    );
+
+    // 3️⃣ Create Ledger under Sundry Debtors (Group ID = 26)
+    const ledger = await models.Ledger.create(
+      {
+        ledger_no,
+        ledger_group_id: 26, // Quick fix: Assuming 26 is the ID for Sundry Debtors. Ideally, this should be dynamic.
+        ledger_name: payload.customer_name,
+        branch_id: payload.branch_id
+      },
+      { transaction }
+    );
+
+    // 4️⃣ Update customer with ledger_id
+    await customer.update(
+      { ledger_id: ledger.id },
+      { transaction }
+    );
+
+    await transaction.commit();
+
     return commonService.createdResponse(res, { customer });
+
   } catch (err) {
+    await transaction.rollback();
     return commonService.handleError(res, err);
+
   }
 };
 

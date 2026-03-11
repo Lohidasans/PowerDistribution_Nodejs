@@ -63,11 +63,6 @@ module.exports = (sequelize) => {
         allowNull: false,
         defaultValue: true,
       },
-      is_advance_used: {
-        type: DataTypes.BOOLEAN, // To track if an advance payment has been utilized against this receipt(sales invoice)
-        allowNull: false,
-        defaultValue: false
-      }
     },
     {
       tableName: "voucher_receipts",
