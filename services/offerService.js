@@ -217,22 +217,42 @@ const getOfferById = async (req, res) => {
         : []
     ]);
 
-    // 4️⃣ Convert to maps
-    const materialMap = Object.fromEntries(materials.map(m => [m.id, m]));
-    const categoryMap = Object.fromEntries(categories.map(c => [c.id, c]));
-    const subcategoryMap = Object.fromEntries(subcategories.map(s => [s.id, s]));
-    const productMap = Object.fromEntries(products.map(p => [p.id, p]));
+    // 4️⃣ Convert to maps for quick lookup
+    const materialMap = Object.fromEntries(
+      materials.map(m => [m.id, m])
+    );
 
-    // 5️⃣ Build response
+    const categoryMap = Object.fromEntries(
+      categories.map(c => [c.id, c])
+    );
+
+    const subcategoryMap = Object.fromEntries(
+      subcategories.map(s => [s.id, s])
+    );
+
+    const productMap = Object.fromEntries(
+      products.map(p => [p.id, p])
+    );
+
+    // 5️⃣ Build response with IDs + Names
     const applicableList = applicables.map(a => ({
       id: a.id,
+
+      material_type_id: a.material_type_id || null,
       material_type: materialMap[a.material_type_id]?.material_type || null,
+
+      category_id: a.category_id || null,
       category: categoryMap[a.category_id]?.category_name || null,
+
+      subcategory_id: a.subcategory_id || null,
       subcategory: subcategoryMap[a.subcategory_id]?.subcategory_name || null,
+
+      product_id: a.product_id || null,
       sku_id: productMap[a.product_id]?.sku_id || null,
       product_name: productMap[a.product_id]?.product_name || null
     }));
 
+    // 6️⃣ Final Response
     return commonService.okResponse(res, {
       offer,
       applicables: applicableList
