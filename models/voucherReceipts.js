@@ -50,7 +50,7 @@ module.exports = (sequelize) => {
         type: DataTypes.STRING(255),
         allowNull: false,
       },
-      user_type_id: { // customer_id/vendor_id
+      user_type_id: { // 1 - vendor_id , 2- customer_id
         type: DataTypes.INTEGER,
         allowNull: true,
       },
@@ -63,6 +63,11 @@ module.exports = (sequelize) => {
         allowNull: false,
         defaultValue: true,
       },
+      is_advance_used: {
+        type: DataTypes.BOOLEAN, // To track if an advance payment has been utilized against this receipt(sales invoice)
+        allowNull: false,
+        defaultValue: false
+      }
     },
     {
       tableName: "voucher_receipts",

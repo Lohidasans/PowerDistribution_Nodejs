@@ -894,7 +894,6 @@ const searchInvoices = async (req, res) => {
 };*/
 
 
-
 // New invoice - Calaculations are handled in the UI, so here we just save what we get
 const createSalesInvoice = async (req, res) => {
   const t = await sequelize.transaction();
@@ -1759,6 +1758,23 @@ const toggleSalesInvoiceActive = async (req, res) => {
   }
 };
 
+// To fetch advance payments for a customer (for adjustment purposes in invoice creation)
+const getCustomerAdvance = async (customer_id) => {
+
+  const receipts = await models.Receipt.findAll({
+    where: {
+      account_id: customer_id,
+      bill_type_id: 3,     // Advance
+      user_type_id: 2,     // Customer
+      is_advance_used: false,
+      deleted_at: null
+    },
+    attributes: ["id", "receipt_no", "amount"]
+  });
+
+  return receipts;
+};
+
 module.exports = {
   generateSalesInvoiceNo,
   createSalesInvoice,
@@ -1769,5 +1785,6 @@ module.exports = {
   searchInvoices,
   updateSalesInvoice,
   exportSalesInvoicesExcel,
-  toggleSalesInvoiceActive
+  toggleSalesInvoiceActive,
+  getCustomerAdvance
 };
