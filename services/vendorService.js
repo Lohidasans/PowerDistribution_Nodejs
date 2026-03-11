@@ -30,6 +30,33 @@ const createVendor = async (req, res) => {
 
     const vendor = await models.Vendor.create(payload, { transaction: t });
 
+    /* ----------- CREATE LEDGER FOR VENDOR ----------- */
+
+    const ledger_no = await generateFiscalSeriesCode(
+      models.Ledger,
+      "ledger_no",
+      "LAID",
+      { pad: 3 }
+    );
+
+    const ledger = await models.Ledger.create(
+      {
+        ledger_no,
+        ledger_group_id: 33, // Sundry Creditors - Quick fix: Assuming 33 is the ID for Sundry Creditors. Ideally, this should be dynamic.
+        ledger_name: vendor.vendor_name,
+        branch_id: vendor.branch_id || 1
+      },
+      { transaction: t }
+    );
+
+    // 4️⃣ Update vendor with ledger_id
+    await vendor.update(
+      { ledger_id: ledger.id },
+      { transaction: t }
+    );
+
+    /* ----------------------------------------------- */
+
     // Bank account (optional) via helper
     let createdBankAccount = [];
     if (
@@ -95,6 +122,7 @@ const createVendor = async (req, res) => {
     return commonService.handleError(res, err);
   }
 };
+
 const listVendors = async (req, res) => {
   try {
     const { materialType, search, branch_id } = req.query;

@@ -90,7 +90,11 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.INTEGER,
         allowNull: true,
         defaultValue: 1, // default branch_id to 1 for all vendors
-      }
+      },
+      ledger_id: { // To store the associated ledger ID for the vendor
+        type: DataTypes.INTEGER,
+        allowNull: true,
+      },
     },
     {
       timestamps: true,
