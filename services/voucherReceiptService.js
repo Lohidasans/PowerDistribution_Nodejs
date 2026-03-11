@@ -21,6 +21,7 @@ const generateReceiptNumber = async (req, res) => {
 
 const createVoucherReceipt = async (req, res) => {
   const t = await sequelize.transaction();
+
   try {
     const {
       receipt_no,
@@ -37,20 +38,17 @@ const createVoucherReceipt = async (req, res) => {
       remarks,
     } = req.body;
 
-    // Check if a non-deleted receipt no already uses this code
-    if (receipt_no) {
-      const existing = await models.VoucherReceipt.findOne({
-        where: {
-          receipt_no: receipt_no,
-          deleted_at: null,
-        },
-      });
+    const existing = await models.VoucherReceipt.findOne({
+      where: {
+        receipt_no,
+        deleted_at: null,
+      },
+    });
 
-      if (existing) {
-        return commonService.badRequest(res, {
-          message: "Receipt number already exists",
-        });
-      }
+    if (existing) {
+      return commonService.badRequest(res, {
+        message: "Receipt number already exists",
+      });
     }
 
     const receipt = await models.VoucherReceipt.create(
@@ -68,8 +66,40 @@ const createVoucherReceipt = async (req, res) => {
         user_type_id,
         remarks,
       },
-      { transaction: t },
+      { transaction: t }
     );
+
+    // UPDATE CUSTOMER ADVANCE WALLET FOR SALES INVOICE
+    if (bill_type_id === 3) {
+      const customer = await models.Customer.findOne({
+        where: { ledger_id: account_id },
+        transaction: t,
+      });
+
+      if (customer && customer.ledger_id) {
+        const ledger = await models.Ledger.findOne({
+          where: { id: customer.ledger_id },
+          transaction: t,
+        });
+
+        if (ledger) {
+          const ledgerGroup = await models.LedgerGroup.findOne({
+            where: {
+              id: ledger.ledger_group_id,
+              ledger_group_name: "Sundry Debtors",
+            },
+            transaction: t,
+          });
+
+          if (ledgerGroup) {
+            const newAmount = Number(customer.wallet_advance_amount || 0) + Number(amount);
+            await customer.update(
+              { wallet_advance_amount: newAmount },
+              { transaction: t });
+          }
+        }
+      }
+    }
 
     await t.commit();
 
@@ -79,8 +109,10 @@ const createVoucherReceipt = async (req, res) => {
     });
 
   } catch (err) {
+
     if (!t.finished) await t.rollback();
     return commonService.handleError(res, err);
+
   }
 };
 
