@@ -379,7 +379,7 @@ const listSalesInvoices = async (req, res) => {
       -- Items join
       LEFT JOIN invoice_items ii ON ii.invoice_bill_id = i.id
 
-      WHERE i.deleted_at IS NULL AND i.is_active = true
+      WHERE i.deleted_at IS NULL
     `;
 
     const replacements = {};
@@ -899,7 +899,6 @@ const createSalesInvoice = async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const { header = {}, items = [], payment = {}, adjustments = [] } = req.body || {};
-
     // Validate items
     await validateInvoiceItems({ items, header, transaction: t, isCreate: true });
 
@@ -920,6 +919,7 @@ const createSalesInvoice = async (req, res) => {
     }
 
     // PAYMENT PROCESSING
+
     const paymentRows = (Array.isArray(payment) ? payment : [])
       .filter(p => p.payment_mode)
       .map(p => ({
@@ -932,6 +932,18 @@ const createSalesInvoice = async (req, res) => {
       }));
 
     validateCashPayment(paymentRows, req.body.customer?.pan_no);
+
+    // ================= ADVANCE CALCULATION =================
+    const advancePayments = paymentRows.filter(
+      p => p.payment_mode === "Advance"
+    );
+
+    const advanceUsed = advancePayments.reduce(
+      (sum, p) => sum + Number(p.amount_received || 0),
+      0
+    );
+
+    // ================= TAX =================
 
     const hasHeaderIgst = header.igst_amount !== undefined && Number(header.igst_amount) > 0;
     const cgstAmt = hasHeaderIgst ? 0 : Number(header.cgst_amount || 0);
@@ -1021,8 +1033,12 @@ const createSalesInvoice = async (req, res) => {
     //Create Invoice with amount due=0 - Status - Invoice	✅ Reduce stock
     //Create Invoice with amount due>0 - Status - Invoice	❌ No stock change
 
-    const shouldReduceStock = header.status === "Invoice" && savedPayments.length > 0 && Number(header.amount_due || 0) === 0;
+    const hasPayment = savedPayments.length > 0;
+    const isFullyPaid = Number(header.amount_due) === 0;
 
+    const shouldReduceStock =
+      header.status === "Invoice" && hasPayment && isFullyPaid;
+    
     if (shouldReduceStock) {
       await reduceStockForInvoice(items, t);
 
@@ -1032,6 +1048,42 @@ const createSalesInvoice = async (req, res) => {
       );
     }
 
+    // ================= ADVANCE WALLET UPDATE =================
+    if (
+      advanceUsed > 0 &&
+      header.customer_id &&
+      header.status === "Invoice"
+    ) {
+      const customer = await models.Customer.findByPk(
+        header.customer_id,
+        { transaction: t }
+      );
+
+      if (customer) {
+        const newWallet =
+          Number(customer.wallet_advance_amount || 0) - advanceUsed;
+        await customer.update(
+          { wallet_advance_amount: Math.max(newWallet, 0) },
+          { transaction: t }
+        );
+      }
+
+      // mark receipts as used
+      const receiptNos = advancePayments
+        .map(p => p.transaction_id)
+        .filter(Boolean);
+      if (receiptNos.length) {
+        await models.VoucherReceipt.update(
+          { is_advance_used: true },
+          {
+            where: { receipt_no: receiptNos },
+            transaction: t
+          }
+        );
+      }
+    }
+
+    // ================= ESTIMATE CONVERSION =================
     if (estimateBill) {
       await markEstimateAsConverted(estimateBill, { transaction: t, employee_id: header.employee_id });
     }
@@ -1049,7 +1101,9 @@ const createSalesInvoice = async (req, res) => {
     if (err.name === "ValidationError") {
       return commonService.badRequest(res, err.message);
     }
+
     return commonService.handleError(res, err);
+
   }
 };
 
@@ -1057,6 +1111,7 @@ const updateSalesInvoice = async (req, res) => {
   const t = await sequelize.transaction();
 
   try {
+
     const invoiceId = req.params.id;
     const { header = {}, items = [], payment = [], adjustments = [] } = req.body || {};
 
@@ -1080,15 +1135,40 @@ const updateSalesInvoice = async (req, res) => {
       throw new ValidationError("Invalid invoice totals");
     }
 
+
     // PAYMENT PROCESSING
     const incomingPayments = Array.isArray(payment) ? payment : [];
 
     const existingPayments = await models.Payment.findAll({
       where: { invoice_bill_id: invoice.id },
-      attributes: ["id", "payment_mode", "amount_received"],
+      attributes: ["id", "payment_mode", "amount_received", "transaction_id"],
       transaction: t,
+      raw: true
     });
 
+
+    // ================= ADVANCE CALCULATION =================
+    const oldAdvancePayments = existingPayments.filter(
+      p => p.payment_mode === "Advance"
+    );
+
+    const oldAdvanceTotal = oldAdvancePayments.reduce(
+      (sum, p) => sum + Number(p.amount_received || 0),
+      0
+    );
+
+    const newAdvancePayments = incomingPayments.filter(
+      p => p.payment_mode === "Advance"
+    );
+
+    const newAdvanceTotal = newAdvancePayments.reduce(
+      (sum, p) => sum + Number(p.amount_received || 0),
+      0
+    );
+
+    const advanceDiff = newAdvanceTotal - oldAdvanceTotal;
+
+    // ================= VALIDATE CASH LIMIT =================
     const allPayments = [
       ...existingPayments.map(p => ({
         payment_mode: p.payment_mode,
@@ -1245,6 +1325,67 @@ const updateSalesInvoice = async (req, res) => {
       }
     }
 
+    // ================= ADVANCE WALLET UPDATE =================
+    const becameInvoice = previousStatus !== "Invoice" && newStatus === "Invoice";
+    if (header.customer_id) {
+      const customer = await models.Customer.findByPk(
+        header.customer_id,
+        { transaction: t }
+      );
+      if (customer) {
+        let deductionAmount = 0;
+        // HOLD → INVOICE
+        if (becameInvoice) {
+          deductionAmount = newAdvanceTotal;
+        }
+        // INVOICE → INVOICE edit
+        else if (advanceDiff !== 0) {
+          deductionAmount = advanceDiff;
+        }
+        if (deductionAmount !== 0) {
+          const newWallet =
+            Number(customer.wallet_advance_amount || 0) - deductionAmount;
+          await customer.update(
+            { wallet_advance_amount: Math.max(newWallet, 0) },
+            { transaction: t }
+          );
+        }
+      }
+    }
+
+    // ================= UPDATE RECEIPT USAGE =================
+    const newReceiptNos = newAdvancePayments
+      .map(p => p.transaction_id)
+      .filter(Boolean);
+
+    const oldReceiptNos = oldAdvancePayments
+      .map(p => p.transaction_id)
+      .filter(Boolean);
+
+    const removedReceipts = oldReceiptNos.filter(
+      r => !newReceiptNos.includes(r)
+    );
+
+    if (newReceiptNos.length) {
+      await models.VoucherReceipt.update(
+        { is_advance_used: true },
+        {
+          where: { receipt_no: newReceiptNos },
+          transaction: t
+        }
+      );
+    }
+
+    if (removedReceipts.length) {
+      await models.VoucherReceipt.update(
+        { is_advance_used: false },
+        {
+          where: { receipt_no: removedReceipts },
+          transaction: t
+        }
+      );
+    }
+
     // UPSERT ADJUSTMENTS
     const payloadAdjIds = adjustments.filter(a => a.id).map(a => a.id);
 
@@ -1289,7 +1430,7 @@ const updateSalesInvoice = async (req, res) => {
 
     await t.commit();
     return commonService.okResponse(res, {
-      message: "Invoice updated successfully",
+      message: "Invoice updated successfully"
     });
 
   } catch (err) {
@@ -1796,9 +1937,10 @@ const getCustomerAdvanceReceipts = async (req, res) => {
       attributes: [
         "id",
         "receipt_no",
+        "is_advance_used",
         "receipt_date",
         "amount",
-        "reference_no"
+        "transaction_no"
       ],
       order: [["created_at", "ASC"]]
     });
@@ -1809,7 +1951,8 @@ const getCustomerAdvanceReceipts = async (req, res) => {
       receipt_no: r.receipt_no,
       receipt_date: r.receipt_date,
       amount: Number(r.amount),
-      reference_no: r.reference_no
+      is_advance_used: r.is_advance_used,
+      transaction_no: r.transaction_no
     }));
 
     return commonService.okResponse(res, {
