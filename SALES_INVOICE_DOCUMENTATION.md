@@ -64,3 +64,21 @@ true	             true	        🔁 Restore old → Reduce new
     Reduce stock only when eligible
     Update stock_deducted correctly
     Run inside a transaction
+
+
+Advance Payment Flow:
+# Only deduct wallet when new advance payment is added (or when advance amount increases).
+Not when:
+    invoice is edited without payment change
+    invoice items are edited
+    invoice is saved again with same advance
+    invoice status changes but advance already deducted
+
+#Edit Invoice
+Compare old advance vs new advance
+
+Case	Action
+Advance unchanged	❌ Do nothing
+Advance increased	➖ Deduct difference
+Advance reduced	    ➕ Add back difference
+Advance removed	    ➕ Add back full amount
