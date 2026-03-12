@@ -63,6 +63,11 @@ module.exports = (sequelize) => {
         allowNull: false,
         defaultValue: true,
       },
+      is_advance_used: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false
+      }
     },
     {
       tableName: "voucher_receipts",
