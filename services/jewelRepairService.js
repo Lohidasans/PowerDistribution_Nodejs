@@ -173,7 +173,7 @@ const getAllJewelRepairs = async (req, res) => {
     } = req.query;
 
     const replacements = {};
-    let whereSql = `jr.deleted_at IS NULL AND jr.is_active = true`;
+    let whereSql = `jr.deleted_at IS NULL`;
     // Filters
     if (status) { whereSql += ` AND jr.status = :status`; replacements.status = status;}
     if (customer_id) { whereSql += ` AND jr.customer_id = :customer_id`; replacements.customer_id = customer_id;}

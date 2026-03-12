@@ -83,7 +83,7 @@ const getAllOldJewels = async (req, res) => {
     } = req.query;
 
     const replacements = {};
-    let whereSql = `oj.deleted_at IS NULL and oj.is_active = true`; // Base condition with active check
+    let whereSql = `oj.deleted_at IS NULL`;
 
     // Old Jewel No
     if (old_jewel_code) {

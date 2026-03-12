@@ -212,7 +212,7 @@ const listSalesReturns = async (req, res) => {
       ? (parseInt(page) - 1) * parseInt(limit)
       : null;
 
-    let where = `WHERE sr.deleted_at IS NULL and sr.is_active = true`;
+    let where = `WHERE sr.deleted_at IS NULL`;
 
     if (status) where += ` AND sr.status = :status`;
     if (customer_id) where += ` AND sr.customer_id = :customer_id`;
