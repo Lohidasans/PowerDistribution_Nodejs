@@ -7,6 +7,7 @@ router.post("/sales-invoice-bills", svc.createSalesInvoice);
 router.put("/sales-invoice-bills/:id", svc.updateSalesInvoice);
 router.get("/sales-invoice-bills", svc.listSalesInvoices);
 router.get("/sales-invoice-bills/search", svc.searchInvoices);
+router.get("/sales-invoice-bills/customers/:customer_id/advance-receipts", svc.getCustomerAdvanceReceipts);
 router.get("/sales-invoice-bills/export-excel", svc.exportSalesInvoicesExcel);
 router.get("/sales-invoice-bills/customer/:customer_id", svc.getSalesInvoicesByCustomerId);
 router.get("/sales-invoice-bills/:id", svc.getSalesInvoiceById);

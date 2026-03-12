@@ -1759,20 +1759,67 @@ const toggleSalesInvoiceActive = async (req, res) => {
 };
 
 // To fetch advance payments for a customer (for adjustment purposes in invoice creation)
-const getCustomerAdvance = async (customer_id) => {
+const getCustomerAdvanceReceipts = async (req, res) => {
+  try {
 
-  const receipts = await models.Receipt.findAll({
-    where: {
-      account_id: customer_id,
-      bill_type_id: 3,     // Advance
-      user_type_id: 2,     // Customer
-      is_advance_used: false,
-      deleted_at: null
-    },
-    attributes: ["id", "receipt_no", "amount"]
-  });
+    const { customer_id } = req.params;
 
-  return receipts;
+    if (!customer_id) {
+      return commonService.badRequest(res, {
+        message: "customer_id is required"
+      });
+    }
+
+    // 1️⃣ Get customer ledger
+    const customer = await models.Customer.findOne({
+      where: {
+        id: customer_id,
+        deleted_at: null
+      },
+      attributes: ["ledger_id", "wallet_advance_amount"]
+    });
+
+    if (!customer || !customer.ledger_id) {
+      return commonService.okResponse(res, {
+        advances: [],
+        wallet_balance: 0
+      });
+    }
+
+    // 2️⃣ Fetch advance receipts
+    const receipts = await models.VoucherReceipt.findAll({
+      where: {
+        account_id: customer.ledger_id,
+        bill_type_id: 3,
+        deleted_at: null
+      },
+      attributes: [
+        "id",
+        "receipt_no",
+        "receipt_date",
+        "amount",
+        "reference_no"
+      ],
+      order: [["created_at", "ASC"]]
+    });
+
+    // 3️⃣ Format response for UI
+    const advances = receipts.map(r => ({
+      receipt_id: r.id,
+      receipt_no: r.receipt_no,
+      receipt_date: r.receipt_date,
+      amount: Number(r.amount),
+      reference_no: r.reference_no
+    }));
+
+    return commonService.okResponse(res, {
+      wallet_balance: Number(customer.wallet_advance_amount || 0),
+      advances
+    });
+
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
 };
 
 module.exports = {
@@ -1786,5 +1833,5 @@ module.exports = {
   updateSalesInvoice,
   exportSalesInvoicesExcel,
   toggleSalesInvoiceActive,
-  getCustomerAdvance
+  getCustomerAdvanceReceipts
 };
