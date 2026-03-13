@@ -25,6 +25,12 @@ vendorAnalyticsRouter.get(
     "/vendor-analytics/sales-contribution",
     vendorAnalyticsService.getVendorSalesContribution
 );
+
+vendorAnalyticsRouter.get(
+    "/vendor-analytics/purchase-contribution",
+    vendorAnalyticsService.getVendorPurchaseContribution
+);
+
 vendorAnalyticsRouter.get(
     "/vendor-analytics/purchase-by-material",
     vendorAnalyticsService.getPurchaseByMaterialType

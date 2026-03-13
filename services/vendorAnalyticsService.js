@@ -157,6 +157,49 @@ const getVendorSalesContribution = async (req, res) => {
 };
 
 /**
+ * Get vendor sales contribution (Purchase value per vendor with material breakdown)} 
+ */
+const getVendorPurchaseContribution = async (req, res) => {
+    try {
+        const query = `
+      SELECT 
+        v.id,
+        v.vendor_name,
+        v.vendor_code,
+        v.vendor_image_url,
+        COALESCE(SUM(CASE WHEN mt.material_type = 'Gold' THEN gi.gross_wt_in_g ELSE 0 END), 0) as gold_weight,
+        COALESCE(SUM(CASE WHEN mt.material_type = 'Silver' THEN gi.gross_wt_in_g ELSE 0 END), 0) as silver_weight,
+        COALESCE(SUM(g.total_amount), 0) as total_value
+      FROM vendors v
+      LEFT JOIN grns g ON g.vendor_id = v.id AND g.deleted_at IS NULL
+      LEFT JOIN "grnItems" gi ON gi.grn_id = g.id AND gi.deleted_at IS NULL
+      LEFT JOIN "materialTypes" mt ON mt.id = gi.material_type_id AND mt.deleted_at IS NULL
+      WHERE v.deleted_at IS NULL
+      GROUP BY v.id, v.vendor_name, v.vendor_code, v.vendor_image_url
+      HAVING COALESCE(SUM(g.total_amount), 0) > 0
+      ORDER BY total_value DESC
+    `;
+        
+        const [vendors] = await sequelize.query(query);
+
+        // Format the response
+        const formattedVendors = vendors.map((vendor) => ({
+            id: vendor.id,
+            vendor_name: vendor.vendor_name,
+            vendor_code: vendor.vendor_code,
+            vendor_image_url: vendor.vendor_image_url,
+            gold: parseFloat(vendor.gold_weight).toFixed(2) + " g",
+            silver: parseFloat(vendor.silver_weight).toFixed(2) + " g",
+            total_value: parseFloat(vendor.total_value).toFixed(2),
+        }));
+
+        return commonService.okResponse(res, { vendors: formattedVendors });
+    } catch (err) {
+        return commonService.handleError(res, err);
+    }
+};
+
+/**
  * Get purchase by material type (weight-based distribution for pie chart)
  */
 const getPurchaseByMaterialType = async (req, res) => {
@@ -859,15 +902,17 @@ const getVendorDashboard = async (req, res) => {
 
         // 4. Vendor Sales Contribution (with Purchase & Sales data)
         const salesContributionQuery = `
-      SELECT 
+    SELECT
         v.id,
         v.vendor_name,
         v.vendor_code,
         v.vendor_image_url,
-        -- Purchase metrics (from GRN)
-        COALESCE(SUM(CASE WHEN mt.material_type = 'Gold' THEN gi.gross_wt_in_g ELSE 0 END), 0) as gold_weight,
-        COALESCE(SUM(CASE WHEN mt.material_type = 'Silver' THEN gi.gross_wt_in_g ELSE 0 END), 0) as silver_weight,
+        mt.material_type,
+
+        -- Purchase metrics
+        COALESCE(SUM(gi.gross_wt_in_g), 0) AS total_weight,
         COALESCE(SUM(gi.total_amount), 0) as total_purchase,
+
         -- Sales metrics (from Sales Invoice Bills)
         COALESCE(
           (
@@ -903,7 +948,8 @@ const getVendorDashboard = async (req, res) => {
       LEFT JOIN "materialTypes" mt ON mt.id = gi.material_type_id AND mt.deleted_at IS NULL
       WHERE v.deleted_at IS NULL
       ${branchFilter}
-      GROUP BY v.id, v.vendor_name, v.vendor_code, v.vendor_image_url
+      GROUP BY v.id, v.vendor_name, v.vendor_code, v.vendor_image_url, mt.material_type
+
       HAVING COALESCE(SUM(gi.total_amount), 0) > 0
       ORDER BY total_purchase DESC
     `;
@@ -962,25 +1008,48 @@ const getVendorDashboard = async (req, res) => {
         const totalPayments = parseFloat(outstandingResult[0].total_payments) || 0;
         const outstandingPayables = totalGrnAmount - totalPayments;
 
-        // Format vendor sales contribution
-        const formattedVendors = salesContribution[0].map((vendor) => {
-            const totalPurchase = parseFloat(vendor.total_purchase) || 0;
-            const totalSales = parseFloat(vendor.total_sales) || 0;
-            const totalPaid = parseFloat(vendor.total_paid) || 0;
-            const outstandingPayment = totalPurchase - totalPaid;
-            
+        // Format vendor sales contribution (dynamic materials)
+        const vendorMap = {};
+        salesContribution[0].forEach(row => {
+            const material = row.material_type || "Unknown";
+            if (!vendorMap[row.id]) {
+                vendorMap[row.id] = {
+                    id: row.id,
+                    vendor_name: row.vendor_name,
+                    vendor_code: row.vendor_code,
+                    vendor_image_url: row.vendor_image_url,
+                    materials: {},
+                    total_purchase: 0,
+                    total_sales: 0,
+                    total_paid: 0
+                };
+            }
+
+            vendorMap[row.id].materials[material] = {
+                weight: parseFloat(row.total_weight || 0).toFixed(2) + " g",
+                value: parseFloat(row.total_purchase || 0)
+            };
+
+            // ✅ accumulate purchase
+            vendorMap[row.id].total_purchase += parseFloat(row.total_purchase || 0);
+
+            // these are same per vendor so overwrite is fine
+            vendorMap[row.id].total_sales = parseFloat(row.total_sales || 0);
+            vendorMap[row.id].total_paid = parseFloat(row.total_paid || 0);
+        });
+
+        const formattedVendors = Object.values(vendorMap).map(v => {
+            const outstanding = v.total_purchase - v.total_paid;
             return {
-                id: vendor.id,
-                vendor_name: vendor.vendor_name,
-                vendor_code: vendor.vendor_code,
-                vendor_image_url: vendor.vendor_image_url,
-                gold: parseFloat(vendor.gold_weight).toFixed(2) + " g",
-                silver: parseFloat(vendor.silver_weight).toFixed(2) + " g",
-                total_purchase: totalPurchase.toFixed(2),
-                total_sales: totalSales.toFixed(2),
-                total_paid: totalPaid.toFixed(2),
-                outstanding: outstandingPayment.toFixed(2),
-                profit_margin: totalSales > 0 ? ((totalSales - totalPurchase) / totalSales * 100).toFixed(2) : "0.00",
+                ...v,
+                total_purchase: v.total_purchase.toFixed(2),
+                total_sales: v.total_sales.toFixed(2),
+                total_paid: v.total_paid.toFixed(2),
+                outstanding: outstanding.toFixed(2),
+                profit_margin:
+                    v.total_sales > 0
+                        ? ((v.total_sales - v.total_purchase) / v.total_sales * 100).toFixed(2)
+                        : "0.00"
             };
         });
 
@@ -1034,6 +1103,7 @@ module.exports = {
     getActiveVendorCount,
     getOutstandingPayables,
     getVendorSalesContribution,
+    getVendorPurchaseContribution,
     getPurchaseByMaterialType,
     getTopBuyingCategories,
     getTransactionHistory,
