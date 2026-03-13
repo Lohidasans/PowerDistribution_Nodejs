@@ -449,9 +449,11 @@ const getVendorList = async (req, res) => {
           (
             SELECT SUM(vp.amount)
             FROM vendor_payments vp
-            JOIN grns g ON g.grn_no = vp.ref_id
+            JOIN grns g ON g.id = vp.purchase_id::integer
             WHERE vp.deleted_at IS NULL
               AND vp.status = 'Completed'
+              AND vp.bill_type_id = 1
+              AND vp.user_type_id = 1
               AND vp.is_active = true
               AND g.vendor_id = v.id
               AND g.deleted_at IS NULL
@@ -468,9 +470,11 @@ const getVendorList = async (req, res) => {
             (
               SELECT SUM(vp.amount)
               FROM vendor_payments vp
-              JOIN grns g ON g.grn_no = vp.ref_id
+              JOIN grns g ON g.id = vp.purchase_id::integer
               WHERE vp.deleted_at IS NULL
                 AND vp.status = 'Completed'
+                AND vp.bill_type_id = 1
+                AND vp.user_type_id = 1
                 AND vp.is_active = true
                 AND g.vendor_id = v.id
                 AND g.deleted_at IS NULL
