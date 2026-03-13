@@ -6,12 +6,14 @@ const customerService = require("../services/customerService");
 router.post("/customers", customerService.createCustomer);
 router.get("/customers/list", customerService.listCustomers);
 router.get("/customers", customerService.listCustomersWithMobileNumber);
+router.get("/customers/:customer_id/schemes", customerService.getCustomerSchemes);
 router.get("/customers/mobile/dropdown", customerService.listCustomerMobilesDropdown);
 router.get("/customers/dropdown", customerService.listCustomerNameMobileDropdown);
 router.get("/customers/top-buying", customerService.getTopBuyingCustomers);
 router.get("/customers/:id", customerService.getCustomerById);
 router.put("/customers/:id", customerService.updateCustomer);
 router.delete("/customers/:id", customerService.deleteCustomer);
+
 
 // Code generation
 router.post("/customers/code", customerService.generateCustomerCode);

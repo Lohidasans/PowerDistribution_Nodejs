@@ -253,6 +253,7 @@ const generateCustomerCode = async (req, res) => {
     return commonService.handleError(res, err);
   }
 };
+
 const generateOnlineCustomerCode = async () => {
   const code = await generateFiscalSeriesCode(
     models.Customer,
@@ -525,7 +526,6 @@ const listCustomers = async (req, res) => {
   }
 };
 
-
 // Get top buying customers ranked by total invoice value across all branches (or specific branch)
 const getTopBuyingCustomers = async (req, res) => {
   try {
@@ -591,6 +591,40 @@ const getTopBuyingCustomers = async (req, res) => {
   }
 };
 
+// Get the customer enrolled scheme details
+const getCustomerSchemes = async (req, res) => {
+  try {
+    const { customer_id } = req.params;
+    const rows = await sequelize.query(
+      `
+      SELECT
+        ce.id AS enrollment_id,
+        ce.customer_id,
+        ce.scheme_plan_id,
+        s.scheme_code,
+        s.scheme_name
+      FROM customer_enrollments ce
+      JOIN schemes s 
+        ON s.id = ce.scheme_plan_id
+        AND s.deleted_at IS NULL
+      WHERE ce.customer_id = :customer_id
+      AND ce.deleted_at IS NULL
+      AND ce.status = 'Active'
+      `,
+      {
+        replacements: { customer_id },
+        type: sequelize.QueryTypes.SELECT
+      }
+    );
+
+    return commonService.okResponse(res, {
+      schemes: rows
+    });
+
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
 
 module.exports = {
   createCustomer,
@@ -604,4 +638,5 @@ module.exports = {
   listCustomers,
   generateOnlineCustomerCode,
   getTopBuyingCustomers,
+  getCustomerSchemes
 };
