@@ -139,6 +139,7 @@ const getVoucherReceiptById = async (req, res) => {
           b.address AS branch_address,
           b.gst_no AS branch_gst_no,
           b.mobile AS branch_mobile,
+          b.signature_url AS branch_signature_url,
           b.pin_code,
           d.district_name,
           s.state_name
