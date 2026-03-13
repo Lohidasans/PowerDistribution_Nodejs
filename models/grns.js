@@ -95,7 +95,7 @@ module.exports = (sequelize, DataTypes) => {
       entity_type:{
         type: DataTypes.STRING,
         allowNull: true,
-        defaultValue: 'superadmin',
+        defaultValue: 'superadmin',  // branch, employee
       }
     },
     {

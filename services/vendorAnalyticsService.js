@@ -326,14 +326,16 @@ const getTransactionHistory = async (req, res) => {
         v.vendor_name,
         v.vendor_code,
         g.total_amount as total_purchase,
-        COALESCE(
+         COALESCE(
           (
             SELECT SUM(vp.amount)
             FROM vendor_payments vp
             WHERE vp.deleted_at IS NULL
+              AND vp.bill_type_id = 1
+              AND vp.user_type_id = 1
               AND vp.status = 'Completed'
               AND vp.is_active = true
-              AND vp.ref_id = g.grn_no
+              AND vp.purchase_id::integer = g.id
           ), 0
         ) as total_paid,
         (g.total_amount - COALESCE(
@@ -341,9 +343,11 @@ const getTransactionHistory = async (req, res) => {
             SELECT SUM(vp.amount)
             FROM vendor_payments vp
             WHERE vp.deleted_at IS NULL
+              AND vp.bill_type_id = 1
+              AND vp.user_type_id = 1
               AND vp.status = 'Completed'
               AND vp.is_active = true
-              AND vp.ref_id = g.grn_no
+              AND vp.purchase_id::integer = g.id
           ), 0
         )) as outstanding
       FROM grns g
