@@ -76,43 +76,81 @@ const getOutstandingPayables = async (req, res) => {
 };
 
 /**
- * Get vendor sales contribution (purchase value per vendor with material breakdown)
+ * Get vendor sales contribution (Sales value per vendor with material breakdown)
  */
 const getVendorSalesContribution = async (req, res) => {
     try {
-        const query = `
-      SELECT 
-        v.id,
-        v.vendor_name,
-        v.vendor_code,
-        v.vendor_image_url,
-        COALESCE(SUM(CASE WHEN mt.material_type = 'Gold' THEN gi.gross_wt_in_g ELSE 0 END), 0) as gold_weight,
-        COALESCE(SUM(CASE WHEN mt.material_type = 'Silver' THEN gi.gross_wt_in_g ELSE 0 END), 0) as silver_weight,
-        COALESCE(SUM(g.total_amount), 0) as total_value
-      FROM vendors v
-      LEFT JOIN grns g ON g.vendor_id = v.id AND g.deleted_at IS NULL
-      LEFT JOIN "grnItems" gi ON gi.grn_id = g.id AND gi.deleted_at IS NULL
-      LEFT JOIN "materialTypes" mt ON mt.id = gi.material_type_id AND mt.deleted_at IS NULL
-      WHERE v.deleted_at IS NULL
-      GROUP BY v.id, v.vendor_name, v.vendor_code, v.vendor_image_url
-      HAVING COALESCE(SUM(g.total_amount), 0) > 0
-      ORDER BY total_value DESC
-    `;
+
+        const query = `WITH vendor_materials AS (
+            SELECT
+                v.id AS vendor_id,
+                v.vendor_name,
+                v.vendor_code,
+                v.vendor_image_url,
+                COALESCE(mt.material_type, 'Unknown') AS material_type,
+
+                SUM(sib_items.net_weight * sib_items.quantity) AS total_weight,
+                SUM(sib_items.amount) AS total_value
+
+            FROM vendors v
+
+            JOIN products p
+                ON p.vendor_id = v.id
+                AND p.deleted_at IS NULL
+
+            JOIN "sales_invoice_bill_items" sib_items
+                ON sib_items.product_id = p.id
+                AND sib_items.deleted_at IS NULL
+
+            JOIN "sales_invoice_bills" sib
+                ON sib.id = sib_items.invoice_bill_id
+                AND sib.deleted_at IS NULL
+                AND sib.status = 'Invoice'
+
+            LEFT JOIN "materialTypes" mt
+                ON mt.id = p.material_type_id
+                AND mt.deleted_at IS NULL
+
+            WHERE v.deleted_at IS NULL
+
+            GROUP BY
+                v.id,
+                v.vendor_name,
+                v.vendor_code,
+                v.vendor_image_url,
+                material_type
+        )
+
+        SELECT
+            vendor_id AS id,
+            vendor_name,
+            vendor_code,
+            vendor_image_url,
+
+            jsonb_object_agg(
+                material_type,
+                jsonb_build_object(
+                    'weight', ROUND(total_weight::numeric,2) || ' g',
+                    'value', ROUND(total_value::numeric,2)
+                )
+            ) AS materials,
+
+            SUM(total_value) AS total_value
+
+        FROM vendor_materials
+
+        GROUP BY
+            vendor_id,
+            vendor_name,
+            vendor_code,
+            vendor_image_url
+
+        ORDER BY total_value DESC;`;
 
         const [vendors] = await sequelize.query(query);
 
-        // Format the response
-        const formattedVendors = vendors.map((vendor) => ({
-            id: vendor.id,
-            vendor_name: vendor.vendor_name,
-            vendor_code: vendor.vendor_code,
-            vendor_image_url: vendor.vendor_image_url,
-            gold: parseFloat(vendor.gold_weight).toFixed(2) + " g",
-            silver: parseFloat(vendor.silver_weight).toFixed(2) + " g",
-            total_value: parseFloat(vendor.total_value).toFixed(2),
-        }));
+        return commonService.okResponse(res, { vendors });
 
-        return commonService.okResponse(res, { vendors: formattedVendors });
     } catch (err) {
         return commonService.handleError(res, err);
     }
