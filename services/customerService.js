@@ -367,9 +367,9 @@ const listCustomerNameMobileDropdown = async (req, res) => {
         s.state_name,
         d.district_name
       FROM customers c
-      INNER JOIN countries co  ON co.id = c.country_id  AND co.deleted_at IS NULL
-      INNER JOIN states s      ON s.id = c.state_id     AND s.deleted_at IS NULL
-      INNER JOIN districts d   ON d.id = c.district_id  AND d.deleted_at IS NULL
+      LEFT JOIN countries co  ON co.id = c.country_id  AND co.deleted_at IS NULL
+      LEFT JOIN states s      ON s.id = c.state_id     AND s.deleted_at IS NULL
+      LEFT JOIN districts d   ON d.id = c.district_id  AND d.deleted_at IS NULL
       WHERE c.deleted_at IS NULL
         ${whereClause}
       ORDER BY c.customer_name ASC
