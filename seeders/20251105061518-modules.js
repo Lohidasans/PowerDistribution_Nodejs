@@ -64,7 +64,12 @@ module.exports = {
         created_at: new Date(),
         updated_at: new Date(),
       },
-
+      {
+        module_group_id: 1,
+        module_name: "Revenue",
+        created_at: new Date(),
+        updated_at: new Date(),
+      },
       // === moduleGroup: 2 (Master) ===
       {
         module_group_id: 2,
@@ -181,6 +186,12 @@ module.exports = {
       {
         module_group_id: 4,
         module_name: "Payroll",
+        created_at: new Date(),
+        updated_at: new Date(),
+      },
+      {
+        module_group_id: 4,
+        module_name: "Incentive",
         created_at: new Date(),
         updated_at: new Date(),
       },
