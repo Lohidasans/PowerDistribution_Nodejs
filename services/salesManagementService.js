@@ -950,7 +950,6 @@ const getFastMovingCategoryStats = async (req, res) => {
             search: search ? `%${search}%` : null
         };
 
-        // Date filter on invoice date
         const dateCondition = dateFilter(
             { from_date, to_date, date_filter },
             "sib.invoice_date",
@@ -958,49 +957,32 @@ const getFastMovingCategoryStats = async (req, res) => {
         );
 
         /* ---------------- MAIN QUERY ---------------- */
+
         let query = `
-        WITH invoice_totals AS (
-            SELECT
-            sii.invoice_bill_id,
-            SUM(sii.quantity) AS invoice_qty
-            FROM sales_invoice_bill_items sii
-            WHERE sii.deleted_at IS NULL
-            GROUP BY sii.invoice_bill_id
-        ),
-        item_values AS (
-            SELECT
-            p.subcategory_id,
-            sii.quantity,
-            (sib.total_amount * sii.quantity / NULLIF(it.invoice_qty, 0)) AS allocated_amount
-            FROM sales_invoice_bill_items sii
-            JOIN sales_invoice_bills sib
+        SELECT
+            sc.id AS subcategory_id,
+            sc.subcategory_name,
+            sii.rate as selling_price,
+            ROUND(SUM(sii.amount), 2) AS sold_value,
+            SUM(sii.quantity) AS sold_quantity
+        FROM sales_invoice_bill_items sii
+        JOIN sales_invoice_bills sib
             ON sib.id = sii.invoice_bill_id
             AND sib.deleted_at IS NULL
             AND sib.is_active = true
             AND sib.status = 'Invoice'
             ${dateCondition}
-            JOIN invoice_totals it
-            ON it.invoice_bill_id = sii.invoice_bill_id
-            JOIN products p
+        JOIN products p
             ON p.id = sii.product_id
             AND p.deleted_at IS NULL
             AND (:branch_id IS NULL OR p.branch_id = :branch_id)
-            WHERE sii.deleted_at IS NULL
-        )
-        SELECT
-            sc.id AS subcategory_id,
-            sc.subcategory_name,
-            ROUND(SUM(iv.allocated_amount), 2) AS sold_value,
-            SUM(iv.quantity) AS sold_quantity
-        FROM item_values iv
         JOIN subcategories sc
-            ON sc.id = iv.subcategory_id
+            ON sc.id = p.subcategory_id
             AND sc.deleted_at IS NULL
-        ${search ? `WHERE sc.subcategory_name ILIKE :search` : ""}
-        GROUP BY sc.id, sc.subcategory_name
-        ORDER BY 
-        --sold_quantity DESC, 
-        sold_value DESC
+        WHERE sii.deleted_at IS NULL
+        ${search ? `AND sc.subcategory_name ILIKE :search` : ""}
+        GROUP BY sc.id, sc.subcategory_name,  sii.rate 
+        ORDER BY sold_value DESC
         `;
 
         if (hasPagination) {
@@ -1014,41 +996,27 @@ const getFastMovingCategoryStats = async (req, res) => {
             type: sequelize.QueryTypes.SELECT
         });
 
-        /* ---------------- COUNT QUERY (only if paginated) ---------------- */
+        /* ---------------- COUNT QUERY ---------------- */
+
         let pagination = null;
 
         if (hasPagination) {
+
             const countQuery = `
-        WITH invoice_totals AS (
-          SELECT
-            sii.invoice_bill_id,
-            SUM(sii.quantity) AS invoice_qty
-          FROM sales_invoice_bill_items sii
-          WHERE sii.deleted_at IS NULL
-          GROUP BY sii.invoice_bill_id
-        ),
-        item_values AS (
-          SELECT
-            p.subcategory_id,
-            sii.quantity
-          FROM sales_invoice_bill_items sii
-          JOIN sales_invoice_bills sib
+        SELECT COUNT(DISTINCT p.subcategory_id)::int AS total
+        FROM sales_invoice_bill_items sii
+        JOIN sales_invoice_bills sib
             ON sib.id = sii.invoice_bill_id
             AND sib.deleted_at IS NULL
             AND sib.is_active = true
             AND sib.status = 'Invoice'
             ${dateCondition}
-          JOIN invoice_totals it
-            ON it.invoice_bill_id = sii.invoice_bill_id
-          JOIN products p
+        JOIN products p
             ON p.id = sii.product_id
             AND p.deleted_at IS NULL
             AND (:branch_id IS NULL OR p.branch_id = :branch_id)
-          WHERE sii.deleted_at IS NULL
-        )
-        SELECT COUNT(DISTINCT subcategory_id)::int AS total
-        FROM item_values
-      `;
+        WHERE sii.deleted_at IS NULL
+            `;
 
             const [{ total }] = await sequelize.query(countQuery, {
                 replacements,
