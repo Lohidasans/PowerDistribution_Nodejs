@@ -6,99 +6,137 @@ const { Op } = require("sequelize");
 
 // Create customer
 const createCustomer = async (req, res) => {
-  const transaction = await sequelize.transaction();
+  let transaction;
+
   try {
+    console.log("CreateCustomer API called");
+    console.log("Request Body:", req.body);
+
     const required = ["customer_name", "mobile_number"];
+
     for (const f of required) {
-      if (req.body?.[f] === undefined || req.body?.[f] === null || req.body?.[f] === "") {
+      if (
+        req.body?.[f] === undefined ||
+        req.body?.[f] === null ||
+        req.body?.[f] === ""
+      ) {
+        console.log("Missing required field:", f);
         return commonService.badRequest(res, enMessage.failure.requiredFields);
       }
     }
 
     const payload = {
-      customer_code: req.body.customer_code,
-      customer_name: req.body.customer_name || null,
-      mobile_number: req.body.mobile_number,
-      branch_id: +req.body.branch_id || null, // Ensure branch_id is a number or null
-      // Optional fields
-      email_id: req.body.email_id || null,
-      gst_no: req.body.gst_no || null,
-      address: req.body.address || null,
-      country_id: +req.body.country_id || null,
-      state_id: +req.body.state_id || null,
-      district_id: +req.body.district_id || null,
-      pin_code: req.body.pin_code || null,
-      pan_no: req.body.pan_no || null,
-      is_online: !!req.body.is_online,
-      branch_id: +req.body.branch_id || null,
+      customer_code: req.body.customer_code?.trim() || null,
+      customer_name: req.body.customer_name?.trim() || null,
+      mobile_number: req.body.mobile_number?.trim(),
+      branch_id: req.body.branch_id ? Number(req.body.branch_id) : null,
+      email_id: req.body.email_id?.trim() || null,
+      gst_no: req.body.gst_no?.trim() || null,
+      address: req.body.address?.trim() || null,
+      country_id: req.body.country_id ? Number(req.body.country_id) : null,
+      state_id: req.body.state_id ? Number(req.body.state_id) : null,
+      district_id: req.body.district_id ? Number(req.body.district_id) : null,
+      pin_code: req.body.pin_code?.trim() || null,
+      pan_no: req.body.pan_no?.trim() || null,
+      is_online: Boolean(req.body.is_online),
     };
 
-    // Check duplicate mobile number (ACTIVE customers only)
-    const existingMobile = await models.Customer.findOne({
-      where: {
-        mobile_number: payload.mobile_number,
-        deleted_at: null,
-      },
-    });
+    console.log("Payload Prepared:", payload);
+
+    // Run duplicate checks before transaction
+    const checks = [
+      models.Customer.findOne({
+        where: {
+          mobile_number: payload.mobile_number,
+          deleted_at: null,
+        },
+        attributes: ["id"],
+      }),
+    ];
+
+    if (payload.customer_code) {
+      console.log("Checking duplicate customer_code:", payload.customer_code);
+
+      checks.push(
+        models.Customer.findOne({
+          where: {
+            customer_code: payload.customer_code,
+            deleted_at: null,
+          },
+          attributes: ["id"],
+        })
+      );
+    }
+
+    const [existingMobile, existingCode] = await Promise.all(checks);
+
+    console.log("Duplicate Mobile Check:", existingMobile);
+    console.log("Duplicate Code Check:", existingCode);
 
     if (existingMobile) {
+      console.log("Mobile number already exists");
       return commonService.badRequest(res, {
-        message: "Mobile number already exists"
+        message: "Mobile number already exists",
       });
     }
 
-    // Duplicate code check
-    if (payload.customer_code) {
-      const existing = await models.Customer.findOne({
-        where: {
-          customer_code: payload.customer_code,
-          deleted_at: null
-        }
+    if (existingCode) {
+      console.log("Customer code already exists");
+      return commonService.badRequest(res, {
+        message: "Customer code already exists",
       });
-
-      if (existing) {
-        return commonService.badRequest(res, {
-          message: "Customer code already exists"
-        });
-      }
     }
 
-    // 1️⃣ Create Customer
+    // Start transaction only when write begins
+    console.log("Starting DB Transaction...");
+    transaction = await sequelize.transaction();
+
     const customer = await models.Customer.create(payload, { transaction });
 
-    // 2️⃣ Generate Ledger Number (Using your helper)
+    console.log("Customer created:", customer.id);
+
     const ledger_no = await generateFiscalSeriesCode(
       models.Ledger,
       "ledger_no",
       "LAID",
-      { pad: 3 }
+      { pad: 3, transaction }
     );
 
-    // 3️⃣ Create Ledger under Sundry Debtors (Group ID = 26)
+    console.log("Generated Ledger No:", ledger_no);
+
     const ledger = await models.Ledger.create(
       {
         ledger_no,
-        ledger_group_id: 26, // Quick fix: Assuming 26 is the ID for Sundry Debtors. Ideally, this should be dynamic.
+        ledger_group_id: 26,
         ledger_name: payload.customer_name,
-        branch_id: payload.branch_id
+        branch_id: payload.branch_id,
       },
       { transaction }
     );
 
-    // 4️⃣ Update customer with ledger_id
+    console.log("Ledger created:", ledger.id);
+
     await customer.update(
       { ledger_id: ledger.id },
       { transaction }
     );
 
+    console.log("Customer updated with ledger_id:", ledger.id);
+
     await transaction.commit();
+    console.log("Transaction committed successfully");
 
     return commonService.createdResponse(res, { customer });
 
   } catch (err) {
-    await transaction.rollback();
-    return commonService.handleError(res, err);
+    console.error("CreateCustomer Error:", err);
 
+    if (transaction) {
+      console.log("Rolling back transaction...");
+      await transaction.rollback();
+    }
+
+    return commonService.handleError(res, err);
   }
 };
 
