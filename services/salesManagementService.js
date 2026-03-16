@@ -962,7 +962,6 @@ const getFastMovingCategoryStats = async (req, res) => {
         SELECT
             sc.id AS subcategory_id,
             sc.subcategory_name,
-            sii.rate as selling_price,
             ROUND(SUM(sii.amount), 2) AS sold_value,
             SUM(sii.quantity) AS sold_quantity
         FROM sales_invoice_bill_items sii
@@ -981,7 +980,7 @@ const getFastMovingCategoryStats = async (req, res) => {
             AND sc.deleted_at IS NULL
         WHERE sii.deleted_at IS NULL
         ${search ? `AND sc.subcategory_name ILIKE :search` : ""}
-        GROUP BY sc.id, sc.subcategory_name,  sii.rate 
+        GROUP BY sc.id, sc.subcategory_name
         ORDER BY sold_value DESC
         `;
 
