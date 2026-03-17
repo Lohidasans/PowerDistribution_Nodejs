@@ -995,33 +995,58 @@ const getStockKpiSummary = async (req, res) => {
     const grnWeightsCTE = `
       WITH grn_weights AS (
         SELECT
-          g.id AS grn_id,
-          p.branch_id,
+            g.id AS grn_id,
+            g.branch_id,
 
-          -- ORDERED WEIGHT (from GRN items)
-          COALESCE(SUM(DISTINCT gi.net_wt_in_g), 0) AS ordered_weight,
-
-          -- UPDATED WEIGHT (from product items)
-          COALESCE(SUM(pid.net_weight), 0) AS updated_weight
+            COALESCE(gi.total_net_weight,0) AS ordered_weight,
+            COALESCE(pi.total_updated_weight,0) AS updated_weight
 
         FROM grns g
-        JOIN "grnItems" gi
-          ON gi.grn_id = g.id
-         AND gi.deleted_at IS NULL
 
-        JOIN products p
-          ON p.grn_id = g.id
-         AND p.deleted_at IS NULL
+        LEFT JOIN (
+            SELECT
+                grn_id,
+                SUM(net_wt_in_g) AS total_net_weight
+            FROM "grnItems"
+            WHERE deleted_at IS NULL
+            GROUP BY grn_id
+        ) gi ON gi.grn_id = g.id
 
-        LEFT JOIN "productItemDetails" pid
-          ON pid.product_id = p.id
-         AND pid.deleted_at IS NULL
+        LEFT JOIN (
+            SELECT
+                p.grn_id,
+
+                -- STOCK
+                SUM(pid.quantity * pid.net_weight)
+                +
+                -- SOLD
+                COALESCE(SUM(sii.quantity * sii.net_weight),0)
+                AS total_updated_weight
+
+            FROM products p
+
+            JOIN "productItemDetails" pid
+                ON pid.product_id = p.id
+                AND pid.deleted_at IS NULL
+
+            LEFT JOIN sales_invoice_bill_items sii
+                ON sii.product_item_detail_id = pid.id
+                AND sii.deleted_at IS NULL
+                AND sii.is_returned = false
+
+            LEFT JOIN sales_invoice_bills sib
+                ON sib.id = sii.invoice_bill_id
+                AND sib.deleted_at IS NULL
+                AND sib.status = 'Invoice'
+
+            WHERE p.deleted_at IS NULL
+            ${branch_id ? `AND p.branch_id = :branch_id` : ``}
+
+            GROUP BY p.grn_id
+        ) pi ON pi.grn_id = g.id
 
         WHERE g.deleted_at IS NULL
-          ${branch_id ? `AND p.branch_id = :branch_id` : ``}
-          ${grnDateCondition}
-
-        GROUP BY g.id, p.branch_id
+        ${grnDateCondition}
       )
     `;
 
