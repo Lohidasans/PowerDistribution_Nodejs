@@ -267,7 +267,6 @@ const deleteGrn = async (req, res) => {
   }
 };
 
-  // List all GRNs (NO pagination)
 const getAllGrns = async (req, res) => {
   try {
     const {
@@ -276,27 +275,41 @@ const getAllGrns = async (req, res) => {
       start_date,
       end_date,
       search,
+      status,
+      page,
+      limit
     } = req.query;
 
-    const replacements = {};
+    // ✅ Make branch_id mandatory
+    if (!branch_id) {
+      return commonService.badRequest(res, {
+        message: "branch_id is required"
+      });
+    }
+
+    const hasPagination = page && limit;
+    const pageNumber = hasPagination ? parseInt(page) : null;
+    const pageSize = hasPagination ? parseInt(limit) : null;
+    const offset = hasPagination ? (pageNumber - 1) * pageSize : null;
+
+    const replacements = { branch_id };
     const whereConditions = [`g.deleted_at IS NULL`];
 
     if (vendor_id) {
       whereConditions.push(`g.vendor_id = :vendor_id`);
       replacements.vendor_id = vendor_id;
     }
-    if (branch_id) {
-      whereConditions.push(`g.branch_id = :branch_id`);
-      replacements.branch_id = branch_id;
-    }
+
     if (start_date) {
       whereConditions.push(`g.grn_date >= :start_date`);
       replacements.start_date = start_date;
     }
+
     if (end_date) {
       whereConditions.push(`g.grn_date <= :end_date`);
       replacements.end_date = end_date;
     }
+
     if (search) {
       whereConditions.push(
         `(g.grn_no ILIKE :search OR v.vendor_name ILIKE :search)`
@@ -304,12 +317,8 @@ const getAllGrns = async (req, res) => {
       replacements.search = `%${search}%`;
     }
 
-    const whereSql =
-      whereConditions.length > 1
-        ? `WHERE ${whereConditions.join(" AND ")}`
-        : "WHERE g.deleted_at IS NULL";
+    const whereSql = `WHERE ${whereConditions.join(" AND ")}`;
 
-    // Fetch ALL GRNs with calculated weights
     const listRows = await sequelize.query(
       `SELECT
          g.id,
@@ -320,48 +329,63 @@ const getAllGrns = async (req, res) => {
          v.id AS vendor_id,
          v.vendor_name,
          v.vendor_image_url,
-         COALESCE(gi.total_net_weight, 0) AS "order",
-         CASE 
+
+         COALESCE(gi.total_net_weight,0) AS "order",
+
+         CASE
            WHEN g.entity_type = 'superadmin' THEN sp.company_name
            WHEN g.entity_type = 'branch' THEN b.branch_name
            WHEN g.entity_type = 'employee' THEN e.employee_name
            ELSE 'Unknown'
          END AS created_by,
+
          d.district_name AS location,
-         COALESCE(pi.total_updated_weight, 0) AS updated_weight
+
+         COALESCE(pi.total_updated_weight,0) AS updated_weight
+
        FROM grns g
+
        LEFT JOIN vendors v ON v.id = g.vendor_id
-       LEFT JOIN superadmin_profiles sp ON sp.id = g.order_by_user_id AND g.entity_type = 'superadmin'
-       LEFT JOIN branches b ON b.id = g.order_by_user_id AND g.entity_type = 'branch'
-       LEFT JOIN employees e ON e.id = g.order_by_user_id AND g.entity_type = 'employee'
+
+       LEFT JOIN superadmin_profiles sp
+       ON sp.id = g.order_by_user_id AND g.entity_type = 'superadmin'
+
+       LEFT JOIN branches b
+       ON b.id = g.order_by_user_id AND g.entity_type = 'branch'
+
+       LEFT JOIN employees e
+       ON e.id = g.order_by_user_id AND g.entity_type = 'employee'
+
        LEFT JOIN districts d ON (
          (g.entity_type = 'superadmin' AND d.id = sp.district_id) OR
          (g.entity_type = 'branch' AND d.id = b.district_id)
        )
+
        LEFT JOIN (
-         SELECT 
-           grn_id, 
-           COALESCE(SUM(net_wt_in_g), 0) as total_net_weight
+         SELECT grn_id, SUM(net_wt_in_g) total_net_weight
          FROM "grnItems"
          WHERE deleted_at IS NULL
          GROUP BY grn_id
        ) gi ON gi.grn_id = g.id
+
        LEFT JOIN (
-        SELECT 
-          p.grn_id,
-          COALESCE(SUM(pid.net_weight), 0) as total_updated_weight
-        FROM products p
-        JOIN "productItemDetails" pid ON pid.product_id = p.id AND pid.deleted_at IS NULL
-        WHERE p.deleted_at IS NULL
-        GROUP BY p.grn_id
-      ) pi ON pi.grn_id = g.id
+         SELECT p.grn_id,
+                SUM(pid.net_weight) total_updated_weight
+         FROM products p
+         JOIN "productItemDetails" pid
+              ON pid.product_id = p.id
+              AND pid.deleted_at IS NULL
+         WHERE p.deleted_at IS NULL AND p.branch_id = :branch_id
+         GROUP BY p.grn_id
+       ) pi ON pi.grn_id = g.id
+
        ${whereSql}
-       GROUP BY g.id, g.entity_type, v.id, v.vendor_name, v.vendor_image_url, sp.company_name, b.branch_name, e.employee_name, gi.total_net_weight, pi.total_updated_weight, d.district_name
-       ORDER BY g.created_at DESC, g.grn_date DESC, g.grn_no DESC`,
+
+       ORDER BY g.created_at DESC, g.grn_date DESC, g.grn_no DESC
+      `,
       { replacements, type: sequelize.QueryTypes.SELECT }
     );
 
-    // Apply business logic
     let updatedCount = 0;
     let yetToUpdateCount = 0;
 
@@ -369,9 +393,9 @@ const getAllGrns = async (req, res) => {
       const order = parseFloat(row.order) || 0;
       const updated = parseFloat(row.updated_weight) || 0;
       const yetToUpdate = Math.max(0, order - updated);
-      const status_id = yetToUpdate <= 0.001 ? 2 : 1; // Using small epsilon for float comparison
 
-      // Count using computed status
+      const status_id = yetToUpdate <= 0.001 ? 2 : 1;
+
       if (status_id === 2) updatedCount++;
       else yetToUpdateCount++;
 
@@ -380,24 +404,54 @@ const getAllGrns = async (req, res) => {
         order: parseFloat(order.toFixed(3)),
         updated: parseFloat(updated.toFixed(3)),
         yetToUpdate: parseFloat(yetToUpdate.toFixed(3)),
-        status_id,
+        status_id
       };
     });
+
+    // STATUS FILTER
+    let filteredRows = transformedRows;
+
+    if (status === "updated") {
+      filteredRows = transformedRows.filter(r => r.status_id === 2);
+    }
+
+    if (status === "pending") {
+      filteredRows = transformedRows.filter(r => r.status_id === 1);
+    }
+
+    // ✅ OPTIONAL PAGINATION
+    let paginatedData = filteredRows;
+    let pagination = null;
+
+    if (hasPagination) {
+      const totalItems = filteredRows.length;
+
+      paginatedData = filteredRows.slice(offset, offset + pageSize);
+
+      pagination = {
+        page: pageNumber,
+        limit: pageSize,
+        totalItems,
+        totalPages: Math.ceil(totalItems / pageSize)
+      };
+    }
 
     return commonService.okResponse(res, {
       summary: {
         totalGrns: transformedRows.length,
         updated: updatedCount,
-        yetToUpdate: yetToUpdateCount,
+        yetToUpdate: yetToUpdateCount
       },
-      totalItems: transformedRows.length,
-      data: transformedRows,
+      pagination,
+      data: paginatedData
     });
+
   } catch (error) {
     console.error("getAllGrns Error:", error);
     return commonService.handleError(res, error);
   }
 };
+  
 
 // GET: list of GRN numbers with full ProductGrnInfo + joined details
 const listGrnNumbers = async (req, res) => {
