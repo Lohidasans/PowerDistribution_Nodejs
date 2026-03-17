@@ -1045,7 +1045,7 @@ const getStockKpiSummary = async (req, res) => {
         ON g.id = gi.grn_id
       AND g.deleted_at IS NULL
       WHERE gi.deleted_at IS NULL
-      ${branch_id ? `AND g.branch_id = :sk_branch` : ``}
+      ${branch_id ? `AND g.branch_id = :branch_id` : ``}
       ${grnDateCondition}
     `;
 

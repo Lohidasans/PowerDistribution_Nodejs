@@ -267,6 +267,7 @@ const deleteGrn = async (req, res) => {
   }
 };
 
+//List all Grns - with pagination
 const getAllGrns = async (req, res) => {
   try {
     const {
@@ -321,67 +322,82 @@ const getAllGrns = async (req, res) => {
 
     const listRows = await sequelize.query(
       `SELECT
-         g.id,
-         g.grn_no,
-         g.grn_date AS date,
-         g.status_id,
-         g.entity_type,
-         v.id AS vendor_id,
-         v.vendor_name,
-         v.vendor_image_url,
+        g.id,
+        g.grn_no,
+        g.grn_date AS date,
+        g.status_id,
+        g.entity_type,
+        v.id AS vendor_id,
+        v.vendor_name,
+        v.vendor_image_url,
 
-         COALESCE(gi.total_net_weight,0) AS "order",
+        COALESCE(gi.total_net_weight,0) AS "order",
 
-         CASE
-           WHEN g.entity_type = 'superadmin' THEN sp.company_name
-           WHEN g.entity_type = 'branch' THEN b.branch_name
-           WHEN g.entity_type = 'employee' THEN e.employee_name
-           ELSE 'Unknown'
-         END AS created_by,
+        CASE
+          WHEN g.entity_type = 'superadmin' THEN sp.company_name
+          WHEN g.entity_type = 'branch' THEN b.branch_name
+          WHEN g.entity_type = 'employee' THEN e.employee_name
+          ELSE 'Unknown'
+        END AS created_by,
 
-         d.district_name AS location,
+        d.district_name AS location,
 
-         COALESCE(pi.total_updated_weight,0) AS updated_weight
+        COALESCE(pi.total_updated_weight,0) AS updated_weight
 
-       FROM grns g
+      FROM grns g
 
-       LEFT JOIN vendors v ON v.id = g.vendor_id
+      LEFT JOIN vendors v ON v.id = g.vendor_id
 
-       LEFT JOIN superadmin_profiles sp
-       ON sp.id = g.order_by_user_id AND g.entity_type = 'superadmin'
+      LEFT JOIN superadmin_profiles sp
+      ON sp.id = g.order_by_user_id AND g.entity_type = 'superadmin'
 
-       LEFT JOIN branches b
-       ON b.id = g.order_by_user_id AND g.entity_type = 'branch'
+      LEFT JOIN branches b
+      ON b.id = g.order_by_user_id AND g.entity_type = 'branch'
 
-       LEFT JOIN employees e
-       ON e.id = g.order_by_user_id AND g.entity_type = 'employee'
+      LEFT JOIN employees e
+      ON e.id = g.order_by_user_id AND g.entity_type = 'employee'
 
-       LEFT JOIN districts d ON (
-         (g.entity_type = 'superadmin' AND d.id = sp.district_id) OR
-         (g.entity_type = 'branch' AND d.id = b.district_id)
-       )
+      LEFT JOIN districts d ON (
+        (g.entity_type = 'superadmin' AND d.id = sp.district_id) OR
+        (g.entity_type = 'branch' AND d.id = b.district_id)
+      )
 
-       LEFT JOIN (
-         SELECT grn_id, SUM(net_wt_in_g) total_net_weight
-         FROM "grnItems"
-         WHERE deleted_at IS NULL
-         GROUP BY grn_id
-       ) gi ON gi.grn_id = g.id
+      LEFT JOIN (
+        SELECT grn_id, SUM(net_wt_in_g) total_net_weight
+        FROM "grnItems"
+        WHERE deleted_at IS NULL
+        GROUP BY grn_id
+      ) gi ON gi.grn_id = g.id
 
-       LEFT JOIN (
-         SELECT p.grn_id,
-                SUM(pid.net_weight) total_updated_weight
-         FROM products p
-         JOIN "productItemDetails" pid
+      LEFT JOIN (
+        SELECT 
+              p.grn_id,
+              -- STOCK WEIGHT
+              SUM(pid.quantity * pid.net_weight) +
+              -- SOLD WEIGHT
+              COALESCE(SUM(sii.quantity * sii.net_weight),0) AS total_updated_weight
+        FROM products p
+        JOIN "productItemDetails" pid
               ON pid.product_id = p.id
               AND pid.deleted_at IS NULL
-         WHERE p.deleted_at IS NULL AND p.branch_id = :branch_id
-         GROUP BY p.grn_id
-       ) pi ON pi.grn_id = g.id
 
-       ${whereSql}
+        LEFT JOIN sales_invoice_bill_items sii
+              ON sii.product_item_detail_id = pid.id
+              AND sii.deleted_at IS NULL
+              AND sii.is_returned = false
 
-       ORDER BY g.created_at DESC, g.grn_date DESC, g.grn_no DESC
+        LEFT JOIN sales_invoice_bills sib
+              ON sib.id = sii.invoice_bill_id
+              AND sib.deleted_at IS NULL
+              AND sib.status = 'Invoice'
+
+        WHERE p.deleted_at IS NULL AND p.branch_id = :branch_id
+        GROUP BY p.grn_id
+      ) pi ON pi.grn_id = g.id
+
+      ${whereSql}
+
+      ORDER BY g.created_at DESC, g.grn_date DESC, g.grn_no DESC
       `,
       { replacements, type: sequelize.QueryTypes.SELECT }
     );
@@ -451,7 +467,7 @@ const getAllGrns = async (req, res) => {
     return commonService.handleError(res, error);
   }
 };
-  
+
 
 // GET: list of GRN numbers with full ProductGrnInfo + joined details
 const listGrnNumbers = async (req, res) => {
