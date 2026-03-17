@@ -685,7 +685,7 @@ const getBranchRevenueDetailsNew = async (req, res) => {
 
         const replacements = { branch_id };
 
-        // Date filter (applies on unified txn_date)
+        // Date filter
         const dateCondition = dateFilter(
             { from_date, to_date, date_filter },
             "rs.txn_date",
@@ -714,92 +714,105 @@ const getBranchRevenueDetailsNew = async (req, res) => {
            COMMON CTE – SINGLE SOURCE OF TRUTH
            ===================================================== */
         const baseCTE = `
-      WITH revenue_stream AS (
-
-        /* 1️⃣ SALES + JEWEL REPAIR PAYMENTS (refund adjusted) */
-        SELECT
-            COALESCE(sib.branch_id, jr.branch_id) AS branch_id,
-            p.payment_date AS txn_date,
-            p.payment_mode::text AS payment_mode,
-            COALESCE(sib.invoice_no, jr.repair_code) AS description,
-            CASE
-              WHEN sib.id IS NOT NULL AND p.payment_mode = 'Cash'
-              THEN
-                p.amount_received
-                - COALESCE(
-                    MAX(sib.refund_amount)
-                    OVER (PARTITION BY sib.id),
-                    0
-                  )
-              ELSE p.amount_received
-            END AS amount
-        FROM payments p
-        LEFT JOIN sales_invoice_bills sib
-            ON sib.id = p.invoice_bill_id
-            AND sib.deleted_at IS NULL
-            AND sib.is_active = true
-        LEFT JOIN jewel_repairs jr
-            ON jr.id = p.jewel_repair_id
-            AND jr.deleted_at IS NULL AND jr.is_active = true
-        WHERE p.deleted_at IS NULL
-          AND p.status = 'Completed'
-
-        UNION ALL
-
-        /* 2️⃣ VOUCHER RECEIPTS (POSITIVE) */
-        SELECT
-            vr.branch_id,
-            vr.receipt_date AS txn_date,
-            pm.payment_mode,
-            vr.receipt_no AS description,
-            vr.amount
-        FROM voucher_receipts vr
-        JOIN payment_modes pm
-            ON pm.id = vr.payment_mode_id
-        WHERE vr.deleted_at IS NULL and vr.is_active = true
-
-        UNION ALL
-
-        /* 3️⃣ VENDOR PAYMENTS (NEGATIVE) */
-        SELECT
-            vp.branch_id,
-            vp.payment_date AS txn_date,
-            pm.payment_mode,
-            vp.payment_no AS description,
-            -vp.amount
-        FROM vendor_payments vp
-        JOIN payment_modes pm
-            ON pm.id = vp.payment_mode
-        WHERE vp.deleted_at IS NULL AND vp.is_active = true
-          AND vp.status = 'Completed'
-      )
-    `;
+            WITH revenue_stream AS (
+ 
+                /* 1️⃣ SALES + JEWEL REPAIR PAYMENTS (refund adjusted) */
+                SELECT
+                    COALESCE(sib.branch_id, jr.branch_id) AS branch_id,
+                    p.payment_date AS txn_date,
+                    p.payment_mode::text AS payment_mode,
+                    COALESCE(sib.invoice_no, jr.repair_code) AS description,
+                    CASE
+                        WHEN sib.id IS NOT NULL AND p.payment_mode = 'Cash'
+                        THEN
+                            p.amount_received
+                            - COALESCE(
+                                MAX(sib.refund_amount) OVER (PARTITION BY sib.id),
+                                0
+                            )
+                        ELSE p.amount_received
+                    END AS amount
+                FROM payments p
+                LEFT JOIN sales_invoice_bills sib
+                    ON sib.id = p.invoice_bill_id
+                    AND sib.deleted_at IS NULL
+                    AND sib.is_active = true
+                LEFT JOIN jewel_repairs jr
+                    ON jr.id = p.jewel_repair_id
+                    AND jr.deleted_at IS NULL
+                    AND jr.is_active = true
+                WHERE p.deleted_at IS NULL
+                  AND p.status = 'Completed'
+ 
+                UNION ALL
+ 
+                /* 2️⃣ VOUCHER RECEIPTS (POSITIVE) */
+                SELECT
+                    vr.branch_id,
+                    vr.receipt_date AS txn_date,
+                    pm.payment_mode,
+                    vr.receipt_no AS description,
+                    vr.amount
+                FROM voucher_receipts vr
+                JOIN payment_modes pm
+                    ON pm.id = vr.payment_mode_id
+                WHERE vr.deleted_at IS NULL
+                  AND vr.is_active = true
+ 
+                UNION ALL
+ 
+                /* 3️⃣ VENDOR PAYMENTS (NEGATIVE) */
+                SELECT
+                    vp.branch_id,
+                    vp.payment_date AS txn_date,
+                    pm.payment_mode,
+                    vp.payment_no AS description,
+                    -vp.amount
+                FROM vendor_payments vp
+                JOIN payment_modes pm
+                    ON pm.id = vp.payment_mode
+                WHERE vp.deleted_at IS NULL
+                  AND vp.is_active = true
+                  AND vp.status = 'Completed'
+            )
+        `;
 
         /* =====================================================
-           ROWS QUERY (OLD UI FORMAT)
+           ZERO ROW FILTER
+           Remove rows where cash=0, upi=0, card=0, total_amount=0
+           ===================================================== */
+        const havingCondition = `
+            HAVING NOT (
+                COALESCE(SUM(CASE WHEN payment_mode = 'Cash' THEN amount ELSE 0 END), 0) = 0
+                AND COALESCE(SUM(CASE WHEN payment_mode = 'UPI' THEN amount ELSE 0 END), 0) = 0
+                AND COALESCE(SUM(CASE WHEN payment_mode = 'Card' THEN amount ELSE 0 END), 0) = 0
+                AND COALESCE(SUM(amount), 0) = 0
+            )
+        `;
+
+        /* =====================================================
+           ROWS QUERY
            ===================================================== */
         let rowsQuery = `
-      ${baseCTE}
-      SELECT
-        description,
-
-        ROUND(SUM(CASE WHEN payment_mode = 'Cash' THEN amount ELSE 0 END), 2) AS cash,
-        ROUND(SUM(CASE WHEN payment_mode = 'UPI'  THEN amount ELSE 0 END), 2) AS upi,
-        ROUND(SUM(CASE WHEN payment_mode = 'Card' THEN amount ELSE 0 END), 2) AS card,
-
-        0 AS refund, -- refund already applied in CTE
-
-        ROUND(SUM(amount), 2) AS total_amount,
-        MAX(txn_date) AS payment_date
-      FROM revenue_stream rs
-      WHERE rs.branch_id = :branch_id
-        ${dateCondition}
-        ${paymentModeCondition}
-        ${searchCondition}
-      GROUP BY description
-      ORDER BY payment_date DESC
-      ${hasPagination ? "LIMIT :limit OFFSET :offset" : ""}
-    `;
+            ${baseCTE}
+            SELECT
+                description,
+                ROUND(SUM(CASE WHEN payment_mode = 'Cash' THEN amount ELSE 0 END), 2) AS cash,
+                ROUND(SUM(CASE WHEN payment_mode = 'UPI'  THEN amount ELSE 0 END), 2) AS upi,
+                ROUND(SUM(CASE WHEN payment_mode = 'Card' THEN amount ELSE 0 END), 2) AS card,
+                0 AS refund,
+                ROUND(SUM(amount), 2) AS total_amount,
+                MAX(txn_date) AS payment_date
+            FROM revenue_stream rs
+            WHERE rs.branch_id = :branch_id
+              ${dateCondition}
+              ${paymentModeCondition}
+              ${searchCondition}
+            GROUP BY description
+            ${havingCondition}
+            ORDER BY description DESC
+            ${hasPagination ? "LIMIT :limit OFFSET :offset" : ""}
+        `;
 
         if (hasPagination) {
             replacements.limit = limitNum;
@@ -812,21 +825,21 @@ const getBranchRevenueDetailsNew = async (req, res) => {
         });
 
         /* =====================================================
-           SUMMARY (SCORE CARD)
+           SUMMARY
            ===================================================== */
         const summaryQuery = `
-      ${baseCTE}
-      SELECT
-        ROUND(SUM(amount), 2) AS total_collection,
-        ROUND(SUM(CASE WHEN payment_mode = 'Cash' THEN amount ELSE 0 END), 2) AS cash,
-        ROUND(SUM(CASE WHEN payment_mode = 'UPI'  THEN amount ELSE 0 END), 2) AS upi,
-        ROUND(SUM(CASE WHEN payment_mode = 'Card' THEN amount ELSE 0 END), 2) AS card
-      FROM revenue_stream rs
-      WHERE rs.branch_id = :branch_id
-        ${dateCondition}
-        ${paymentModeCondition}
-        ${searchCondition}
-    `;
+            ${baseCTE}
+            SELECT
+                ROUND(SUM(amount), 2) AS total_collection,
+                ROUND(SUM(CASE WHEN payment_mode = 'Cash' THEN amount ELSE 0 END), 2) AS cash,
+                ROUND(SUM(CASE WHEN payment_mode = 'UPI'  THEN amount ELSE 0 END), 2) AS upi,
+                ROUND(SUM(CASE WHEN payment_mode = 'Card' THEN amount ELSE 0 END), 2) AS card
+            FROM revenue_stream rs
+            WHERE rs.branch_id = :branch_id
+              ${dateCondition}
+              ${paymentModeCondition}
+              ${searchCondition}
+        `;
 
         const [summary] = await sequelize.query(summaryQuery, {
             replacements,
@@ -834,20 +847,25 @@ const getBranchRevenueDetailsNew = async (req, res) => {
         });
 
         /* =====================================================
-           TOTAL ITEMS (FOR PAGINATION)
+           TOTAL ITEMS (ONLY NON-ZERO GROUPS)
            ===================================================== */
         let totalItems = rows.length;
 
         if (hasPagination) {
             const countQuery = `
-        ${baseCTE}
-        SELECT COUNT(DISTINCT description)::int AS count
-        FROM revenue_stream rs
-        WHERE rs.branch_id = :branch_id
-          ${dateCondition}
-          ${paymentModeCondition}
-          ${searchCondition}
-      `;
+                ${baseCTE}
+                SELECT COUNT(*)::int AS count
+                FROM (
+                    SELECT description
+                    FROM revenue_stream rs
+                    WHERE rs.branch_id = :branch_id
+                      ${dateCondition}
+                      ${paymentModeCondition}
+                      ${searchCondition}
+                    GROUP BY description
+                    ${havingCondition}
+                ) x
+            `;
 
             const [{ count }] = await sequelize.query(countQuery, {
                 replacements,
@@ -858,18 +876,18 @@ const getBranchRevenueDetailsNew = async (req, res) => {
         }
 
         /* =====================================================
-           FINAL RESPONSE (UI-COMPATIBLE)
+           FINAL RESPONSE
            ===================================================== */
         return commonService.okResponse(res, {
             data: {
                 summary: {
-                    total_collection: money(summary.total_collection),
-                    cash: money(summary.cash),
-                    upi: money(summary.upi),
-                    card: money(summary.card)
+                    total_collection: money(summary?.total_collection),
+                    cash: money(summary?.cash),
+                    upi: money(summary?.upi),
+                    card: money(summary?.card)
                 },
                 totalItems,
-                rows: rows.map(r => ({
+                rows: rows.map((r) => ({
                     description: r.description,
                     cash: money(r.cash),
                     upi: money(r.upi),
@@ -882,7 +900,7 @@ const getBranchRevenueDetailsNew = async (req, res) => {
         });
 
     } catch (error) {
-        console.error("getBranchRevenueDetails Error:", error);
+        console.error("getBranchRevenueDetailsNew Error:", error);
         return commonService.handleError(res, error);
     }
 };
