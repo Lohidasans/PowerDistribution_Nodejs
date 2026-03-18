@@ -898,6 +898,12 @@ const getVendorDashboard = async (req, res) => {
           WHERE vp.deleted_at IS NULL
             AND vp.status = 'Completed'
             AND vp.is_active = true
+            AND vp.bill_type_id = 1
+            AND vp.user_type_id = 1
+            AND vp.purchase_id::integer IN (
+                SELECT id FROM grns
+                WHERE deleted_at IS NULL
+            )
             ${start_date || end_date ? `AND vp.payment_date BETWEEN CAST(COALESCE(:start_date, '1900-01-01') AS DATE) AND CAST(COALESCE(:end_date, '2100-12-31') AS DATE)` : ''}
             ${branch_id ? 'AND vp.branch_id = :branch_id' : ''}
         ) as total_payments
@@ -939,11 +945,16 @@ const getVendorDashboard = async (req, res) => {
           (
             SELECT SUM(vp.amount)
             FROM vendor_payments vp
-            JOIN grns g2 ON g2.grn_no = vp.ref_id AND g2.deleted_at IS NULL
             WHERE vp.deleted_at IS NULL
+              AND vp.bill_type_id = 1
+              AND vp.user_type_id = 1
               AND vp.is_active = true
               AND vp.status = 'Completed'
-              AND g2.vendor_id = v.id
+              AND vp.purchase_id::integer IN (
+                SELECT g2.id FROM grns g2 
+                WHERE g2.vendor_id = v.id 
+                AND g2.deleted_at IS NULL
+              )
               ${dateFilter ? dateFilter.replace('g.grn_date', 'vp.payment_date') : ''}
               ${branch_id ? 'AND vp.branch_id = :branch_id' : ''}
           ), 0
