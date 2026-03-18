@@ -150,74 +150,6 @@ const getSuperAdminDashboard = async (req, res) => {
     };
 
     // ============================================================
-    // 2. STOCK KPI
-    // ============================================================
-    const stockKpiRep = {};
-    if (branch_id) stockKpiRep.sk_branch = branch_id;
-   
- const grnPurchaseQuery = `
-  SELECT
-    COALESCE(SUM(gi.total_amount), 0)      AS total_amount,
-    COALESCE(SUM(gi.quantity), 0)::int     AS total_quantity,
-    COALESCE(SUM(gi.net_wt_in_g), 0)       AS total_weight
-  FROM "grnItems" gi
-  JOIN grns g
-    ON g.id = gi.grn_id
-   AND g.deleted_at IS NULL
-  WHERE gi.deleted_at IS NULL
-  ${branch_id ? `AND g.branch_id = :sk_branch` : ``}
-`;
-
-const totalStockQuery = `
-  SELECT
-    COALESCE(SUM(pid.quantity),0)::int AS total_quantity,
-    COALESCE(SUM(pid.quantity * pid.net_weight),0) AS total_weight,
-    COALESCE(SUM(
-      pid.quantity * (
-        (COALESCE(pid.rate_per_gram,0) * COALESCE(pid.net_weight,0)) +
-        COALESCE(pid.making_charge,0) +
-        COALESCE(pid.wastage,0) +
-        COALESCE(pid.stone_value,0)
-      )
-    ),0) AS total_amount
-  FROM products p
-  JOIN "productItemDetails" pid
-    ON pid.product_id = p.id
-   AND pid.deleted_at IS NULL
-   AND pid.quantity > 0
-  WHERE p.deleted_at IS NULL
-    AND p.status = 'Active'
-    ${branch_id ? `AND p.branch_id = :sk_branch` : ``}
-`;
-const grnUpdatedQuery = `
-  SELECT
-    COALESCE(SUM(gi.total_amount), 0)      AS total_amount,
-    COALESCE(SUM(gi.quantity), 0)::int     AS total_quantity,
-    COALESCE(SUM(gi.net_wt_in_g), 0)       AS total_weight
-  FROM grns g
-  JOIN "grnItems" gi
-    ON gi.grn_id = g.id
-   AND gi.deleted_at IS NULL
-  WHERE g.deleted_at IS NULL
-    AND g.status_id = 2
-  ${branch_id ? `AND g.branch_id = :sk_branch` : ``}
-`;
-
-const grnPendingQuery = `
-  SELECT
-    COALESCE(SUM(gi.total_amount), 0)      AS total_amount,
-    COALESCE(SUM(gi.quantity), 0)::int     AS total_quantity,
-    COALESCE(SUM(gi.net_wt_in_g), 0)       AS total_weight
-  FROM grns g
-  JOIN "grnItems" gi
-    ON gi.grn_id = g.id
-   AND gi.deleted_at IS NULL
-  WHERE g.deleted_at IS NULL
-    AND g.status_id = 1
-  ${branch_id ? `AND g.branch_id = :sk_branch` : ``}
-`;
-
-    // ============================================================
     // 3. STATISTICS – (OPTIONAL) You may want to match sales-report here too:
     //    If you want: use created_at + status='Invoice'
     //    For now keeping your existing logic (invoice_date + not in Draft/Cancelled)
@@ -284,80 +216,16 @@ const grnPendingQuery = `
     `;
 
     // ============================================================
-    // 4. PROFIT KPI – unchanged
-    // ============================================================
-    const profitRep = {};
-    const profitBranch = branch_id ? `AND sib.branch_id = :profit_branch` : "";
-    if (branch_id) profitRep.profit_branch = branch_id;
-    const profitDateCond = buildDateCondition(
-      dateOpts,
-      "sib.invoice_date",
-      profitRep,
-      "_profit"
-    );
-
-const profitKpiQuery = `
-  WITH sold_out_products AS (
-    SELECT
-      p.id AS product_id,
-      p.ref_no_id
-    FROM products p
-    JOIN "productItemDetails" pid
-      ON pid.product_id = p.id
-     AND pid.deleted_at IS NULL
-    WHERE p.deleted_at IS NULL
-    GROUP BY p.id, p.ref_no_id
-    HAVING
-      COALESCE(SUM(pid.quantity), 0) = 0
-      AND COUNT(*) FILTER (
-        WHERE pid.stock_out_reason = 'SOLD'
-      ) > 0
-  ),
-  sales_values AS (
-    SELECT
-      sibi.product_id,
-      SUM(sibi.amount) AS selling_amount
-    FROM sales_invoice_bill_items sibi
-    JOIN sales_invoice_bills sib
-      ON sib.id = sibi.invoice_bill_id
-     AND sib.deleted_at IS NULL
-     AND sib.is_active = true
-     AND sib.status = 'Invoice'
-     ${profitBranch}
-     ${profitDateCond}
-    WHERE sibi.deleted_at IS NULL
-    GROUP BY sibi.product_id
-  ),
-  purchase_values AS (
-    SELECT
-      gi.id AS ref_no_id,
-      COALESCE(SUM(gi.total_amount), 0) AS purchase_cost
-    FROM "grnItems" gi
-    JOIN grns g
-      ON g.id = gi.grn_id
-     AND g.deleted_at IS NULL
-    WHERE gi.deleted_at IS NULL
-    GROUP BY gi.id
-  )
-  SELECT
-    COALESCE(SUM(sv.selling_amount), 0) AS total_sales,
-    COALESCE(SUM(pv.purchase_cost), 0)  AS total_purchase,
-    COALESCE(SUM(sv.selling_amount), 0) - COALESCE(SUM(pv.purchase_cost), 0) AS total_profit
-  FROM sold_out_products sop
-  -- must have sales (otherwise it was SOLD but no invoice in filter)
-  JOIN sales_values sv
-    ON sv.product_id = sop.product_id
-  -- purchase from grnItems using ref_no_id mapping
-  LEFT JOIN purchase_values pv
-    ON pv.ref_no_id = sop.ref_no_id
-`;
-
-    // ============================================================
     // 5. AMOUNT COLLECTION – UPDATED (REFUND DEDUCT like branch-wise-report)
     //    - deduct SUM(DISTINCT sib.refund_amount) from cash + total
     // ============================================================
     const collRep = {};
-    const collDateCond = buildDateCondition(dateOpts, "p.payment_date", collRep, "_coll");
+    const collDateCond = buildDateCondition(
+      dateOpts,
+      "p.payment_date",
+      collRep,
+      "_coll"
+    );
     const collBranch = branch_id
       ? `AND COALESCE(sib.branch_id, jr.branch_id) = :coll_branch`
       : "";
@@ -501,6 +369,7 @@ const profitKpiQuery = `
       SELECT
         COALESCE(SUM(vp.amount), 0) AS total_paid
       FROM vendor_payments vp
+      JOIN grns g ON g.id = vp.purchase_id::integer
       WHERE vp.deleted_at IS NULL
         AND vp.bill_type_id = 1
         AND vp.user_type_id = 1
@@ -574,12 +443,7 @@ const profitKpiQuery = `
       [monthResult],
       [ytdResult],
       [totalResult],
-      [grnPurchaseResult],
-      [totalStockResult],
-      [grnUpdatedResult],
-      [grnPendingResult],
       statisticsResult,
-      [profitResult],
       [collectionResult],
       [srResult],
       [ojResult],
@@ -605,28 +469,8 @@ const profitKpiQuery = `
         replacements: totalRep,
         type: sequelize.QueryTypes.SELECT,
       }),
-      sequelize.query(grnPurchaseQuery, {
-        replacements: stockKpiRep,
-        type: sequelize.QueryTypes.SELECT,
-      }),
-      sequelize.query(totalStockQuery, {
-        replacements: stockKpiRep,
-        type: sequelize.QueryTypes.SELECT,
-      }),
-      sequelize.query(grnUpdatedQuery, {
-        replacements: stockKpiRep,
-        type: sequelize.QueryTypes.SELECT,
-      }),
-      sequelize.query(grnPendingQuery, {
-        replacements: stockKpiRep,
-        type: sequelize.QueryTypes.SELECT,
-      }),
       sequelize.query(statisticsQuery, {
         replacements: statsRep,
-        type: sequelize.QueryTypes.SELECT,
-      }),
-      sequelize.query(profitKpiQuery, {
-        replacements: profitRep,
         type: sequelize.QueryTypes.SELECT,
       }),
       sequelize.query(amountCollectionQuery, {
@@ -710,29 +554,6 @@ const profitKpiQuery = `
         },
       },
 
-      stock_kpi: {
-     total_purchase: {
-  total_amount: money(grnPurchaseResult?.total_amount),
-  total_quantity: int(grnPurchaseResult?.total_quantity),
-  total_weight: Number(Number(grnPurchaseResult?.total_weight || 0).toFixed(3)),
-},
-total_stock: {
-  total_amount: money(totalStockResult?.total_amount),   // ✅ must exist
-  total_quantity: int(totalStockResult?.total_quantity),
-  total_weight: Number(Number(totalStockResult?.total_weight || 0).toFixed(3)),
-},
-       updated: {
-  total_amount: money(grnUpdatedResult?.total_amount),
-  total_quantity: int(grnUpdatedResult?.total_quantity),
-  total_weight: Number(Number(grnUpdatedResult?.total_weight || 0).toFixed(3)),
-},
-yet_to_update: {
-  total_amount: money(grnPendingResult?.total_amount),
-  total_quantity: int(grnPendingResult?.total_quantity),
-  total_weight: Number(Number(grnPendingResult?.total_weight || 0).toFixed(3)),
-},
-      },
-
       statistics: (statisticsResult || []).map((r) => ({
         month_key: r.month_key,
         month_label: r.month_label,
@@ -740,12 +561,6 @@ yet_to_update: {
         purchase: money(r.purchase),
         profit: money(r.profit),
       })),
-
-      profit_kpi: {
-        total_sales: money(profitResult?.total_sales),
-        total_purchase: money(profitResult?.total_purchase),
-        total_profit: money(profitResult?.total_profit),
-      },
 
       // refund deducted
       amount_collection: {
