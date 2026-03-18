@@ -430,62 +430,62 @@ const getVendorList = async (req, res) => {
         const whereClause = whereConditions.length > 0 ? "WHERE " + whereConditions.join(" AND ") : "";
 
         // Get vendor list with purchase and payment summary
-        const query = `
-      SELECT 
-        v.id,
-        v.vendor_code,
-        v.vendor_name,
-        v.vendor_image_url,
-        v.status,
-        v.visibilities,
-        COALESCE(
-          (
-            SELECT SUM(g.total_amount)
-            FROM grns g
-            WHERE g.vendor_id = v.id AND g.deleted_at IS NULL
-          ), 0
-        ) as total_purchase,
-        COALESCE(
-          (
-            SELECT SUM(vp.amount)
+      const query = `
+        SELECT
+            v.id,
+            v.vendor_code,
+            v.vendor_name,
+            v.vendor_image_url,
+            v.status,
+            v.visibilities,
+
+            COALESCE(g.total_purchase, 0) AS total_purchase,
+            COALESCE(p.total_paid, 0) AS total_paid,
+            COALESCE(g.total_purchase, 0) - COALESCE(p.total_paid, 0) AS outstanding
+
+        FROM vendors v
+        LEFT JOIN(
+            SELECT 
+                vendor_id,
+                SUM(total_amount) AS total_purchase
+            FROM grns
+            WHERE deleted_at IS NULL
+            GROUP BY vendor_id) g ON g.vendor_id = v.id
+        LEFT JOIN(
+            SELECT 
+                vendor_id,
+                SUM(amount) AS total_paid
+            FROM(
+            --Bill by Bill
+            SELECT 
+                g.vendor_id,
+                vp.amount
             FROM vendor_payments vp
-            JOIN grns g ON g.id = vp.purchase_id::integer
+            JOIN grns g ON g.id = vp.purchase_id:: integer
             WHERE vp.deleted_at IS NULL
-              AND vp.status = 'Completed'
-              AND vp.bill_type_id = 1
-              AND vp.user_type_id = 1
-              AND vp.is_active = true
-              AND g.vendor_id = v.id
-              AND g.deleted_at IS NULL
-          ), 0
-        ) as total_paid,
-        (
-          COALESCE(
-            (
-              SELECT SUM(g.total_amount)
-              FROM grns g
-              WHERE g.vendor_id = v.id AND g.deleted_at IS NULL
-            ), 0
-          ) - COALESCE(
-            (
-              SELECT SUM(vp.amount)
-              FROM vendor_payments vp
-              JOIN grns g ON g.id = vp.purchase_id::integer
-              WHERE vp.deleted_at IS NULL
                 AND vp.status = 'Completed'
                 AND vp.bill_type_id = 1
                 AND vp.user_type_id = 1
                 AND vp.is_active = true
-                AND g.vendor_id = v.id
                 AND g.deleted_at IS NULL
-            ), 0
-          )
-        ) as outstanding
-      FROM vendors v
-      ${whereClause}
-      ORDER BY v.id DESC
-      LIMIT :limit OFFSET :offset
-    `;
+
+            UNION ALL
+
+            --On Account + Advance
+            SELECT 
+                v.id AS vendor_id,
+                vp.amount
+            FROM vendor_payments vp
+            JOIN vendors v ON v.ledger_id = vp.account_name_id
+            WHERE vp.deleted_at IS NULL
+                AND vp.status = 'Completed'
+                AND vp.bill_type_id IN(2, 3)
+                AND vp.is_active = true) payments
+        GROUP BY vendor_id) p ON p.vendor_id = v.id
+        ${ whereClause }
+        ORDER BY v.id DESC
+        LIMIT :limit OFFSET :offset
+        `;
 
         // Get total count for pagination
         const countQuery = `
