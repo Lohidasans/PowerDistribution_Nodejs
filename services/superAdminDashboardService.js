@@ -366,16 +366,38 @@ const getSuperAdminDashboard = async (req, res) => {
     `;
 
     const vendorPaidQuery = `
-      SELECT
-        COALESCE(SUM(vp.amount), 0) AS total_paid
-      FROM vendor_payments vp
-      JOIN grns g ON g.id = vp.purchase_id::integer
-      WHERE vp.deleted_at IS NULL
-        AND vp.bill_type_id = 1
-        AND vp.user_type_id = 1
-        AND vp.is_active = true
-        AND vp.status = 'Completed'
-    `;
+      SELECT 
+          COALESCE(SUM(total_payments),0) AS total_paid
+      FROM (
+
+          -- Bill by Bill Payments
+          SELECT 
+              SUM(vp.amount) AS total_payments
+          FROM vendor_payments vp
+          JOIN grns g 
+              ON g.id = vp.purchase_id::integer
+              AND g.deleted_at IS NULL
+          WHERE vp.deleted_at IS NULL
+              AND vp.status = 'Completed'
+              AND vp.is_active = true
+              AND vp.user_type_id = 1
+              AND vp.bill_type_id = 1
+
+          UNION ALL
+
+          -- On Account + Advance Payments
+          SELECT 
+              SUM(vp.amount) AS total_payments
+          FROM vendor_payments vp
+          JOIN vendors v 
+              ON v.ledger_id = vp.account_name_id
+          WHERE vp.deleted_at IS NULL
+              AND vp.status = 'Completed'
+              AND vp.is_active = true
+              AND vp.bill_type_id IN (2,3)
+
+      )x
+      `;
 
     // ============================================================
     // 8. PURCHASE VS SALES STATISTICS (vendor-wise)
