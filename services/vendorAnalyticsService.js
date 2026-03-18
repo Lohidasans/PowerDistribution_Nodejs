@@ -889,30 +889,56 @@ const getVendorDashboard = async (req, res) => {
     `;
 
         // 3. Outstanding Payables
-        const outstandingPayablesQuery = `
-      SELECT 
-        COALESCE(SUM(g.total_amount), 0) as total_grn_amount,
-        (
-          SELECT COALESCE(SUM(vp.amount), 0)
-          FROM vendor_payments vp
-          WHERE vp.deleted_at IS NULL
-            AND vp.status = 'Completed'
-            AND vp.is_active = true
-            AND vp.bill_type_id = 1
-            AND vp.user_type_id = 1
-            AND vp.purchase_id::integer IN (
-                SELECT id FROM grns
-                WHERE deleted_at IS NULL
-            )
-            ${start_date || end_date ? `AND vp.payment_date BETWEEN CAST(COALESCE(:start_date, '1900-01-01') AS DATE) AND CAST(COALESCE(:end_date, '2100-12-31') AS DATE)` : ''}
-            ${branch_id ? 'AND vp.branch_id = :branch_id' : ''}
-        ) as total_payments
-      FROM grns g
-      JOIN vendors v ON v.id = g.vendor_id
-      WHERE g.deleted_at IS NULL
-      ${dateFilter}
-      ${branchFilter}
-    `;
+        const outstandingPayablesQuery = 
+            `SELECT
+            COALESCE(SUM(total_grn_amount),0) AS total_grn_amount,
+            COALESCE(SUM(total_payments),0) AS total_payments
+        FROM (
+
+            -- GRN Total
+            SELECT
+                SUM(g.total_amount) AS total_grn_amount,
+                0 AS total_payments
+            FROM grns g
+            WHERE g.deleted_at IS NULL
+            ${dateFilter}
+            ${branchFilter}
+
+            UNION ALL
+
+            -- Bill by Bill Payments
+            SELECT 
+                0 AS total_grn_amount,
+                SUM(vp.amount) AS total_payments
+            FROM vendor_payments vp
+            JOIN grns g 
+                ON g.id = vp.purchase_id::integer
+                AND g.deleted_at IS NULL
+            WHERE vp.deleted_at IS NULL
+                AND vp.status = 'Completed'
+                AND vp.is_active = true
+                AND vp.user_type_id = 1
+                AND vp.bill_type_id = 1
+                ${start_date || end_date ? `AND vp.payment_date BETWEEN CAST(COALESCE(:start_date,'1900-01-01') AS DATE) AND CAST(COALESCE(:end_date,'2100-12-31') AS DATE)` : ''}
+                ${branch_id ? 'AND vp.branch_id = :branch_id' : ''}
+
+            UNION ALL
+
+            -- On Account + Advance Payments
+            SELECT 
+                0 AS total_grn_amount,
+                SUM(vp.amount) AS total_payments
+            FROM vendor_payments vp
+            JOIN vendors v 
+                ON v.ledger_id = vp.account_name_id
+            WHERE vp.deleted_at IS NULL
+                AND vp.status = 'Completed'
+                AND vp.is_active = true
+                AND vp.bill_type_id IN (2,3)
+                ${start_date || end_date ? `AND vp.payment_date BETWEEN CAST(COALESCE(:start_date,'1900-01-01') AS DATE) AND CAST(COALESCE(:end_date,'2100-12-31') AS DATE)` : ''}
+                ${branch_id ? 'AND vp.branch_id = :branch_id' : ''}
+
+        )x`;
 
         // 4. Vendor Sales Contribution (with Purchase & Sales data)
         const salesContributionQuery = `
