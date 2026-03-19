@@ -1034,12 +1034,18 @@ const getAllProductDetails = async (req, res) => {
         const soldRows = await sequelize.query(
           `
           SELECT
-            product_item_detail_id,
-            SUM(quantity) AS sold_quantity
-          FROM sales_invoice_bill_items
-          WHERE deleted_at IS NULL
-            AND product_item_detail_id IN (:itemIds)
-          GROUP BY product_item_detail_id
+            sii.product_item_detail_id,
+            SUM(sii.quantity) AS sold_quantity
+          FROM sales_invoice_bill_items sii
+          JOIN sales_invoice_bills sib
+            ON sib.id = sii.invoice_bill_id
+            AND sib.deleted_at IS NULL
+            AND sib.status = 'Invoice'
+            AND sib.is_active = true
+          WHERE sii.deleted_at IS NULL
+            AND sii.is_returned = false   -- ✅ FIX
+            AND sii.product_item_detail_id IN (:itemIds)
+          GROUP BY sii.product_item_detail_id
           `,
           {
             replacements: { itemIds },
