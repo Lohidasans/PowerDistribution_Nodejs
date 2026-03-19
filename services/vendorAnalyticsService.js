@@ -951,7 +951,7 @@ const getVendorDashboard = async (req, res) => {
 
         -- Purchase metrics
         COALESCE(SUM(gi.gross_wt_in_g), 0) AS total_weight,
-        COALESCE(SUM(gi.total_amount), 0) as total_purchase,
+        COALESCE(SUM(g.total_amount), 0) as total_purchase,
 
         -- Sales metrics (from Sales Invoice Bills)
         COALESCE(
