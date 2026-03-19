@@ -852,7 +852,7 @@ const getAllProductDetails = async (req, res) => {
           ON sib.id = sii.invoice_bill_id
           AND sib.deleted_at IS NULL
           AND sib.status = 'Invoice'
-          AND sib.is_active = true
+          AND sib.is_active = true AND sii.is_returned = false
         WHERE sii.deleted_at IS NULL
           AND sii.product_item_detail_id = pid.id
       )
