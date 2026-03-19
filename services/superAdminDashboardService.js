@@ -430,7 +430,7 @@ const getSuperAdminDashboard = async (req, res) => {
         JOIN sales_invoice_bills sib
           ON sib.id = sibi.invoice_bill_id
           AND sib.deleted_at IS NULL AND sib.is_active = true
-          AND sib.status NOT IN ('Draft', 'Cancelled')
+          AND sib.status='Invoice'
           ${pvSalesBranch}
         WHERE sibi.deleted_at IS NULL
         GROUP BY p.vendor_id
