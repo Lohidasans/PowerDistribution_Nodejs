@@ -71,6 +71,7 @@ const DevEnrollRoute = require("./devEnrollRoute");
 const EmployeeAttendanceRoute = require("./employeeAttendanceRoute");
 const SalesOrderRoute = require("./vendorSalesOrderRoute");
 const SuperAdminDashboardRoute = require("./superAdminDashboardRoute");
+const ReportRoute = require("./reportRoute");
 
 module.exports = (app) => {
   app.use("/api/v1", RoleRouter);
@@ -146,5 +147,6 @@ module.exports = (app) => {
   app.use("/api/v1", DevEnrollRoute);
   app.use("/api/v1", SalesOrderRoute);
   app.use("/api/v1", SuperAdminDashboardRoute);
+  app.use("/api/v1", ReportRoute);
 };
 
