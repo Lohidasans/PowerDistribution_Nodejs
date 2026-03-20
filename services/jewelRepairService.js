@@ -66,7 +66,7 @@ const createJewelRepair = async (req, res) => {
         branch_id: repairData.branch_id,
         date: repairData.date || new Date().toISOString().split("T")[0],
         time: repairData.time || null,
-        status: "Pending",
+        status: "Completed",
 
         sub_total_amount: subTotal,
         discount_type: repairData.discount_type || null,

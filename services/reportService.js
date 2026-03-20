@@ -27,10 +27,10 @@ const getSalesInvoiceReport = async (req, res) => {
 
         // 🔹 BASE WHERE (ONLY sib)
         let baseWhere = `
-      WHERE sib.deleted_at IS NULL
-      AND sib.status = 'Invoice'
-      AND sib.is_active = true
-    `;
+            WHERE sib.deleted_at IS NULL
+            AND sib.status = 'Invoice'
+            AND sib.is_active = true
+            `;
 
         // 🔹 EXTRA FILTERS
         let extraWhere = "";
@@ -253,7 +253,7 @@ const getSalesReturnReport = async (req, res) => {
         let baseWhere = `
         WHERE sr.deleted_at IS NULL
         AND sr.is_active = true
-        AND sr.status != 'Cancelled'
+        AND sr.status = 'Printed'
         `;
 
         // 🔹 EXTRA FILTERS
@@ -443,10 +443,10 @@ const getOldJewelReport = async (req, res) => {
 
         // 🔹 BASE WHERE
         let baseWhere = `
-      WHERE oj.deleted_at IS NULL
-      AND oj.is_active = true
-      AND oj.status != 'Cancelled'
-    `;
+        WHERE oj.deleted_at IS NULL
+        AND oj.is_active = true
+        AND oj.status = 'Printed'
+        `;
 
         // 🔹 EXTRA FILTERS
         let extraWhere = "";
@@ -619,10 +619,209 @@ const getOldJewelReport = async (req, res) => {
         console.error(err);
         return commonService.handleError(res, err);
     }
+}; 
+
+const getJewelRepairReport = async (req, res) => {
+    try {
+        const {
+            branch_id,
+            employee_id,
+            customer_id,
+            search,
+            from_date,
+            to_date,
+            date_filter,
+            page,
+            limit,
+        } = req.query;
+
+        const usePagination = page !== undefined && limit !== undefined;
+
+        const pageNum = usePagination ? parseInt(page, 10) : null;
+        const limitNum = usePagination ? parseInt(limit, 10) : null;
+        const offset = usePagination ? (pageNum - 1) * limitNum : null;
+
+        const replacements = {};
+
+        // 🔹 BASE WHERE
+        let baseWhere = `
+        WHERE jr.deleted_at IS NULL
+        AND jr.is_active = true
+        AND jr.status = 'Completed'
+        `;
+
+        // 🔹 EXTRA FILTERS
+        let extraWhere = "";
+
+        if (branch_id) {
+            extraWhere += ` AND jr.branch_id = :branch_id`;
+            replacements.branch_id = +branch_id;
+        }
+
+        if (employee_id) {
+            extraWhere += ` AND jr.employee_id = :employee_id`;
+            replacements.employee_id = +employee_id;
+        }
+
+        if (customer_id) {
+            extraWhere += ` AND jr.customer_id = :customer_id`;
+            replacements.customer_id = +customer_id;
+        }
+
+        // Date filter
+        extraWhere += dateFilter(
+            { from_date, to_date, date_filter },
+            "jr.date",
+            replacements
+        );
+
+        // 🔹 SEARCH (AFTER JOINS)
+        let searchClause = "";
+        if (search) {
+            searchClause = `
+        AND (
+          fr.repair_code ILIKE :search OR
+          c.customer_name ILIKE :search OR
+          e.employee_name ILIKE :search OR
+          mt.material_type ILIKE :search OR
+          i.description ILIKE :search OR
+          i.remarks ILIKE :search
+        )
+      `;
+            replacements.search = `%${search}%`;
+        }
+
+        // 🔹 MAIN QUERY
+        let query = `
+      WITH filtered_repairs AS (
+        SELECT
+          jr.id,
+          jr.repair_code,
+          jr.date,
+          jr.customer_id,
+          jr.employee_id,
+          jr.branch_id,
+          jr.sub_total_amount,
+          jr.discount,
+          jr.total_amount,
+          jr.amount_due
+        FROM jewel_repairs jr
+        ${baseWhere}
+        ${extraWhere}
+      ),
+
+      items AS (
+        SELECT
+          jri.repair_id,
+          jri.material_type_id,
+          jri.description,
+          jri.weight,
+          jri.quantity,
+          jri.amount,
+          jri.remarks
+        FROM jewel_repair_items jri
+        WHERE jri.deleted_at IS NULL
+      ),
+
+      payments AS (
+        SELECT
+            jewel_repair_id,
+            SUM(amount_received) AS total_paid
+        FROM payments
+        WHERE status = 'Completed'
+            AND jewel_repair_id IS NOT NULL
+        GROUP BY jewel_repair_id
+    )
+
+      SELECT
+        fr.id,
+        fr.repair_code,
+        fr.date,
+        fr.branch_id,
+        fr.customer_id,
+        fr.employee_id,
+        c.customer_name,
+        e.employee_name,
+
+        mt.material_type,
+
+        i.description,
+        i.weight,
+        i.quantity,
+        i.remarks,
+        i.amount,
+
+        fr.sub_total_amount,
+        fr.discount,
+        fr.total_amount,
+        fr.amount_due,
+        
+        COALESCE(p.total_paid, 0) AS total_paid
+
+      FROM filtered_repairs fr
+
+      LEFT JOIN items i ON i.repair_id = fr.id
+      LEFT JOIN customers c ON c.id = fr.customer_id
+      LEFT JOIN employees e ON e.id = fr.employee_id
+      LEFT JOIN "materialTypes" mt ON mt.id = i.material_type_id
+      LEFT JOIN payments p ON p.jewel_repair_id = fr.id
+
+      WHERE 1=1
+      ${searchClause}
+
+      ORDER BY fr.date DESC
+    `;
+
+        // 🔹 Pagination (ONLY if both provided)
+        if (usePagination) {
+            query += ` LIMIT :limit OFFSET :offset`;
+            replacements.limit = limitNum;
+            replacements.offset = offset;
+        }
+
+        const [rows] = await sequelize.query(query, { replacements });
+
+        let total = null;
+
+        // 🔹 COUNT QUERY (FAST)
+        if (usePagination) {
+            const countQuery = `
+        SELECT COUNT(*) AS total
+        FROM jewel_repairs jr
+        ${baseWhere}
+        ${extraWhere}
+      `;
+
+            const [countResult] = await sequelize.query(countQuery, {
+                replacements,
+                type: sequelize.QueryTypes.SELECT,
+            });
+
+            total = Number(countResult.total);
+        }
+
+        const response = { list: rows };
+
+        if (usePagination) {
+            response.pagination = {
+                total,
+                page: pageNum,
+                limit: limitNum,
+                totalPages: Math.ceil(total / limitNum),
+            };
+        }
+
+        return commonService.okResponse(res, response);
+
+    } catch (err) {
+        console.error(err);
+        return commonService.handleError(res, err);
+    }
 };
 
 module.exports = {
     getSalesInvoiceReport,
     getSalesReturnReport,
-    getOldJewelReport
+    getOldJewelReport,
+    getJewelRepairReport
 }
