@@ -419,7 +419,210 @@ const getSalesReturnReport = async (req, res) => {
     }
 };
 
+const getOldJewelReport = async (req, res) => {
+    try {
+        const {
+            branch_id,
+            employee_id,
+            customer_id,
+            search,
+            from_date,
+            to_date,
+            date_filter,
+            page,
+            limit,
+        } = req.query;
+
+        const usePagination = page !== undefined && limit !== undefined;
+
+        const pageNum = usePagination ? parseInt(page, 10) : null;
+        const limitNum = usePagination ? parseInt(limit, 10) : null;
+        const offset = usePagination ? (pageNum - 1) * limitNum : null;
+
+        const replacements = {};
+
+        // 🔹 BASE WHERE
+        let baseWhere = `
+      WHERE oj.deleted_at IS NULL
+      AND oj.is_active = true
+      AND oj.status != 'Cancelled'
+    `;
+
+        // 🔹 EXTRA FILTERS
+        let extraWhere = "";
+
+        if (branch_id) {
+            extraWhere += ` AND oj.branch_id = :branch_id`;
+            replacements.branch_id = +branch_id;
+        }
+
+        if (employee_id) {
+            extraWhere += ` AND oj.employee_id = :employee_id`;
+            replacements.employee_id = +employee_id;
+        }
+
+        if (customer_id) {
+            extraWhere += ` AND oj.customer_id = :customer_id`;
+            replacements.customer_id = +customer_id;
+        }
+
+        // Date filter
+        extraWhere += dateFilter(
+            { from_date, to_date, date_filter },
+            "oj.date",
+            replacements
+        );
+
+        // 🔹 SEARCH (AFTER JOINS)
+        let searchClause = "";
+        if (search) {
+            searchClause = `
+        AND (
+          fo.old_jewel_code ILIKE :search OR
+          c.customer_name ILIKE :search OR
+          e.employee_name ILIKE :search OR
+          mt.material_type ILIKE :search OR
+          i.jewel_description ILIKE :search OR
+          i.hsn_code ILIKE :search
+        )
+      `;
+            replacements.search = `%${search}%`;
+        }
+
+        // 🔹 MAIN QUERY
+        let query = `
+      WITH filtered_old_jewels AS (
+        SELECT
+          oj.id,
+          oj.old_jewel_code,
+          oj.date,
+          oj.customer_id,
+          oj.employee_id,
+          oj.branch_id,
+          oj.total_amount
+        FROM old_jewels oj
+        ${baseWhere}
+        ${extraWhere}
+      ),
+
+      items AS (
+        SELECT
+          oji.old_jewel_id,
+          oji.material_type_id,
+          oji.jewel_description,
+          oji.hsn_code,
+          oji.grs_weight,
+          oji.dust_weight,
+          oji.net_weight,
+          oji.wastage,
+          oji.rate,
+          oji.amount
+        FROM old_jewel_items oji
+        WHERE oji.deleted_at IS NULL
+      ),
+
+     invoice_map AS (
+        SELECT
+            sa.reference_id AS old_jewel_id,
+            sib.invoice_no
+        FROM sales_invoice_adjustments sa
+        JOIN sales_invoice_bills sib 
+            ON sib.id = sa.sales_invoice_id
+            AND sib.deleted_at IS NULL
+            AND sib.status = 'Invoice'
+            AND sib.is_active = true
+        WHERE sa.deleted_at IS NULL
+            AND sa.adjustment_type_id = '2'
+        )
+
+      SELECT
+        fo.id,
+        fo.old_jewel_code,
+        fo.date,
+        fo.branch_id,
+        fo.customer_id,
+        fo.employee_id,
+
+        c.customer_name,
+        e.employee_name,
+
+        mt.material_type,
+
+        i.jewel_description,
+        i.hsn_code,
+        i.grs_weight,
+        i.wastage,
+        i.dust_weight,
+        i.net_weight,
+        i.rate,
+        i.amount,
+
+        fo.total_amount,
+        inv.invoice_no
+
+      FROM filtered_old_jewels fo
+
+      LEFT JOIN items i ON i.old_jewel_id = fo.id
+      LEFT JOIN customers c ON c.id = fo.customer_id
+      LEFT JOIN employees e ON e.id = fo.employee_id
+      LEFT JOIN "materialTypes" mt ON mt.id = i.material_type_id
+      LEFT JOIN invoice_map inv ON inv.old_jewel_id = fo.id
+
+      WHERE 1=1
+      ${searchClause}
+
+      ORDER BY fo.date DESC
+    `;
+
+        // 🔹 Pagination (ONLY if both provided)
+        if (usePagination) {
+            query += ` LIMIT :limit OFFSET :offset`;
+            replacements.limit = limitNum;
+            replacements.offset = offset;
+        }
+
+        const [rows] = await sequelize.query(query, { replacements });
+
+        let total = null;
+
+        // 🔹 COUNT QUERY (FAST)
+        if (usePagination) {
+            const countQuery = `
+        SELECT COUNT(*) AS total
+        FROM old_jewels oj
+        ${baseWhere}
+        ${extraWhere}
+      `;
+
+            const [countResult] = await sequelize.query(countQuery, {
+                replacements,
+                type: sequelize.QueryTypes.SELECT,
+            });
+
+            total = Number(countResult.total);
+        }
+
+        const response = { list: rows };
+
+        if (usePagination) {
+            response.pagination = {
+                total,
+                page: pageNum,
+                limit: limitNum,
+                totalPages: Math.ceil(total / limitNum),
+            };
+        }
+
+        return commonService.okResponse(res, response);
+
+    } catch (err) {
+        console.error(err);
+        return commonService.handleError(res, err);
+    }
+};
+
 module.exports = {
     getSalesInvoiceReport,
-    getSalesReturnReport
+    getSalesReturnReport,
+    getOldJewelReport
 }

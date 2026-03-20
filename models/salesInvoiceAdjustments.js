@@ -13,7 +13,7 @@ module.exports = (sequelize, DataTypes) => {
                 allowNull: false,
             },
             adjustment_type_id: {
-                type: DataTypes.STRING, // "Saving Scheme", "Old Jewel", "Sales Return"
+                type: DataTypes.STRING, // 3 -"Saving Scheme", 2 -"Old Jewel", 1 -"Sales Return"
                 allowNull: false,
             },
             reference_id: {
