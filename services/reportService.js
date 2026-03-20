@@ -1,6 +1,5 @@
 const { models, sequelize } = require("../models");
 const commonService = require("./commonService");
-const enMessage = require("../constants/en.json");
 const { dateFilter } = require("../helpers/dateHelper");
 
 
@@ -228,7 +227,199 @@ const getSalesInvoiceReport = async (req, res) => {
     }
 };
 
+const getSalesReturnReport = async (req, res) => {
+    try {
+        const {
+            branch_id,
+            employee_id,
+            customer_id,
+            search,
+            from_date,
+            to_date,
+            date_filter,
+            page,
+            limit,
+        } = req.query;
+
+        const usePagination = page !== undefined && limit !== undefined;
+
+        const pageNum = usePagination ? parseInt(page, 10) : null;
+        const limitNum = usePagination ? parseInt(limit, 10) : null;
+        const offset = usePagination ? (pageNum - 1) * limitNum : null;
+
+        const replacements = {};
+
+        // 🔹 BASE WHERE
+        let baseWhere = `
+        WHERE sr.deleted_at IS NULL
+        AND sr.is_active = true
+        AND sr.status != 'Cancelled'
+        `;
+
+        // 🔹 EXTRA FILTERS
+        let extraWhere = "";
+
+        if (branch_id) {
+            extraWhere += ` AND sr.branch_id = :branch_id`;
+            replacements.branch_id = +branch_id;
+        }
+
+        if (employee_id) {
+            extraWhere += ` AND sr.employee_id = :employee_id`;
+            replacements.employee_id = +employee_id;
+        }
+
+        if (customer_id) {
+            extraWhere += ` AND sr.customer_id = :customer_id`;
+            replacements.customer_id = +customer_id;
+        }
+
+        // Date filter
+        extraWhere += dateFilter(
+            { from_date, to_date, date_filter },
+            "sr.return_date",
+            replacements
+        );
+
+        // 🔹 SEARCH (AFTER JOINS)
+        let searchClause = "";
+        if (search) {
+            searchClause = `
+        AND (
+          fr.sales_return_no ILIKE :search OR
+          c.customer_name ILIKE :search OR
+          e.employee_name ILIKE :search OR
+          i.product_description ILIKE :search OR
+          i.product_sku_id ILIKE :search OR
+          i.product_item_sku_id ILIKE :search OR
+          i.invoice_no ILIKE :search
+        )
+      `;
+            replacements.search = `%${search}%`;
+        }
+
+        // 🔹 MAIN QUERY
+        let query = `
+      WITH filtered_returns AS (
+        SELECT
+          sr.id,
+          sr.sales_return_no,
+          sr.return_date,
+          sr.customer_id,
+          sr.employee_id,
+          sr.branch_id,
+          sr.subtotal_amount,
+          sr.cgst_amount,
+          sr.sgst_amount,
+          sr.igst_amount,
+          sr.total_amount
+        FROM sales_returns sr
+        ${baseWhere}
+        ${extraWhere}
+      ),
+
+      items AS (
+        SELECT
+          sri.sales_return_id,
+          sri.product_item_detail_id,
+          sri.product_description,
+          sri.quantity,
+          sri.rate,
+          sri.amount,
+          sri.invoice_no,
+          pid.sku_id AS product_item_sku_id,
+          p.sku_id AS product_sku_id
+        FROM sales_return_items sri
+        LEFT JOIN "productItemDetails" pid ON sri.product_item_detail_id = pid.id AND pid.deleted_at IS NULL
+        LEFT JOIN products p ON p.id = pid.product_id AND p.deleted_at IS NULL
+        WHERE sri.deleted_at IS NULL
+      )
+
+      SELECT
+        fr.id,
+        fr.sales_return_no,
+        fr.return_date,
+        fr.branch_id,
+        fr.customer_id,
+        fr.employee_id,
+        c.customer_name,
+        e.employee_name,
+
+        i.product_item_detail_id,
+        i.product_description,
+        i.quantity,
+        i.rate,
+        i.amount,
+        i.invoice_no,
+        i.product_sku_id,
+        i.product_item_sku_id,
+
+        fr.subtotal_amount,
+        fr.cgst_amount,
+        fr.sgst_amount,
+        fr.igst_amount,
+        fr.total_amount
+
+      FROM filtered_returns fr
+
+      LEFT JOIN items i ON i.sales_return_id = fr.id
+      LEFT JOIN customers c ON c.id = fr.customer_id
+      LEFT JOIN employees e ON e.id = fr.employee_id
+
+      WHERE 1=1
+      ${searchClause}
+
+      ORDER BY fr.return_date DESC
+    `;
+
+        // 🔹 Pagination (ONLY if both provided)
+        if (usePagination) {
+            query += ` LIMIT :limit OFFSET :offset`;
+            replacements.limit = limitNum;
+            replacements.offset = offset;
+        }
+
+        const [rows] = await sequelize.query(query, { replacements });
+
+        let total = null;
+
+        // 🔹 COUNT QUERY (FAST)
+        if (usePagination) {
+            const countQuery = `
+        SELECT COUNT(*) AS total
+        FROM sales_returns sr
+        ${baseWhere}
+        ${extraWhere}
+      `;
+
+            const [countResult] = await sequelize.query(countQuery, {
+                replacements,
+                type: sequelize.QueryTypes.SELECT,
+            });
+
+            total = Number(countResult.total);
+        }
+
+        const response = { list: rows };
+
+        if (usePagination) {
+            response.pagination = {
+                total,
+                page: pageNum,
+                limit: limitNum,
+                totalPages: Math.ceil(total / limitNum),
+            };
+        }
+
+        return commonService.okResponse(res, response);
+
+    } catch (err) {
+        console.error(err);
+        return commonService.handleError(res, err);
+    }
+};
 
 module.exports = {
-    getSalesInvoiceReport
+    getSalesInvoiceReport,
+    getSalesReturnReport
 }
