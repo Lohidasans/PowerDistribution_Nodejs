@@ -251,12 +251,11 @@ const getSalesReturnReport = async (req, res) => {
 
         // 🔹 BASE WHERE
         let baseWhere = `
-        WHERE sr.deleted_at IS NULL
-        AND sr.is_active = true
-        AND sr.status = 'Printed'
-        `;
+      WHERE sr.deleted_at IS NULL
+      AND sr.is_active = true
+      AND sr.status = 'Printed'
+    `;
 
-        // 🔹 EXTRA FILTERS
         let extraWhere = "";
 
         if (branch_id) {
@@ -274,14 +273,14 @@ const getSalesReturnReport = async (req, res) => {
             replacements.customer_id = +customer_id;
         }
 
-        // Date filter
+        // 🔹 DATE FILTER
         extraWhere += dateFilter(
             { from_date, to_date, date_filter },
             "sr.return_date",
             replacements
         );
 
-        // 🔹 SEARCH (AFTER JOINS)
+        // 🔹 SEARCH
         let searchClause = "";
         if (search) {
             searchClause = `
@@ -289,10 +288,18 @@ const getSalesReturnReport = async (req, res) => {
           fr.sales_return_no ILIKE :search OR
           c.customer_name ILIKE :search OR
           e.employee_name ILIKE :search OR
-          i.product_description ILIKE :search OR
-          i.product_sku_id ILIKE :search OR
-          i.product_item_sku_id ILIKE :search OR
-          i.invoice_no ILIKE :search
+          EXISTS (
+            SELECT 1 FROM sales_return_items sri
+            LEFT JOIN "productItemDetails" pid ON pid.id = sri.product_item_detail_id
+            LEFT JOIN products p ON p.id = pid.product_id
+            WHERE sri.sales_return_id = fr.id
+            AND (
+              sri.product_description ILIKE :search OR
+              sri.invoice_no ILIKE :search OR
+              pid.sku_id ILIKE :search OR
+              p.sku_id ILIKE :search
+            )
+          )
         )
       `;
             replacements.search = `%${search}%`;
@@ -321,18 +328,23 @@ const getSalesReturnReport = async (req, res) => {
       items AS (
         SELECT
           sri.sales_return_id,
-          sri.product_item_detail_id,
-          sri.product_description,
-          sri.quantity,
-          sri.rate,
-          sri.amount,
-          sri.invoice_no,
-          pid.sku_id AS product_item_sku_id,
-          p.sku_id AS product_sku_id
+          JSON_AGG(
+            JSON_BUILD_OBJECT(
+              'product_item_detail_id', sri.product_item_detail_id,
+              'product_description', sri.product_description,
+              'quantity', sri.quantity,
+              'rate', sri.rate,
+              'amount', sri.amount,
+              'invoice_no', sri.invoice_no,
+              'product_sku_id', p.sku_id,
+              'product_item_sku_id', pid.sku_id
+            )
+          ) AS items
         FROM sales_return_items sri
-        LEFT JOIN "productItemDetails" pid ON sri.product_item_detail_id = pid.id AND pid.deleted_at IS NULL
-        LEFT JOIN products p ON p.id = pid.product_id AND p.deleted_at IS NULL
+        LEFT JOIN "productItemDetails" pid ON pid.id = sri.product_item_detail_id
+        LEFT JOIN products p ON p.id = pid.product_id
         WHERE sri.deleted_at IS NULL
+        GROUP BY sri.sales_return_id
       )
 
       SELECT
@@ -342,17 +354,11 @@ const getSalesReturnReport = async (req, res) => {
         fr.branch_id,
         fr.customer_id,
         fr.employee_id,
+
         c.customer_name,
         e.employee_name,
 
-        i.product_item_detail_id,
-        i.product_description,
-        i.quantity,
-        i.rate,
-        i.amount,
-        i.invoice_no,
-        i.product_sku_id,
-        i.product_item_sku_id,
+        i.items,
 
         fr.subtotal_amount,
         fr.cgst_amount,
@@ -361,7 +367,6 @@ const getSalesReturnReport = async (req, res) => {
         fr.total_amount
 
       FROM filtered_returns fr
-
       LEFT JOIN items i ON i.sales_return_id = fr.id
       LEFT JOIN customers c ON c.id = fr.customer_id
       LEFT JOIN employees e ON e.id = fr.employee_id
@@ -372,7 +377,7 @@ const getSalesReturnReport = async (req, res) => {
       ORDER BY fr.return_date DESC
     `;
 
-        // 🔹 Pagination (ONLY if both provided)
+        // 🔹 PAGINATION
         if (usePagination) {
             query += ` LIMIT :limit OFFSET :offset`;
             replacements.limit = limitNum;
@@ -383,7 +388,6 @@ const getSalesReturnReport = async (req, res) => {
 
         let total = null;
 
-        // 🔹 COUNT QUERY (FAST)
         if (usePagination) {
             const countQuery = `
         SELECT COUNT(*) AS total
