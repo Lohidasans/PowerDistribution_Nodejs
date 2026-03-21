@@ -10,6 +10,7 @@ categoryRouter.get(
 );
 categoryRouter.get("/category/:id", categoryService.getCategoryById);
 categoryRouter.put("/category/:id", categoryService.updateCategory);
+categoryRouter.put("/category/:id/status", categoryService.updateCategoryStatus);
 categoryRouter.delete("/category/:id", categoryService.deleteCategory);
 
 module.exports = categoryRouter;

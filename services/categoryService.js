@@ -44,6 +44,7 @@ const getAllCategories = async (req, res) => {
         c.category_image_url,
         c.material_type_id,
         c.branch_id,
+        c.status,
         mt.material_type,
         mt.material_image_url
       FROM categories c
@@ -211,6 +212,52 @@ const deleteCategory = async (req, res) => {
   }
 };
 
+const updateCategoryStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    // 🔹 Validation
+    if (!id) {
+      return commonService.badRequest(res, "Category ID is required");
+    }
+
+    if (!status || !["Active", "Inactive"].includes(status)) {
+      return commonService.badRequest(
+        res,
+        "Invalid status. Allowed values: Active / Inactive"
+      );
+    }
+
+    // 🔹 Check if category exists
+    const category = await models.Category.findOne({
+      where: {
+        id,
+        deleted_at: null,
+      },
+    });
+
+    if (!category) {
+      return commonService.notFound(res, "Category not found");
+    }
+
+    // 🔹 Update status
+    await models.Category.update(
+      { status },
+      {
+        where: { id },
+      }
+    );
+
+    return commonService.okResponse(res, {
+      message: `Category status updated to ${status}`,
+    });
+
+  } catch (error) {
+    console.error("Error updating category status:", error);
+    return commonService.handleError(res, error);
+  }
+};
 module.exports = {
   createCategory,
   listCategories,
@@ -219,4 +266,5 @@ module.exports = {
   getCategoryById,
   updateCategory,
   deleteCategory,
+  updateCategoryStatus,
 };
