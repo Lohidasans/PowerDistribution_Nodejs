@@ -447,12 +447,11 @@ const getOldJewelReport = async (req, res) => {
 
         // 🔹 BASE WHERE
         let baseWhere = `
-        WHERE oj.deleted_at IS NULL
-        AND oj.is_active = true
-        AND oj.status = 'Printed'
-        `;
+      WHERE oj.deleted_at IS NULL
+      AND oj.is_active = true
+      AND oj.status = 'Printed'
+    `;
 
-        // 🔹 EXTRA FILTERS
         let extraWhere = "";
 
         if (branch_id) {
@@ -470,14 +469,14 @@ const getOldJewelReport = async (req, res) => {
             replacements.customer_id = +customer_id;
         }
 
-        // Date filter
+        // 🔹 DATE FILTER
         extraWhere += dateFilter(
             { from_date, to_date, date_filter },
             "oj.date",
             replacements
         );
 
-        // 🔹 SEARCH (AFTER JOINS)
+        // 🔹 SEARCH
         let searchClause = "";
         if (search) {
             searchClause = `
@@ -485,9 +484,16 @@ const getOldJewelReport = async (req, res) => {
           fo.old_jewel_code ILIKE :search OR
           c.customer_name ILIKE :search OR
           e.employee_name ILIKE :search OR
-          mt.material_type ILIKE :search OR
-          i.jewel_description ILIKE :search OR
-          i.hsn_code ILIKE :search
+          EXISTS (
+            SELECT 1 FROM old_jewel_items oji
+            LEFT JOIN "materialTypes" mt ON mt.id = oji.material_type_id
+            WHERE oji.old_jewel_id = fo.id
+            AND (
+              oji.jewel_description ILIKE :search OR
+              oji.hsn_code ILIKE :search OR
+              mt.material_type ILIKE :search
+            )
+          )
         )
       `;
             replacements.search = `%${search}%`;
@@ -512,32 +518,39 @@ const getOldJewelReport = async (req, res) => {
       items AS (
         SELECT
           oji.old_jewel_id,
-          oji.material_type_id,
-          oji.jewel_description,
-          oji.hsn_code,
-          oji.grs_weight,
-          oji.dust_weight,
-          oji.net_weight,
-          oji.wastage,
-          oji.rate,
-          oji.amount
+          JSON_AGG(
+            JSON_BUILD_OBJECT(
+              'material_type', mt.material_type,
+              'jewel_description', oji.jewel_description,
+              'hsn_code', oji.hsn_code,
+              'grs_weight', oji.grs_weight,
+              'wastage', oji.wastage,
+              'dust_weight', oji.dust_weight,
+              'net_weight', oji.net_weight,
+              'rate', oji.rate,
+              'amount', oji.amount
+            )
+          ) AS items
         FROM old_jewel_items oji
+        LEFT JOIN "materialTypes" mt ON mt.id = oji.material_type_id
         WHERE oji.deleted_at IS NULL
+        GROUP BY oji.old_jewel_id
       ),
 
-     invoice_map AS (
+      invoice_map AS (
         SELECT
-            sa.reference_id AS old_jewel_id,
-            sib.invoice_no
+          sa.reference_id AS old_jewel_id,
+          MAX(sib.invoice_no) AS invoice_no
         FROM sales_invoice_adjustments sa
         JOIN sales_invoice_bills sib 
-            ON sib.id = sa.sales_invoice_id
-            AND sib.deleted_at IS NULL
-            AND sib.status = 'Invoice'
-            AND sib.is_active = true
+          ON sib.id = sa.sales_invoice_id
+          AND sib.deleted_at IS NULL
+          AND sib.status = 'Invoice'
+          AND sib.is_active = true
         WHERE sa.deleted_at IS NULL
-            AND sa.adjustment_type_id = '2'
-        )
+          AND sa.adjustment_type_id = '2'
+        GROUP BY sa.reference_id
+      )
 
       SELECT
         fo.id,
@@ -550,16 +563,7 @@ const getOldJewelReport = async (req, res) => {
         c.customer_name,
         e.employee_name,
 
-        mt.material_type,
-
-        i.jewel_description,
-        i.hsn_code,
-        i.grs_weight,
-        i.wastage,
-        i.dust_weight,
-        i.net_weight,
-        i.rate,
-        i.amount,
+        i.items,
 
         fo.total_amount,
         inv.invoice_no
@@ -569,7 +573,6 @@ const getOldJewelReport = async (req, res) => {
       LEFT JOIN items i ON i.old_jewel_id = fo.id
       LEFT JOIN customers c ON c.id = fo.customer_id
       LEFT JOIN employees e ON e.id = fo.employee_id
-      LEFT JOIN "materialTypes" mt ON mt.id = i.material_type_id
       LEFT JOIN invoice_map inv ON inv.old_jewel_id = fo.id
 
       WHERE 1=1
@@ -578,7 +581,7 @@ const getOldJewelReport = async (req, res) => {
       ORDER BY fo.date DESC
     `;
 
-        // 🔹 Pagination (ONLY if both provided)
+        // 🔹 PAGINATION
         if (usePagination) {
             query += ` LIMIT :limit OFFSET :offset`;
             replacements.limit = limitNum;
@@ -589,7 +592,6 @@ const getOldJewelReport = async (req, res) => {
 
         let total = null;
 
-        // 🔹 COUNT QUERY (FAST)
         if (usePagination) {
             const countQuery = `
         SELECT COUNT(*) AS total
