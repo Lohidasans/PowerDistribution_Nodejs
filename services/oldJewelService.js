@@ -182,7 +182,35 @@ const getAllOldJewels = async (req, res) => {
       }
     );
 
-    // 3️. Group items by old_jewel_id
+    // Fetch Invoice Mapping
+    const invoiceRows = await sequelize.query(
+      `
+      SELECT
+        sa.reference_id AS old_jewel_id,
+        MAX(sib.invoice_no) AS invoice_no
+      FROM sales_invoice_adjustments sa
+      JOIN sales_invoice_bills sib
+        ON sib.id = sa.sales_invoice_id
+        AND sib.deleted_at IS NULL
+        AND sib.status = 'Invoice'
+        AND sib.is_active = true
+      WHERE sa.deleted_at IS NULL
+        AND sa.adjustment_type_id = '2'
+        AND sa.reference_id IN (:jewelIds)
+      GROUP BY sa.reference_id
+      `,
+      {
+        replacements: { jewelIds },
+        type: sequelize.QueryTypes.SELECT,
+      }
+    );
+
+    const invoiceMap = invoiceRows.reduce((acc, row) => {
+      acc[row.old_jewel_id] = row.invoice_no;
+      return acc;
+    }, {});
+
+    //  Group Items
     const itemsMap = items.reduce((acc, item) => {
       if (!acc[item.old_jewel_id]) acc[item.old_jewel_id] = [];
       acc[item.old_jewel_id].push(item);
@@ -200,6 +228,7 @@ const getAllOldJewels = async (req, res) => {
 
       return {
         ...jewel,
+        invoice_no: invoiceMap[jewel.id] || null,
         total_net_weight: totalNetWeight.toFixed(3),
         quantity_count: jewelItems.length,
         items: jewelItems,
