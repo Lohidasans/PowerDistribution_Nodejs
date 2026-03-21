@@ -13,6 +13,7 @@ subcategoryRouter.get(
   subcategoryService.getSubcategoryById
 );
 subcategoryRouter.put("/subcategory/:id", subcategoryService.updateSubcategory);
+subcategoryRouter.put("/subcategory/:id/status", subcategoryService.updateSubcategoryStatus);
 subcategoryRouter.delete(
   "/subcategory/:id",
   subcategoryService.deleteSubcategory

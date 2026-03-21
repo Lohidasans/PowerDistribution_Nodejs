@@ -97,6 +97,7 @@ const getAllSubCategories = async (req, res) => {
         c.category_name,
         c.category_image_url,
         sc.materialtype_id,
+        sc.status,
         mt.material_type AS material_type,
         mt.material_image_url
       FROM "subcategories" sc
@@ -223,6 +224,53 @@ const deleteSubcategory = async (req, res) => {
   }
 };
 
+const updateSubcategoryStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    // 🔹 Validation
+    if (!id) {
+      return commonService.badRequest(res, "Subcategory ID is required");
+    }
+
+    if (!status || !["Active", "Inactive"].includes(status)) {
+      return commonService.badRequest(
+        res,
+        "Invalid status. Allowed values: Active / Inactive"
+      );
+    }
+
+    // 🔹 Check existence
+    const subcategory = await models.Subcategory.findOne({
+      where: {
+        id,
+        deleted_at: null,
+      },
+    });
+
+    if (!subcategory) {
+      return commonService.notFound(res, "Subcategory not found");
+    }
+
+    // 🔹 Update status
+    await models.Subcategory.update(
+      { status },
+      {
+        where: { id },
+      }
+    );
+
+    return commonService.okResponse(res, {
+      message: `Subcategory status updated to ${status}`,
+    });
+
+  } catch (error) {
+    console.error("Error updating subcategory status:", error);
+    return commonService.handleError(res, error);
+  }
+};
+
 module.exports = {
   createSubcategory,
   listSubcategories,
@@ -231,4 +279,5 @@ module.exports = {
   getSubcategoryById,
   updateSubcategory,
   deleteSubcategory,
+  updateSubcategoryStatus
 };
