@@ -819,9 +819,253 @@ const getJewelRepairReport = async (req, res) => {
     }
 };
 
+const getPurchaseReport = async (req, res) => {
+    try {
+        const {
+            branch_id,
+            vendor_id,
+            grn_no,
+            ref_no,
+            material_type_id,
+            category_id,
+            subcategory_id,
+            search,
+            from_date,
+            to_date,
+            date_filter,
+            page,
+            limit,
+        } = req.query;
+
+        const usePagination = page !== undefined && limit !== undefined;
+
+        const pageNum = usePagination ? parseInt(page, 10) : null;
+        const limitNum = usePagination ? parseInt(limit, 10) : null;
+        const offset = usePagination ? (pageNum - 1) * limitNum : null;
+
+        const replacements = {};
+
+        // 🔹 BASE WHERE (GRN)
+        let baseWhere = `
+      WHERE g.deleted_at IS NULL
+      AND g.is_active = true
+    `;
+
+        let extraWhere = "";
+
+        if (branch_id) {
+            extraWhere += ` AND g.branch_id = :branch_id`;
+            replacements.branch_id = +branch_id;
+        }
+
+        if (vendor_id) {
+            extraWhere += ` AND g.vendor_id = :vendor_id`;
+            replacements.vendor_id = +vendor_id;
+        }
+
+        if (grn_no) {
+            extraWhere += ` AND g.grn_no ILIKE :grn_no`;
+            replacements.grn_no = `%${grn_no}%`;
+        }
+
+        // 🔹 DATE FILTER
+        extraWhere += dateFilter(
+            { from_date, to_date, date_filter },
+            "g.grn_date",
+            replacements
+        );
+
+        // 🔹 ITEM FILTER (for EXISTS)
+        let itemFilter = `
+      gi.deleted_at IS NULL
+    `;
+
+        if (ref_no) {
+            itemFilter += ` AND gi.ref_no ILIKE :ref_no`;
+            replacements.ref_no = `%${ref_no}%`;
+        }
+
+        if (material_type_id) {
+            itemFilter += ` AND gi.material_type_id = :material_type_id`;
+            replacements.material_type_id = +material_type_id;
+        }
+
+        if (category_id) {
+            itemFilter += ` AND gi.category_id = :category_id`;
+            replacements.category_id = +category_id;
+        }
+
+        if (subcategory_id) {
+            itemFilter += ` AND gi.subcategory_id = :subcategory_id`;
+            replacements.subcategory_id = +subcategory_id;
+        }
+
+        // 🔹 APPLY ITEM FILTER TO GRN
+        if (ref_no || material_type_id || category_id || subcategory_id) {
+            extraWhere += `
+        AND EXISTS (
+          SELECT 1 FROM "grnItems" gi
+          WHERE gi.grn_id = g.id
+          AND ${itemFilter}
+        )
+      `;
+        }
+
+        // 🔹 SEARCH
+        let searchClause = "";
+        if (search) {
+            searchClause = `
+        AND (
+          fg.grn_no ILIKE :search OR
+          v.vendor_name ILIKE :search OR
+          EXISTS (
+            SELECT 1 FROM "grnItems" gi
+            LEFT JOIN "materialTypes" mt ON mt.id = gi.material_type_id
+            LEFT JOIN categories ct ON ct.id = gi.category_id
+            LEFT JOIN subcategories sc ON sc.id = gi.subcategory_id
+            WHERE gi.grn_id = fg.id
+            AND (
+              gi.ref_no ILIKE :search OR
+              mt.material_type ILIKE :search OR
+              ct.category_name ILIKE :search OR
+              sc.subcategory_name ILIKE :search OR
+              gi.others ILIKE :search
+            )
+          )
+        )
+      `;
+            replacements.search = `%${search}%`;
+        }
+
+        // 🔹 MAIN QUERY
+        let query = `
+      WITH filtered_grns AS (
+        SELECT
+          g.id,
+          g.grn_no,
+          g.grn_date,
+          g.vendor_id,
+          g.branch_id,
+          g.total_amount,
+          g.sgst_percent,
+          g.cgst_percent,
+          g.discount_percent
+        FROM grns g
+        ${baseWhere}
+        ${extraWhere}
+      ),
+
+      items AS (
+        SELECT
+          gi.grn_id,
+          JSON_AGG(
+            JSON_BUILD_OBJECT(
+              'ref_no', gi.ref_no,
+              'material_type', mt.material_type,
+              'purity', gi.purity,
+              'material_price_per_g', gi.material_price_per_g,
+              'category_name', ct.category_name,
+              'subcategory_name', sc.subcategory_name,
+              'type', gi.type,
+              'quantity', gi.quantity,
+              'gross_wt_in_g', gi.gross_wt_in_g,
+              'stone_wt_in_g', gi.stone_wt_in_g,
+              'others', gi.others,
+              'others_wt_in_g', gi.others_wt_in_g,
+              'others_value', gi.others_value,
+              'net_wt_in_g', gi.net_wt_in_g,
+              'purchase_rate', gi.purchase_rate,
+              'stone_rate', gi.stone_rate,
+              'making_charge', gi.making_charge,
+              'rate_per_g', gi.rate_per_g,
+              'total_amount', gi.total_amount,
+              'sgst', ROUND(gi.total_amount * fg.sgst_percent / 100, 2),
+              'cgst', ROUND(gi.total_amount * fg.cgst_percent / 100, 2)
+            )
+          ) AS items
+        FROM "grnItems" gi
+        LEFT JOIN filtered_grns fg ON fg.id = gi.grn_id
+        LEFT JOIN "materialTypes" mt ON mt.id = gi.material_type_id
+        LEFT JOIN categories ct ON ct.id = gi.category_id
+        LEFT JOIN subcategories sc ON sc.id = gi.subcategory_id
+        WHERE gi.deleted_at IS NULL
+        GROUP BY gi.grn_id
+      )
+
+      SELECT
+        fg.id,
+        fg.grn_no,
+        fg.grn_date,
+        fg.branch_id,
+        fg.vendor_id,
+        v.vendor_name,
+
+        i.items,
+
+        fg.total_amount AS grand_total,
+        fg.discount_percent AS round_off
+
+      FROM filtered_grns fg
+      LEFT JOIN items i ON i.grn_id = fg.id
+      LEFT JOIN vendors v ON v.id = fg.vendor_id
+
+      WHERE 1=1
+      ${searchClause}
+
+      ORDER BY fg.grn_date DESC
+    `;
+
+        // 🔹 PAGINATION
+        if (usePagination) {
+            query += ` LIMIT :limit OFFSET :offset`;
+            replacements.limit = limitNum;
+            replacements.offset = offset;
+        }
+
+        const [rows] = await sequelize.query(query, { replacements });
+
+        let total = null;
+
+        // 🔹 COUNT QUERY
+        if (usePagination) {
+            const countQuery = `
+        SELECT COUNT(*) AS total
+        FROM grns g
+        ${baseWhere}
+        ${extraWhere}
+      `;
+
+            const [countResult] = await sequelize.query(countQuery, {
+                replacements,
+                type: sequelize.QueryTypes.SELECT,
+            });
+
+            total = Number(countResult.total);
+        }
+
+        const response = { list: rows };
+
+        if (usePagination) {
+            response.pagination = {
+                total,
+                page: pageNum,
+                limit: limitNum,
+                totalPages: Math.ceil(total / limitNum),
+            };
+        }
+
+        return commonService.okResponse(res, response);
+
+    } catch (err) {
+        console.error(err);
+        return commonService.handleError(res, err);
+    }
+};
+
 module.exports = {
     getSalesInvoiceReport,
     getSalesReturnReport,
     getOldJewelReport,
-    getJewelRepairReport
+    getJewelRepairReport,
+    getPurchaseReport
 }
