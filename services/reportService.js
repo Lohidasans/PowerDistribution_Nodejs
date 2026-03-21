@@ -651,12 +651,11 @@ const getJewelRepairReport = async (req, res) => {
 
         // 🔹 BASE WHERE
         let baseWhere = `
-        WHERE jr.deleted_at IS NULL
-        AND jr.is_active = true
-        AND jr.status = 'Completed'
-        `;
+      WHERE jr.deleted_at IS NULL
+      AND jr.is_active = true
+      AND jr.status = 'Completed'
+    `;
 
-        // 🔹 EXTRA FILTERS
         let extraWhere = "";
 
         if (branch_id) {
@@ -674,14 +673,14 @@ const getJewelRepairReport = async (req, res) => {
             replacements.customer_id = +customer_id;
         }
 
-        // Date filter
+        // 🔹 DATE FILTER
         extraWhere += dateFilter(
             { from_date, to_date, date_filter },
             "jr.date",
             replacements
         );
 
-        // 🔹 SEARCH (AFTER JOINS)
+        // 🔹 SEARCH
         let searchClause = "";
         if (search) {
             searchClause = `
@@ -689,9 +688,16 @@ const getJewelRepairReport = async (req, res) => {
           fr.repair_code ILIKE :search OR
           c.customer_name ILIKE :search OR
           e.employee_name ILIKE :search OR
-          mt.material_type ILIKE :search OR
-          i.description ILIKE :search OR
-          i.remarks ILIKE :search
+          EXISTS (
+            SELECT 1 FROM jewel_repair_items jri
+            LEFT JOIN "materialTypes" mt ON mt.id = jri.material_type_id
+            WHERE jri.repair_id = fr.id
+            AND (
+              jri.description ILIKE :search OR
+              jri.remarks ILIKE :search OR
+              mt.material_type ILIKE :search
+            )
+          )
         )
       `;
             replacements.search = `%${search}%`;
@@ -716,28 +722,36 @@ const getJewelRepairReport = async (req, res) => {
         ${extraWhere}
       ),
 
+      -- 🔹 GROUP ITEMS
       items AS (
         SELECT
           jri.repair_id,
-          jri.material_type_id,
-          jri.description,
-          jri.weight,
-          jri.quantity,
-          jri.amount,
-          jri.remarks
+          JSON_AGG(
+            JSON_BUILD_OBJECT(
+              'material_type', mt.material_type,
+              'description', jri.description,
+              'weight', jri.weight,
+              'quantity', jri.quantity,
+              'remarks', jri.remarks,
+              'amount', jri.amount
+            )
+          ) AS items
         FROM jewel_repair_items jri
+        LEFT JOIN "materialTypes" mt ON mt.id = jri.material_type_id
         WHERE jri.deleted_at IS NULL
+        GROUP BY jri.repair_id
       ),
 
+      -- 🔹 GROUP PAYMENTS
       payments AS (
         SELECT
-            jewel_repair_id,
-            SUM(amount_received) AS total_paid
+          jewel_repair_id,
+          SUM(amount_received) AS total_paid
         FROM payments
         WHERE status = 'Completed'
-            AND jewel_repair_id IS NOT NULL
+          AND jewel_repair_id IS NOT NULL
         GROUP BY jewel_repair_id
-    )
+      )
 
       SELECT
         fr.id,
@@ -746,22 +760,17 @@ const getJewelRepairReport = async (req, res) => {
         fr.branch_id,
         fr.customer_id,
         fr.employee_id,
+
         c.customer_name,
         e.employee_name,
 
-        mt.material_type,
-
-        i.description,
-        i.weight,
-        i.quantity,
-        i.remarks,
-        i.amount,
+        i.items,
 
         fr.sub_total_amount,
         fr.discount,
         fr.total_amount,
         fr.amount_due,
-        
+
         COALESCE(p.total_paid, 0) AS total_paid
 
       FROM filtered_repairs fr
@@ -769,7 +778,6 @@ const getJewelRepairReport = async (req, res) => {
       LEFT JOIN items i ON i.repair_id = fr.id
       LEFT JOIN customers c ON c.id = fr.customer_id
       LEFT JOIN employees e ON e.id = fr.employee_id
-      LEFT JOIN "materialTypes" mt ON mt.id = i.material_type_id
       LEFT JOIN payments p ON p.jewel_repair_id = fr.id
 
       WHERE 1=1
@@ -778,7 +786,7 @@ const getJewelRepairReport = async (req, res) => {
       ORDER BY fr.date DESC
     `;
 
-        // 🔹 Pagination (ONLY if both provided)
+        // 🔹 PAGINATION
         if (usePagination) {
             query += ` LIMIT :limit OFFSET :offset`;
             replacements.limit = limitNum;
@@ -789,7 +797,6 @@ const getJewelRepairReport = async (req, res) => {
 
         let total = null;
 
-        // 🔹 COUNT QUERY (FAST)
         if (usePagination) {
             const countQuery = `
         SELECT COUNT(*) AS total
