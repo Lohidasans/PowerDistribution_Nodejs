@@ -2,7 +2,6 @@ const { models, sequelize } = require("../models");
 const commonService = require("./commonService");
 const { dateFilter } = require("../helpers/dateHelper");
 
-
 const getSalesInvoiceReport = async (req, res) => {
     try {
         const {
@@ -25,14 +24,13 @@ const getSalesInvoiceReport = async (req, res) => {
 
         const replacements = {};
 
-        // 🔹 BASE WHERE (ONLY sib)
+        // 🔹 BASE WHERE
         let baseWhere = `
-            WHERE sib.deleted_at IS NULL
-            AND sib.status = 'Invoice'
-            AND sib.is_active = true
-            `;
+      WHERE sib.deleted_at IS NULL
+      AND sib.status = 'Invoice'
+      AND sib.is_active = true
+    `;
 
-        // 🔹 EXTRA FILTERS
         let extraWhere = "";
 
         if (branch_id) {
@@ -57,7 +55,7 @@ const getSalesInvoiceReport = async (req, res) => {
             replacements
         );
 
-        // 🔹 SEARCH (APPLIED AFTER JOINS)
+        // 🔹 SEARCH
         let searchClause = "";
         if (search) {
             searchClause = `
@@ -65,18 +63,25 @@ const getSalesInvoiceReport = async (req, res) => {
           fi.invoice_no ILIKE :search OR
           c.customer_name ILIKE :search OR
           e.employee_name ILIKE :search OR
-          i.product_name_snapshot ILIKE :search OR
-          i.product_sku_id ILIKE :search OR
-          i.product_item_sku_id ILIKE :search OR
           adj.old_jewel_no ILIKE :search OR
           adj.sales_return_no ILIKE :search OR
-          adj.scheme_no ILIKE :search
+          adj.scheme_no ILIKE :search OR
+          EXISTS (
+            SELECT 1 FROM sales_invoice_bill_items sii
+            LEFT JOIN "productItemDetails" pid ON pid.id = sii.product_item_detail_id
+            LEFT JOIN products p ON p.id = pid.product_id
+            WHERE sii.invoice_bill_id = fi.id
+            AND (
+              sii.product_name_snapshot ILIKE :search OR
+              pid.sku_id ILIKE :search OR
+              p.sku_id ILIKE :search
+            )
+          )
         )
       `;
             replacements.search = `%${search}%`;
         }
 
-        // 🔹 MAIN QUERY
         let query = `
       WITH filtered_invoices AS (
         SELECT
@@ -117,21 +122,24 @@ const getSalesInvoiceReport = async (req, res) => {
       ),
 
       items AS (
-        SELECT 
+        SELECT
           sii.invoice_bill_id,
-          sii.product_item_detail_id,
-          sii.product_name_snapshot,
-          sii.quantity,
-          sii.rate,
-          sii.amount,
-          pid.sku_id AS product_item_sku_id,
-          p.sku_id AS product_sku_id
+          JSON_AGG(
+            JSON_BUILD_OBJECT(
+              'product_item_detail_id', sii.product_item_detail_id,
+              'product_name', sii.product_name_snapshot,
+              'quantity', sii.quantity,
+              'rate', sii.rate,
+              'amount', sii.amount,
+              'product_sku_id', p.sku_id,
+              'product_item_sku_id', pid.sku_id
+            )
+          ) AS items
         FROM sales_invoice_bill_items sii
-        LEFT JOIN "productItemDetails" pid 
-          ON sii.product_item_detail_id = pid.id AND pid.deleted_at IS NULL
-        LEFT JOIN products p 
-          ON p.id = pid.product_id AND p.deleted_at IS NULL
+        LEFT JOIN "productItemDetails" pid ON pid.id = sii.product_item_detail_id
+        LEFT JOIN products p ON p.id = pid.product_id
         WHERE sii.deleted_at IS NULL
+        GROUP BY sii.invoice_bill_id
       )
 
       SELECT
@@ -144,13 +152,7 @@ const getSalesInvoiceReport = async (req, res) => {
         fi.customer_id,
         fi.employee_id,
 
-        i.product_item_detail_id,
-        i.product_name_snapshot,
-        i.quantity,
-        i.rate,
-        i.amount,
-        i.product_sku_id,
-        i.product_item_sku_id,
+        i.items,
 
         fi.net_total,
         fi.subtotal_amount,
@@ -180,7 +182,6 @@ const getSalesInvoiceReport = async (req, res) => {
       ORDER BY fi.invoice_date DESC
     `;
 
-        // 🔹 Pagination
         if (usePagination) {
             query += ` LIMIT :limit OFFSET :offset`;
             replacements.limit = limitNum;
@@ -191,7 +192,6 @@ const getSalesInvoiceReport = async (req, res) => {
 
         let total = null;
 
-        // 🔹 COUNT QUERY (optimized)
         if (usePagination) {
             const countQuery = `
         SELECT COUNT(*) AS total
