@@ -196,10 +196,55 @@ const generateProductSKUCode = async (prefixFromQuery = "", options = {}) => {
   return finalSKU;
 };
 
+// For invoice settings - EST, INV, OJ, JR, SR, PAY, REC, JE
+const generateBranchSeriesCode = async (
+  model,
+  field,
+  prefix,
+  startNo,
+  { pad = 3 } = {}
+) => {
+  const cleanPrefix = String(prefix || "").trim().toUpperCase();
+
+  // Escape regex special characters
+  const escapedPrefix = cleanPrefix.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&");
+
+  // Get max number for this prefix
+  const [result] = await model.sequelize.query(
+    `
+    SELECT
+      MAX(
+        CAST(
+          REGEXP_REPLACE(${field}, '^${escapedPrefix}', '', 'i')
+          AS INTEGER
+        )
+      ) AS max_no
+    FROM ${model.getTableName()}
+    WHERE ${field} ILIKE :prefix
+    `,
+    {
+      replacements: { prefix: `${cleanPrefix}%` },
+      type: model.sequelize.QueryTypes.SELECT,
+    }
+  );
+
+  let nextNumber;
+
+  if (!result?.max_no) {
+    // If no existing invoices → start from suffix (or default)
+    nextNumber = parseInt(startNo, 10) || 1;
+  } else {
+    nextNumber = result.max_no + 1;
+  }
+
+  return `${cleanPrefix}${String(nextNumber).padStart(pad, "0")}`;
+};
+
 module.exports = { 
   generateUniqueSkuId, 
   generateUniqueCode, 
   generateFiscalSeriesCode,
-  generateProductSKUCode
+  generateProductSKUCode,
+  generateBranchSeriesCode
 
 };
