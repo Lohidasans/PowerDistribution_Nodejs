@@ -1161,47 +1161,53 @@ const getProductWiseReport = async (req, res) => {
     // 🔹 MAIN QUERY
     let query = `
       SELECT
-        g.grn_no,
-        g.grn_date,
-        g.branch_id,
+          g.grn_no,
+          g.grn_date,
+          p.branch_id,
 
-        v.vendor_name,
+          v.vendor_name,
 
-        gi.ref_no,
+          gi.ref_no,
 
-        mt.material_type,
-        c.category_name,
-        sc.subcategory_name,
+          mt.material_type,
+          mt.material_price,
+          c.category_name,
+          sc.subcategory_name,
 
-        p.id AS product_id,
-        p.product_name,
-        p.sku_id,
-        p.product_type,
+          p.id AS product_id,
+          p.product_name,
+          p.sku_id,
+          p.product_type,
 
-        pid.id AS item_id,
-        pid.sku_id AS item_sku,
-        pid.variation,
+        -- AGGREGATED VALUES
+        SUM(pid.quantity) AS total_quantity,
+          ROUND(SUM(pid.net_weight), 3) AS total_net_weight,
+            ROUND(SUM(pid.gross_weight), 3) AS total_gross_weight,
 
-        pid.quantity,
-        pid.gross_weight,
-        pid.net_weight,
-        pid.stone_weight,
-        pid.stone_value,
+        -- PURCHASE PRICE(TOTAL)
+        ROUND(SUM(gi.rate_per_g * pid.net_weight), 2) AS purchase_price,
 
-        pid.making_charge,
-        pid.making_charge_type,
-        pid.wastage,
-        pid.wastage_type,
-
-        gi.rate_per_g,
-
-        -- ✅ PURCHASE PRICE
-        ROUND(gi.rate_per_g * pid.net_weight, 2) AS purchase_price
+        -- ITEMS(NESTED)
+        JSON_AGG(
+          JSON_BUILD_OBJECT(
+            'item_id', pid.id,
+            'item_sku', pid.sku_id,
+            'variation', pid.variation,
+            'quantity', pid.quantity,
+            'gross_weight', pid.gross_weight,
+            'net_weight', pid.net_weight,
+            'stone_weight', pid.stone_weight,
+            'stone_value', pid.stone_value,
+            'making_charge', pid.making_charge,
+            'making_charge_type', pid.making_charge_type,
+            'wastage', pid.wastage,
+            'wastage_type', pid.wastage_type
+          )
+        ) FILTER(WHERE pid.id IS NOT NULL) AS items
 
       FROM products p
 
       LEFT JOIN grns g ON g.id = p.grn_id AND g.deleted_at IS NULL
-
       LEFT JOIN "grnItems" gi ON gi.id = p.ref_no_id
       LEFT JOIN "productItemDetails" pid ON pid.product_id = p.id AND pid.deleted_at IS NULL
 
@@ -1210,7 +1216,19 @@ const getProductWiseReport = async (req, res) => {
       LEFT JOIN categories c ON c.id = p.category_id
       LEFT JOIN subcategories sc ON sc.id = p.subcategory_id
 
-      ${where}
+      ${ where }
+
+      GROUP BY
+        g.grn_no,
+          g.grn_date,
+          g.branch_id,
+          v.vendor_name,
+          gi.ref_no,
+          mt.material_type,
+          mt.material_price,
+          c.category_name,
+          sc.subcategory_name,
+          p.id
 
       ORDER BY g.grn_date DESC
     `;
@@ -1226,31 +1244,43 @@ const getProductWiseReport = async (req, res) => {
       type: sequelize.QueryTypes.SELECT,
     });
 
-    // 🔥 SELLING PRICE CALCULATION
+    // SELLING PRICE CALCULATION
     const finalRows = rows.map((row) => {
-      const calc = calculateSellingPriceSync(
-        { product_type: row.product_type },
-        {
-          net_weight: row.net_weight,
-          stone_value: row.stone_value,
-          making_charge: row.making_charge,
-          making_charge_type: row.making_charge_type,
-          wastage: row.wastage,
-          wastage_type: row.wastage_type,
-          rate_per_gram: row.rate_per_g,
-        },
-        [],
-        row.rate_per_g
-      );
+      let totalSellingPrice = 0;
+
+      const items = row.items || [];
+
+      const calculatedItems = items.map((item) => {
+        const calc = calculateSellingPriceSync(
+          { product_type: row.product_type },
+          {
+            net_weight: item.net_weight,
+            stone_value: item.stone_value,
+            making_charge: item.making_charge,
+            making_charge_type: item.making_charge_type,
+            wastage: item.wastage,
+            wastage_type: item.wastage_type,
+            rate_per_gram: row.rate_per_g, 
+          },
+          [],
+          row.material_price
+        );
+
+        totalSellingPrice += Number(calc.selling_price || 0);
+
+        return {
+          ...item,
+          selling_price: Number(calc.selling_price || 0),
+        };
+      });
 
       const purchasePrice = Number(row.purchase_price || 0);
-      const sellingPrice = Number(calc.selling_price || 0);
 
       return {
         ...row,
-
-        selling_price: sellingPrice,
-        profit: Number((sellingPrice - purchasePrice).toFixed(2)),
+        items: calculatedItems,
+        selling_price: Number(totalSellingPrice.toFixed(2)),
+        profit: Number((totalSellingPrice - purchasePrice).toFixed(2)),
       };
     });
 
