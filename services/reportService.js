@@ -1175,14 +1175,16 @@ const getProductWiseReport = async (req, res) => {
           sc.subcategory_name,
 
           p.id AS product_id,
-          p.product_name,
           p.sku_id,
+          p.product_name,
+          p.purity,
           p.product_type,
+          p.variation_type,
 
         -- AGGREGATED VALUES
         SUM(pid.quantity) AS total_quantity,
-          ROUND(SUM(pid.net_weight), 3) AS total_net_weight,
-            ROUND(SUM(pid.gross_weight), 3) AS total_gross_weight,
+        ROUND(SUM(pid.net_weight), 3) AS total_net_weight,
+        ROUND(SUM(pid.gross_weight), 3) AS total_gross_weight,
 
         -- PURCHASE PRICE(TOTAL)
         ROUND(SUM(gi.rate_per_g * pid.net_weight), 2) AS purchase_price,
@@ -1201,7 +1203,9 @@ const getProductWiseReport = async (req, res) => {
             'making_charge', pid.making_charge,
             'making_charge_type', pid.making_charge_type,
             'wastage', pid.wastage,
-            'wastage_type', pid.wastage_type
+            'wastage_type', pid.wastage_type,
+            'website_price', pid.website_price,
+            'measurement_details', pid.measurement_details
           )
         ) FILTER(WHERE pid.id IS NOT NULL) AS items
 
