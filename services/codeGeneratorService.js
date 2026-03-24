@@ -60,7 +60,7 @@ const generateCode = async (req, res) => {
             startNo
         );
 
-        return commonService.okResponse(res, { invoice_no: code });
+        return commonService.okResponse(res, { unique_code: code });
     } catch (err) {
         return commonService.handleError(res, err);
     }
