@@ -3081,5 +3081,6 @@ module.exports = {
   //newGetAllProductDetails,
   getTopSellingSubcategories,
   getStockUpdates,
-  searchProductBySkuStockTransfer
+  searchProductBySkuStockTransfer,
+  calculateSellingPriceSync
 };

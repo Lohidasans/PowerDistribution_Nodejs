@@ -1,6 +1,7 @@
 const { models, sequelize } = require("../models");
 const commonService = require("./commonService");
 const { dateFilter } = require("../helpers/dateHelper");
+const { calculateSellingPriceSync } = require("../services/productService");
 
 const getSalesInvoiceReport = async (req, res) => {
     try {
@@ -1075,10 +1076,227 @@ const getPurchaseReport = async (req, res) => {
     }
 };
 
+const getProductWiseReport = async (req, res) => {
+  try {
+    const {
+      branch_id,
+      material_type_id,
+      vendor_id,
+      category_id,
+      subcategory_id,
+      grn_no,
+      ref_no,
+      search,
+      page,
+      limit,
+    } = req.query;
+
+    const usePagination = page !== undefined && limit !== undefined;
+
+    const pageNum = usePagination ? parseInt(page, 10) : null;
+    const limitNum = usePagination ? parseInt(limit, 10) : null;
+    const offset = usePagination ? (pageNum - 1) * limitNum : null;
+
+    const replacements = {};
+
+    // 🔹 BASE WHERE (PRODUCT LEVEL - BEST PRACTICE)
+    let where = `
+      WHERE p.deleted_at IS NULL
+      AND p.status = 'Active'
+    `;
+
+    if (branch_id) {
+      where += ` AND p.branch_id = :branch_id`;
+      replacements.branch_id = +branch_id;
+    }
+
+    if (vendor_id) {
+      where += ` AND p.vendor_id = :vendor_id`;
+      replacements.vendor_id = +vendor_id;
+    }
+
+    if (material_type_id) {
+      where += ` AND p.material_type_id = :material_type_id`;
+      replacements.material_type_id = +material_type_id;
+    }
+
+    if (category_id) {
+      where += ` AND p.category_id = :category_id`;
+      replacements.category_id = +category_id;
+    }
+
+    if (subcategory_id) {
+      where += ` AND p.subcategory_id = :subcategory_id`;
+      replacements.subcategory_id = +subcategory_id;
+    }
+
+    if (grn_no) {
+      where += ` AND g.grn_no ILIKE :grn_no`;
+      replacements.grn_no = `%${grn_no}%`;
+    }
+
+    if (ref_no) {
+      where += ` AND gi.ref_no ILIKE :ref_no`;
+      replacements.ref_no = `%${ref_no}%`;
+    }
+
+    // 🔍 SEARCH
+    if (search) {
+      where += `
+        AND (
+          g.grn_no ILIKE :search OR
+          gi.ref_no ILIKE :search OR
+          v.vendor_name ILIKE :search OR
+          mt.material_type ILIKE :search OR
+          c.category_name ILIKE :search OR
+          sc.subcategory_name ILIKE :search OR
+          p.product_name ILIKE :search OR
+          p.sku_id ILIKE :search OR
+          pid.sku_id ILIKE :search
+        )
+      `;
+      replacements.search = `%${search}%`;
+    }
+
+    // 🔹 MAIN QUERY
+    let query = `
+      SELECT
+        g.grn_no,
+        g.grn_date,
+        g.branch_id,
+
+        v.vendor_name,
+
+        gi.ref_no,
+
+        mt.material_type,
+        c.category_name,
+        sc.subcategory_name,
+
+        p.id AS product_id,
+        p.product_name,
+        p.sku_id,
+        p.product_type,
+
+        pid.id AS item_id,
+        pid.sku_id AS item_sku,
+        pid.variation,
+
+        pid.quantity,
+        pid.gross_weight,
+        pid.net_weight,
+        pid.stone_weight,
+        pid.stone_value,
+
+        pid.making_charge,
+        pid.making_charge_type,
+        pid.wastage,
+        pid.wastage_type,
+
+        gi.rate_per_g,
+
+        -- ✅ PURCHASE PRICE
+        ROUND(gi.rate_per_g * pid.net_weight, 2) AS purchase_price
+
+      FROM products p
+
+      LEFT JOIN grns g ON g.id = p.grn_id AND g.deleted_at IS NULL
+
+      LEFT JOIN "grnItems" gi ON gi.id = p.ref_no_id
+      LEFT JOIN "productItemDetails" pid ON pid.product_id = p.id AND pid.deleted_at IS NULL
+
+      LEFT JOIN vendors v ON v.id = p.vendor_id
+      LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
+      LEFT JOIN categories c ON c.id = p.category_id
+      LEFT JOIN subcategories sc ON sc.id = p.subcategory_id
+
+      ${where}
+
+      ORDER BY g.grn_date DESC
+    `;
+
+    if (usePagination) {
+      query += ` LIMIT :limit OFFSET :offset`;
+      replacements.limit = limitNum;
+      replacements.offset = offset;
+    }
+
+    const rows = await sequelize.query(query, {
+      replacements,
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    // 🔥 SELLING PRICE CALCULATION
+    const finalRows = rows.map((row) => {
+      const calc = calculateSellingPriceSync(
+        { product_type: row.product_type },
+        {
+          net_weight: row.net_weight,
+          stone_value: row.stone_value,
+          making_charge: row.making_charge,
+          making_charge_type: row.making_charge_type,
+          wastage: row.wastage,
+          wastage_type: row.wastage_type,
+          rate_per_gram: row.rate_per_g,
+        },
+        [],
+        row.rate_per_g
+      );
+
+      const purchasePrice = Number(row.purchase_price || 0);
+      const sellingPrice = Number(calc.selling_price || 0);
+
+      return {
+        ...row,
+
+        selling_price: sellingPrice,
+        profit: Number((sellingPrice - purchasePrice).toFixed(2)),
+      };
+    });
+
+    // 🔹 COUNT
+    let total = null;
+    if (usePagination) {
+      const countQuery = `
+        SELECT COUNT(DISTINCT p.id) AS total
+        FROM products p
+        LEFT JOIN grns g ON g.id = p.grn_id
+        LEFT JOIN "grnItems" gi ON gi.id = p.ref_no_id
+        ${where}
+      `;
+
+      const [countResult] = await sequelize.query(countQuery, {
+        replacements,
+        type: sequelize.QueryTypes.SELECT,
+      });
+
+      total = Number(countResult.total);
+    }
+
+    const response = { list: finalRows };
+
+    if (usePagination) {
+      response.pagination = {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum),
+      };
+    }
+
+    return commonService.okResponse(res, response);
+
+  } catch (err) {
+    console.error(err);
+    return commonService.handleError(res, err);
+  }
+};
+
 module.exports = {
     getSalesInvoiceReport,
     getSalesReturnReport,
     getOldJewelReport,
     getJewelRepairReport,
-    getPurchaseReport
+    getPurchaseReport,
+    getProductWiseReport
 }
