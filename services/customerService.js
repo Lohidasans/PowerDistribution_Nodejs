@@ -407,7 +407,11 @@ const listCustomerNameMobileDropdown = async (req, res) => {
 // List Customer Page
 const listCustomers = async (req, res) => {
   try {
-    const { search, mode, branch_id } = req.query || {};
+    const { search, mode, branch_id, page = 1, limit } = req.query || {};
+
+    const pageNumber = parseInt(page, 10) || 1;
+    const pageSize = limit ? parseInt(limit, 10) : null;
+    const offset = pageSize ? (pageNumber - 1) * pageSize : 0;
 
     let sql = `
       SELECT 
@@ -418,7 +422,8 @@ const listCustomers = async (req, res) => {
         COUNT(DISTINCT sib.id) AS no_of_orders,
         c.created_at,
 
-        -- Most recent order type
+        COUNT(*) OVER() AS total_count,  --total rows
+
         (
           SELECT sib2.order_type 
           FROM sales_invoice_bills sib2 
@@ -431,7 +436,6 @@ const listCustomers = async (req, res) => {
           LIMIT 1
         ) AS mode,
 
-        -- Most recent branch_id (prefer recent invoice, fallback to customer's branch_id)
         COALESCE(
           (
             SELECT sib2.branch_id
@@ -443,10 +447,9 @@ const listCustomers = async (req, res) => {
             ORDER BY sib2.created_at DESC
             LIMIT 1
           ),
-          (SELECT c2.branch_id FROM customers c2 WHERE c2.id = c.id)
+          c.branch_id
         ) AS branch_id,
 
-        -- Most recent branch name (for display) with fallback to customer's branch
         COALESCE(
           (
             SELECT b.branch_name
@@ -459,7 +462,7 @@ const listCustomers = async (req, res) => {
             ORDER BY sib2.created_at DESC
             LIMIT 1
           ),
-          (SELECT b2.branch_name FROM branches b2 WHERE b2.id = (SELECT c3.branch_id FROM customers c3 WHERE c3.id = c.id))
+          (SELECT b2.branch_name FROM branches b2 WHERE b2.id = c.branch_id)
         ) AS branch,
 
         -- Total purchase amount
@@ -493,7 +496,7 @@ const listCustomers = async (req, res) => {
 
     const replacements = {};
 
-    // 🔍 Search Filter
+    // Search
     if (search) {
       sql += ` AND (
         c.customer_name ILIKE :search OR 
@@ -503,7 +506,7 @@ const listCustomers = async (req, res) => {
       replacements.search = `%${search}%`;
     }
 
-    // 🎯 Mode Filter
+    // Mode
     if (mode) {
       sql += ` AND EXISTS (
         SELECT 1 
@@ -516,7 +519,7 @@ const listCustomers = async (req, res) => {
       replacements.mode = mode;
     }
 
-    // 🏢 Branch ID Filter
+    // Branch
     if (branch_id) {
       sql += ` AND (
         c.branch_id = :branch_id
@@ -534,13 +537,22 @@ const listCustomers = async (req, res) => {
 
     sql += `
       GROUP BY c.id
-      ORDER BY c.customer_name ASC
+      ORDER BY c.created_at
     `;
+
+    // Pagination applied only if limit exists
+    if (pageSize) {
+      sql += ` LIMIT :limit OFFSET :offset`;
+      replacements.limit = pageSize;
+      replacements.offset = offset;
+    }
 
     const customers = await sequelize.query(sql, {
       replacements,
       type: sequelize.QueryTypes.SELECT
     });
+
+    const totalCount = customers.length > 0 ? parseInt(customers[0].total_count, 10) : 0;
 
     const formattedCustomers = customers.map(customer => ({
       id: customer.id,
@@ -549,14 +561,24 @@ const listCustomers = async (req, res) => {
       mobile_number: customer.mobile_number,
       no_of_orders: parseInt(customer.no_of_orders, 10),
       mode: customer.mode || null,
-      branch_id: customer.branch_id || null,   // ✅ Added in response
+      branch_id: customer.branch_id || null,
       branch: customer.branch || null,
       purchase_amount: parseFloat(customer.purchase_amount || 0).toFixed(2),
       scheme_details: customer.has_scheme ? 'Yes' : 'No',
       created_at: customer.created_at
     }));
 
-    return commonService.okResponse(res, { customers: formattedCustomers });
+    return commonService.okResponse(res, {
+      customers: formattedCustomers,
+      pagination: pageSize
+        ? {
+          total: totalCount,
+          page: pageNumber,
+          limit: pageSize,
+          total_pages: Math.ceil(totalCount / pageSize)
+        }
+        : null
+    });
 
   } catch (error) {
     console.error('Error in listCustomers:', error);
