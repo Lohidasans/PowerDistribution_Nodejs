@@ -297,6 +297,31 @@ const generateLedgerGroupNo = async (req, res) => {
   }
 };
 
+const getLedgerAccounts = async (req, res) => {
+  try {
+    const sql = `
+      SELECT 
+        id,
+        account_name
+      FROM ledger_accounts
+      WHERE deleted_at IS NULL
+      ORDER BY account_name ASC
+    `;
+
+    const accounts = await sequelize.query(sql, {
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    return commonService.okResponse(res, {
+      accounts,
+    });
+
+  } catch (err) {
+    console.error("Error fetching ledger accounts:", err);
+    return commonService.handleError(res, err);
+  }
+};
+
 module.exports = {
   create,
   bulkCreate,
@@ -306,4 +331,5 @@ module.exports = {
   toggleStatus,
   remove,
   generateLedgerGroupNo,
+  getLedgerAccounts
 };
