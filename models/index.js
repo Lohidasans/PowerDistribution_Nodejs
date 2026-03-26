@@ -113,7 +113,7 @@ const PurchaseReturn = require("./purchaseReturns")(sequelize, Sequelize.DataTyp
 const PurchaseReturnItem = require("./purchaseReturnItems")(sequelize, Sequelize.DataTypes);
 
 // Ledger related models
-const LedgerAccount = require("./legderAccounts")(sequelize, Sequelize.DataTypes);
+const LedgerAccount = require("./ledgerAccounts")(sequelize, Sequelize.DataTypes);
 const LedgerGroup = require("./ledgerGroup")(sequelize, Sequelize.DataTypes);
 const Ledger = require("./ledger")(sequelize, Sequelize.DataTypes);
 
