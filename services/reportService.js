@@ -1326,11 +1326,83 @@ const getProductWiseReport = async (req, res) => {
   }
 };
 
+const getVendorLedgerReport = async (req, res) => {
+  try {
+    const { vendor_id, from_date, to_date } = req.query;
+
+    // ✅ FIX: validation
+    if (!vendor_id) {
+      return commonService.badRequest(res, "vendor_id is required");
+    }
+
+    const sql = `
+      SELECT * FROM (
+
+        -- 🟢 GRN → Vendor Credit
+        SELECT 
+          g.grn_date AS date,
+          g.grn_no AS reference_no,
+          v.vendor_name AS ledger_account,
+          0 AS debit,
+          g.total_amount AS credit
+        FROM grns g
+        JOIN vendors v ON v.id = g.vendor_id
+        WHERE g.deleted_at IS NULL
+          AND g.vendor_id = :vendor_id
+
+        UNION ALL
+
+        -- 🔵 GRN → Purchase Debit
+        SELECT 
+          g.grn_date AS date,
+          g.grn_no AS reference_no,
+          'Purchase Accounts' AS ledger_account,
+          g.total_amount AS debit,
+          0 AS credit
+        FROM grns g
+        WHERE g.deleted_at IS NULL
+          AND g.vendor_id = :vendor_id
+
+      ) t
+      ORDER BY date ASC;
+    `;
+
+    const data = await sequelize.query(sql, {
+      replacements: { vendor_id: parseInt(vendor_id) }, // ✅ ensure number
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    let totalDebit = 0;
+    let totalCredit = 0;
+
+    data.forEach(row => {
+      totalDebit += parseFloat(row.debit || 0);
+      totalCredit += parseFloat(row.credit || 0);
+    });
+
+    const balance = totalDebit - totalCredit;
+
+    return commonService.okResponse(res, {
+      data,
+      summary: {
+        totalDebit,
+        totalCredit,
+        balance
+      }
+    });
+
+  } catch (err) {
+    console.error(err);
+    return commonService.handleError(res, err);
+  }
+};
+
 module.exports = {
     getSalesInvoiceReport,
     getSalesReturnReport,
     getOldJewelReport,
     getJewelRepairReport,
     getPurchaseReport,
-    getProductWiseReport
+    getProductWiseReport,
+    getVendorLedgerReport
 }
