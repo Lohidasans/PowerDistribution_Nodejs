@@ -5,6 +5,7 @@ const enrollmentService = require("../services/enrollmentService");
 // CRUD-lite for enrollments
 router.post("/enrollments", enrollmentService.createEnrollment);
 router.get("/enrollments", enrollmentService.listEnrollments);
+router.post("/enrollments/code", enrollmentService.generateEnrollmentCode);
 router.get("/enrollments/:id", enrollmentService.getEnrollmentById);
 
 module.exports = router;

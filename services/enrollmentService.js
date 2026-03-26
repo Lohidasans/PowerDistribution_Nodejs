@@ -1,6 +1,7 @@
 const { models, sequelize } = require("../models");
 const commonService = require("./commonService");
 const enMessage = require("../constants/en.json");
+const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
 
 // Field validation helper
 const validateRequired = (req, res, fields) => {
@@ -18,6 +19,7 @@ const validateRequired = (req, res, fields) => {
 const createEnrollment = async (req, res) => {
   try {
     const required = [
+      "enrollment_code",
       "customer_no",
       "customer_name",
       "mobile_number",
@@ -97,8 +99,26 @@ const getEnrollmentById = async (req, res) => {
   }
 };
 
+const generateEnrollmentCode = async (req, res) => {
+  try {
+    const { prefix } = req.query || {};
+
+    const code = await generateFiscalSeriesCode(
+      models.Enrollment,
+      "enrollment_code",
+      String(prefix).toUpperCase(),
+      { pad: 3 }
+    );
+    return commonService.okResponse(res, { enrollment_code: code });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
 module.exports = {
   createEnrollment,
   listEnrollments,
   getEnrollmentById,
+  generateEnrollmentCode
 };
+
