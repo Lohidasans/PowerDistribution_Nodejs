@@ -1334,85 +1334,101 @@ const getVendorLedgerReport = async (req, res) => {
       return commonService.badRequest(res, "vendor_id is required");
     }
 
-    const sql = `SELECT * FROM (
+    const fromDate = from_date || '2000-01-01';
+    const toDate = to_date || new Date().toISOString().split('T')[0];
 
-      -- 🟢 GRN (Purchase → Vendor Credit)
-      SELECT 
-        g.grn_date AS date,
-        g.grn_no AS reference_no,
-        'Purchase A/c' AS ledger_account,
-        g.subtotal_amount AS debit,
-        0 AS credit
-      FROM grns g
-      WHERE g.deleted_at IS NULL
-        AND g.vendor_id = :vendor_id
+    const sql = `
+        SELECT * FROM (
 
-      UNION ALL
+        -- 🟢 GRN → Purchase Debit
+        SELECT
+          g.grn_date AS date,
+          g.grn_no AS reference_no,
+          'Purchase A/c' AS ledger_account,
+          g.total_amount AS debit,
+          0 AS credit
+        FROM grns g
+        WHERE g.deleted_at IS NULL
+          AND g.vendor_id = :vendor_id
+          AND g.grn_date BETWEEN :from_date AND :to_date
 
-      SELECT 
-        g.grn_date AS date,
-        g.grn_no AS reference_no,
-        v.vendor_name AS ledger_account,
-        0 AS debit,
-        g.subtotal_amount AS credit
-      FROM grns g
-      JOIN vendors v ON v.id = g.vendor_id
-      WHERE g.deleted_at IS NULL
-        AND g.vendor_id = :vendor_id
+        UNION ALL
 
-      UNION ALL
+        -- 🟢 GRN → Vendor Credit
+        SELECT
+          g.grn_date AS date,
+          g.grn_no AS reference_no,
+          v.vendor_name AS ledger_account,
+          0 AS debit,
+          g.total_amount AS credit
+        FROM grns g
+        JOIN vendors v ON v.id = g.vendor_id
+        WHERE g.deleted_at IS NULL
+          AND g.vendor_id = :vendor_id
+          AND g.grn_date BETWEEN :from_date AND :to_date
 
-      -- 🔵 PAYMENTS (Vendor Paid → Debit)
-      SELECT 
-        vp.payment_date AS date,
-        vp.payment_no AS reference_no,
-        v.vendor_name AS ledger_account,
-        vp.amount AS debit,
-        0 AS credit
-      FROM vendor_payments vp
-      JOIN vendors v ON v.id = vp.account_name_id
-      WHERE vp.deleted_at IS NULL
-        AND vp.account_name_id = :vendor_id
+        UNION ALL
 
-      UNION ALL
+        -- 🔵 PAYMENT → Vendor Debit
+        SELECT
+          vp.payment_date AS date,
+          vp.payment_no AS reference_no,
+          v.vendor_name AS ledger_account,
+          vp.amount AS debit,
+          0 AS credit
+        FROM vendor_payments vp
+        JOIN vendors v ON v.id = vp.account_name_id
+        WHERE vp.deleted_at IS NULL
+          AND vp.user_type_id = 1
+          AND vp.account_name_id = :vendor_id
+          AND vp.payment_date BETWEEN :from_date AND :to_date
 
-      -- 🔵 PAYMENTS (Cash/Bank → Credit)
-      SELECT 
-        vp.payment_date AS date,
-        vp.payment_no AS reference_no,
-        'Cash/Bank' AS ledger_account,
-        0 AS debit,
-        vp.amount AS credit
-      FROM vendor_payments vp
-      WHERE vp.deleted_at IS NULL
-        AND vp.account_name_id = :vendor_id
+        UNION ALL
 
-      UNION ALL
+        -- 🔵 PAYMENT → Cash/Bank Credit
+        SELECT
+          vp.payment_date AS date,
+          vp.payment_no AS reference_no,
+          'Cash/Bank' AS ledger_account,
+          0 AS debit,
+          vp.amount AS credit
+        FROM vendor_payments vp
+        WHERE vp.deleted_at IS NULL
+          AND vp.user_type_id = 1
+          AND vp.account_name_id = :vendor_id
+          AND vp.payment_date BETWEEN :from_date AND :to_date
 
-      -- 🟡 RECEIPTS (Advance from Vendor → Credit)
-      SELECT 
-        r.receipt_date AS date,
-        r.receipt_no AS reference_no,
-        v.vendor_name AS ledger_account,
-        0 AS debit,
-        r.amount AS credit
-      FROM voucher_receipts r
-      JOIN vendors v ON v.id = r.account_id
-      WHERE r.deleted_at IS NULL
-        AND r.user_type_id = 1 -- vendor
-        AND r.account_id = :vendor_id
+        UNION ALL
 
-    ) t
-    ORDER BY date ASC;`;
+        -- 🟡 RECEIPT → Vendor Credit
+        SELECT
+          r.receipt_date AS date,
+          r.receipt_no AS reference_no,
+          v.vendor_name AS ledger_account,
+          0 AS debit,
+          r.amount AS credit
+        FROM voucher_receipts r
+        JOIN vendors v ON v.id = r.account_id
+        WHERE r.deleted_at IS NULL
+          AND r.user_type_id = 1
+          AND r.account_id = :vendor_id
+          AND r.receipt_date BETWEEN :from_date AND :to_date
+
+      ) t
+      ORDER BY date ASC;`
 
     const data = await sequelize.query(sql, {
-      replacements: { vendor_id: parseInt(vendor_id) },
+      replacements: {
+        vendor_id: parseInt(vendor_id),
+        from_date: fromDate,
+        to_date: toDate
+      },
       type: sequelize.QueryTypes.SELECT,
     });
 
-    // ✅ Running totals
     let totalDebit = 0;
     let totalCredit = 0;
+    let runningBalance = 0;
 
     const formatted = data.map(row => {
       const debit = parseFloat(row.debit || 0);
@@ -1421,14 +1437,17 @@ const getVendorLedgerReport = async (req, res) => {
       totalDebit += debit;
       totalCredit += credit;
 
+      runningBalance += (credit - debit);
+
       return {
         ...row,
         debit: debit.toFixed(2),
         credit: credit.toFixed(2),
+        running_balance: runningBalance.toFixed(2) // 🔥 important
       };
     });
 
-    const balance = totalCredit - totalDebit; // liability logic
+    const balance = totalCredit - totalDebit;
 
     return commonService.okResponse(res, {
       data: formatted,
