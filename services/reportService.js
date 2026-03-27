@@ -1330,64 +1330,112 @@ const getVendorLedgerReport = async (req, res) => {
   try {
     const { vendor_id, from_date, to_date } = req.query;
 
-    // ✅ FIX: validation
     if (!vendor_id) {
       return commonService.badRequest(res, "vendor_id is required");
     }
 
-    const sql = `
-      SELECT * FROM (
+    const sql = `SELECT * FROM (
 
-        -- 🟢 GRN → Vendor Credit
-        SELECT 
-          g.grn_date AS date,
-          g.grn_no AS reference_no,
-          v.vendor_name AS ledger_account,
-          0 AS debit,
-          g.total_amount AS credit
-        FROM grns g
-        JOIN vendors v ON v.id = g.vendor_id
-        WHERE g.deleted_at IS NULL
-          AND g.vendor_id = :vendor_id
+      -- 🟢 GRN (Purchase → Vendor Credit)
+      SELECT 
+        g.grn_date AS date,
+        g.grn_no AS reference_no,
+        'Purchase A/c' AS ledger_account,
+        g.subtotal_amount AS debit,
+        0 AS credit
+      FROM grns g
+      WHERE g.deleted_at IS NULL
+        AND g.vendor_id = :vendor_id
 
-        UNION ALL
+      UNION ALL
 
-        -- 🔵 GRN → Purchase Debit
-        SELECT 
-          g.grn_date AS date,
-          g.grn_no AS reference_no,
-          'Purchase Accounts' AS ledger_account,
-          g.total_amount AS debit,
-          0 AS credit
-        FROM grns g
-        WHERE g.deleted_at IS NULL
-          AND g.vendor_id = :vendor_id
+      SELECT 
+        g.grn_date AS date,
+        g.grn_no AS reference_no,
+        v.vendor_name AS ledger_account,
+        0 AS debit,
+        g.subtotal_amount AS credit
+      FROM grns g
+      JOIN vendors v ON v.id = g.vendor_id
+      WHERE g.deleted_at IS NULL
+        AND g.vendor_id = :vendor_id
 
-      ) t
-      ORDER BY date ASC;
-    `;
+      UNION ALL
+
+      -- 🔵 PAYMENTS (Vendor Paid → Debit)
+      SELECT 
+        vp.payment_date AS date,
+        vp.payment_no AS reference_no,
+        v.vendor_name AS ledger_account,
+        vp.amount AS debit,
+        0 AS credit
+      FROM vendor_payments vp
+      JOIN vendors v ON v.id = vp.account_name_id
+      WHERE vp.deleted_at IS NULL
+        AND vp.account_name_id = :vendor_id
+
+      UNION ALL
+
+      -- 🔵 PAYMENTS (Cash/Bank → Credit)
+      SELECT 
+        vp.payment_date AS date,
+        vp.payment_no AS reference_no,
+        'Cash/Bank' AS ledger_account,
+        0 AS debit,
+        vp.amount AS credit
+      FROM vendor_payments vp
+      WHERE vp.deleted_at IS NULL
+        AND vp.account_name_id = :vendor_id
+
+      UNION ALL
+
+      -- 🟡 RECEIPTS (Advance from Vendor → Credit)
+      SELECT 
+        r.receipt_date AS date,
+        r.receipt_no AS reference_no,
+        v.vendor_name AS ledger_account,
+        0 AS debit,
+        r.amount AS credit
+      FROM voucher_receipts r
+      JOIN vendors v ON v.id = r.account_id
+      WHERE r.deleted_at IS NULL
+        AND r.user_type_id = 1 -- vendor
+        AND r.account_id = :vendor_id
+
+    ) t
+    ORDER BY date ASC;`;
 
     const data = await sequelize.query(sql, {
-      replacements: { vendor_id: parseInt(vendor_id) }, // ✅ ensure number
+      replacements: { vendor_id: parseInt(vendor_id) },
       type: sequelize.QueryTypes.SELECT,
     });
 
+    // ✅ Running totals
     let totalDebit = 0;
     let totalCredit = 0;
 
-    data.forEach(row => {
-      totalDebit += parseFloat(row.debit || 0);
-      totalCredit += parseFloat(row.credit || 0);
+    const formatted = data.map(row => {
+      const debit = parseFloat(row.debit || 0);
+      const credit = parseFloat(row.credit || 0);
+
+      totalDebit += debit;
+      totalCredit += credit;
+
+      return {
+        ...row,
+        debit: debit.toFixed(2),
+        credit: credit.toFixed(2),
+      };
     });
 
-    const balance = totalDebit - totalCredit;
+    const balance = totalCredit - totalDebit; // liability logic
 
     return commonService.okResponse(res, {
-      data,
+      data: formatted,
       summary: {
-        totalDebit,
-        totalCredit,
-        balance
+        totalDebit: totalDebit.toFixed(2),
+        totalCredit: totalCredit.toFixed(2),
+        balance: balance.toFixed(2)
       }
     });
 
