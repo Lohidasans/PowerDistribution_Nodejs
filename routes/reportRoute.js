@@ -9,5 +9,6 @@ router.get("/report/jewel-repair", svc.getJewelRepairReport);
 router.get("/report/purchase", svc.getPurchaseReport);
 router.get("/report/product-wise", svc.getProductWiseReport);
 router.get("/report/ledger", svc.getVendorLedgerReport);
+router.get("/report/ledger-account", svc.getLedgerReportByAccount);
 
 module.exports = router;

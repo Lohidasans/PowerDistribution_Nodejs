@@ -1330,17 +1330,13 @@ const getVendorLedgerReport = async (req, res) => {
   try {
     const { vendor_id, from_date, to_date } = req.query;
 
-    if (!vendor_id) {
-      return commonService.badRequest(res, "vendor_id is required");
-    }
-
     const fromDate = from_date || '2000-01-01';
     const toDate = to_date || new Date().toISOString().split('T')[0];
 
     const sql = `
         SELECT * FROM (
 
-        -- 🟢 GRN → Purchase Debit
+        -- GRN → Purchase Debit
         SELECT
           g.grn_date AS date,
           g.grn_no AS reference_no,
@@ -1349,12 +1345,12 @@ const getVendorLedgerReport = async (req, res) => {
           0 AS credit
         FROM grns g
         WHERE g.deleted_at IS NULL
-          AND g.vendor_id = :vendor_id
+          AND (:vendor_id IS NULL OR g.vendor_id = :vendor_id)
           AND g.grn_date BETWEEN :from_date AND :to_date
 
         UNION ALL
 
-        -- 🟢 GRN → Vendor Credit
+        -- GRN → Vendor Credit
         SELECT
           g.grn_date AS date,
           g.grn_no AS reference_no,
@@ -1364,12 +1360,12 @@ const getVendorLedgerReport = async (req, res) => {
         FROM grns g
         JOIN vendors v ON v.id = g.vendor_id
         WHERE g.deleted_at IS NULL
-          AND g.vendor_id = :vendor_id
+          AND (:vendor_id IS NULL OR g.vendor_id = :vendor_id)
           AND g.grn_date BETWEEN :from_date AND :to_date
 
         UNION ALL
 
-        -- 🔵 PAYMENT → Vendor Debit
+        -- PAYMENT → Vendor Debit
         SELECT
           vp.payment_date AS date,
           vp.payment_no AS reference_no,
@@ -1380,12 +1376,12 @@ const getVendorLedgerReport = async (req, res) => {
         JOIN vendors v ON v.id = vp.account_name_id
         WHERE vp.deleted_at IS NULL
           AND vp.user_type_id = 1
-          AND vp.account_name_id = :vendor_id
+          AND (:vendor_id IS NULL OR vp.account_name_id = :vendor_id)
           AND vp.payment_date BETWEEN :from_date AND :to_date
 
         UNION ALL
 
-        -- 🔵 PAYMENT → Cash/Bank Credit
+        -- PAYMENT → Cash/Bank Credit
         SELECT
           vp.payment_date AS date,
           vp.payment_no AS reference_no,
@@ -1395,12 +1391,12 @@ const getVendorLedgerReport = async (req, res) => {
         FROM vendor_payments vp
         WHERE vp.deleted_at IS NULL
           AND vp.user_type_id = 1
-          AND vp.account_name_id = :vendor_id
+          AND (:vendor_id IS NULL OR vp.account_name_id = :vendor_id)
           AND vp.payment_date BETWEEN :from_date AND :to_date
 
         UNION ALL
 
-        -- 🟡 RECEIPT → Vendor Credit
+        -- RECEIPT → Vendor Credit
         SELECT
           r.receipt_date AS date,
           r.receipt_no AS reference_no,
@@ -1411,15 +1407,16 @@ const getVendorLedgerReport = async (req, res) => {
         JOIN vendors v ON v.id = r.account_id
         WHERE r.deleted_at IS NULL
           AND r.user_type_id = 1
-          AND r.account_id = :vendor_id
+          AND (:vendor_id IS NULL OR r.account_id = :vendor_id)
           AND r.receipt_date BETWEEN :from_date AND :to_date
 
       ) t
-      ORDER BY date ASC;`
+      ORDER BY date ASC;
+    `;
 
     const data = await sequelize.query(sql, {
       replacements: {
-        vendor_id: parseInt(vendor_id),
+        vendor_id: vendor_id ? parseInt(vendor_id) : null,
         from_date: fromDate,
         to_date: toDate
       },
@@ -1443,7 +1440,7 @@ const getVendorLedgerReport = async (req, res) => {
         ...row,
         debit: debit.toFixed(2),
         credit: credit.toFixed(2),
-        running_balance: runningBalance.toFixed(2) // 🔥 important
+        running_balance: runningBalance.toFixed(2)
       };
     });
 
@@ -1464,6 +1461,61 @@ const getVendorLedgerReport = async (req, res) => {
   }
 };
 
+
+const getLedgerReportByAccount = async (req, res) => {
+  try {
+    const { ledger_account_id, from_date, to_date } = req.query;
+
+    if (!ledger_account_id) {
+      return commonService.badRequest(res, "ledger_account_id is required");
+    }
+
+    const fromDate = from_date || '2000-01-01';
+    const toDate = to_date || new Date().toISOString().split('T')[0];
+
+    const data = await sequelize.query(sql, {
+      replacements: {
+        ledger_account_id: parseInt(ledger_account_id),
+        from_date: fromDate,
+        to_date: toDate
+      },
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    let totalDebit = 0;
+    let totalCredit = 0;
+    let runningBalance = 0;
+
+    const formatted = data.map(row => {
+      const debit = parseFloat(row.debit || 0);
+      const credit = parseFloat(row.credit || 0);
+
+      totalDebit += debit;
+      totalCredit += credit;
+
+      runningBalance += (debit - credit);
+
+      return {
+        ...row,
+        debit: debit.toFixed(2),
+        credit: credit.toFixed(2),
+        running_balance: runningBalance.toFixed(2)
+      };
+    });
+
+    return commonService.okResponse(res, {
+      data: formatted,
+      summary: {
+        totalDebit: totalDebit.toFixed(2),
+        totalCredit: totalCredit.toFixed(2)
+      }
+    });
+
+  } catch (err) {
+    console.error(err);
+    return commonService.handleError(res, err);
+  }
+}
 module.exports = {
     getSalesInvoiceReport,
     getSalesReturnReport,
@@ -1471,5 +1523,6 @@ module.exports = {
     getJewelRepairReport,
     getPurchaseReport,
     getProductWiseReport,
-    getVendorLedgerReport
+    getVendorLedgerReport,
+    getLedgerReportByAccount
 }
