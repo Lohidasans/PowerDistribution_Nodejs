@@ -31,7 +31,8 @@ const createVoucherReceipt = async (req, res) => {
       payment_mode_id,
       account_id,
       transaction_no,
-      reference_no,
+      reference_type,
+      reference_id,
       amount,
       amount_in_words,
       user_type_id,
@@ -60,7 +61,8 @@ const createVoucherReceipt = async (req, res) => {
         payment_mode_id,
         account_id,
         transaction_no: transaction_no ?? null,
-        reference_no: reference_no ?? null,
+        reference_type: reference_type ?? null,
+        reference_id: reference_id ?? null,
         amount,
         amount_in_words,
         user_type_id,
@@ -123,6 +125,12 @@ const getVoucherReceiptById = async (req, res) => {
           vr.*,
           bt.bill_type,
           pm.payment_mode,
+          CASE
+            WHEN vr.reference_type = 'invoice' THEN si.invoice_no
+            WHEN vr.reference_type = 'grn' THEN g.grn_no
+            WHEN vr.reference_type = 'scheme' THEN ce.enrollment_code
+            ELSE NULL
+          END AS bill_no,
           CASE 
             WHEN vr.bill_type_id IN (2, 3) THEN l.ledger_name
             WHEN vr.user_type_id = 1 THEN v.vendor_name
@@ -152,6 +160,9 @@ const getVoucherReceiptById = async (req, res) => {
       LEFT JOIN branches b ON b.id = vr.branch_id AND b.deleted_at IS NULL
       LEFT JOIN districts d ON d.id = b.district_id AND d.deleted_at IS NULL
       LEFT JOIN states s ON s.id = b.state_id AND s.deleted_at IS NULL
+      LEFT JOIN sales_invoice_bills si ON si.id = vr.reference_id AND vr.reference_type = 'invoice' AND si.deleted_at IS NULL
+      LEFT JOIN grns g ON g.id = vr.reference_id AND vr.reference_type = 'grn' AND g.deleted_at IS NULL
+      LEFT JOIN customer_enrollments ce ON ce.id = vr.reference_id AND vr.reference_type = 'scheme' AND ce.deleted_at IS NULL
       WHERE vr.id = :receiptId AND vr.deleted_at IS NULL AND vr.is_active = true`;
 
     const [receipt] = await sequelize.query(sql, {
@@ -230,6 +241,12 @@ const getVoucherReceipts = async (req, res) => {
         vr.account_id,
         vr.user_type_id,
         vr.bill_type_id,
+        CASE
+          WHEN vr.reference_type = 'invoice' THEN si.invoice_no
+          WHEN vr.reference_type = 'grn' THEN g.grn_no
+          WHEN vr.reference_type = 'scheme' THEN ce.enrollment_code
+          ELSE NULL
+        END AS bill_no,
         CASE 
           WHEN vr.bill_type_id IN (2, 3) THEN l.ledger_name
           WHEN vr.user_type_id = 1 THEN v.vendor_name
@@ -257,6 +274,9 @@ const getVoucherReceipts = async (req, res) => {
       LEFT JOIN branches b ON b.id = vr.branch_id AND b.deleted_at IS NULL
       LEFT JOIN districts d ON d.id = b.district_id AND d.deleted_at IS NULL
       LEFT JOIN states s ON s.id = b.state_id AND s.deleted_at IS NULL
+      LEFT JOIN sales_invoice_bills si ON si.id = vr.reference_id AND vr.reference_type = 'invoice' AND si.deleted_at IS NULL
+      LEFT JOIN grns g ON g.id = vr.reference_id AND vr.reference_type = 'grn' AND g.deleted_at IS NULL
+      LEFT JOIN customer_enrollments ce ON ce.id = vr.reference_id AND vr.reference_type = 'scheme' AND ce.deleted_at IS NULL
       ${whereSql}
       ORDER BY vr.receipt_no DESC
       ${paginationSql}
@@ -355,7 +375,8 @@ const updateVoucherReceipt = async (req, res) => {
       payment_mode_id,
       account_id,
       transaction_no,
-      reference_no,
+      reference_type,
+      reference_id,
       amount,
       amount_in_words,
       user_type_id,
@@ -389,7 +410,8 @@ const updateVoucherReceipt = async (req, res) => {
       payment_mode_id: payment_mode_id ?? entity.payment_mode_id,
       account_id: account_id ?? entity.account_id,
       transaction_no: transaction_no ?? entity.transaction_no,
-      reference_no: reference_no ?? entity.reference_no,
+      reference_type: reference_type ?? entity.reference_type,
+      reference_id: reference_id ?? entity.reference_id,
       amount: amount ?? entity.amount,
       amount_in_words: amount_in_words ?? entity.amount_in_words,
       user_type_id: user_type_id ?? entity.user_type_id,
