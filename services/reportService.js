@@ -1398,7 +1398,7 @@ const getVendorLedgerReport = async (req, res) => {
 
         -- RECEIPT → Vendor Credit
         SELECT
-          r.receipt_date AS date,
+          r.receipt_date AS date,s
           r.receipt_no AS reference_no,
           v.vendor_name AS ledger_account,
           0 AS debit,
@@ -1466,16 +1466,175 @@ const getLedgerReportByAccount = async (req, res) => {
   try {
     const { ledger_account_id, from_date, to_date } = req.query;
 
-    if (!ledger_account_id) {
-      return commonService.badRequest(res, "ledger_account_id is required");
-    }
-
     const fromDate = from_date || '2000-01-01';
     const toDate = to_date || new Date().toISOString().split('T')[0];
 
+    const sql = `SELECT * FROM (
+        -- GRN → Purchase Debit
+        SELECT 
+          g.grn_date AS date,
+          lp.ledger_name AS ledger_account,
+          'Purchase Entry' AS description,
+          'GRN' AS voucher_type,
+          g.grn_no AS voucher_no,
+          g.subtotal_amount AS debit,
+          0 AS credit
+        FROM grns g
+        JOIN ledger lp ON lp.ledger_name = 'Purchase Accounts'
+        JOIN ledger_group lg ON lg.id = lp.ledger_group_id
+        WHERE g.deleted_at IS NULL
+          AND (:ledger_account_id IS NULL OR lg.ledger_account_id = :ledger_account_id)
+          AND g.grn_date BETWEEN :from_date AND :to_date
+
+        UNION ALL
+
+        -- GRN → Vendor Credit
+        SELECT 
+          g.grn_date,
+          lv.ledger_name,
+          'Purchase Entry',
+          'GRN',
+          g.grn_no,
+          0,
+          g.subtotal_amount
+        FROM grns g
+        JOIN vendors v ON v.id = g.vendor_id
+        JOIN ledger lv ON lv.id = v.ledger_id
+        JOIN ledger_group lg ON lg.id = lv.ledger_group_id
+        WHERE g.deleted_at IS NULL
+          AND (:ledger_account_id IS NULL OR lg.ledger_account_id = :ledger_account_id)
+          AND g.grn_date BETWEEN :from_date AND :to_date
+
+        UNION ALL
+
+        -- SALES → Cash Debit
+        SELECT 
+          s.invoice_date,
+          lc.ledger_name,
+          'Sales Invoice',
+          'INV',
+          s.invoice_no,
+          s.subtotal_amount,
+          0
+        FROM sales_invoice_bills s
+        JOIN ledger lc ON lc.ledger_name = 'Cash'
+        JOIN ledger_group lg ON lg.id = lc.ledger_group_id
+        WHERE s.deleted_at IS NULL
+          AND (:ledger_account_id IS NULL OR lg.ledger_account_id = :ledger_account_id)
+          AND s.invoice_date BETWEEN :from_date AND :to_date
+
+        UNION ALL
+
+        -- SALES → Sales Credit
+        SELECT 
+          s.invoice_date,
+          ls.ledger_name,
+          'Sales Invoice',
+          'INV',
+          s.invoice_no,
+          0,
+          s.subtotal_amount
+        FROM sales_invoice_bills s
+        JOIN ledger ls ON ls.ledger_name = 'Sales Accounts'
+        JOIN ledger_group lg ON lg.id = ls.ledger_group_id
+        WHERE s.deleted_at IS NULL
+          AND (:ledger_account_id IS NULL OR lg.ledger_account_id = :ledger_account_id)
+          AND s.invoice_date BETWEEN :from_date AND :to_date
+
+        UNION ALL
+
+        -- PAYMENT → Vendor Debit
+        SELECT 
+          vp.payment_date,
+          lv.ledger_name,
+          'Payment',
+          'PAY',
+          vp.payment_no,
+          vp.amount,
+          0
+        FROM vendor_payments vp
+        JOIN vendors v ON v.id = vp.account_name_id
+        JOIN ledger lv ON lv.id = v.ledger_id
+        JOIN ledger_group lg ON lg.id = lv.ledger_group_id
+        WHERE vp.deleted_at IS NULL
+          AND (:ledger_account_id IS NULL OR lg.ledger_account_id = :ledger_account_id)
+          AND vp.payment_date BETWEEN :from_date AND :to_date
+
+        UNION ALL
+
+        -- PAYMENT → Cash Credit
+        SELECT 
+          vp.payment_date,
+          lc.ledger_name,
+          'Payment',
+          'PAY',
+          vp.payment_no,
+          0,
+          vp.amount
+        FROM vendor_payments vp
+        JOIN ledger lc ON lc.id = vp.account_name_id
+        JOIN ledger_group lg ON lg.id = lc.ledger_group_id
+        WHERE vp.deleted_at IS NULL
+          AND (:ledger_account_id IS NULL OR lg.ledger_account_id = :ledger_account_id)
+          AND vp.payment_date BETWEEN :from_date AND :to_date
+
+        UNION ALL
+
+        -- RECEIPT → Cash Debit
+        SELECT 
+          r.receipt_date,
+          lc.ledger_name,
+          'Receipt',
+          'REC',
+          r.receipt_no,
+          r.amount,
+          0
+        FROM voucher_receipts r
+        JOIN ledger lc ON lc.id = r.account_id
+        JOIN ledger_group lg ON lg.id = lc.ledger_group_id
+        WHERE r.deleted_at IS NULL
+          AND (:ledger_account_id IS NULL OR lg.ledger_account_id = :ledger_account_id)
+          AND r.receipt_date BETWEEN :from_date AND :to_date
+
+        UNION ALL
+
+        -- RECEIPT → Party Credit
+        SELECT 
+          r.receipt_date,
+          lp.ledger_name,
+          'Receipt',
+          'REC',
+          r.receipt_no,
+          0,
+          r.amount
+        FROM voucher_receipts r
+        JOIN ledger lp ON lp.id = r.account_id
+        JOIN ledger_group lg ON lg.id = lp.ledger_group_id
+        WHERE r.deleted_at IS NULL
+          AND (:ledger_account_id IS NULL OR lg.ledger_account_id = :ledger_account_id)
+          AND r.receipt_date BETWEEN :from_date AND :to_date
+
+        UNION ALL
+
+        -- JOURNAL ENTRY
+        SELECT 
+          j.date,
+          'Journal',
+          'Journal Entry',
+          'JE',
+          j.journal_no,
+          j.total,
+          j.total
+        FROM journal_entries j
+        WHERE j.deleted_at IS NULL
+          AND j.date BETWEEN :from_date AND :to_date
+
+      ) t
+      ORDER BY date ASC;`;
+
     const data = await sequelize.query(sql, {
       replacements: {
-        ledger_account_id: parseInt(ledger_account_id),
+        ledger_account_id: ledger_account_id ? parseInt(ledger_account_id) : null,
         from_date: fromDate,
         to_date: toDate
       },
@@ -1507,7 +1666,8 @@ const getLedgerReportByAccount = async (req, res) => {
       data: formatted,
       summary: {
         totalDebit: totalDebit.toFixed(2),
-        totalCredit: totalCredit.toFixed(2)
+        totalCredit: totalCredit.toFixed(2),
+        balance: (totalDebit - totalCredit).toFixed(2)
       }
     });
 
@@ -1515,7 +1675,9 @@ const getLedgerReportByAccount = async (req, res) => {
     console.error(err);
     return commonService.handleError(res, err);
   }
-}
+};
+
+
 module.exports = {
     getSalesInvoiceReport,
     getSalesReturnReport,
