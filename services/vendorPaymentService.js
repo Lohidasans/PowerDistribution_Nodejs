@@ -63,7 +63,7 @@ const getVendorPayments = async (req, res) => {
     } = req.query;
 
     const replacements = {};
-    let whereSql = "WHERE vp.deleted_at IS NULL and vp.is_active = true"; // Only fetch active (non-deleted) records
+    let whereSql = "WHERE vp.deleted_at IS NULL"; // Only fetch active (non-deleted) records
 
     // Filters
     if (bill_type_id) {
