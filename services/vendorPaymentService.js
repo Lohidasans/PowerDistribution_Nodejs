@@ -265,7 +265,7 @@ const getVendorPaymentById = async (req, res) => {
       LEFT JOIN branches b ON b.id = vp.branch_id AND b.deleted_at IS NULL
       LEFT JOIN districts d ON d.id = b.district_id AND d.deleted_at IS NULL
       LEFT JOIN states s ON s.id = b.state_id AND s.deleted_at IS NULL
-      WHERE vp.id = :paymentId AND vp.deleted_at IS NULL AND vp.is_active = true`;
+      WHERE vp.id = :paymentId AND vp.deleted_at IS NULL`;
 
     const [payment] = await sequelize.query(sql, {
       replacements: { paymentId: req.params.id },

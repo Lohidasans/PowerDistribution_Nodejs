@@ -1519,7 +1519,7 @@ const getLedgerReportByAccount = async (req, res) => {
         FROM sales_invoice_bills s
         JOIN ledger lc ON lc.ledger_name = 'Cash'
         JOIN ledger_group lg ON lg.id = lc.ledger_group_id
-        WHERE s.deleted_at IS NULL
+        WHERE s.deleted_at IS NULL AND s.status = 'Invoice'
           AND (:ledger_account_id IS NULL OR lg.ledger_account_id = :ledger_account_id)
           AND s.invoice_date BETWEEN :from_date AND :to_date
 
@@ -1537,7 +1537,7 @@ const getLedgerReportByAccount = async (req, res) => {
         FROM sales_invoice_bills s
         JOIN ledger ls ON ls.ledger_name = 'Sales Accounts'
         JOIN ledger_group lg ON lg.id = ls.ledger_group_id
-        WHERE s.deleted_at IS NULL
+        WHERE s.deleted_at IS NULL AND s.status = 'Invoice'
           AND (:ledger_account_id IS NULL OR lg.ledger_account_id = :ledger_account_id)
           AND s.invoice_date BETWEEN :from_date AND :to_date
 
