@@ -241,6 +241,7 @@ const getVoucherReceipts = async (req, res) => {
         vr.account_id,
         vr.user_type_id,
         vr.bill_type_id,
+        vr.is_active,
         CASE
           WHEN vr.reference_type = 'invoice' THEN si.invoice_no
           WHEN vr.reference_type = 'grn' THEN g.grn_no

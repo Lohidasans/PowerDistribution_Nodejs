@@ -126,6 +126,7 @@ const getVendorPayments = async (req, res) => {
         vp.status,
         vp.invoice_id,
         vp.purchase_id,
+        vp.is_active,
 
         -- ✅ GRN / Invoice number
       CASE
