@@ -26,7 +26,7 @@ sequelize
   .authenticate()
   .then(() => {
     console.log('Database connection established successfully.');
-    return sequelize.sync({ alter: false }); // Sync based on the models
+    return sequelize.sync({ alter: true }); // Sync based on the models
   })
   .then(() => {
     console.log('Database synchronized successfully!');

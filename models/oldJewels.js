@@ -52,6 +52,11 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
         defaultValue: "Printed",
       },
+      order_type: {
+        type: DataTypes.ENUM("Online", "Offline"),
+        allowNull: false,
+        defaultValue: "Offline",
+      },
       is_active: {
         type: DataTypes.BOOLEAN,
         allowNull: false,

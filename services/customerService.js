@@ -733,7 +733,6 @@ const getCustomerTransactions = async (req, res) => {
     }
 
     // Order type (only applies to invoice + return)
-    let orderTypeCondition = "";
     if (order_type) {
       orderTypeCondition = ` AND order_type = :order_type`;
       replacements.order_type = order_type;
@@ -742,93 +741,152 @@ const getCustomerTransactions = async (req, res) => {
     const sql = `
       SELECT * FROM (
 
-        -- INVOICE
-        SELECT 
+        -- 🧾 INVOICE
+        SELECT
           i.id,
           i.customer_id,
           i.invoice_no AS reference_no,
           i.invoice_date AS date,
           i.total_amount,
-          ii.product_name_snapshot AS product_name,
-          ii.quantity,
+
+          JSON_AGG(
+            JSON_BUILD_OBJECT(
+              'product_name', ii.product_name_snapshot,
+              'quantity', ii.quantity
+            )
+          ) FILTER (WHERE ii.id IS NOT NULL) AS items,
+
+          SUM(ii.quantity) AS total_quantity,
+
           i.branch_id,
           i.order_type::TEXT AS order_type,
           'INVOICE' AS type,
           i.created_at,
           i.deleted_at
+
         FROM sales_invoice_bills i
         LEFT JOIN sales_invoice_bill_items ii 
           ON ii.invoice_bill_id = i.id AND ii.deleted_at IS NULL
-        WHERE i.deleted_at IS NULL
-        ${orderTypeCondition}
+
+        WHERE i.deleted_at IS NULL AND i.status = 'Invoice'
+        GROUP BY i.id
 
         UNION ALL
 
-        -- SALES RETURN
-        SELECT 
+        -- 🔁 SALES RETURN
+        SELECT
           sr.id,
           sr.customer_id,
           sr.sales_return_no AS reference_no,
           sr.return_date AS date,
           sr.total_amount,
-          sri.product_description AS product_name,
-          sri.quantity,
+
+          JSON_AGG(
+            JSON_BUILD_OBJECT(
+              'product_name', sri.product_description,
+              'quantity', sri.quantity
+            )
+          ) FILTER (WHERE sri.id IS NOT NULL) AS items,
+
+          SUM(sri.quantity) AS total_quantity,
+
           sr.branch_id,
-          sri.order_type::TEXT AS order_type, 
+          sr.order_type::TEXT AS order_type,  -- ✅ FIX
           'SALES_RETURN' AS type,
           sr.created_at,
           sr.deleted_at
+
         FROM sales_returns sr
         LEFT JOIN sales_return_items sri 
           ON sri.sales_return_id = sr.id AND sri.deleted_at IS NULL
-        WHERE sr.deleted_at IS NULL
+
+        WHERE sr.deleted_at IS NULL AND sr.status = 'Printed'
+        GROUP BY sr.id
 
         UNION ALL
 
-        -- OLD JEWEL
-        SELECT 
+        -- 🪙 OLD JEWEL
+        SELECT
           oj.id,
           oj.customer_id,
           oj.old_jewel_code AS reference_no,
           oj.date,
           oj.total_amount,
-          oji.jewel_description AS product_name,
-          1 AS quantity,
+
+          JSON_AGG(
+            JSON_BUILD_OBJECT(
+              'product_name', oji.jewel_description,
+              'quantity', 1
+            )
+          ) FILTER (WHERE oji.id IS NOT NULL) AS items,
+
+          COUNT(oji.id) AS total_quantity,
+
           oj.branch_id,
-          NULL AS order_type,
+          oj.order_type::TEXT AS order_type,   -- ✅ FIX
           'OLD_JEWEL' AS type,
           oj.created_at,
           oj.deleted_at
+
         FROM old_jewels oj
         LEFT JOIN old_jewel_items oji 
           ON oji.old_jewel_id = oj.id AND oji.deleted_at IS NULL
-        WHERE oj.deleted_at IS NULL
+
+        WHERE oj.deleted_at IS NULL AND oj.status = 'Printed'
+        GROUP BY oj.id
 
         UNION ALL
 
-        -- JEWEL REPAIR
-        SELECT 
+        -- 🔧 JEWEL REPAIR
+        SELECT
           jr.id,
           jr.customer_id,
           jr.repair_code AS reference_no,
           jr.date,
           jr.total_amount,
-          jri.description AS product_name,
-          jri.quantity,
+
+          JSON_AGG(
+            JSON_BUILD_OBJECT(
+              'product_name', jri.description,
+              'quantity', jri.quantity
+            )
+          ) FILTER (WHERE jri.id IS NOT NULL) AS items,
+
+          SUM(jri.quantity) AS total_quantity,
+
           jr.branch_id,
-          NULL AS order_type,
+          jr.order_type::TEXT AS order_type,   -- ✅ FIX
           'JEWEL_REPAIR' AS type,
           jr.created_at,
           jr.deleted_at
+
         FROM jewel_repairs jr
         LEFT JOIN jewel_repair_items jri 
           ON jri.repair_id = jr.id AND jri.deleted_at IS NULL
-        WHERE jr.deleted_at IS NULL
+
+        WHERE jr.deleted_at IS NULL AND jr.status = 'Completed'
+        GROUP BY jr.id
 
       ) t
-      ${conditions}
-      ORDER BY t.date DESC, t.created_at DESC
-    `;
+
+      WHERE t.customer_id = :customer_id
+        AND t.deleted_at IS NULL
+
+        ${from ? 'AND t.date >= :from' : ''}
+        ${to ? 'AND t.date <= :to' : ''}
+        ${date ? 'AND DATE(t.date) = :date' : ''}
+        ${branch_id ? 'AND t.branch_id = :branch_id' : ''}
+        ${search ? `AND (
+          t.reference_no ILIKE :search OR
+          EXISTS (
+            SELECT 1 FROM JSON_ARRAY_ELEMENTS(t.items) elem
+            WHERE elem->>'product_name' ILIKE :search
+          )
+        )` : ''}
+        ${order_type ? 'AND t.order_type = :order_type' : ''}
+
+      ORDER BY t.date DESC, t.created_at DESC;
+      `;
 
     const data = await sequelize.query(sql, {
       replacements,
@@ -836,16 +894,22 @@ const getCustomerTransactions = async (req, res) => {
     });
 
     // Final UI Format
-    const formatted = data.map((item, index) => ({
+   const formatted = data.map((item, index) => ({
       s_no: index + 1,
       date: item.date,
       reference_no: item.reference_no,
-      product_name: item.product_name,
-      quantity: item.quantity,
+
+      // ✅ FIX HERE
+      product_name: item.items?.map(i => i.product_name).join(", ") || "-",
+      quantity: Number(item.total_quantity || 0),
+
       total_amount: Number(item.total_amount),
       branch_id: item.branch_id,
       order_type: item.order_type || "-",
-      type: item.type
+      type: item.type,
+
+      // 👉 OPTIONAL (very useful for UI)
+      items: item.items || []
     }));
 
     return commonService.okResponse(res, {

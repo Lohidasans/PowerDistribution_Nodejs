@@ -59,12 +59,7 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
         defaultValue: 0,
       },
-      order_type: {
-        type: DataTypes.ENUM("Online", "Offline"),
-        allowNull: false,
-        defaultValue: "Offline",
       },
-    },
     {
       timestamps: true,
       createdAt: "created_at",
