@@ -195,7 +195,7 @@ const getVoucherReceipts = async (req, res) => {
     } = req.query;
 
     const replacements = {};
-    let whereSql = "WHERE vr.deleted_at IS NULL and vr.is_active = true";
+    let whereSql = "WHERE vr.deleted_at IS NULL";
 
     if (receipt_date) {
       whereSql += " AND vr.receipt_date = :receipt_date";
