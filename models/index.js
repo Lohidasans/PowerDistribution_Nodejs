@@ -194,6 +194,7 @@ const DeviceInfo = require("./deviceInfos")(sequelize, Sequelize.DataTypes);
 const EmployeeTracking = require("./employeeTracking")(sequelize, Sequelize.DataTypes);
 const EnrollDeviceDetails = require("./enrollDeviceDetails")(sequelize, Sequelize.DataTypes);
 const UserNotification = require("./userNotifications")(sequelize, Sequelize.DataTypes);
+const EmployeeAttendanceReport = require("./employeeAttendanceReports")(sequelize, Sequelize.DataTypes);
 
 const models = {
   Permission,
@@ -303,6 +304,7 @@ const models = {
   EmployeeTracking,
   EnrollDeviceDetails,
   UserNotification,
+  EmployeeAttendanceReport,
   SalesOrder,
   SalesOrderAdditionalCharge,
   ChargesType,

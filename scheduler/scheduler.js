@@ -1,7 +1,8 @@
 // scheduler.js
 const cron = require('node-cron');
 const deleteExpiredOnHoldInvoices = require('./onHoldInvoiceCleanup.job');
-const autoGenerateMonthlyPayroll = require('./autoPayroll.job');
+const autoGenerateMonthlyPayroll  = require('./autoPayroll.job');
+const { runDailyAttendanceReport }  = require('./attendanceReport.job');
 
 console.log("🕒 Scheduler loaded at", new Date());
 
@@ -17,6 +18,15 @@ cron.schedule('0 0 * * *', async () => {
 cron.schedule('30 0 1 * *', async () => {
     console.log("💰 Monthly payroll auto-generation started at", new Date());
     await autoGenerateMonthlyPayroll();
+}, {
+    timezone: "Asia/Kolkata"  // IST
+});
+
+// Nightly attendance snapshot at 11:30 PM IST (Kolkata)
+// Records YESTERDAY's date so all late punches are captured before the snapshot.
+cron.schedule('30 23 * * *', async () => {
+    console.log("📋 Nightly attendance report cron triggered at", new Date());
+    await runDailyAttendanceReport();
 }, {
     timezone: "Asia/Kolkata"  // IST
 });
