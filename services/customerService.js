@@ -537,7 +537,7 @@ const listCustomers = async (req, res) => {
 
     sql += `
       GROUP BY c.id
-      ORDER BY c.created_at
+      ORDER BY c.created_at desc
     `;
 
     // Pagination applied only if limit exists
