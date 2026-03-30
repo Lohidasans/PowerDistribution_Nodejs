@@ -1398,7 +1398,7 @@ const getVendorLedgerReport = async (req, res) => {
 
         -- RECEIPT → Vendor Credit
         SELECT
-          r.receipt_date AS date,s
+          r.receipt_date AS date,
           r.receipt_no AS reference_no,
           v.vendor_name AS ledger_account,
           0 AS debit,
