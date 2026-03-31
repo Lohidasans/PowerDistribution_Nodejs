@@ -197,9 +197,36 @@ const listCustomersWithMobileNumber = async (req, res) => {
 
 // Get by id
 const getCustomerById = async (req, res) => {
-  const entity = await commonService.findById(models.Customer, req.params.id, res);
-  if (!entity) return;
-  return commonService.okResponse(res, { customer: entity });
+  try {
+    const customer = await models.Customer.findOne({
+      where: { id: req.params.id, deleted_at: null }
+    });
+
+    if (!customer) {
+      return commonService.badRequest(res, "Customer not found");
+    }
+
+    let branch_name = null;
+
+    if (customer.branch_id) {
+      const branch = await models.Branch.findOne({
+        where: { id: customer.branch_id, deleted_at: null },
+        attributes: ["branch_name"]
+      });
+
+      branch_name = branch?.branch_name || null;
+    }
+
+    return commonService.okResponse(res, {
+      customer: {
+        ...customer.toJSON(),
+        branch_name   // ✅ added manually
+      }
+    });
+
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
 };
 
 // Update
