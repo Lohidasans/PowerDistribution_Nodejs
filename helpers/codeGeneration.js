@@ -196,10 +196,60 @@ const generateProductSKUCode = async (prefixFromQuery = "", options = {}) => {
   return finalSKU;
 };
 
+// For invoice settings - EST, INV, OJ, JR, SR, PAY, REC, JE
+const generateBranchSeriesCode = async (
+  model,
+  field,
+  prefix,
+  suffix,
+  startNo,
+  { pad = 3 } = {}
+) => {
+  const cleanPrefix = String(prefix).trim().toUpperCase();
+  const cleanSuffix = String(suffix).trim();
+
+  // Escape regex
+  const escapedPrefix = cleanPrefix.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&");
+  const escapedSuffix = cleanSuffix.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&");
+
+  // 🔥 KEY: match full pattern PREFIX + NUMBER + / + SUFFIX
+  const regexPattern = `^${escapedPrefix}[0-9]+/${escapedSuffix}$`;
+
+  const [result] = await model.sequelize.query(
+    `
+    SELECT
+      MAX(
+        CAST(
+          SUBSTRING(${field} FROM '[0-9]+') AS INTEGER
+        )
+      ) AS max_no
+    FROM ${model.getTableName()}
+    WHERE ${field} ~* :regex
+    `,
+    {
+      replacements: {
+        regex: regexPattern
+      },
+      type: model.sequelize.QueryTypes.SELECT,
+    }
+  );
+
+  let nextNumber;
+
+  if (!result?.max_no) {
+    nextNumber = parseInt(startNo, 10) || 1;
+  } else {
+    nextNumber = result.max_no + 1;
+  }
+
+  return `${cleanPrefix}${String(nextNumber).padStart(pad, "0")}/${cleanSuffix}`;
+};
+
 module.exports = { 
   generateUniqueSkuId, 
   generateUniqueCode, 
   generateFiscalSeriesCode,
-  generateProductSKUCode
+  generateProductSKUCode,
+  generateBranchSeriesCode
 
 };
