@@ -909,7 +909,10 @@ const getCustomerTransactions = async (req, res) => {
       type: item.type,
 
       // 👉 OPTIONAL (very useful for UI)
-      items: item.items || []
+      items: item.items || [],
+      created_at: item.created_at,
+
+      deleted_at: item.deleted_at,
     }));
 
     return commonService.okResponse(res, {
