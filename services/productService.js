@@ -3,6 +3,7 @@ const { Op } = require("sequelize");
 const commonService = require("../services/commonService");
 const message = require("../constants/en.json");
 const { buildSearchCondition } = require("../helpers/queryHelper");
+const { dateFilter } = require("../helpers/dateHelper");
 const {
   generateUniqueCode,
   generateProductSKUCode,
@@ -762,6 +763,9 @@ const getAllProductDetails = async (req, res) => {
       stock,
       page,
       limit,
+      from_date,
+      to_date,
+      date_filter
     } = req.query;
 
     const usePagination = page !== undefined || limit !== undefined;
@@ -772,14 +776,25 @@ const getAllProductDetails = async (req, res) => {
 
     const isNumericSearch = search !== undefined && search !== null && search !== "" && !isNaN(search);
 
+    const replacements = {};
+
+    // DATE FILTER
+    const dateCondition = dateFilter(
+      { from_date, to_date, date_filter },
+      "p.created_at",
+      replacements
+    );
+
     // COMMON WHERE CLAUSE
     let whereClause = `
       WHERE p.status = 'Active'
       AND p.deleted_at IS NULL
     `;
 
-    const replacements = {};
+    // APPLY DATE FILTER HERE
+    whereClause += dateCondition;
 
+  
     if (material_type_id) {
       whereClause += ` AND p.material_type_id = :material_type_id`;
       replacements.material_type_id = +material_type_id;
