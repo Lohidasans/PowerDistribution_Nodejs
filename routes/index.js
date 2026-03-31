@@ -150,5 +150,6 @@ module.exports = (app) => {
   app.use("/api/v1", SalesOrderRoute);
   app.use("/api/v1", SuperAdminDashboardRoute);
   app.use("/api/v1", ReportRoute);
+  app.use("/api/v1", CodeGeneratorRoute);
 };
 
