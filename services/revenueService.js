@@ -837,7 +837,6 @@ const getBranchRevenueDetailsNew = async (req, res) => {
             FROM revenue_stream rs
             WHERE rs.branch_id = :branch_id
               ${dateCondition}
-              ${paymentModeCondition}
               ${searchCondition}
         `;
 
@@ -860,7 +859,6 @@ const getBranchRevenueDetailsNew = async (req, res) => {
                     FROM revenue_stream rs
                     WHERE rs.branch_id = :branch_id
                       ${dateCondition}
-                      ${paymentModeCondition}
                       ${searchCondition}
                     GROUP BY description
                     ${havingCondition}
@@ -904,6 +902,7 @@ const getBranchRevenueDetailsNew = async (req, res) => {
         return commonService.handleError(res, error);
     }
 };
+
 
 const getVendorGrnRevenueList = async (req, res) => {
     try {
