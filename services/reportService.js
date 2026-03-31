@@ -1180,6 +1180,7 @@ const getProductWiseReport = async (req, res) => {
           p.purity,
           p.product_type,
           p.variation_type,
+          p.created_at,
 
         -- AGGREGATED VALUES
         SUM(pid.quantity) AS total_quantity,
