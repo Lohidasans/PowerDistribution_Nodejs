@@ -113,6 +113,7 @@ const PurchaseReturn = require("./purchaseReturns")(sequelize, Sequelize.DataTyp
 const PurchaseReturnItem = require("./purchaseReturnItems")(sequelize, Sequelize.DataTypes);
 
 // Ledger related models
+const LedgerAccount = require("./ledgerAccounts")(sequelize, Sequelize.DataTypes);
 const LedgerGroup = require("./ledgerGroup")(sequelize, Sequelize.DataTypes);
 const Ledger = require("./ledger")(sequelize, Sequelize.DataTypes);
 
@@ -193,6 +194,7 @@ const DeviceInfo = require("./deviceInfos")(sequelize, Sequelize.DataTypes);
 const EmployeeTracking = require("./employeeTracking")(sequelize, Sequelize.DataTypes);
 const EnrollDeviceDetails = require("./enrollDeviceDetails")(sequelize, Sequelize.DataTypes);
 const UserNotification = require("./userNotifications")(sequelize, Sequelize.DataTypes);
+const EmployeeAttendanceReport = require("./employeeAttendanceReports")(sequelize, Sequelize.DataTypes);
 
 const models = {
   Permission,
@@ -236,6 +238,7 @@ const models = {
   State,
   District,
   Customer,
+  LedgerAccount,
   LedgerGroup,
   Ledger,
   Scheme,
@@ -301,6 +304,7 @@ const models = {
   EmployeeTracking,
   EnrollDeviceDetails,
   UserNotification,
+  EmployeeAttendanceReport,
   SalesOrder,
   SalesOrderAdditionalCharge,
   ChargesType,

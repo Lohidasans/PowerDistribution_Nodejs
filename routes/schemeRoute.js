@@ -4,7 +4,6 @@ const schemeService = require("../services/schemeService");
 
 // CRUD
 router.post("/schemes", schemeService.createScheme);
-router.post("/schemes/code", schemeService.generateSchemeCode);
 router.get("/schemes", schemeService.listSchemes);
 router.get("/schemes/:id", schemeService.getSchemeById);
 router.put("/schemes/:id", schemeService.updateScheme);

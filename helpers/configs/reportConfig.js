@@ -18,7 +18,7 @@ const REPORT_CONFIG = {
         codeColumn: "repair_code",
         weightColumn: "weight",
         quantityExpr: "COUNT(i.id)",
-        statusCondition: "AND t.status = 'Pending'"
+        statusCondition: "AND t.status = 'Completed'"
     },
 
     estimate: {

@@ -8,6 +8,10 @@ module.exports = (sequelize, DataTypes) => {
         primaryKey: true,
         type: DataTypes.INTEGER,
       },
+      enrollment_code: { // Auto generate
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
       customer_id: {
         type: DataTypes.INTEGER,
         allowNull: true,

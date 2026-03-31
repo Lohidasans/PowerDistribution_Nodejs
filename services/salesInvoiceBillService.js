@@ -1932,7 +1932,8 @@ const getCustomerAdvanceReceipts = async (req, res) => {
       where: {
         account_id: customer.ledger_id,
         bill_type_id: 3,
-        deleted_at: null
+        deleted_at: null,
+        is_active: true // Only Active receipts
       },
       attributes: [
         "id",

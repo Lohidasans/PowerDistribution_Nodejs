@@ -1,6 +1,7 @@
 const { models, sequelize } = require("../models");
 const commonService = require("./commonService");
 const { dateFilter } = require("../helpers/dateHelper");
+const { calculateSellingPriceSync } = require("../services/productService");
 
 const getSalesInvoiceReport = async (req, res) => {
     try {
@@ -1075,10 +1076,616 @@ const getPurchaseReport = async (req, res) => {
     }
 };
 
+const getProductWiseReport = async (req, res) => {
+  try {
+    const {
+      branch_id,
+      material_type_id,
+      vendor_id,
+      category_id,
+      subcategory_id,
+      grn_no,
+      ref_no,
+      search,
+      page,
+      limit,
+    } = req.query;
+
+    const usePagination = page !== undefined && limit !== undefined;
+
+    const pageNum = usePagination ? parseInt(page, 10) : null;
+    const limitNum = usePagination ? parseInt(limit, 10) : null;
+    const offset = usePagination ? (pageNum - 1) * limitNum : null;
+
+    const replacements = {};
+
+    // 🔹 BASE WHERE (PRODUCT LEVEL - BEST PRACTICE)
+    let where = `
+      WHERE p.deleted_at IS NULL
+      AND p.status = 'Active'
+    `;
+
+    if (branch_id) {
+      where += ` AND p.branch_id = :branch_id`;
+      replacements.branch_id = +branch_id;
+    }
+
+    if (vendor_id) {
+      where += ` AND p.vendor_id = :vendor_id`;
+      replacements.vendor_id = +vendor_id;
+    }
+
+    if (material_type_id) {
+      where += ` AND p.material_type_id = :material_type_id`;
+      replacements.material_type_id = +material_type_id;
+    }
+
+    if (category_id) {
+      where += ` AND p.category_id = :category_id`;
+      replacements.category_id = +category_id;
+    }
+
+    if (subcategory_id) {
+      where += ` AND p.subcategory_id = :subcategory_id`;
+      replacements.subcategory_id = +subcategory_id;
+    }
+
+    if (grn_no) {
+      where += ` AND g.grn_no ILIKE :grn_no`;
+      replacements.grn_no = `%${grn_no}%`;
+    }
+
+    if (ref_no) {
+      where += ` AND gi.ref_no ILIKE :ref_no`;
+      replacements.ref_no = `%${ref_no}%`;
+    }
+
+    // 🔍 SEARCH
+    if (search) {
+      where += `
+        AND (
+          g.grn_no ILIKE :search OR
+          gi.ref_no ILIKE :search OR
+          v.vendor_name ILIKE :search OR
+          mt.material_type ILIKE :search OR
+          c.category_name ILIKE :search OR
+          sc.subcategory_name ILIKE :search OR
+          p.product_name ILIKE :search OR
+          p.sku_id ILIKE :search OR
+          pid.sku_id ILIKE :search
+        )
+      `;
+      replacements.search = `%${search}%`;
+    }
+
+    // 🔹 MAIN QUERY
+    let query = `
+      SELECT
+          g.grn_no,
+          g.grn_date,
+          p.branch_id,
+
+          v.vendor_name,
+
+          gi.ref_no,
+
+          mt.material_type,
+          mt.material_price,
+          c.category_name,
+          sc.subcategory_name,
+
+          p.id AS product_id,
+          p.sku_id,
+          p.product_name,
+          p.purity,
+          p.product_type,
+          p.variation_type,
+          p.created_at,
+
+        -- AGGREGATED VALUES
+        SUM(pid.quantity) AS total_quantity,
+        ROUND(SUM(pid.net_weight), 3) AS total_net_weight,
+        ROUND(SUM(pid.gross_weight), 3) AS total_gross_weight,
+
+        -- PURCHASE PRICE(TOTAL)
+        ROUND(SUM(gi.rate_per_g * pid.net_weight), 2) AS purchase_price,
+
+        -- ITEMS(NESTED)
+        JSON_AGG(
+          JSON_BUILD_OBJECT(
+            'item_id', pid.id,
+            'item_sku', pid.sku_id,
+            'variation', pid.variation,
+            'quantity', pid.quantity,
+            'gross_weight', pid.gross_weight,
+            'net_weight', pid.net_weight,
+            'stone_weight', pid.stone_weight,
+            'stone_value', pid.stone_value,
+            'making_charge', pid.making_charge,
+            'making_charge_type', pid.making_charge_type,
+            'wastage', pid.wastage,
+            'wastage_type', pid.wastage_type,
+            'website_price', pid.website_price,
+            'measurement_details', pid.measurement_details
+          )
+        ) FILTER(WHERE pid.id IS NOT NULL) AS items
+
+      FROM products p
+
+      LEFT JOIN grns g ON g.id = p.grn_id AND g.deleted_at IS NULL
+      LEFT JOIN "grnItems" gi ON gi.id = p.ref_no_id
+      LEFT JOIN "productItemDetails" pid ON pid.product_id = p.id AND pid.deleted_at IS NULL
+
+      LEFT JOIN vendors v ON v.id = p.vendor_id
+      LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
+      LEFT JOIN categories c ON c.id = p.category_id
+      LEFT JOIN subcategories sc ON sc.id = p.subcategory_id
+
+      ${ where }
+
+      GROUP BY
+        g.grn_no,
+          g.grn_date,
+          g.branch_id,
+          v.vendor_name,
+          gi.ref_no,
+          mt.material_type,
+          mt.material_price,
+          c.category_name,
+          sc.subcategory_name,
+          p.id
+
+      ORDER BY g.grn_date DESC
+    `;
+
+    if (usePagination) {
+      query += ` LIMIT :limit OFFSET :offset`;
+      replacements.limit = limitNum;
+      replacements.offset = offset;
+    }
+
+    const rows = await sequelize.query(query, {
+      replacements,
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    // SELLING PRICE CALCULATION
+    const finalRows = rows.map((row) => {
+      let totalSellingPrice = 0;
+
+      const items = row.items || [];
+
+      const calculatedItems = items.map((item) => {
+        const calc = calculateSellingPriceSync(
+          { product_type: row.product_type },
+          {
+            net_weight: item.net_weight,
+            stone_value: item.stone_value,
+            making_charge: item.making_charge,
+            making_charge_type: item.making_charge_type,
+            wastage: item.wastage,
+            wastage_type: item.wastage_type,
+            rate_per_gram: row.rate_per_g, 
+          },
+          [],
+          row.material_price
+        );
+
+        totalSellingPrice += Number(calc.selling_price || 0);
+
+        return {
+          ...item,
+          selling_price: Number(calc.selling_price || 0),
+        };
+      });
+
+      const purchasePrice = Number(row.purchase_price || 0);
+
+      return {
+        ...row,
+        items: calculatedItems,
+        selling_price: Number(totalSellingPrice.toFixed(2)),
+        profit: Number((totalSellingPrice - purchasePrice).toFixed(2)),
+      };
+    });
+
+    // 🔹 COUNT
+    let total = null;
+    if (usePagination) {
+      const countQuery = `
+        SELECT COUNT(DISTINCT p.id) AS total
+        FROM products p
+        LEFT JOIN grns g ON g.id = p.grn_id
+        LEFT JOIN "grnItems" gi ON gi.id = p.ref_no_id
+        ${where}
+      `;
+
+      const [countResult] = await sequelize.query(countQuery, {
+        replacements,
+        type: sequelize.QueryTypes.SELECT,
+      });
+
+      total = Number(countResult.total);
+    }
+
+    const response = { list: finalRows };
+
+    if (usePagination) {
+      response.pagination = {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum),
+      };
+    }
+
+    return commonService.okResponse(res, response);
+
+  } catch (err) {
+    console.error(err);
+    return commonService.handleError(res, err);
+  }
+};
+
+const getVendorLedgerReport = async (req, res) => {
+  try {
+    const { vendor_id, from_date, to_date } = req.query;
+
+    const fromDate = from_date || '2000-01-01';
+    const toDate = to_date || new Date().toISOString().split('T')[0];
+
+    const sql = `
+        SELECT * FROM (
+
+        -- GRN → Purchase Debit
+        SELECT
+          g.grn_date AS date,
+          g.grn_no AS reference_no,
+          'Purchase A/c' AS ledger_account,
+          g.total_amount AS debit,
+          0 AS credit
+        FROM grns g
+        WHERE g.deleted_at IS NULL
+          AND (:vendor_id IS NULL OR g.vendor_id = :vendor_id)
+          AND g.grn_date BETWEEN :from_date AND :to_date
+
+        UNION ALL
+
+        -- GRN → Vendor Credit
+        SELECT
+          g.grn_date AS date,
+          g.grn_no AS reference_no,
+          v.vendor_name AS ledger_account,
+          0 AS debit,
+          g.total_amount AS credit
+        FROM grns g
+        JOIN vendors v ON v.id = g.vendor_id
+        WHERE g.deleted_at IS NULL
+          AND (:vendor_id IS NULL OR g.vendor_id = :vendor_id)
+          AND g.grn_date BETWEEN :from_date AND :to_date
+
+        UNION ALL
+
+        -- PAYMENT → Vendor Debit
+        SELECT
+          vp.payment_date AS date,
+          vp.payment_no AS reference_no,
+          v.vendor_name AS ledger_account,
+          vp.amount AS debit,
+          0 AS credit
+        FROM vendor_payments vp
+        JOIN vendors v ON v.id = vp.account_name_id
+        WHERE vp.deleted_at IS NULL
+          AND vp.user_type_id = 1
+          AND (:vendor_id IS NULL OR vp.account_name_id = :vendor_id)
+          AND vp.payment_date BETWEEN :from_date AND :to_date
+
+        UNION ALL
+
+        -- PAYMENT → Cash/Bank Credit
+        SELECT
+          vp.payment_date AS date,
+          vp.payment_no AS reference_no,
+          'Cash/Bank' AS ledger_account,
+          0 AS debit,
+          vp.amount AS credit
+        FROM vendor_payments vp
+        WHERE vp.deleted_at IS NULL
+          AND vp.user_type_id = 1
+          AND (:vendor_id IS NULL OR vp.account_name_id = :vendor_id)
+          AND vp.payment_date BETWEEN :from_date AND :to_date
+
+        UNION ALL
+
+        -- RECEIPT → Vendor Credit
+        SELECT
+          r.receipt_date AS date,
+          r.receipt_no AS reference_no,
+          v.vendor_name AS ledger_account,
+          0 AS debit,
+          r.amount AS credit
+        FROM voucher_receipts r
+        JOIN vendors v ON v.id = r.account_id
+        WHERE r.deleted_at IS NULL
+          AND r.user_type_id = 1
+          AND (:vendor_id IS NULL OR r.account_id = :vendor_id)
+          AND r.receipt_date BETWEEN :from_date AND :to_date
+
+      ) t
+      ORDER BY date ASC;
+    `;
+
+    const data = await sequelize.query(sql, {
+      replacements: {
+        vendor_id: vendor_id ? parseInt(vendor_id) : null,
+        from_date: fromDate,
+        to_date: toDate
+      },
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    let totalDebit = 0;
+    let totalCredit = 0;
+    let runningBalance = 0;
+
+    const formatted = data.map(row => {
+      const debit = parseFloat(row.debit || 0);
+      const credit = parseFloat(row.credit || 0);
+
+      totalDebit += debit;
+      totalCredit += credit;
+
+      runningBalance += (credit - debit);
+
+      return {
+        ...row,
+        debit: debit.toFixed(2),
+        credit: credit.toFixed(2),
+        running_balance: runningBalance.toFixed(2)
+      };
+    });
+
+    const balance = totalCredit - totalDebit;
+
+    return commonService.okResponse(res, {
+      data: formatted,
+      summary: {
+        totalDebit: totalDebit.toFixed(2),
+        totalCredit: totalCredit.toFixed(2),
+        balance: balance.toFixed(2)
+      }
+    });
+
+  } catch (err) {
+    console.error(err);
+    return commonService.handleError(res, err);
+  }
+};
+
+
+const getLedgerReportByAccount = async (req, res) => {
+  try {
+    const { ledger_account_id, from_date, to_date } = req.query;
+
+    const fromDate = from_date || '2000-01-01';
+    const toDate = to_date || new Date().toISOString().split('T')[0];
+
+    const sql = `SELECT * FROM (
+        -- GRN → Purchase Debit
+        SELECT 
+          g.grn_date AS date,
+          lp.ledger_name AS ledger_account,
+          'Purchase Entry' AS description,
+          'GRN' AS voucher_type,
+          g.grn_no AS voucher_no,
+          g.subtotal_amount AS debit,
+          0 AS credit
+        FROM grns g
+        JOIN ledger lp ON lp.ledger_name = 'Purchase Accounts'
+        JOIN ledger_group lg ON lg.id = lp.ledger_group_id
+        WHERE g.deleted_at IS NULL
+          AND (:ledger_account_id IS NULL OR lg.ledger_account_id = :ledger_account_id)
+          AND g.grn_date BETWEEN :from_date AND :to_date
+
+        UNION ALL
+
+        -- GRN → Vendor Credit
+        SELECT 
+          g.grn_date,
+          lv.ledger_name,
+          'Purchase Entry',
+          'GRN',
+          g.grn_no,
+          0,
+          g.subtotal_amount
+        FROM grns g
+        JOIN vendors v ON v.id = g.vendor_id
+        JOIN ledger lv ON lv.id = v.ledger_id
+        JOIN ledger_group lg ON lg.id = lv.ledger_group_id
+        WHERE g.deleted_at IS NULL
+          AND (:ledger_account_id IS NULL OR lg.ledger_account_id = :ledger_account_id)
+          AND g.grn_date BETWEEN :from_date AND :to_date
+
+        UNION ALL
+
+        -- SALES → Cash Debit
+        SELECT 
+          s.invoice_date,
+          lc.ledger_name,
+          'Sales Invoice',
+          'INV',
+          s.invoice_no,
+          s.subtotal_amount,
+          0
+        FROM sales_invoice_bills s
+        JOIN ledger lc ON lc.ledger_name = 'Cash'
+        JOIN ledger_group lg ON lg.id = lc.ledger_group_id
+        WHERE s.deleted_at IS NULL AND s.status = 'Invoice'
+          AND (:ledger_account_id IS NULL OR lg.ledger_account_id = :ledger_account_id)
+          AND s.invoice_date BETWEEN :from_date AND :to_date
+
+        UNION ALL
+
+        -- SALES → Sales Credit
+        SELECT 
+          s.invoice_date,
+          ls.ledger_name,
+          'Sales Invoice',
+          'INV',
+          s.invoice_no,
+          0,
+          s.subtotal_amount
+        FROM sales_invoice_bills s
+        JOIN ledger ls ON ls.ledger_name = 'Sales Accounts'
+        JOIN ledger_group lg ON lg.id = ls.ledger_group_id
+        WHERE s.deleted_at IS NULL AND s.status = 'Invoice'
+          AND (:ledger_account_id IS NULL OR lg.ledger_account_id = :ledger_account_id)
+          AND s.invoice_date BETWEEN :from_date AND :to_date
+
+        UNION ALL
+
+        -- PAYMENT → Vendor Debit
+        SELECT 
+          vp.payment_date,
+          lv.ledger_name,
+          'Payment',
+          'PAY',
+          vp.payment_no,
+          vp.amount,
+          0
+        FROM vendor_payments vp
+        JOIN vendors v ON v.id = vp.account_name_id
+        JOIN ledger lv ON lv.id = v.ledger_id
+        JOIN ledger_group lg ON lg.id = lv.ledger_group_id
+        WHERE vp.deleted_at IS NULL
+          AND (:ledger_account_id IS NULL OR lg.ledger_account_id = :ledger_account_id)
+          AND vp.payment_date BETWEEN :from_date AND :to_date
+
+        UNION ALL
+
+        -- PAYMENT → Cash Credit
+        SELECT 
+          vp.payment_date,
+          lc.ledger_name,
+          'Payment',
+          'PAY',
+          vp.payment_no,
+          0,
+          vp.amount
+        FROM vendor_payments vp
+        JOIN ledger lc ON lc.id = vp.account_name_id
+        JOIN ledger_group lg ON lg.id = lc.ledger_group_id
+        WHERE vp.deleted_at IS NULL
+          AND (:ledger_account_id IS NULL OR lg.ledger_account_id = :ledger_account_id)
+          AND vp.payment_date BETWEEN :from_date AND :to_date
+
+        UNION ALL
+
+        -- RECEIPT → Cash Debit
+        SELECT 
+          r.receipt_date,
+          lc.ledger_name,
+          'Receipt',
+          'REC',
+          r.receipt_no,
+          r.amount,
+          0
+        FROM voucher_receipts r
+        JOIN ledger lc ON lc.id = r.account_id
+        JOIN ledger_group lg ON lg.id = lc.ledger_group_id
+        WHERE r.deleted_at IS NULL
+          AND (:ledger_account_id IS NULL OR lg.ledger_account_id = :ledger_account_id)
+          AND r.receipt_date BETWEEN :from_date AND :to_date
+
+        UNION ALL
+
+        -- RECEIPT → Party Credit
+        SELECT 
+          r.receipt_date,
+          lp.ledger_name,
+          'Receipt',
+          'REC',
+          r.receipt_no,
+          0,
+          r.amount
+        FROM voucher_receipts r
+        JOIN ledger lp ON lp.id = r.account_id
+        JOIN ledger_group lg ON lg.id = lp.ledger_group_id
+        WHERE r.deleted_at IS NULL
+          AND (:ledger_account_id IS NULL OR lg.ledger_account_id = :ledger_account_id)
+          AND r.receipt_date BETWEEN :from_date AND :to_date
+
+        UNION ALL
+
+        -- JOURNAL ENTRY
+        SELECT 
+          j.date,
+          'Journal',
+          'Journal Entry',
+          'JE',
+          j.journal_no,
+          j.total,
+          j.total
+        FROM journal_entries j
+        WHERE j.deleted_at IS NULL
+          AND j.date BETWEEN :from_date AND :to_date
+
+      ) t
+      ORDER BY date ASC;`;
+
+    const data = await sequelize.query(sql, {
+      replacements: {
+        ledger_account_id: ledger_account_id ? parseInt(ledger_account_id) : null,
+        from_date: fromDate,
+        to_date: toDate
+      },
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    let totalDebit = 0;
+    let totalCredit = 0;
+    let runningBalance = 0;
+
+    const formatted = data.map(row => {
+      const debit = parseFloat(row.debit || 0);
+      const credit = parseFloat(row.credit || 0);
+
+      totalDebit += debit;
+      totalCredit += credit;
+
+      runningBalance += (debit - credit);
+
+      return {
+        ...row,
+        debit: debit.toFixed(2),
+        credit: credit.toFixed(2),
+        running_balance: runningBalance.toFixed(2)
+      };
+    });
+
+    return commonService.okResponse(res, {
+      data: formatted,
+      summary: {
+        totalDebit: totalDebit.toFixed(2),
+        totalCredit: totalCredit.toFixed(2),
+        balance: (totalDebit - totalCredit).toFixed(2)
+      }
+    });
+
+  } catch (err) {
+    console.error(err);
+    return commonService.handleError(res, err);
+  }
+};
+
+
 module.exports = {
     getSalesInvoiceReport,
     getSalesReturnReport,
     getOldJewelReport,
     getJewelRepairReport,
-    getPurchaseReport
+    getPurchaseReport,
+    getProductWiseReport,
+    getVendorLedgerReport,
+    getLedgerReportByAccount
 }

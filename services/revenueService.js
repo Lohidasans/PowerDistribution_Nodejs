@@ -561,7 +561,6 @@ const getBranchwiseRevenue = async (req, res) => {
       WHERE 1=1
         ${dateCondition}
         ${branchCondition}
-        ${paymentModeCondition}
         ${searchCondition}
 
       GROUP BY b.id, b.branch_name
@@ -580,71 +579,70 @@ const getBranchwiseRevenue = async (req, res) => {
         });
 
         const summaryQuery = `
-      WITH revenue_stream AS (
+            WITH revenue_stream AS (
 
-  /* 1️⃣ SALES + REPAIR PAYMENTS (ENUM payment_mode, refund applied) */
-  SELECT
-    COALESCE(sib.branch_id, jr.branch_id) AS branch_id,
-    p.payment_date AS txn_date,
-    p.payment_mode::text AS payment_mode,
-    CASE
-      WHEN sib.id IS NOT NULL
-           AND p.payment_mode = 'Cash'
-      THEN
-        p.amount_received
-        - COALESCE(
-            MAX(sib.refund_amount) OVER (PARTITION BY sib.id),
-            0
-          )
-      ELSE p.amount_received
-    END AS amount
-  FROM payments p
-  LEFT JOIN sales_invoice_bills sib
-    ON sib.id = p.invoice_bill_id
-    AND sib.deleted_at IS NULL
-    AND sib.is_active = true
-  LEFT JOIN jewel_repairs jr
-    ON jr.id = p.jewel_repair_id
-    AND jr.deleted_at IS NULL AND jr.is_active = true
-  WHERE p.deleted_at IS NULL
-    AND p.status = 'Completed'
+            /* 1️⃣ SALES + REPAIR PAYMENTS (ENUM payment_mode, refund applied) */
+            SELECT
+                COALESCE(sib.branch_id, jr.branch_id) AS branch_id,
+                p.payment_date AS txn_date,
+                p.payment_mode::text AS payment_mode,
+                CASE
+                WHEN sib.id IS NOT NULL
+                    AND p.payment_mode = 'Cash'
+                THEN
+                    p.amount_received
+                    - COALESCE(
+                        MAX(sib.refund_amount) OVER (PARTITION BY sib.id),
+                        0
+                    )
+                ELSE p.amount_received
+                END AS amount
+            FROM payments p
+            LEFT JOIN sales_invoice_bills sib
+                ON sib.id = p.invoice_bill_id
+                AND sib.deleted_at IS NULL
+                AND sib.is_active = true
+            LEFT JOIN jewel_repairs jr
+                ON jr.id = p.jewel_repair_id
+                AND jr.deleted_at IS NULL AND jr.is_active = true
+            WHERE p.deleted_at IS NULL
+                AND p.status = 'Completed'
 
-  UNION ALL
+            UNION ALL
 
-  /* 2️⃣ VOUCHER RECEIPTS (FK → payment_modes) */
-  SELECT
-    vr.branch_id,
-    vr.receipt_date AS txn_date,
-    pm.payment_mode,
-    vr.amount
-  FROM voucher_receipts vr
-  JOIN payment_modes pm ON pm.id = vr.payment_mode_id
-  WHERE vr.deleted_at IS NULL and vr.is_active = true
+            /* 2️⃣ VOUCHER RECEIPTS (FK → payment_modes) */
+            SELECT
+                vr.branch_id,
+                vr.receipt_date AS txn_date,
+                pm.payment_mode,
+                vr.amount
+            FROM voucher_receipts vr
+            JOIN payment_modes pm ON pm.id = vr.payment_mode_id
+            WHERE vr.deleted_at IS NULL and vr.is_active = true
 
-  UNION ALL
+            UNION ALL
 
-  /* 3️⃣ VENDOR PAYMENTS (FK → payment_modes, NEGATIVE) */
-  SELECT
-    vp.branch_id,
-    vp.payment_date AS txn_date,
-    pm.payment_mode,
-    -vp.amount
-  FROM vendor_payments vp
-  JOIN payment_modes pm ON pm.id = vp.payment_mode
-  WHERE vp.deleted_at IS NULL AND vp.is_active = true
-    AND vp.status = 'Completed'
-)
-      SELECT
-        ROUND(SUM(amount), 2) AS total_collection,
-        ROUND(SUM(CASE WHEN payment_mode = 'Cash' THEN amount ELSE 0 END), 2) AS cash,
-        ROUND(SUM(CASE WHEN payment_mode = 'UPI' THEN amount ELSE 0 END), 2) AS upi,
-        ROUND(SUM(CASE WHEN payment_mode = 'Card' THEN amount ELSE 0 END), 2) AS card
-      FROM revenue_stream rs
-      WHERE 1=1
-        ${dateCondition}
-        ${branchCondition}
-        ${paymentModeCondition}
-    `;
+            /* 3️⃣ VENDOR PAYMENTS (FK → payment_modes, NEGATIVE) */
+            SELECT
+                vp.branch_id,
+                vp.payment_date AS txn_date,
+                pm.payment_mode,
+                -vp.amount
+            FROM vendor_payments vp
+            JOIN payment_modes pm ON pm.id = vp.payment_mode
+            WHERE vp.deleted_at IS NULL AND vp.is_active = true
+                AND vp.status = 'Completed'
+            )
+        SELECT
+            ROUND(SUM(amount), 2) AS total_collection,
+            ROUND(SUM(CASE WHEN payment_mode = 'Cash' THEN amount ELSE 0 END), 2) AS cash,
+            ROUND(SUM(CASE WHEN payment_mode = 'UPI' THEN amount ELSE 0 END), 2) AS upi,
+            ROUND(SUM(CASE WHEN payment_mode = 'Card' THEN amount ELSE 0 END), 2) AS card
+        FROM revenue_stream rs
+        WHERE 1=1
+            ${dateCondition}
+            ${branchCondition}
+        `;
 
         const [summary] = await sequelize.query(summaryQuery, {
             replacements: { ...dateReplacements, ...replacements },
@@ -837,7 +835,6 @@ const getBranchRevenueDetailsNew = async (req, res) => {
             FROM revenue_stream rs
             WHERE rs.branch_id = :branch_id
               ${dateCondition}
-              ${paymentModeCondition}
               ${searchCondition}
         `;
 
@@ -860,7 +857,6 @@ const getBranchRevenueDetailsNew = async (req, res) => {
                     FROM revenue_stream rs
                     WHERE rs.branch_id = :branch_id
                       ${dateCondition}
-                      ${paymentModeCondition}
                       ${searchCondition}
                     GROUP BY description
                     ${havingCondition}
@@ -904,6 +900,7 @@ const getBranchRevenueDetailsNew = async (req, res) => {
         return commonService.handleError(res, error);
     }
 };
+
 
 const getVendorGrnRevenueList = async (req, res) => {
     try {

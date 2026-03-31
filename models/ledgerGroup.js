@@ -17,15 +17,15 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.STRING,
         allowNull: false,
       },
-      normal_balance: {
-      type: DataTypes.ENUM("Debit", "Credit"),
-      allowNull: true,
-    },
-    branch_id:{
+      ledger_account_id: {
         type: DataTypes.INTEGER,
         allowNull: true,
-        defaultValue: 1, // default branch_id to 1 for all ledger groups
-    },
+      },
+      branch_id:{
+          type: DataTypes.INTEGER,
+          allowNull: true,
+          defaultValue: 1, // default branch_id to 1 for all ledger groups
+      },
       status_id: {
         type: DataTypes.INTEGER,
         allowNull: false,

@@ -38,8 +38,12 @@ module.exports = (sequelize) => {
         type: DataTypes.STRING(100),
         allowNull: true, // required only for non-cash
       },
-      reference_no: {
-        type: DataTypes.STRING(100),
+      reference_type: {
+        type: DataTypes.STRING(20), // invoice, grn, scheme
+        allowNull: true,
+      },
+      reference_id: {
+        type: DataTypes.INTEGER, // invoice_id / grn_id / scheme_id
         allowNull: true,
       },
       amount: {

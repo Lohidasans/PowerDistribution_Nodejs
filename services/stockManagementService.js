@@ -1011,48 +1011,46 @@ const getLowStockSummaryInternal = async (where, replacements) => {
     ),
     product_stock AS (
       SELECT
-        fp.id AS product_id,
         fp.subcategory_id,
         fp.branch_id,
-        SUM(pid.quantity) AS total_qty
+        fp.material_type_id,
+        fp.category_id,
+        SUM(pid.quantity) AS total_qty,
+        SUM(pid.quantity * pid.gross_weight) AS total_weight
       FROM filtered_products fp
       JOIN "productItemDetails" pid
         ON pid.product_id = fp.id
         AND pid.deleted_at IS NULL
-      GROUP BY fp.id, fp.subcategory_id, fp.branch_id
+      GROUP BY 
+        fp.subcategory_id,
+        fp.branch_id,
+        fp.material_type_id,
+        fp.category_id
     ),
-    grouped_low_stock AS (
+
+    low_stock_rows AS (
       SELECT
-        p.branch_id,
-        p.material_type_id,
-        p.category_id,
-        sc.id AS subcategory_id,
-        sc.reorder_level,
-        SUM(ps.total_qty) AS quantity
+        ps.subcategory_id,
+        ps.branch_id,
+        ps.total_weight
       FROM product_stock ps
-      JOIN products p ON p.id = ps.product_id
-      JOIN subcategories sc
+      JOIN subcategories sc 
         ON sc.id = ps.subcategory_id
        AND sc.deleted_at IS NULL
       WHERE ps.total_qty < sc.reorder_level
-      GROUP BY
-        p.branch_id,
-        p.material_type_id,
-        p.category_id,
-        sc.id,
-        sc.reorder_level
     )
+
     SELECT
       COUNT(*) AS subcategory_count,
-      COALESCE(SUM(quantity), 0) AS total_quantity
-    FROM grouped_low_stock;
+      COALESCE(SUM(total_weight), 0) AS total_weight
+    FROM low_stock_rows;
     `,
     { replacements }
   );
 
   return {
     subcategory_count: Number(rows[0]?.subcategory_count || 0),
-    total_weight: Number(rows[0]?.total_quantity || 0),
+    total_weight: Number(rows[0]?.total_weight || 0),
   };
 };
 
@@ -1215,44 +1213,41 @@ const getLowStockList = async (
     ),
     product_stock AS (
       SELECT
-        fp.id AS product_id,
         fp.subcategory_id,
         fp.branch_id,
-        SUM(pid.quantity) AS total_qty
+        fp.material_type_id,
+        fp.category_id,
+        SUM(pid.quantity) AS total_qty,
+        SUM(pid.quantity * pid.gross_weight) AS total_weight
       FROM filtered_products fp
       JOIN "productItemDetails" pid
         ON pid.product_id = fp.id
         AND pid.deleted_at IS NULL
-      GROUP BY fp.id, fp.subcategory_id, fp.branch_id
+      GROUP BY fp.subcategory_id, fp.branch_id, fp.material_type_id, fp.category_id
     )
     SELECT
       b.branch_name,
-      b.id AS branch_id,
+      ps.branch_id,
       mt.material_type,
-      p.material_type_id,
+      ps.material_type_id,
       c.id AS category_id,
       c.category_name,
       sc.subcategory_name,
       sc.id AS subcategory_id,
       sc.reorder_level,
-      SUM(ps.total_qty) AS quantity
+
+      ps.total_qty AS quantity,
+      ROUND(ps.total_weight, 2) AS total_weight
+
     FROM product_stock ps
     JOIN subcategories sc ON sc.id = ps.subcategory_id AND sc.deleted_at IS NULL
-    JOIN products p ON p.id = ps.product_id
-    LEFT JOIN branches b ON b.id = p.branch_id
-    LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
-    LEFT JOIN categories c ON c.id = p.category_id
+    LEFT JOIN branches b ON b.id = ps.branch_id
+    LEFT JOIN "materialTypes" mt ON mt.id = ps.material_type_id
+    LEFT JOIN categories c ON c.id = ps.category_id
+
     WHERE ps.total_qty < sc.reorder_level
-    GROUP BY
-      b.branch_name,
-      mt.material_type,
-      c.category_name,
-      b.id,
-      p.material_type_id,
-      c.id,
-      sc.id,
-      sc.subcategory_name,
-      sc.reorder_level
+
+    ORDER BY b.branch_name, sc.subcategory_name
   `;
 
   if (usePagination) {
@@ -1988,11 +1983,10 @@ const getStockOverviewCount = async (req, res) => {
     const replacements = {};
     const baseWhere = buildBaseFilters(req.query, replacements);
 
-    // 1) One query: stock_in_hand + low_stock + out_of_stock
     const [summary] = await sequelize.query(
       `
       WITH filtered_products AS (
-        SELECT p.id, p.subcategory_id, p.branch_id
+        SELECT p.id, p.subcategory_id, p.branch_id, p.material_type_id, p.category_id
         FROM products p
         ${baseWhere}
       ),
@@ -2009,24 +2003,26 @@ const getStockOverviewCount = async (req, res) => {
       ),
       product_stock AS (
         SELECT
-          fp.id AS product_id,
           fp.subcategory_id,
+          fp.branch_id,
+          fp.material_type_id,
+          fp.category_id,
           SUM(pid.quantity) AS total_qty,
           SUM(pid.quantity * pid.gross_weight) AS total_weight
         FROM filtered_products fp
         JOIN "productItemDetails" pid
           ON pid.product_id = fp.id
           AND pid.deleted_at IS NULL
-        GROUP BY fp.id, fp.subcategory_id
+        GROUP BY fp.subcategory_id, fp.branch_id, fp.material_type_id, fp.category_id
       ),
       low_stock_rows AS (
         SELECT
           ps.subcategory_id,
-          SUM(ps.total_weight) AS row_weight
+          ps.branch_id,
+          ps.total_weight
         FROM product_stock ps
         JOIN subcategories sc ON sc.id = ps.subcategory_id AND sc.deleted_at IS NULL
         WHERE ps.total_qty < sc.reorder_level
-        GROUP BY ps.subcategory_id
       ),
       out_of_stock AS (
         -- Subcategories filtered by requested subcategory/material/category/search + (optional) product created_at date filter
@@ -2052,7 +2048,7 @@ const getStockOverviewCount = async (req, res) => {
         sih.product_count AS stock_product_count,
 
         (SELECT COUNT(*) FROM low_stock_rows) AS low_subcategory_count,
-        (SELECT COALESCE(SUM(row_weight),0) FROM low_stock_rows) AS low_total_weight,
+        (SELECT COALESCE(SUM(total_weight),0) FROM low_stock_rows) AS low_total_weight,
 
         (SELECT subcategory_count FROM out_of_stock) AS out_subcategory_count
       FROM stock_in_hand sih

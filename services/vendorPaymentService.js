@@ -63,7 +63,7 @@ const getVendorPayments = async (req, res) => {
     } = req.query;
 
     const replacements = {};
-    let whereSql = "WHERE vp.deleted_at IS NULL and vp.is_active = true"; // Only fetch active (non-deleted) records
+    let whereSql = "WHERE vp.deleted_at IS NULL"; // Only fetch active (non-deleted) records
 
     // Filters
     if (bill_type_id) {
@@ -126,6 +126,7 @@ const getVendorPayments = async (req, res) => {
         vp.status,
         vp.invoice_id,
         vp.purchase_id,
+        vp.is_active,
 
         -- ✅ GRN / Invoice number
       CASE
@@ -265,7 +266,7 @@ const getVendorPaymentById = async (req, res) => {
       LEFT JOIN branches b ON b.id = vp.branch_id AND b.deleted_at IS NULL
       LEFT JOIN districts d ON d.id = b.district_id AND d.deleted_at IS NULL
       LEFT JOIN states s ON s.id = b.state_id AND s.deleted_at IS NULL
-      WHERE vp.id = :paymentId AND vp.deleted_at IS NULL AND vp.is_active = true`;
+      WHERE vp.id = :paymentId AND vp.deleted_at IS NULL`;
 
     const [payment] = await sequelize.query(sql, {
       replacements: { paymentId: req.params.id },

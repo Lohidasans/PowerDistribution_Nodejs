@@ -1,7 +1,6 @@
 const { models, sequelize } = require("../models");
 const commonService = require("./commonService");
 const enMessage = require("../constants/en.json");
-const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
 
 /** Utility: Validates required fields */
 const validateRequiredFields = (req, res, fields) => {
@@ -24,8 +23,6 @@ const buildSchemePayload = (req, existing = null) => ({
 
   scheme_name: req.body.scheme_name ?? existing?.scheme_name,
   
-  scheme_code: req.body.scheme_code ?? existing?.scheme_code,
-
   scheme_type_id:
     req.body.scheme_type_id !== undefined
       ? +req.body.scheme_type_id
@@ -75,7 +72,6 @@ const buildSchemePayload = (req, existing = null) => ({
 const createScheme = async (req, res) => {
   try {
     const required = [
-      "scheme_code",
       "material_type_id",
       "scheme_name",
       "scheme_type_id",
@@ -98,7 +94,7 @@ const createScheme = async (req, res) => {
 /** List Schemes with filters (joined with master names) */
 const listSchemes = async (req, res) => {
   try {
-    const { material_type_id, scheme_type_id, status, scheme_code, search, branch_id } = req.query;
+    const { material_type_id, scheme_type_id, status, search, branch_id } = req.query;
 
     let query = `
       SELECT
@@ -130,10 +126,6 @@ const listSchemes = async (req, res) => {
       query += ` AND s.status = :status`;
       replacements.status = status;
     }
-    if (scheme_code) {
-      query += ` AND s.scheme_code = :scheme_code`;
-      replacements.scheme_code = scheme_code;
-    }
     if (branch_id) {
       query += ` AND s.branch_id = :branch_id`;
       replacements.branch_id = +branch_id;
@@ -143,7 +135,6 @@ const listSchemes = async (req, res) => {
       query += `
         AND (
           s.scheme_name ILIKE :search OR
-          s.scheme_code ILIKE :search OR
           mt.material_type ILIKE :search OR
           st.type_name ILIKE :search OR
           sd.duration_name ILIKE :search OR
@@ -301,7 +292,7 @@ const listSchemeNumbers = async (req, res) => {
 
     const [rows] = await sequelize.query(
       `
-      SELECT s.id, s.scheme_name, s.scheme_code
+      SELECT s.id, s.scheme_name, ce.enrollment_code
       FROM schemes s
       INNER JOIN customer_enrollments ce
         ON ce.scheme_plan_id = s.id
@@ -322,23 +313,6 @@ const listSchemeNumbers = async (req, res) => {
 };
 
 
-const generateSchemeCode = async (req, res) => {
-  try {
-    const { prefix } = req.query || {};
-
-    const code = await generateFiscalSeriesCode(
-      models.Scheme,
-      "scheme_code",
-      String(prefix).toUpperCase(),
-      { pad: 3 }
-    );
-    return commonService.okResponse(res, { scheme_code: code });
-  } catch (err) {
-    return commonService.handleError(res, err);
-  }
-};
-  
-
 module.exports = {
   createScheme,
   listSchemes,
@@ -352,7 +326,5 @@ module.exports = {
   listIdentityProofs,
   listNomineeRelations,
   listInstallmentAmounts,
-  generateSchemeCode,
   listSchemeNumbers
-
 };

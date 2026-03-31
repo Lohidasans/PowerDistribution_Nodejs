@@ -407,7 +407,11 @@ const listCustomerNameMobileDropdown = async (req, res) => {
 // List Customer Page
 const listCustomers = async (req, res) => {
   try {
-    const { search, mode, branch_id } = req.query || {};
+    const { search, mode, branch_id, page = 1, limit } = req.query || {};
+
+    const pageNumber = parseInt(page, 10) || 1;
+    const pageSize = limit ? parseInt(limit, 10) : null;
+    const offset = pageSize ? (pageNumber - 1) * pageSize : 0;
 
     let sql = `
       SELECT 
@@ -415,10 +419,54 @@ const listCustomers = async (req, res) => {
         c.customer_code AS customer_no,
         c.customer_name,
         c.mobile_number,
-        COUNT(DISTINCT sib.id) AS no_of_orders,
+       (
+          SELECT COUNT(*) FROM (
+
+            -- INVOICE
+            SELECT i.id
+            FROM sales_invoice_bills i
+            WHERE i.customer_id = c.id
+              AND i.deleted_at IS NULL
+              AND i.status = 'Invoice'
+              AND i.is_active = true
+              ${branch_id ? 'AND i.branch_id = :branch_id' : ''}
+
+            UNION ALL
+
+            -- SALES RETURN
+            SELECT sr.id
+            FROM sales_returns sr
+            WHERE sr.customer_id = c.id
+              AND sr.deleted_at IS NULL
+              AND sr.status = 'Printed'
+              ${branch_id ? 'AND sr.branch_id = :branch_id' : ''}
+
+            UNION ALL
+
+            -- OLD JEWEL
+            SELECT oj.id
+            FROM old_jewels oj
+            WHERE oj.customer_id = c.id
+              AND oj.deleted_at IS NULL
+              AND oj.status = 'Printed'
+              ${branch_id ? 'AND oj.branch_id = :branch_id' : ''}
+
+            UNION ALL
+
+            -- JEWEL REPAIR
+            SELECT jr.id
+            FROM jewel_repairs jr
+            WHERE jr.customer_id = c.id
+              AND jr.deleted_at IS NULL
+              AND jr.status = 'Completed'
+              ${branch_id ? 'AND jr.branch_id = :branch_id' : ''}
+
+          ) all_txns
+        ) AS no_of_orders,
         c.created_at,
 
-        -- Most recent order type
+        COUNT(*) OVER() AS total_count,  --total rows
+
         (
           SELECT sib2.order_type 
           FROM sales_invoice_bills sib2 
@@ -431,7 +479,6 @@ const listCustomers = async (req, res) => {
           LIMIT 1
         ) AS mode,
 
-        -- Most recent branch_id (prefer recent invoice, fallback to customer's branch_id)
         COALESCE(
           (
             SELECT sib2.branch_id
@@ -443,10 +490,9 @@ const listCustomers = async (req, res) => {
             ORDER BY sib2.created_at DESC
             LIMIT 1
           ),
-          (SELECT c2.branch_id FROM customers c2 WHERE c2.id = c.id)
+          c.branch_id
         ) AS branch_id,
 
-        -- Most recent branch name (for display) with fallback to customer's branch
         COALESCE(
           (
             SELECT b.branch_name
@@ -459,7 +505,7 @@ const listCustomers = async (req, res) => {
             ORDER BY sib2.created_at DESC
             LIMIT 1
           ),
-          (SELECT b2.branch_name FROM branches b2 WHERE b2.id = (SELECT c3.branch_id FROM customers c3 WHERE c3.id = c.id))
+          (SELECT b2.branch_name FROM branches b2 WHERE b2.id = c.branch_id)
         ) AS branch,
 
         -- Total purchase amount
@@ -493,7 +539,7 @@ const listCustomers = async (req, res) => {
 
     const replacements = {};
 
-    // 🔍 Search Filter
+    // Search
     if (search) {
       sql += ` AND (
         c.customer_name ILIKE :search OR 
@@ -503,7 +549,7 @@ const listCustomers = async (req, res) => {
       replacements.search = `%${search}%`;
     }
 
-    // 🎯 Mode Filter
+    // Mode
     if (mode) {
       sql += ` AND EXISTS (
         SELECT 1 
@@ -516,7 +562,7 @@ const listCustomers = async (req, res) => {
       replacements.mode = mode;
     }
 
-    // 🏢 Branch ID Filter
+    // Branch
     if (branch_id) {
       sql += ` AND (
         c.branch_id = :branch_id
@@ -534,13 +580,22 @@ const listCustomers = async (req, res) => {
 
     sql += `
       GROUP BY c.id
-      ORDER BY c.customer_name ASC
+      ORDER BY c.created_at desc
     `;
+
+    // Pagination applied only if limit exists
+    if (pageSize) {
+      sql += ` LIMIT :limit OFFSET :offset`;
+      replacements.limit = pageSize;
+      replacements.offset = offset;
+    }
 
     const customers = await sequelize.query(sql, {
       replacements,
       type: sequelize.QueryTypes.SELECT
     });
+
+    const totalCount = customers.length > 0 ? parseInt(customers[0].total_count, 10) : 0;
 
     const formattedCustomers = customers.map(customer => ({
       id: customer.id,
@@ -549,14 +604,24 @@ const listCustomers = async (req, res) => {
       mobile_number: customer.mobile_number,
       no_of_orders: parseInt(customer.no_of_orders, 10),
       mode: customer.mode || null,
-      branch_id: customer.branch_id || null,   // ✅ Added in response
+      branch_id: customer.branch_id || null,
       branch: customer.branch || null,
       purchase_amount: parseFloat(customer.purchase_amount || 0).toFixed(2),
       scheme_details: customer.has_scheme ? 'Yes' : 'No',
       created_at: customer.created_at
     }));
 
-    return commonService.okResponse(res, { customers: formattedCustomers });
+    return commonService.okResponse(res, {
+      customers: formattedCustomers,
+      pagination: pageSize
+        ? {
+          total: totalCount,
+          page: pageNumber,
+          limit: pageSize,
+          total_pages: Math.ceil(totalCount / pageSize)
+        }
+        : null
+    });
 
   } catch (error) {
     console.error('Error in listCustomers:', error);
@@ -639,7 +704,7 @@ const getCustomerSchemes = async (req, res) => {
         ce.id AS enrollment_id,
         ce.customer_id,
         ce.scheme_plan_id,
-        s.scheme_code,
+        ce.enrollment_code,
         s.scheme_name
       FROM customer_enrollments ce
       JOIN schemes s 
@@ -664,6 +729,245 @@ const getCustomerSchemes = async (req, res) => {
   }
 };
 
+//Get Customer Transactions (Invoices + Returns + Old Jewel + Repairs) with filters
+const getCustomerTransactions = async (req, res) => {
+  try {
+    const { customer_id } = req.params; 
+    const { from, to, date, branch_id, order_type, search} = req.query;
+
+    if (!customer_id) {
+      return commonService.badRequest(res, {
+        message: "customer_id is required"
+      });
+    }
+
+    let conditions = ` WHERE t.customer_id = :customer_id AND t.deleted_at IS NULL `;
+    const replacements = { customer_id };
+
+    // Date filters
+    if (from) {
+      conditions += ` AND t.date >= :from`;
+      replacements.from = from;
+    }
+
+    if (to) {
+      conditions += ` AND t.date <= :to`;
+      replacements.to = to;
+    }
+
+    if (date) {
+      conditions += ` AND DATE(t.date) = :date`;
+      replacements.date = date;
+    }
+
+    // Branch filter
+    if (branch_id) {
+      conditions += ` AND t.branch_id = :branch_id`;
+      replacements.branch_id = branch_id;
+    }
+
+    // Search filter
+    if (search) {
+      conditions += ` AND (
+        t.reference_no ILIKE :search OR
+        t.product_name ILIKE :search
+      )`;
+      replacements.search = `%${search}%`;
+    }
+
+    // Order type (only applies to invoice + return)
+    if (order_type) {
+      orderTypeCondition = ` AND order_type = :order_type`;
+      replacements.order_type = order_type;
+    }
+
+    const sql = `
+      SELECT * FROM (
+
+        -- 🧾 INVOICE
+        SELECT
+          i.id,
+          i.customer_id,
+          i.invoice_no AS reference_no,
+          i.invoice_date AS date,
+          i.total_amount,
+
+          JSON_AGG(
+            JSON_BUILD_OBJECT(
+              'product_name', ii.product_name_snapshot,
+              'quantity', ii.quantity
+            )
+          ) FILTER (WHERE ii.id IS NOT NULL) AS items,
+
+          SUM(ii.quantity) AS total_quantity,
+
+          i.branch_id,
+          i.order_type::TEXT AS order_type,
+          'INVOICE' AS type,
+          i.created_at,
+          i.deleted_at
+
+        FROM sales_invoice_bills i
+        LEFT JOIN sales_invoice_bill_items ii 
+          ON ii.invoice_bill_id = i.id AND ii.deleted_at IS NULL
+
+        WHERE i.deleted_at IS NULL AND i.status = 'Invoice'
+        GROUP BY i.id
+
+        UNION ALL
+
+        -- 🔁 SALES RETURN
+        SELECT
+          sr.id,
+          sr.customer_id,
+          sr.sales_return_no AS reference_no,
+          sr.return_date AS date,
+          sr.total_amount,
+
+          JSON_AGG(
+            JSON_BUILD_OBJECT(
+              'product_name', sri.product_description,
+              'quantity', sri.quantity
+            )
+          ) FILTER (WHERE sri.id IS NOT NULL) AS items,
+
+          SUM(sri.quantity) AS total_quantity,
+
+          sr.branch_id,
+          sr.order_type::TEXT AS order_type,
+          'SALES_RETURN' AS type,
+          sr.created_at,
+          sr.deleted_at
+
+        FROM sales_returns sr
+        LEFT JOIN sales_return_items sri 
+          ON sri.sales_return_id = sr.id AND sri.deleted_at IS NULL
+
+        WHERE sr.deleted_at IS NULL AND sr.status = 'Printed'
+        GROUP BY sr.id
+
+        UNION ALL
+
+        -- 🪙 OLD JEWEL
+        SELECT
+          oj.id,
+          oj.customer_id,
+          oj.old_jewel_code AS reference_no,
+          oj.date,
+          oj.total_amount,
+
+          JSON_AGG(
+            JSON_BUILD_OBJECT(
+              'product_name', oji.jewel_description,
+              'quantity', 1
+            )
+          ) FILTER (WHERE oji.id IS NOT NULL) AS items,
+
+          COUNT(oji.id) AS total_quantity,
+
+          oj.branch_id,
+          oj.order_type::TEXT AS order_type, 
+          'OLD_JEWEL' AS type,
+          oj.created_at,
+          oj.deleted_at
+
+        FROM old_jewels oj
+        LEFT JOIN old_jewel_items oji 
+          ON oji.old_jewel_id = oj.id AND oji.deleted_at IS NULL
+
+        WHERE oj.deleted_at IS NULL AND oj.status = 'Printed'
+        GROUP BY oj.id
+
+        UNION ALL
+
+        -- 🔧 JEWEL REPAIR
+        SELECT
+          jr.id,
+          jr.customer_id,
+          jr.repair_code AS reference_no,
+          jr.date,
+          jr.total_amount,
+
+          JSON_AGG(
+            JSON_BUILD_OBJECT(
+              'product_name', jri.description,
+              'quantity', jri.quantity
+            )
+          ) FILTER (WHERE jri.id IS NOT NULL) AS items,
+
+          SUM(jri.quantity) AS total_quantity,
+
+          jr.branch_id,
+          jr.order_type::TEXT AS order_type,
+          'JEWEL_REPAIR' AS type,
+          jr.created_at,
+          jr.deleted_at
+
+        FROM jewel_repairs jr
+        LEFT JOIN jewel_repair_items jri 
+          ON jri.repair_id = jr.id AND jri.deleted_at IS NULL
+
+        WHERE jr.deleted_at IS NULL AND jr.status = 'Completed'
+        GROUP BY jr.id
+
+      ) t
+
+      WHERE t.customer_id = :customer_id
+        AND t.deleted_at IS NULL
+
+        ${from ? 'AND t.date >= :from' : ''}
+        ${to ? 'AND t.date <= :to' : ''}
+        ${date ? 'AND DATE(t.date) = :date' : ''}
+        ${branch_id ? 'AND t.branch_id = :branch_id' : ''}
+        ${search ? `AND (
+          t.reference_no ILIKE :search OR
+          EXISTS (
+            SELECT 1 FROM JSON_ARRAY_ELEMENTS(t.items) elem
+            WHERE elem->>'product_name' ILIKE :search
+          )
+        )` : ''}
+        ${order_type ? 'AND t.order_type = :order_type' : ''}
+
+      ORDER BY t.date DESC, t.created_at DESC;
+      `;
+
+    const data = await sequelize.query(sql, {
+      replacements,
+      type: sequelize.QueryTypes.SELECT
+    });
+
+    // Final UI Format
+   const formatted = data.map((item, index) => ({
+      s_no: index + 1,
+      date: item.date,
+      reference_no: item.reference_no,
+
+      // ✅ FIX HERE
+      product_name: item.items?.map(i => i.product_name).join(", ") || "-",
+      quantity: Number(item.total_quantity || 0),
+
+      total_amount: Number(item.total_amount),
+      branch_id: item.branch_id,
+      order_type: item.order_type || "-",
+      type: item.type,
+
+      // 👉 OPTIONAL (very useful for UI)
+      items: item.items || [],
+      created_at: item.created_at,
+
+      deleted_at: item.deleted_at,
+    }));
+
+    return commonService.okResponse(res, {
+      transactions: formatted
+    });
+
+  } catch (err) {
+    console.error(err);
+    return commonService.handleError(res, err);
+  }
+};
+
 module.exports = {
   createCustomer,
   listCustomersWithMobileNumber,
@@ -676,5 +980,6 @@ module.exports = {
   listCustomers,
   generateOnlineCustomerCode,
   getTopBuyingCustomers,
-  getCustomerSchemes
+  getCustomerSchemes,
+  getCustomerTransactions
 };

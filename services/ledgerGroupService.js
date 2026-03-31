@@ -1,4 +1,4 @@
-const { models } = require("../models/index");
+const { models, sequelize } = require("../models/index");
 const { Op } = require("sequelize");
 const commonService = require("../services/commonService");
 const message = require("../constants/en.json");
@@ -7,7 +7,7 @@ const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
 // Create Ledger Group
 const create = async (req, res) => {
   try {
-    const { ledger_group_name, ledger_group_no, status_id = 1, branch_id } = req.body;
+    const { ledger_group_name, ledger_group_no, status_id = 1, ledger_account_id ,branch_id } = req.body;
 
     // Check if ledger group ID already exists
     const ledgerGroupExists = await models.LedgerGroup.findOne({
@@ -27,6 +27,7 @@ const create = async (req, res) => {
     const ledgerGroup = await models.LedgerGroup.create({
       ledger_group_no,
       ledger_group_name,
+      ledger_account_id,
       status_id,
       branch_id: branch_id || 1, // default to 1 if not provided
     });
@@ -69,45 +70,79 @@ const bulkCreate = async (req, res) => {
 // List all Ledger Groups with optional search
 const list = async (req, res) => {
   try {
-    const { page = 1, limit = 10, search, status_id, branch_id } = req.query;
-    const offset = (page - 1) * limit;
+    const { page, limit, search, status_id, branch_id } = req.query;
 
-    let where = {};
+    const pageNumber = page ? parseInt(page, 10) : null;
+    const pageSize = limit ? parseInt(limit, 10) : null;
+    const offset = pageNumber && pageSize ? (pageNumber - 1) * pageSize : null;
 
+    let where = `WHERE lg.deleted_at IS NULL`;
+    const replacements = {};
+
+    // Search
     if (search) {
-      where = {
-        [Op.or]: [
-          { ledger_group_no: { [Op.like]: `%${search}%` } },
-          { ledger_group_name: { [Op.like]: `%${search}%` } },
-        ],
+      where += ` AND (
+        lg.ledger_group_no ILIKE :search OR 
+        lg.ledger_group_name ILIKE :search
+      )`;
+      replacements.search = `%${search}%`;
+    }
+
+    // Status
+    if (status_id) {
+      where += ` AND lg.status_id = :status_id`;
+      replacements.status_id = status_id;
+    }
+
+    // Branch
+    if (branch_id) {
+      where += ` AND lg.branch_id = :branch_id`;
+      replacements.branch_id = branch_id;
+    }
+
+    let sql = `
+      SELECT 
+        lg.*,
+        la.account_name AS ledger_account_name
+        ${pageSize ? `, COUNT(*) OVER() AS total_count` : ``}
+      FROM ledger_group lg
+      LEFT JOIN ledger_accounts la 
+        ON la.id = lg.ledger_account_id
+      ${where}
+      ORDER BY lg.id ASC
+    `;
+
+    // Apply pagination ONLY if limit is provided
+    if (pageSize) {
+      sql += ` LIMIT :limit OFFSET :offset`;
+      replacements.limit = pageSize;
+      replacements.offset = offset || 0;
+    }
+
+    const ledgerGroups = await sequelize.query(sql, {
+      replacements,
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    // Pagination response only if pagination is used
+    let pagination = null;
+
+    if (pageSize) {
+      const total = ledgerGroups.length > 0 ? ledgerGroups[0].total_count : 0;
+
+      pagination = {
+        total,
+        page: pageNumber,
+        limit: pageSize,
+        totalPages: Math.ceil(total / pageSize),
       };
     }
 
-    if (status_id) {
-      where.status_id = status_id;
-    }
-
-    if (branch_id) {
-      where.branch_id = branch_id;
-    }
-
-    const { count, rows: ledgerGroups } =
-      await models.LedgerGroup.findAndCountAll({
-        where,
-        limit: parseInt(limit),
-        offset: parseInt(offset),
-        order: [["id", "ASC"]],
-      });
-
     return commonService.okResponse(res, {
       ledgerGroups,
-      pagination: {
-        total: count,
-        page: parseInt(page),
-        limit: parseInt(limit),
-        totalPages: Math.ceil(count / limit),
-      },
+      pagination, // null if not used
     });
+
   } catch (err) {
     console.error("Error fetching ledger groups:", err);
     return commonService.handleError(res, err);
@@ -119,13 +154,31 @@ const getById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const ledgerGroup = await models.LedgerGroup.findByPk(id);
+    const sql = `
+      SELECT 
+        lg.*,
+        la.account_name AS ledger_account_name
+      FROM ledger_group lg
+      LEFT JOIN ledger_accounts la 
+        ON la.id = lg.ledger_account_id
+      WHERE lg.id = :id
+        AND lg.deleted_at IS NULL
+      LIMIT 1
+    `;
 
-    if (!ledgerGroup) {
+    const result = await sequelize.query(sql, {
+      replacements: { id },
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    if (!result || result.length === 0) {
       return commonService.notFound(res, "Ledger group not found");
     }
 
-    return commonService.okResponse(res, { ledgerGroup });
+    return commonService.okResponse(res, {
+      ledgerGroup: result[0],
+    });
+
   } catch (err) {
     console.error("Error fetching ledger group by ID:", err);
     return commonService.handleError(res, err);
@@ -136,7 +189,7 @@ const getById = async (req, res) => {
 const update = async (req, res) => {
   try {
     const { id } = req.params;
-    const { ledger_group_no, ledger_group_name, status_id } = req.body;
+    const { ledger_group_no, ledger_group_name, status_id, ledger_account_id } = req.body;
 
     const ledgerGroup = await models.LedgerGroup.findByPk(id);
 
@@ -165,6 +218,7 @@ const update = async (req, res) => {
     await ledgerGroup.update({
       ledger_group_no: ledger_group_no || ledgerGroup.ledger_group_no,
       ledger_group_name: ledger_group_name || ledgerGroup.ledger_group_name,
+      ledger_account_id: ledger_account_id || ledgerGroup.ledger_account_id,
       status_id: status_id !== undefined ? status_id : ledgerGroup.status_id,
     });
 
@@ -243,6 +297,31 @@ const generateLedgerGroupNo = async (req, res) => {
   }
 };
 
+const getLedgerAccounts = async (req, res) => {
+  try {
+    const sql = `
+      SELECT 
+        id,
+        account_name
+      FROM ledger_accounts
+      WHERE deleted_at IS NULL
+      ORDER BY account_name ASC
+    `;
+
+    const accounts = await sequelize.query(sql, {
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    return commonService.okResponse(res, {
+      accounts,
+    });
+
+  } catch (err) {
+    console.error("Error fetching ledger accounts:", err);
+    return commonService.handleError(res, err);
+  }
+};
+
 module.exports = {
   create,
   bulkCreate,
@@ -252,4 +331,5 @@ module.exports = {
   toggleStatus,
   remove,
   generateLedgerGroupNo,
+  getLedgerAccounts
 };
