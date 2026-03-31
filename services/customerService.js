@@ -419,7 +419,50 @@ const listCustomers = async (req, res) => {
         c.customer_code AS customer_no,
         c.customer_name,
         c.mobile_number,
-        COUNT(DISTINCT sib.id) AS no_of_orders,
+       (
+          SELECT COUNT(*) FROM (
+
+            -- INVOICE
+            SELECT i.id
+            FROM sales_invoice_bills i
+            WHERE i.customer_id = c.id
+              AND i.deleted_at IS NULL
+              AND i.status = 'Invoice'
+              AND i.is_active = true
+              ${branch_id ? 'AND i.branch_id = :branch_id' : ''}
+
+            UNION ALL
+
+            -- SALES RETURN
+            SELECT sr.id
+            FROM sales_returns sr
+            WHERE sr.customer_id = c.id
+              AND sr.deleted_at IS NULL
+              AND sr.status = 'Printed'
+              ${branch_id ? 'AND sr.branch_id = :branch_id' : ''}
+
+            UNION ALL
+
+            -- OLD JEWEL
+            SELECT oj.id
+            FROM old_jewels oj
+            WHERE oj.customer_id = c.id
+              AND oj.deleted_at IS NULL
+              AND oj.status = 'Printed'
+              ${branch_id ? 'AND oj.branch_id = :branch_id' : ''}
+
+            UNION ALL
+
+            -- JEWEL REPAIR
+            SELECT jr.id
+            FROM jewel_repairs jr
+            WHERE jr.customer_id = c.id
+              AND jr.deleted_at IS NULL
+              AND jr.status = 'Completed'
+              ${branch_id ? 'AND jr.branch_id = :branch_id' : ''}
+
+          ) all_txns
+        ) AS no_of_orders,
         c.created_at,
 
         COUNT(*) OVER() AS total_count,  --total rows
@@ -791,7 +834,7 @@ const getCustomerTransactions = async (req, res) => {
           SUM(sri.quantity) AS total_quantity,
 
           sr.branch_id,
-          sr.order_type::TEXT AS order_type,  -- ✅ FIX
+          sr.order_type::TEXT AS order_type,
           'SALES_RETURN' AS type,
           sr.created_at,
           sr.deleted_at
@@ -823,7 +866,7 @@ const getCustomerTransactions = async (req, res) => {
           COUNT(oji.id) AS total_quantity,
 
           oj.branch_id,
-          oj.order_type::TEXT AS order_type,   -- ✅ FIX
+          oj.order_type::TEXT AS order_type, 
           'OLD_JEWEL' AS type,
           oj.created_at,
           oj.deleted_at
@@ -855,7 +898,7 @@ const getCustomerTransactions = async (req, res) => {
           SUM(jri.quantity) AS total_quantity,
 
           jr.branch_id,
-          jr.order_type::TEXT AS order_type,   -- ✅ FIX
+          jr.order_type::TEXT AS order_type,
           'JEWEL_REPAIR' AS type,
           jr.created_at,
           jr.deleted_at
