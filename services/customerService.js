@@ -829,14 +829,17 @@ const getCustomerTransactions = async (req, res) => {
           SUM(ii.quantity) AS total_quantity,
 
           i.branch_id,
+          MAX(b.branch_name) AS branch_name,   -- ✅ FIX
           i.order_type::TEXT AS order_type,
           'INVOICE' AS type,
           i.created_at,
           i.deleted_at
 
         FROM sales_invoice_bills i
-        LEFT JOIN sales_invoice_bill_items ii 
+        LEFT JOIN sales_invoice_bill_items ii
           ON ii.invoice_bill_id = i.id AND ii.deleted_at IS NULL
+        LEFT JOIN branches b
+          ON b.id = i.branch_id AND b.deleted_at IS NULL
 
         WHERE i.deleted_at IS NULL AND i.status = 'Invoice'
         GROUP BY i.id
@@ -861,14 +864,17 @@ const getCustomerTransactions = async (req, res) => {
           SUM(sri.quantity) AS total_quantity,
 
           sr.branch_id,
-          sr.order_type::TEXT AS order_type,
+          MAX(b.branch_name) AS branch_name,
+          MAX(sr.order_type)::TEXT AS order_type,
           'SALES_RETURN' AS type,
           sr.created_at,
           sr.deleted_at
 
         FROM sales_returns sr
-        LEFT JOIN sales_return_items sri 
+        LEFT JOIN sales_return_items sri
           ON sri.sales_return_id = sr.id AND sri.deleted_at IS NULL
+        LEFT JOIN branches b
+          ON b.id = sr.branch_id AND b.deleted_at IS NULL
 
         WHERE sr.deleted_at IS NULL AND sr.status = 'Printed'
         GROUP BY sr.id
@@ -893,14 +899,17 @@ const getCustomerTransactions = async (req, res) => {
           COUNT(oji.id) AS total_quantity,
 
           oj.branch_id,
-          oj.order_type::TEXT AS order_type, 
+          MAX(b.branch_name) AS branch_name,
+          NULL AS order_type,
           'OLD_JEWEL' AS type,
           oj.created_at,
           oj.deleted_at
 
         FROM old_jewels oj
-        LEFT JOIN old_jewel_items oji 
+        LEFT JOIN old_jewel_items oji
           ON oji.old_jewel_id = oj.id AND oji.deleted_at IS NULL
+        LEFT JOIN branches b
+          ON b.id = oj.branch_id AND b.deleted_at IS NULL
 
         WHERE oj.deleted_at IS NULL AND oj.status = 'Printed'
         GROUP BY oj.id
@@ -925,14 +934,17 @@ const getCustomerTransactions = async (req, res) => {
           SUM(jri.quantity) AS total_quantity,
 
           jr.branch_id,
-          jr.order_type::TEXT AS order_type,
+          MAX(b.branch_name) AS branch_name,
+          NULL AS order_type,
           'JEWEL_REPAIR' AS type,
           jr.created_at,
           jr.deleted_at
 
         FROM jewel_repairs jr
-        LEFT JOIN jewel_repair_items jri 
+        LEFT JOIN jewel_repair_items jri
           ON jri.repair_id = jr.id AND jri.deleted_at IS NULL
+        LEFT JOIN branches b
+          ON b.id = jr.branch_id AND b.deleted_at IS NULL
 
         WHERE jr.deleted_at IS NULL AND jr.status = 'Completed'
         GROUP BY jr.id
@@ -946,6 +958,7 @@ const getCustomerTransactions = async (req, res) => {
         ${to ? 'AND t.date <= :to' : ''}
         ${date ? 'AND DATE(t.date) = :date' : ''}
         ${branch_id ? 'AND t.branch_id = :branch_id' : ''}
+
         ${search ? `AND (
           t.reference_no ILIKE :search OR
           EXISTS (
@@ -953,6 +966,7 @@ const getCustomerTransactions = async (req, res) => {
             WHERE elem->>'product_name' ILIKE :search
           )
         )` : ''}
+
         ${order_type ? 'AND t.order_type = :order_type' : ''}
 
       ORDER BY t.date DESC, t.created_at DESC;
@@ -978,11 +992,11 @@ const getCustomerTransactions = async (req, res) => {
       order_type: item.order_type || "-",
       type: item.type,
 
-      // 👉 OPTIONAL (very useful for UI)
+      
       items: item.items || [],
       created_at: item.created_at,
-
       deleted_at: item.deleted_at,
+      branch_name: item.branch_name || null,
     }));
 
     return commonService.okResponse(res, {
