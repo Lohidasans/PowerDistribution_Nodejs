@@ -40,8 +40,24 @@ const generateCode = async (req, res) => {
         }
 
         // Prefix & start number
-        const prefix = (setting.invoice_prefix || "").toUpperCase();
-        const startNo = setting.invoice_start_no || setting.invoice_suffix || "001";
+        const prefix = (setting.invoice_prefix || "").trim().toUpperCase();
+        const suffix = (setting.invoice_suffix || "").trim();
+
+        if (!prefix) {
+            return commonService.badRequest(
+                res,
+                "Invoice prefix is not configured for this branch and type"
+            );
+        }
+
+        if (!suffix) {
+            return commonService.badRequest(
+                res,
+                "Invoice suffix (financial year) is not configured"
+            );
+        }
+        
+        const startNo = setting.invoice_start_no || "001";
 
         // Get model + field using ID
         const config = documentConfig[type_id];
@@ -57,6 +73,7 @@ const generateCode = async (req, res) => {
             model,
             field,
             prefix,
+            suffix,
             startNo
         );
 
@@ -92,6 +109,7 @@ const getInvoiceTypes = async (req, res) => {
         return commonService.handleError(res, err);
     }
 };
+
 module.exports = {
     generateCode,
     getInvoiceTypes

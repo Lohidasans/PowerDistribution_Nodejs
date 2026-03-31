@@ -201,29 +201,35 @@ const generateBranchSeriesCode = async (
   model,
   field,
   prefix,
+  suffix,
   startNo,
   { pad = 3 } = {}
 ) => {
-  const cleanPrefix = String(prefix || "").trim().toUpperCase();
+  const cleanPrefix = String(prefix).trim().toUpperCase();
+  const cleanSuffix = String(suffix).trim();
 
-  // Escape regex special characters
+  // Escape regex
   const escapedPrefix = cleanPrefix.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&");
+  const escapedSuffix = cleanSuffix.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&");
 
-  // Get max number for this prefix
+  // 🔥 KEY: match full pattern PREFIX + NUMBER + / + SUFFIX
+  const regexPattern = `^${escapedPrefix}[0-9]+/${escapedSuffix}$`;
+
   const [result] = await model.sequelize.query(
     `
     SELECT
       MAX(
         CAST(
-          REGEXP_REPLACE(${field}, '^${escapedPrefix}', '', 'i')
-          AS INTEGER
+          SUBSTRING(${field} FROM '[0-9]+') AS INTEGER
         )
       ) AS max_no
     FROM ${model.getTableName()}
-    WHERE ${field} ILIKE :prefix
+    WHERE ${field} ~* :regex
     `,
     {
-      replacements: { prefix: `${cleanPrefix}%` },
+      replacements: {
+        regex: regexPattern
+      },
       type: model.sequelize.QueryTypes.SELECT,
     }
   );
@@ -231,13 +237,12 @@ const generateBranchSeriesCode = async (
   let nextNumber;
 
   if (!result?.max_no) {
-    // If no existing invoices → start from suffix (or default)
     nextNumber = parseInt(startNo, 10) || 1;
   } else {
     nextNumber = result.max_no + 1;
   }
 
-  return `${cleanPrefix}${String(nextNumber).padStart(pad, "0")}`;
+  return `${cleanPrefix}${String(nextNumber).padStart(pad, "0")}/${cleanSuffix}`;
 };
 
 module.exports = { 
