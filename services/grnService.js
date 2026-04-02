@@ -281,19 +281,23 @@ const getAllGrns = async (req, res) => {
       limit
     } = req.query;
 
-    // ✅ Make branch_id mandatory
+    // ✅ branch_id mandatory
     if (!branch_id) {
       return commonService.badRequest(res, {
         message: "branch_id is required"
       });
     }
 
+    // ✅ Identify Head Office (adjust logic if needed)
+    const isHeadOffice = parseInt(branch_id) === 1; 
+
     const hasPagination = page && limit;
     const pageNumber = hasPagination ? parseInt(page) : null;
     const pageSize = hasPagination ? parseInt(limit) : null;
     const offset = hasPagination ? (pageNumber - 1) * pageSize : null;
 
-    const replacements = { branch_id };
+    const replacements = {branch_id, isHeadOffice };
+
     const whereConditions = [`g.deleted_at IS NULL`];
 
     if (vendor_id) {
@@ -318,7 +322,7 @@ const getAllGrns = async (req, res) => {
       replacements.search = `%${search}%`;
     }
 
-    const whereSql = `WHERE ${whereConditions.join(" AND ")}`;
+    const whereSql = `WHERE ${ whereConditions.join(" AND ") } `;
 
     const listRows = await sequelize.query(
       `SELECT
@@ -331,7 +335,7 @@ const getAllGrns = async (req, res) => {
         v.vendor_name,
         v.vendor_image_url,
 
-        COALESCE(gi.total_net_weight,0) AS "order",
+        COALESCE(gi.total_net_weight, 0) AS "order",
 
         CASE
           WHEN g.entity_type = 'superadmin' THEN sp.company_name
@@ -342,7 +346,7 @@ const getAllGrns = async (req, res) => {
 
         d.district_name AS location,
 
-        COALESCE(pi.total_updated_weight,0) AS updated_weight
+        COALESCE(pi.total_updated_weight, 0) AS updated_weight
 
       FROM grns g
 
@@ -362,6 +366,7 @@ const getAllGrns = async (req, res) => {
         (g.entity_type = 'branch' AND d.id = b.district_id)
       )
 
+-- ✅ ORDER WEIGHT
       LEFT JOIN (
         SELECT grn_id, SUM(net_wt_in_g) total_net_weight
         FROM "grnItems"
@@ -369,14 +374,20 @@ const getAllGrns = async (req, res) => {
         GROUP BY grn_id
       ) gi ON gi.grn_id = g.id
 
+-- ✅ UPDATED WEIGHT(FIXED LOGIC)
       LEFT JOIN (
         SELECT 
               p.grn_id,
-              -- STOCK WEIGHT
+              -- STOCK WEIGHT(remaining in system)
+              SUM(pid.quantity * pid.net_weight) AS stock_weight,
+              --SOLD WEIGHT
+              COALESCE(SUM(sii.quantity * sii.net_weight), 0) AS sold_weight,
+              --FINAL UPDATED
               SUM(pid.quantity * pid.net_weight) +
-              -- SOLD WEIGHT
-              COALESCE(SUM(sii.quantity * sii.net_weight),0) AS total_updated_weight
+              COALESCE(SUM(sii.quantity * sii.net_weight), 0) AS total_updated_weight
+
         FROM products p
+
         JOIN "productItemDetails" pid
               ON pid.product_id = p.id
               AND pid.deleted_at IS NULL
@@ -390,12 +401,15 @@ const getAllGrns = async (req, res) => {
               ON sib.id = sii.invoice_bill_id
               AND sib.deleted_at IS NULL
               AND sib.status = 'Invoice'
-
-        WHERE p.deleted_at IS NULL AND p.branch_id = :branch_id
+        WHERE p.deleted_at IS NULL
+        AND (
+          (:isHeadOffice = true) -- ✅ HO sees ALL
+          OR (p.branch_id = :branch_id)-- ✅ Branch sees own
+        )
         GROUP BY p.grn_id
       ) pi ON pi.grn_id = g.id
 
-      ${whereSql}
+      ${ whereSql }
 
       ORDER BY g.created_at DESC, g.grn_date DESC, g.grn_no DESC
       `,
@@ -424,18 +438,18 @@ const getAllGrns = async (req, res) => {
       };
     });
 
-    // STATUS FILTER
+    // ✅ STATUS FILTER
     let filteredRows = transformedRows;
 
     if (status === "updated") {
-      filteredRows = transformedRows.filter(r => r.status_id === 2);
+      filteredRows = transformedRows.filter((r) => r.status_id === 2);
     }
 
     if (status === "pending") {
-      filteredRows = transformedRows.filter(r => r.status_id === 1);
+      filteredRows = transformedRows.filter((r) => r.status_id === 1);
     }
 
-    // ✅ OPTIONAL PAGINATION
+    // ✅ PAGINATION
     let paginatedData = filteredRows;
     let pagination = null;
 
@@ -467,7 +481,6 @@ const getAllGrns = async (req, res) => {
     return commonService.handleError(res, error);
   }
 };
-
 
 // GET: list of GRN numbers with full ProductGrnInfo + joined details
 const listGrnNumbers = async (req, res) => {
