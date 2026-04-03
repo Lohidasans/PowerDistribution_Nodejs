@@ -1469,161 +1469,138 @@ const getLedgerReportByLedgerName = async (req, res) => {
     const fromDate = from_date || '2000-01-01';
     const toDate = to_date || new Date().toISOString().split('T')[0];
 
-    const sql = `SELECT * FROM (
+    const sql = `SELECT 
+      t.date,
+      t.voucher_no AS reference_no,
+      t.ledger_name,
+      t.debit,
+      t.credit
+    FROM (
         -- GRN → Purchase Debit
         SELECT 
           g.grn_date AS date,
           lp.id AS ledger_id,
           lp.ledger_name,
-          'Purchase Entry' AS description,
-          'GRN' AS voucher_type,
           g.grn_no AS voucher_no,
           g.subtotal_amount AS debit,
           0 AS credit
         FROM grns g
         JOIN ledger lp ON lp.ledger_name = 'Purchase Accounts'
-        JOIN ledger_group lg ON lg.id = lp.ledger_group_id
-        WHERE g.deleted_at IS NULL AND g.grn_date BETWEEN :from_date AND :to_date
+        WHERE g.deleted_at IS NULL 
+          AND g.grn_date BETWEEN :from_date AND :to_date
 
         UNION ALL
 
         -- GRN → Vendor Credit
         SELECT 
           g.grn_date,
-          lv.id AS ledger_id,
+          lv.id,
           lv.ledger_name,
-          'Purchase Entry',
-          'GRN',
           g.grn_no,
           0,
           g.subtotal_amount
         FROM grns g
         JOIN vendors v ON v.id = g.vendor_id
         JOIN ledger lv ON lv.id = v.ledger_id
-        JOIN ledger_group lg ON lg.id = lv.ledger_group_id
-        WHERE g.deleted_at IS NULL AND g.grn_date BETWEEN :from_date AND :to_date
+        WHERE g.deleted_at IS NULL 
+          AND g.grn_date BETWEEN :from_date AND :to_date
 
         UNION ALL
 
         -- SALES → Cash Debit
         SELECT 
           s.invoice_date,
-          lc.id AS ledger_id,
+          lc.id,
           lc.ledger_name,
-          'Sales Invoice',
-          'Sales Invoice',
           s.invoice_no,
           s.subtotal_amount,
           0
         FROM sales_invoice_bills s
         JOIN ledger lc ON lc.ledger_name = 'Cash'
-        JOIN ledger_group lg ON lg.id = lc.ledger_group_id
-        WHERE s.deleted_at IS NULL AND s.status = 'Invoice' AND s.invoice_date BETWEEN :from_date AND :to_date
+        WHERE s.deleted_at IS NULL 
+          AND s.status = 'Invoice'
+          AND s.invoice_date BETWEEN :from_date AND :to_date
 
         UNION ALL
 
         -- SALES → Sales Credit
         SELECT 
           s.invoice_date,
-          ls.id AS ledger_id,
+          ls.id,
           ls.ledger_name,
-          'Sales Invoice',
-          'Sales Invoice',
           s.invoice_no,
           0,
           s.subtotal_amount
         FROM sales_invoice_bills s
         JOIN ledger ls ON ls.ledger_name = 'Sales Accounts'
-        JOIN ledger_group lg ON lg.id = ls.ledger_group_id
-        WHERE s.deleted_at IS NULL AND s.status = 'Invoice' AND s.invoice_date BETWEEN :from_date AND :to_date
+        WHERE s.deleted_at IS NULL 
+          AND s.status = 'Invoice'
+          AND s.invoice_date BETWEEN :from_date AND :to_date
 
         UNION ALL
 
         -- PAYMENT → Vendor Debit
         SELECT 
           vp.payment_date,
-          lv.id AS ledger_id,
+          lv.id,
           lv.ledger_name,
-          'Payment',
-          'Payment',
           vp.payment_no,
           vp.amount,
           0
         FROM vendor_payments vp
         JOIN vendors v ON v.id = vp.account_name_id
         JOIN ledger lv ON lv.id = v.ledger_id
-        JOIN ledger_group lg ON lg.id = lv.ledger_group_id
-        WHERE vp.deleted_at IS NULL AND vp.payment_date BETWEEN :from_date AND :to_date
+        WHERE vp.deleted_at IS NULL 
+          AND vp.payment_date BETWEEN :from_date AND :to_date
 
         UNION ALL
 
-        -- PAYMENT → Cash Credit
+        -- PAYMENT → Cash Credit (⚠️ TEMP FIX)
         SELECT 
           vp.payment_date,
-          lc.id AS ledger_id,
+          lc.id,
           lc.ledger_name,
-          'Payment',
-          'Payment',
           vp.payment_no,
           0,
           vp.amount
         FROM vendor_payments vp
-        JOIN ledger lc ON lc.id = vp.account_name_id
-        JOIN ledger_group lg ON lg.id = lc.ledger_group_id
-        WHERE vp.deleted_at IS NULL AND vp.payment_date BETWEEN :from_date AND :to_date
+        JOIN ledger lc ON lc.ledger_name = 'Cash' -- safer than wrong join
+        WHERE vp.deleted_at IS NULL 
+          AND vp.payment_date BETWEEN :from_date AND :to_date
 
         UNION ALL
 
         -- RECEIPT → Cash Debit
         SELECT 
           r.receipt_date,
-          lc.id AS ledger_id,
+          lc.id,
           lc.ledger_name,
-          'Receipt',
-          'Receipt',
           r.receipt_no,
           r.amount,
           0
         FROM voucher_receipts r
-        JOIN ledger lc ON lc.id = r.account_id
-        JOIN ledger_group lg ON lg.id = lc.ledger_group_id
-        WHERE r.deleted_at IS NULL AND r.receipt_date BETWEEN :from_date AND :to_date
+        JOIN ledger lc ON lc.ledger_name = 'Cash'
+        WHERE r.deleted_at IS NULL 
+          AND r.receipt_date BETWEEN :from_date AND :to_date
 
         UNION ALL
 
         -- RECEIPT → Party Credit
         SELECT 
           r.receipt_date,
-          lp.id AS ledger_id,
+          lp.id,
           lp.ledger_name,
-          'Receipt',
-          'Receipt',
           r.receipt_no,
           0,
           r.amount
         FROM voucher_receipts r
         JOIN ledger lp ON lp.id = r.account_id
-        JOIN ledger_group lg ON lg.id = lp.ledger_group_id
-        WHERE r.deleted_at IS NULL AND r.receipt_date BETWEEN :from_date AND :to_date
+        WHERE r.deleted_at IS NULL 
+          AND r.receipt_date BETWEEN :from_date AND :to_date
 
-        UNION ALL
-
-        -- JOURNAL ENTRY
-        SELECT 
-          j.date,
-          NULL AS ledger_id,
-          'Journal',
-          'Journal Entry',
-          'Journal Entry',
-          j.journal_no,
-          j.total,
-          j.total
-        FROM journal_entries j
-        WHERE j.deleted_at IS NULL
-          AND j.date BETWEEN :from_date AND :to_date
-
-      ) t
-      ORDER BY date ASC;`;
+    ) t
+    WHERE (:ledger_id IS NULL OR t.ledger_id = :ledger_id)
+    ORDER BY t.date ASC;`
 
     const data = await sequelize.query(sql, {
       replacements: {
