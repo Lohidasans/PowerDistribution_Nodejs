@@ -589,32 +589,55 @@ const getAllQuotationRequests = async (req, res) => {
       total = parseInt(countResult?.total || 0);
 
       let dataQuery = `
-        SELECT 
+        SELECT
           q.id,
           q.qr_id,
           q.request_date,
           q.expiry_date,
           q.status_id,
           q.remarks,
+
           ARRAY_AGG(DISTINCT v.id) FILTER (WHERE v.id IS NOT NULL) AS vendor_ids,
           ARRAY_AGG(DISTINCT v.vendor_name) FILTER (WHERE v.vendor_name IS NOT NULL) AS vendor_names,
           ARRAY_AGG(DISTINCT v.vendor_image_url) FILTER (WHERE v.vendor_image_url IS NOT NULL) AS vendor_images,
+
           STRING_AGG(DISTINCT qi.product_description, ', ') AS item_details,
-          COALESCE(SUM(qi.quantity), 0) AS total_quantity,
+
+          -- FIXED TOTAL QUANTITY (NO DUPLICATION)
+          COALESCE(qi_sum.total_quantity, 0) * COUNT(DISTINCT v.id) AS total_quantity,
           u.email AS created_by,
+
           COUNT(DISTINCT vq.id) FILTER (WHERE vq.status = 'pending') AS pending_vendors,
           COUNT(DISTINCT vq.id) FILTER (WHERE vq.status = 'received') AS received_vendors,
           COUNT(DISTINCT vq.id) AS total_vendors
         FROM quotations q
         LEFT JOIN vendors v ON v.id = ANY(q.vendor_ids)
         LEFT JOIN vendor_quotations vq ON vq.quotation_id = q.id AND vq.deleted_at IS NULL
+
+        -- KEEP THIS ONLY FOR ITEM DETAILS (NOT FOR SUM)
         LEFT JOIN quotation_items qi 
           ON qi.quotation_id = q.id 
           AND qi.vendor_quotation_id IS NULL 
           AND qi.deleted_at IS NULL
+
+        -- FIXED TOTAL QUANTITY (NO DUPLICATION)
+        LEFT JOIN (
+          SELECT
+            quotation_id,
+            SUM(quantity) AS total_quantity
+          FROM quotation_items
+          WHERE vendor_quotation_id IS NULL
+            AND deleted_at IS NULL
+          GROUP BY quotation_id
+        ) qi_sum
+          ON qi_sum.quotation_id = q.id
+
         LEFT JOIN users u ON u.id = q.created_by
+
         ${whereSql}
-        GROUP BY q.id, u.email
+
+        GROUP BY q.id, u.email, qi_sum.total_quantity
+
         ORDER BY q.request_date DESC, q.id DESC
       `;
 
