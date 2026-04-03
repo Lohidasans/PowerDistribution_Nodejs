@@ -212,7 +212,7 @@ const createItemDetails = async (productId, itemDetails, t) => {
 
     // Create product item detail
     const item = await models.ProductItemDetail.create(
-      { ...fields, product_id: productId },
+      { ...fields, product_id: productId, initial_quantity: fields.quantity }, // ✅ set once during creation 
       { transaction: t }
     );
 
@@ -645,11 +645,15 @@ const updateProduct = async (req, res) => {
     // 3. Create new item details and additional details
     if (Array.isArray(item_details)) {
       for (const itemData of item_details) {
-        const { additional_details = [], ...itemFields } = itemData;
+        const { initial_quantity, additional_details = [], ...itemFields } = itemData;
 
         // Create new item
         const item = await models.ProductItemDetail.create(
-          { ...itemFields, product_id: id },
+          {
+            ...itemFields,
+            product_id: id,
+            initial_quantity: itemFields.quantity // ✅ set once during creation
+          },
           { transaction: t }
         );
 

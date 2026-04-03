@@ -46,6 +46,12 @@ module.exports = (sequelize, DataTypes) => {
         defaultValue: true,
         allowNull: false,
       },
+      // To track the initial quantity of the item for reference, especially when quantity changes due to sales or adjustments. 
+      initial_quantity: { 
+        type: DataTypes.INTEGER, //This field will not be updated after the item is created.
+        allowNull: false,
+        defaultValue: 0
+      },
       quantity: {
         type: DataTypes.INTEGER,
         allowNull: false
