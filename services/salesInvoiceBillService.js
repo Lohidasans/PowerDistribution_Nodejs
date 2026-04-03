@@ -1198,7 +1198,6 @@ const updateSalesInvoice = async (req, res) => {
     // ================= UPDATE HEADER =================
     await invoice.update(
       {
-        invoice_date: header.invoice_date,
         invoice_time: header.invoice_time,
         employee_id: header.employee_id,
         customer_id: header.customer_id,
@@ -1313,7 +1312,9 @@ const updateSalesInvoice = async (req, res) => {
       };
 
       if (p.id) {
-        await models.Payment.update(data, {
+        // 🔍 fetch existing payment
+        const existingPayment = existingPayments.find(ep => ep.id === p.id);
+        await models.Payment.update({data, payment_date: existingPayment?.payment_date }, {     
           where: { id: p.id },
           transaction: t,
         });
