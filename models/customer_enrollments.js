@@ -8,7 +8,7 @@ module.exports = (sequelize, DataTypes) => {
         primaryKey: true,
         type: DataTypes.INTEGER,
       },
-      enrollment_code: { // Auto generate
+      enrollment_code: { // Auto generate // Scheme code + 6 digit random number
         type: DataTypes.STRING,
         allowNull: true,
       },

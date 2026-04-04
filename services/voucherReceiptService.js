@@ -52,6 +52,20 @@ const createVoucherReceipt = async (req, res) => {
       });
     }
 
+    //  HANDLE SCHEME REFERENCE
+    let finalReferenceType = reference_type ?? null;
+    let finalReferenceId = reference_id ?? null;
+
+    if (bill_type_id === 5) {
+      if (!reference_id) {
+        throw new Error("Enrollment ID is required for scheme payment");
+      }
+
+      finalReferenceType = "scheme";
+      finalReferenceId = reference_id;
+    }
+
+    // ================= CREATE RECEIPT =================
     const receipt = await models.VoucherReceipt.create(
       {
         receipt_no,
@@ -61,8 +75,8 @@ const createVoucherReceipt = async (req, res) => {
         payment_mode_id,
         account_id,
         transaction_no: transaction_no ?? null,
-        reference_type: reference_type ?? null,
-        reference_id: reference_id ?? null,
+        reference_type: finalReferenceType,
+        reference_id: finalReferenceId,
         amount,
         amount_in_words,
         user_type_id,
@@ -70,6 +84,73 @@ const createVoucherReceipt = async (req, res) => {
       },
       { transaction: t }
     );
+
+    // SCHEME PAYMENT LOGIC
+    if (bill_type_id === 5) {
+      const enrollment_id = reference_id;
+
+      // Get enrollment
+      const enrollment = await models.Enrollment.findOne({
+        where: { id: enrollment_id },
+        transaction: t,
+      });
+
+      if (!enrollment) {
+        throw new Error("Invalid enrollment_id");
+      }
+
+      // Validate customer
+      if (enrollment.customer_id !== account_id) {
+        throw new Error("Customer mismatch with enrollment");
+      }
+
+      const scheme_id = enrollment.scheme_plan_id;
+
+      // Get last installment
+      const lastPayment = await models.CustomerSchemePayment.findOne({
+        where: { enrollment_id },
+        order: [["installment_no", "DESC"]],
+        transaction: t,
+      });
+
+      const nextInstallment = lastPayment
+        ? lastPayment.installment_no + 1
+        : 1;
+
+      // Prevent overflow (example: 12 months)
+      if (nextInstallment > 12) {
+        throw new Error("All installments already completed");
+      }
+
+      // Create scheme payment
+      const schemePayment = await models.CustomerSchemePayment.create(
+        {
+          enrollment_id,
+          scheme_id,
+          installment_no: nextInstallment,
+          installment_amount: amount,
+          paid_amount: amount,
+          payment_date: receipt_date,
+          payment_source: "VOUCHER",
+          receipt_id: receipt.id,
+          status: "PAID",
+        },
+        { transaction: t }
+      );
+
+      // Create payment entry
+      await models.Payment.create(
+        {
+          scheme_payment_id: schemePayment.id,
+          payment_mode: mapPaymentMode(payment_mode_id),
+          amount_received: amount,
+          payment_date: receipt_date,
+          transaction_id: transaction_no,
+          status: "Completed",
+        },
+        { transaction: t }
+      );
+    }
 
     // UPDATE CUSTOMER ADVANCE WALLET FOR SALES INVOICE
     if (bill_type_id === 3) {
@@ -111,12 +192,30 @@ const createVoucherReceipt = async (req, res) => {
     });
 
   } catch (err) {
-
     if (!t.finished) await t.rollback();
+    console.error(err);
     return commonService.handleError(res, err);
-
   }
 };
+
+// ================= HELPER =================
+const mapPaymentMode = (id) => {
+  switch (id) {
+    case 1:
+      return "Cash";
+    case 2:
+      return "Card";
+    case 3:
+      return "UPI";
+    case 4:
+      return "Bank Transfer";
+    case 5:
+      return "Cheque";
+    default:
+      return "Other";
+  }
+};
+
 
 const getVoucherReceiptById = async (req, res) => {
   try {
