@@ -13,6 +13,10 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
         unique: true,
       },
+      months: {
+        type: DataTypes.INTEGER, // e.g., 6, 12
+        allowNull: true,
+      }
     },
     {
       timestamps: true,

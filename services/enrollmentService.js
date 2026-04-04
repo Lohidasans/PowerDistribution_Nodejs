@@ -63,27 +63,231 @@ const createEnrollment = async (req, res) => {
   }
 };
 
-// Get all enrollments (basic filters) with scheme_name via raw SQL join
+// Get all enrollments
 const listEnrollments = async (req, res) => {
   try {
-    const { mobile_number, status } = req.query || {};
+    const {
+      type, // total | active | completed | not_enrolled
+      branch_id,
+      mode,
+      search,
+      page,
+      limit
+    } = req.query;
 
-    let sql = `
-      SELECT 
-        e.*,
-        s.scheme_name AS scheme_name
-      FROM customer_enrollments e
-      LEFT JOIN schemes s ON s.id = e.scheme_plan_id AND s.deleted_at IS NULL
-      WHERE e.deleted_at IS NULL
-    `;
-    const replacements = {};
-    if (mobile_number) { sql += ` AND e.mobile_number = :mobile_number`; replacements.mobile_number = String(mobile_number); }
-    if (status) { sql += ` AND e.status = :status`; replacements.status = status; }
-    sql += ` ORDER BY e.created_at DESC`;
+    // ================= PAGINATION =================
+    let pagination = false;
+    let replacements = {};
+
+    if (page && limit) {
+      pagination = true;
+      const offset = (parseInt(page) - 1) * parseInt(limit);
+      replacements.limit = parseInt(limit);
+      replacements.offset = offset;
+    }
+
+    let sql = ``;
+
+    // =====================================================
+    // 🟡 NOT ENROLLED (CUSTOMERS WITHOUT SCHEME)
+    // =====================================================
+    if (type === "not_enrolled") {
+      sql = `
+        SELECT 
+          c.id,
+          NULL AS scheme_id,
+          c.customer_name,
+          c.mobile_number,
+          NULL AS date_of_scheme,
+          '-' AS scheme_name,
+          '-' AS scheme_type,
+          '-' AS duration,
+          0 AS installment_amount,
+
+          CASE 
+            WHEN c.is_online = true THEN 'Online'
+            ELSE 'Offline'
+          END AS mode,
+
+          c.branch_id,
+          '0/0' AS dues
+
+        FROM customers c
+
+        LEFT JOIN customer_enrollments e 
+          ON e.customer_id = c.id 
+          AND e.deleted_at IS NULL
+
+        WHERE c.deleted_at IS NULL
+          AND e.id IS NULL
+      `;
+    } else {
+      // =====================================================
+      // 🟢 ENROLLMENT DATA
+      // =====================================================
+      sql = `
+        SELECT
+          e.id,
+          e.enrollment_code AS scheme_id,
+          e.customer_name,
+          e.mobile_number,
+          e.created_at AS date_of_scheme,
+
+          s.scheme_name,
+          st.type_name AS scheme_type,
+          d.duration_name AS duration,
+
+          -- ✅ FIXED INSTALLMENT AMOUNT
+          (s.monthly_installments)[1] AS installment_amount, -- change based on your logic
+
+          CASE
+            WHEN c.is_online = true THEN 'Online'
+            ELSE 'Offline'
+          END AS mode,
+
+          c.branch_id,
+          b.branch_name,
+
+          COALESCE(p.paid_count, 0) AS paid_installments,
+          COALESCE(d.months, 12) AS total_installments,
+
+          CONCAT(
+            COALESCE(p.paid_count, 0), '/', COALESCE(d.months, 12)
+          ) AS dues
+
+        FROM customer_enrollments e
+        LEFT JOIN customers c ON c.id = e.customer_id AND c.deleted_at IS NULL
+        LEFT JOIN schemes s ON s.id = e.scheme_plan_id AND s.deleted_at IS NULL
+        LEFT JOIN scheme_types st ON st.id = s.scheme_type_id
+        LEFT JOIN branches b ON b.id = c.branch_id
+        LEFT JOIN scheme_durations d ON d.id = s.duration_id
+        LEFT JOIN (
+          SELECT 
+            enrollment_id,
+            COUNT(*) AS paid_count
+          FROM customer_scheme_payments
+          WHERE deleted_at IS NULL
+          GROUP BY enrollment_id
+        ) p ON p.enrollment_id = e.id
+
+        WHERE e.deleted_at IS NULL
+      `;
+
+      // ================= TYPE FILTER =================
+      if (type === "active") {
+        sql += `
+          AND COALESCE(p.paid_count, 0) < COALESCE(d.months, 12)
+        `;
+      }
+
+      if (type === "completed") {
+        sql += `
+          AND COALESCE(p.paid_count, 0) >= COALESCE(d.months, 12)
+        `;
+      }
+    }
+
+    // =====================================================
+    // 🔍 COMMON FILTERS
+    // =====================================================
+
+    if (branch_id) {
+      sql += ` AND ${type === "not_enrolled" ? "c.branch_id" : "c.branch_id"} = :branch_id`;
+      replacements.branch_id = branch_id;
+    }
+
+    if (mode) {
+      if (mode === "Online") {
+        sql += ` AND c.is_online = true`;
+      } else if (mode === "Offline") {
+        sql += ` AND (c.is_online = false OR c.is_online IS NULL)`;
+      }
+    }
+
+    if (search) {
+      sql += `
+        AND (
+          ${type === "not_enrolled" ? "c.customer_name" : "e.customer_name"} ILIKE :search
+          OR ${type === "not_enrolled" ? "c.mobile_number" : "e.mobile_number"} ILIKE :search
+          ${type !== "not_enrolled" ? "OR e.enrollment_code ILIKE :search" : ""}
+          ${type !== "not_enrolled" ? "OR s.scheme_name ILIKE :search" : ""}
+        )
+      `;
+      replacements.search = `%${search}%`;
+    }
+
+    // ================= ORDER =================
+    sql += ` ORDER BY 1 DESC`;
+
+    // ================= OPTIONAL PAGINATION =================
+    if (pagination) {
+      sql += ` LIMIT :limit OFFSET :offset`;
+    }
 
     const [rows] = await sequelize.query(sql, { replacements });
-    return commonService.okResponse(res, { enrollments: rows });
+
+    // =====================================================
+    // 📊 SCORE CARDS
+    // =====================================================
+    const scoreSql = `
+      SELECT 
+        (SELECT COUNT(*) 
+         FROM customer_enrollments 
+         WHERE deleted_at IS NULL) AS total_enrollment,
+
+        (SELECT COUNT(*) 
+         FROM customer_enrollments e
+         LEFT JOIN schemes s ON s.id = e.scheme_plan_id
+         LEFT JOIN scheme_durations d ON d.id = s.duration_id
+         LEFT JOIN (
+           SELECT enrollment_id, COUNT(*) AS paid_count
+           FROM customer_scheme_payments
+           WHERE deleted_at IS NULL
+           GROUP BY enrollment_id
+         ) p ON p.enrollment_id = e.id
+         WHERE e.deleted_at IS NULL
+           AND COALESCE(p.paid_count, 0) < COALESCE(d.months, 12)
+        ) AS active,
+
+        (SELECT COUNT(*) 
+         FROM customer_enrollments e
+         LEFT JOIN schemes s ON s.id = e.scheme_plan_id
+         LEFT JOIN scheme_durations d ON d.id = s.duration_id
+         LEFT JOIN (
+           SELECT enrollment_id, COUNT(*) AS paid_count
+           FROM customer_scheme_payments
+           WHERE deleted_at IS NULL
+           GROUP BY enrollment_id
+         ) p ON p.enrollment_id = e.id
+         WHERE e.deleted_at IS NULL
+           AND COALESCE(p.paid_count, 0) >= COALESCE(d.months, 12)
+        ) AS completed,
+
+        (SELECT COUNT(*) 
+         FROM customers c
+         LEFT JOIN customer_enrollments e 
+           ON e.customer_id = c.id AND e.deleted_at IS NULL
+         WHERE c.deleted_at IS NULL 
+           AND e.id IS NULL
+        ) AS not_enrolled
+    `;
+
+    const [summary] = await sequelize.query(scoreSql);
+
+    // ================= RESPONSE =================
+    return commonService.okResponse(res, {
+      enrollments: rows,
+      summary: summary[0],
+      ...(pagination && {
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit)
+        }
+      })
+    });
+
   } catch (err) {
+    console.error(err);
     return commonService.handleError(res, err);
   }
 };
