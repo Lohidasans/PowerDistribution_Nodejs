@@ -14,13 +14,29 @@ const createSchemePayment = async (req, res) => {
 
         // ================= ENROLLMENT =================
         const enrollment = await models.Enrollment.findByPk(enrollment_id, { transaction: t });
+
         if (!enrollment) throw new Error("Enrollment not found");
+
+        //  BLOCK IF CLOSED
+        if (enrollment.status === "Closed") {
+            throw new Error("Scheme is closed. Payment not allowed");
+        }
 
         const scheme_id = enrollment.scheme_plan_id;
 
         // ================= DURATION =================
         const scheme = await models.Scheme.findByPk(scheme_id, { transaction: t });
         const duration = await models.SchemeDuration.findByPk(scheme.duration_id, { transaction: t });
+
+        // ================= CHECK COMPLETED =================
+        const paidCount = await models.CustomerSchemePayment.count({
+            where: { enrollment_id },
+            transaction: t,
+        });
+
+        if (paidCount >= duration.months) {
+            throw new Error("Scheme already completed. Payment not allowed");
+        }
 
         // ================= LAST INSTALLMENT =================
         const lastPayment = await models.CustomerSchemePayment.findOne({
@@ -35,12 +51,24 @@ const createSchemePayment = async (req, res) => {
             throw new Error("All installments already completed");
         }
 
+        // ================= PREVENT DUPLICATE =================
+        const existingInstallment = await models.CustomerSchemePayment.findOne({
+            where: {
+                enrollment_id,
+                installment_no: nextInstallment,
+            },
+            transaction: t,
+        });
+
+        if (existingInstallment) {
+            throw new Error("Installment already paid");
+        }
+
         // ================= TOTAL AMOUNT =================
         const totalAmount = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
 
         const installmentAmount = Number(enrollment.installment_amount_id);
 
-        // ================= VALIDATION =================
         if (totalAmount <= 0) {
             throw new Error("Invalid payment amount");
         }
@@ -95,7 +123,59 @@ const createSchemePayment = async (req, res) => {
     }
 };
 
+const closeEnrollment = async (req, res) => {
+    try {
+        const { enrollment_id } = req.body;
+
+        if (!enrollment_id) {
+            return commonService.badRequest(res, {
+                message: "enrollment_id is required"
+            });
+        }
+
+        const enrollment = await models.Enrollment.findByPk(enrollment_id);
+
+        if (!enrollment) {
+            return commonService.badRequest(res, {
+                message: "Enrollment not found"
+            });
+        }
+
+        // Already closed check
+        if (enrollment.status === "Closed") {
+            return commonService.badRequest(res, {
+                message: "Scheme already closed"
+            });
+        }
+
+        // Check completed
+        const paidCount = await models.CustomerSchemePayment.count({
+            where: { enrollment_id }
+        });
+
+        const scheme = await models.Scheme.findByPk(enrollment.scheme_plan_id);
+        const duration = await models.SchemeDuration.findByPk(scheme.duration_id);
+
+        if (paidCount >= duration.months) {
+            return commonService.badRequest(res, {
+                message: "Scheme already completed, cannot close"
+            });
+        }
+
+        // ✅ CLOSE
+        await enrollment.update({ status: "Closed" });
+
+        return commonService.okResponse(res, {
+            message: "Scheme closed successfully"
+        });
+
+    } catch (err) {
+        console.error(err);
+        return commonService.handleError(res, err);
+    }
+};
 
 module.exports = {
     createSchemePayment,
+    closeEnrollment
 };

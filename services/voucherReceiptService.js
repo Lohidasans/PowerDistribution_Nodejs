@@ -99,12 +99,31 @@ const createVoucherReceipt = async (req, res) => {
         throw new Error("Invalid enrollment_id");
       }
 
+      // BLOCK IF CLOSED
+      if (enrollment.status === "Closed") {
+        throw new Error("Scheme is closed. Payment not allowed");
+      }
+
       // Validate customer
       if (enrollment.customer_id !== account_id) {
         throw new Error("Customer mismatch with enrollment");
       }
 
       const scheme_id = enrollment.scheme_plan_id;
+
+      // GET DURATION
+      const scheme = await models.Scheme.findByPk(scheme_id, { transaction: t });
+      const duration = await models.SchemeDuration.findByPk(scheme.duration_id, { transaction: t });
+
+      // CHECK COMPLETED
+      const paidCount = await models.CustomerSchemePayment.count({
+        where: { enrollment_id },
+        transaction: t,
+      });
+
+      if (paidCount >= duration.months) {
+        throw new Error("Scheme already completed. Payment not allowed");
+      }
 
       // Get last installment
       const lastPayment = await models.CustomerSchemePayment.findOne({
@@ -118,8 +137,20 @@ const createVoucherReceipt = async (req, res) => {
         : 1;
 
       // Prevent overflow (example: 12 months)
-      if (nextInstallment > 12) {
+      if (nextInstallment > duration.months) {
         throw new Error("All installments already completed");
+      }
+
+      const existingInstallment = await models.CustomerSchemePayment.findOne({
+        where: {
+          enrollment_id,
+          installment_no: nextInstallment,
+        },
+        transaction: t,
+      });
+
+      if (existingInstallment) {
+        throw new Error("Installment already paid");
       }
 
       // Create scheme payment

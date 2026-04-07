@@ -138,6 +138,7 @@ const listEnrollments = async (req, res) => {
           e.customer_name,
           e.mobile_number,
           e.created_at AS date_of_scheme,
+          e.status,
 
           s.id as scheme_id,
           s.scheme_name,
