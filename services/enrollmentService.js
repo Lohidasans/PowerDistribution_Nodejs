@@ -89,7 +89,7 @@ const listEnrollments = async (req, res) => {
     let sql = ``;
 
     // =====================================================
-    // 🟡 NOT ENROLLED (CUSTOMERS WITHOUT SCHEME)
+    // 🟡 NOT ENROLLED
     // =====================================================
     if (type === "not_enrolled") {
       sql = `
@@ -110,6 +110,8 @@ const listEnrollments = async (req, res) => {
           END AS mode,
 
           c.branch_id,
+          b.branch_name,
+
           '0/0' AS dues
 
         FROM customers c
@@ -117,6 +119,9 @@ const listEnrollments = async (req, res) => {
         LEFT JOIN customer_enrollments e 
           ON e.customer_id = c.id 
           AND e.deleted_at IS NULL
+
+        LEFT JOIN branches b 
+          ON b.id = c.branch_id
 
         WHERE c.deleted_at IS NULL
           AND e.id IS NULL
@@ -137,8 +142,8 @@ const listEnrollments = async (req, res) => {
           st.type_name AS scheme_type,
           d.duration_name AS duration,
 
-          -- ✅ FIXED INSTALLMENT AMOUNT
-          (s.monthly_installments)[1] AS installment_amount, -- change based on your logic
+          -- FIXED INSTALLMENT (IMPORTANT)
+          e.installment_amount_id AS installment_amount,
 
           CASE
             WHEN c.is_online = true THEN 'Online'
@@ -156,11 +161,24 @@ const listEnrollments = async (req, res) => {
           ) AS dues
 
         FROM customer_enrollments e
-        LEFT JOIN customers c ON c.id = e.customer_id AND c.deleted_at IS NULL
-        LEFT JOIN schemes s ON s.id = e.scheme_plan_id AND s.deleted_at IS NULL
-        LEFT JOIN scheme_types st ON st.id = s.scheme_type_id
-        LEFT JOIN branches b ON b.id = c.branch_id
-        LEFT JOIN scheme_durations d ON d.id = s.duration_id
+
+        LEFT JOIN customers c 
+          ON c.id = e.customer_id 
+          AND c.deleted_at IS NULL
+
+        LEFT JOIN branches b 
+          ON b.id = c.branch_id
+
+        LEFT JOIN schemes s 
+          ON s.id = e.scheme_plan_id 
+          AND s.deleted_at IS NULL
+
+        LEFT JOIN scheme_types st 
+          ON st.id = s.scheme_type_id
+
+        LEFT JOIN scheme_durations d 
+          ON d.id = s.duration_id
+
         LEFT JOIN (
           SELECT 
             enrollment_id,
@@ -192,7 +210,7 @@ const listEnrollments = async (req, res) => {
     // =====================================================
 
     if (branch_id) {
-      sql += ` AND ${type === "not_enrolled" ? "c.branch_id" : "c.branch_id"} = :branch_id`;
+      sql += ` AND c.branch_id = :branch_id`;
       replacements.branch_id = branch_id;
     }
 
@@ -219,7 +237,7 @@ const listEnrollments = async (req, res) => {
     // ================= ORDER =================
     sql += ` ORDER BY 1 DESC`;
 
-    // ================= OPTIONAL PAGINATION =================
+    // ================= PAGINATION =================
     if (pagination) {
       sql += ` LIMIT :limit OFFSET :offset`;
     }
@@ -227,7 +245,7 @@ const listEnrollments = async (req, res) => {
     const [rows] = await sequelize.query(sql, { replacements });
 
     // =====================================================
-    // 📊 SCORE CARDS
+    // 📊 SCORE CARDS (UPDATED FOR BOTH SCREENS)
     // =====================================================
     const scoreSql = `
       SELECT 
@@ -269,7 +287,13 @@ const listEnrollments = async (req, res) => {
            ON e.customer_id = c.id AND e.deleted_at IS NULL
          WHERE c.deleted_at IS NULL 
            AND e.id IS NULL
-        ) AS not_enrolled
+        ) AS not_enrolled,
+
+        -- 💰 NEW FIELD
+        (SELECT COALESCE(SUM(paid_amount), 0)
+         FROM customer_scheme_payments
+         WHERE deleted_at IS NULL
+        ) AS total_value_till_date
     `;
 
     const [summary] = await sequelize.query(scoreSql);
@@ -290,7 +314,7 @@ const listEnrollments = async (req, res) => {
     console.error(err);
     return commonService.handleError(res, err);
   }
-};
+};  
 
 // Get one by ID
 const getEnrollmentById = async (req, res) => {
