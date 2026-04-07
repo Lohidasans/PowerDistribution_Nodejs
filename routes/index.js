@@ -74,6 +74,8 @@ const SalesOrderRoute = require('./vendorSalesOrderRoute');
 const SuperAdminDashboardRoute = require('./superAdminDashboardRoute');
 const ReportRoute = require('./reportRoute');
 const CodeGeneratorRoute = require('./codeGeneratorRoute');
+const CustomerSchemePaymentRoute = require('./customerSchemePaymentRoute');
+
 module.exports = (app) => {
   app.use("/api/v1", RoleRouter);
   app.use("/api/v1", RolePermissionRouter);
@@ -151,5 +153,6 @@ module.exports = (app) => {
   app.use("/api/v1", SuperAdminDashboardRoute);
   app.use("/api/v1", ReportRoute);
   app.use("/api/v1", CodeGeneratorRoute);
+  app.use("/api/v1", CustomerSchemePaymentRoute);
 };
 
