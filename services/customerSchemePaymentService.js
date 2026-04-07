@@ -175,7 +175,167 @@ const closeEnrollment = async (req, res) => {
     }
 };
 
+const listSchemeEnrollments = async (req, res) => {
+    try {
+        const { type = "ongoing", scheme_id, search, page, limit } = req.query;
+
+        let replacements = {};
+        let pagination = false;
+
+        // ================= PAGINATION =================
+        if (page && limit) {
+            pagination = true;
+            replacements.limit = parseInt(limit);
+            replacements.offset = (parseInt(page) - 1) * parseInt(limit);
+        }
+
+        let sql = `
+      SELECT
+        e.id,
+        e.enrollment_code AS scheme_no,
+        e.customer_name,
+        e.mobile_number,
+        e.created_at AS date_of_scheme,
+
+        s.scheme_name,
+
+        -- installment amount (always original for this screen)
+        e.installment_amount_id AS installment_amount,
+
+        -- paid count
+        COALESCE(p.paid_count, 0) AS paid_installments,
+
+        -- total months
+        d.months AS total_installments,
+
+        CONCAT(
+          COALESCE(p.paid_count, 0), '/', d.months
+        ) AS dues
+
+      FROM customer_enrollments e
+
+      LEFT JOIN schemes s 
+        ON s.id = e.scheme_plan_id
+
+      LEFT JOIN scheme_durations d 
+        ON d.id = s.duration_id
+
+      LEFT JOIN (
+        SELECT 
+          enrollment_id,
+          COUNT(*) AS paid_count
+        FROM customer_scheme_payments
+        WHERE deleted_at IS NULL
+        GROUP BY enrollment_id
+      ) p ON p.enrollment_id = e.id
+
+      WHERE e.deleted_at IS NULL
+    `;
+
+        // ================= TYPE FILTER =================
+
+        if (type === "ongoing") {
+            sql += `
+        AND e.status = 'Active'
+        AND COALESCE(p.paid_count, 0) < d.months
+      `;
+        }
+
+        if (type === "completed") {
+            sql += `
+        AND COALESCE(p.paid_count, 0) >= d.months
+      `;
+        }
+
+        if (type === "closed") {
+            sql += `
+        AND e.status = 'Closed'
+      `;
+        }
+
+        // ================= SCHEME FILTER =================
+
+        if (scheme_id) {
+            sql += ` AND s.id = :scheme_id`;
+            replacements.scheme_id = scheme_id;
+        }
+
+        // ================= SEARCH =================
+
+        if (search) {
+            sql += `
+        AND (
+          e.customer_name ILIKE :search
+          OR e.mobile_number ILIKE :search
+          OR e.enrollment_code ILIKE :search
+          OR s.scheme_name ILIKE :search
+        )
+      `;
+            replacements.search = `%${search}%`;
+        }
+
+        // ================= ORDER =================
+        sql += ` ORDER BY e.created_at DESC`;
+
+        if (pagination) {
+            sql += ` LIMIT :limit OFFSET :offset`;
+        }
+
+        const [rows] = await sequelize.query(sql, { replacements });
+
+        // ================= SCORE CARDS =================
+
+        const [summary] = await sequelize.query(`
+      SELECT
+        -- ongoing
+        COUNT(*) FILTER (
+          WHERE e.status = 'Active'
+        ) AS ongoing,
+
+        -- completed
+        COUNT(*) FILTER (
+          WHERE COALESCE(p.paid_count, 0) >= d.months
+        ) AS completed,
+
+        -- closed
+        COUNT(*) FILTER (
+          WHERE e.status = 'Closed'
+        ) AS closed
+
+      FROM customer_enrollments e
+
+      LEFT JOIN schemes s ON s.id = e.scheme_plan_id
+      LEFT JOIN scheme_durations d ON d.id = s.duration_id
+
+      LEFT JOIN (
+        SELECT enrollment_id, COUNT(*) AS paid_count
+        FROM customer_scheme_payments
+        WHERE deleted_at IS NULL
+        GROUP BY enrollment_id
+      ) p ON p.enrollment_id = e.id
+
+      WHERE e.deleted_at IS NULL
+    `);
+
+        return commonService.okResponse(res, {
+            enrollments: rows,
+            summary: summary[0],
+            ...(pagination && {
+                pagination: {
+                    page: parseInt(page),
+                    limit: parseInt(limit)
+                }
+            })
+        });
+
+    } catch (err) {
+        console.error(err);
+        return commonService.handleError(res, err);
+    }
+};
+
 module.exports = {
     createSchemePayment,
-    closeEnrollment
+    closeEnrollment,
+    listSchemeEnrollments
 };
