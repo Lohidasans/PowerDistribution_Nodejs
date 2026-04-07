@@ -72,7 +72,8 @@ const listEnrollments = async (req, res) => {
       mode,
       search,
       page,
-      limit
+      limit,
+      scheme_id
     } = req.query;
 
     // ================= PAGINATION =================
@@ -95,7 +96,7 @@ const listEnrollments = async (req, res) => {
       sql = `
         SELECT 
           c.id,
-          NULL AS scheme_id,
+          NULL AS scheme_enrolled_code,
           c.customer_name,
           c.mobile_number,
           NULL AS date_of_scheme,
@@ -133,11 +134,12 @@ const listEnrollments = async (req, res) => {
       sql = `
         SELECT
           e.id,
-          e.enrollment_code AS scheme_id,
+          e.enrollment_code AS scheme_enrolled_code,
           e.customer_name,
           e.mobile_number,
           e.created_at AS date_of_scheme,
 
+          s.id as scheme_id,
           s.scheme_name,
           st.type_name AS scheme_type,
           d.duration_name AS duration,
@@ -203,6 +205,11 @@ const listEnrollments = async (req, res) => {
           AND COALESCE(p.paid_count, 0) >= COALESCE(d.months, 12)
         `;
       }
+
+      if (scheme_id) {
+        sql += ` AND s.id = :scheme_id`;
+        replacements.scheme_id = scheme_id;
+      }
     }
 
     // =====================================================
@@ -213,6 +220,8 @@ const listEnrollments = async (req, res) => {
       sql += ` AND c.branch_id = :branch_id`;
       replacements.branch_id = branch_id;
     }
+
+    
 
     if (mode) {
       if (mode === "Online") {
