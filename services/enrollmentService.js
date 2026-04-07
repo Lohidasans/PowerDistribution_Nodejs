@@ -112,7 +112,6 @@ const listEnrollments = async (req, res) => {
 
           c.branch_id,
           b.branch_name,
-
           '0/0' AS dues
 
         FROM customers c
@@ -145,8 +144,15 @@ const listEnrollments = async (req, res) => {
           st.type_name AS scheme_type,
           d.duration_name AS duration,
 
-          -- FIXED INSTALLMENT (IMPORTANT)
-          e.installment_amount_id AS installment_amount,
+          -- ✅ FIXED INSTALLMENT LOGIC
+          CASE 
+            WHEN COALESCE(p.paid_count, 0) >= COALESCE(d.months, 12)
+              THEN COALESCE(p.total_paid, 0)
+            ELSE e.installment_amount_id
+          END AS installment_amount,
+
+          -- OPTIONAL EXTRA FIELD (useful)
+          COALESCE(p.total_paid, 0) AS total_paid_amount,
 
           CASE
             WHEN c.is_online = true THEN 'Online'
@@ -185,7 +191,8 @@ const listEnrollments = async (req, res) => {
         LEFT JOIN (
           SELECT 
             enrollment_id,
-            COUNT(*) AS paid_count
+            COUNT(*) AS paid_count,
+            SUM(paid_amount) AS total_paid
           FROM customer_scheme_payments
           WHERE deleted_at IS NULL
           GROUP BY enrollment_id
@@ -222,8 +229,6 @@ const listEnrollments = async (req, res) => {
       replacements.branch_id = branch_id;
     }
 
-    
-
     if (mode) {
       if (mode === "Online") {
         sql += ` AND c.is_online = true`;
@@ -247,21 +252,17 @@ const listEnrollments = async (req, res) => {
     // ================= ORDER =================
     sql += ` ORDER BY 1 DESC`;
 
-    // ================= PAGINATION =================
     if (pagination) {
       sql += ` LIMIT :limit OFFSET :offset`;
     }
 
     const [rows] = await sequelize.query(sql, { replacements });
-
-    // =====================================================
-    // 📊 SCORE CARDS (UPDATED FOR BOTH SCREENS)
-    // =====================================================
+    // SCORE CARDS
     const scoreSql = `
       SELECT 
-        (SELECT COUNT(*) 
-         FROM customer_enrollments 
-         WHERE deleted_at IS NULL) AS total_enrollment,
+        (SELECT COUNT(*)
+        FROM customer_enrollments
+        WHERE deleted_at IS NULL) AS total_enrollment,
 
         (SELECT COUNT(*) 
          FROM customer_enrollments e
@@ -299,7 +300,6 @@ const listEnrollments = async (req, res) => {
            AND e.id IS NULL
         ) AS not_enrolled,
 
-        -- 💰 NEW FIELD
         (SELECT COALESCE(SUM(paid_amount), 0)
          FROM customer_scheme_payments
          WHERE deleted_at IS NULL
@@ -308,7 +308,6 @@ const listEnrollments = async (req, res) => {
 
     const [summary] = await sequelize.query(scoreSql);
 
-    // ================= RESPONSE =================
     return commonService.okResponse(res, {
       enrollments: rows,
       summary: summary[0],
