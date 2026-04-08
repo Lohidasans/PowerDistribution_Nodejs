@@ -182,7 +182,6 @@ const listSchemeEnrollments = async (req, res) => {
         let replacements = {};
         let pagination = false;
 
-        // ================= PAGINATION =================
         if (page && limit) {
             pagination = true;
             replacements.limit = parseInt(limit);
@@ -198,14 +197,12 @@ const listSchemeEnrollments = async (req, res) => {
         e.created_at AS date_of_scheme,
 
         s.scheme_name,
+        s.id as scheme_id,
 
-        -- installment amount (always original for this screen)
-        e.installment_amount_id AS installment_amount,
+        -- ALWAYS TOTAL PAID
+        COALESCE(p.total_paid, 0) AS installment_amount,
 
-        -- paid count
         COALESCE(p.paid_count, 0) AS paid_installments,
-
-        -- total months
         d.months AS total_installments,
 
         CONCAT(
@@ -223,7 +220,8 @@ const listSchemeEnrollments = async (req, res) => {
       LEFT JOIN (
         SELECT 
           enrollment_id,
-          COUNT(*) AS paid_count
+          COUNT(*) AS paid_count,
+          SUM(paid_amount) AS total_paid
         FROM customer_scheme_payments
         WHERE deleted_at IS NULL
         GROUP BY enrollment_id
@@ -253,14 +251,12 @@ const listSchemeEnrollments = async (req, res) => {
       `;
         }
 
-        // ================= SCHEME FILTER =================
+        // ================= FILTERS =================
 
         if (scheme_id) {
             sql += ` AND s.id = :scheme_id`;
             replacements.scheme_id = scheme_id;
         }
-
-        // ================= SEARCH =================
 
         if (search) {
             sql += `
@@ -283,21 +279,17 @@ const listSchemeEnrollments = async (req, res) => {
 
         const [rows] = await sequelize.query(sql, { replacements });
 
-        // ================= SCORE CARDS =================
-
+        // ================= SUMMARY =================
         const [summary] = await sequelize.query(`
       SELECT
-        -- ongoing
         COUNT(*) FILTER (
           WHERE e.status = 'Active'
         ) AS ongoing,
 
-        -- completed
         COUNT(*) FILTER (
           WHERE COALESCE(p.paid_count, 0) >= d.months
         ) AS completed,
 
-        -- closed
         COUNT(*) FILTER (
           WHERE e.status = 'Closed'
         ) AS closed
