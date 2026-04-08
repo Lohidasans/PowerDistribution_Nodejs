@@ -15,7 +15,14 @@ const ITEM_TYPE = {
   CART: 2,
 };
 
+const LEAVE_STATUS = {
+  PENDING: 1,
+  APPROVED: 2,
+  REJECTED: 3
+};
+
 module.exports = {
   REST_API_STATUSCODE,
-  ITEM_TYPE
+  ITEM_TYPE,
+  LEAVE_STATUS
 };
