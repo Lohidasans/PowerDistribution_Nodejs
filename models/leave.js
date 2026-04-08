@@ -29,7 +29,7 @@ module.exports = (sequelize) => {
         type: DataTypes.INTEGER,
         allowNull: true,
       },
-      status_id:{
+      status_id:{ // 1- pending, 2- approved, 3- rejected
         type: DataTypes.INTEGER,
         allowNull: true,
       },
@@ -37,7 +37,7 @@ module.exports = (sequelize) => {
         type: DataTypes.INTEGER,
         allowNull: true,
       },
-      entity_type_name:{
+      entity_type_name:{ // superadmin or branchadmin
         type: DataTypes.STRING,
         allowNull: true,
       }

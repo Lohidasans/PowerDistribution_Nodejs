@@ -3,7 +3,8 @@ const router = express.Router();
 const svc = require("../services/leaveService");
 
 router.post("/leaves", svc.createLeave);
-router.get("/leaves", svc.getAllLeaves);
+router.get("/admin/leaves", svc.getAllLeaves);
+router.get("/leaves", svc.getEmployeeLeaves);
 router.get("/leaves/:id", svc.getLeaveById);
 router.put("/leaves/:id", svc.updateLeave);
 router.patch("/admin/leaves/:id/status", svc.updateLeaveStatus);
