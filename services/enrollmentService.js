@@ -352,10 +352,65 @@ const generateEnrollmentCode = async (req, res) => {
   }
 };
 
+
+// Billing side scheme - Quick enrollement screen
+/* const createQuickEnrollment = async (req, res) => {
+  try {
+    const required = [
+      "customer_id",
+      "scheme_plan_id",
+      "installment_amount_id"
+    ];
+
+    if (!validateRequired(req, res, required)) return;
+
+    // Get customer details automatically
+    const customer = await models.Customer.findByPk(req.body.customer_id);
+
+    if (!customer) {
+      throw new Error("Customer not found");
+    }
+
+    const payload = {
+      enrollment_code: generateEnrollmentCode(), // auto generate
+      customer_id: customer.id,
+      customer_no: customer.customer_code,
+      customer_name: customer.customer_name,
+      mobile_number: customer.mobile_number,
+      email: customer.email_id ?? "",
+      address: customer.address ?? "",
+      country_id: customer.country_id ?? 1,
+      state_id: customer.state_id ?? 1,
+      district_id: customer.district_id ?? 1,
+      pincode: customer.pin_code ?? "000000",
+
+      scheme_plan_id: +req.body.scheme_plan_id,
+      installment_amount_id: +req.body.installment_amount_id,
+
+      identity_proof_id: req.body.identity_proof_id ?? null,
+      identity_proof_no: req.body.identity_proof_no ?? null,
+
+      nominee: req.body.nominee ?? null,
+      nominee_relation_id: req.body.nominee_relation_id ?? null,
+
+      status: "Active"
+    };
+
+    const row = await models.Enrollment.create(payload);
+
+    return commonService.createdResponse(res, {
+      message: "Quick enrollment created",
+      enrollment: row
+    });
+
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};  */
+
 module.exports = {
   createEnrollment,
   listEnrollments,
   getEnrollmentById,
   generateEnrollmentCode
 };
-
