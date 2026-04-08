@@ -871,6 +871,11 @@ const getVendorDashboard = async (req, res) => {
             replacements.branch_id = parseInt(branch_id);
         }
 
+        let grnBranchFilter = "";
+        if (branch_id) {
+            grnBranchFilter = " AND g.branch_id = :branch_id";
+        }
+
         // 1. Total Vendors
         const totalVendorsQuery = `
       SELECT COUNT(DISTINCT v.id) as total_vendors
@@ -902,7 +907,7 @@ const getVendorDashboard = async (req, res) => {
             FROM grns g
             WHERE g.deleted_at IS NULL
             ${dateFilter}
-            ${branchFilter}
+            ${grnBranchFilter}
 
             UNION ALL
 
