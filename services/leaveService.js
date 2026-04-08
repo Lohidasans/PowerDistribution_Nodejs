@@ -1,6 +1,7 @@
 const { sequelize, models } = require("../models");
 const commonService = require("./commonService");
 const { Op } = require('sequelize');
+const { LEAVE_STATUS } = require("../constants/enum");
 
 // Create a new leave request
 const createLeave = async (req, res) => {
@@ -14,7 +15,8 @@ const createLeave = async (req, res) => {
         leave_type_id, 
         reason,
         employee_id,
-        branch_id
+        branch_id,
+        status_id: LEAVE_STATUS.PENDING 
       },
       { transaction }
     );
@@ -95,7 +97,7 @@ const getAllLeaves = async (req, res) => {
       LEFT JOIN employees AS ae ON l.entity_type_name = 'employees' AND ae.id = l.approved_by_id
       LEFT JOIN employee_contacts AS aec ON aec.employee_id = ae.id
       LEFT JOIN branches AS ab ON l.entity_type_name = 'branches' AND ab.id = l.approved_by_id
-      WHERE 1 = 1
+      WHERE 1 = 1 and l.deleted_at IS NULL
     `;
 
     const replacements = {};
@@ -213,8 +215,6 @@ const getAllLeaves = async (req, res) => {
   }
 };
 
-module.exports = { getAllLeaves };
-
 // Get leave by ID
 const getLeaveById = async (req, res) => {
   try {
@@ -269,7 +269,7 @@ const updateLeave = async (req, res) => {
   }
 };
 
-const updateLeaveStatus = async (req, res) => {
+/*const updateLeaveStatus = async (req, res) => {
   const transaction = await sequelize.transaction();
   try {
     const { id } = req.params;
@@ -305,7 +305,66 @@ const updateLeaveStatus = async (req, res) => {
     await transaction.rollback();
     return commonService.handleError(res, error);
   }
+};*/
+
+// Admin - Approve or Reject leave request
+const updateLeaveStatus = async (req, res) => {
+  const transaction = await sequelize.transaction();
+  try {
+    const { id } = req.params;
+    const { status_id, approved_by_id, entity_type_name } = req.body;
+
+    const leave = await models.Leave.findByPk(id, { transaction });
+
+    if (!leave) {
+      await transaction.rollback();
+      return commonService.notFound(res, "Leave request not found");
+    }
+
+    // Only allow pending to be updated
+    if (leave.status_id !== LEAVE_STATUS.PENDING) {
+      await transaction.rollback();
+      return commonService.badRequest(res, "Leave already processed");
+    }
+
+    // Validate status
+    if (![LEAVE_STATUS.APPROVED, LEAVE_STATUS.REJECTED].includes(status_id)) {
+      await transaction.rollback();
+      return commonService.badRequest(res, "Invalid status");
+    }
+
+    // Validate approver
+    if (!approved_by_id || !entity_type_name) {
+      await transaction.rollback();
+      return commonService.badRequest(res, "Approver details required");
+    }
+
+    if (!["superadmin", "branchadmin"].includes(entity_type_name)) {
+      await transaction.rollback();
+      return commonService.badRequest(res, "Invalid approver role");
+    }
+
+    await leave.update(
+      {
+        status_id,
+        approved_by_id,
+        entity_type_name
+      },
+      { transaction }
+    );
+
+    await transaction.commit();
+
+    const updatedLeave = await models.Leave.findByPk(id);
+
+    return commonService.okResponse(res, updatedLeave);
+
+  } catch (error) {
+    await transaction.rollback();
+    return commonService.handleError(res, error);
+  }
 };
+
 // Delete leave request (soft delete)
 const deleteLeave = async (req, res) => {
   const transaction = await sequelize.transaction();
