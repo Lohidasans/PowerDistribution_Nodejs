@@ -38,15 +38,16 @@ const getAllLeaves = async (req, res) => {
       leave_type_id,
       branch_id,
       department_id,
-      status_id
+      status_id,
+      page,
+      limit
     } = req.query;
 
-    // ✅ Default status = Pending
+    // Default status = Pending
     const replacements = {
       status_id: status_id ? parseInt(status_id) : 1
     };
 
-    // Base query
     let query = `
       SELECT 
         l.id,
@@ -105,47 +106,68 @@ const getAllLeaves = async (req, res) => {
       LEFT JOIN roles AS r ON r.id = e.role_id
       LEFT JOIN employee_departments AS d ON d.id = e.department_id
       LEFT JOIN branches AS b ON b.id = l.branch_id
-      LEFT JOIN superadmin_profiles AS sa ON l.entity_type_name = 'superadmin' AND sa.id = l.approved_by_id
-      LEFT JOIN vendors AS v ON l.entity_type_name = 'vendors' AND v.id = l.approved_by_id
-      LEFT JOIN employees AS ae ON l.entity_type_name = 'employees' AND ae.id = l.approved_by_id
-      LEFT JOIN employee_contacts AS aec ON aec.employee_id = ae.id
-      LEFT JOIN branches AS ab ON l.entity_type_name = 'branches' AND ab.id = l.approved_by_id
+      LEFT JOIN superadmin_profiles AS sa 
+        ON l.entity_type_name = 'superadmin' 
+        AND sa.id = l.approved_by_id
+      LEFT JOIN vendors AS v 
+        ON l.entity_type_name = 'vendors' 
+        AND v.id = l.approved_by_id
+      LEFT JOIN employees AS ae 
+        ON l.entity_type_name = 'employees' 
+        AND ae.id = l.approved_by_id
+      LEFT JOIN employee_contacts AS aec 
+        ON aec.employee_id = ae.id
+      LEFT JOIN branches AS ab 
+        ON l.entity_type_name = 'branches' 
+        AND ab.id = l.approved_by_id
       WHERE l.deleted_at IS NULL
       AND l.status_id = :status_id
     `;
 
-    // 📅 Date filter
+    let countQuery = `
+      SELECT 
+        l.status_id,
+        COUNT(*) AS count
+      FROM leaves AS l
+      LEFT JOIN employees AS e ON e.id = l.employee_id
+      LEFT JOIN leave_types AS lt ON lt.id = l.leave_type_id
+      WHERE l.deleted_at IS NULL
+      AND l.status_id = :status_id
+    `;
+
     if (start_date && end_date) {
       query += ` AND l.leave_date BETWEEN :start_date AND :end_date`;
+      countQuery += ` AND l.leave_date BETWEEN :start_date AND :end_date`;
       replacements.start_date = start_date;
       replacements.end_date = end_date;
     } else if (start_date) {
       query += ` AND l.leave_date >= :start_date`;
+      countQuery += ` AND l.leave_date >= :start_date`;
       replacements.start_date = start_date;
     } else if (end_date) {
       query += ` AND l.leave_date <= :end_date`;
+      countQuery += ` AND l.leave_date <= :end_date`;
       replacements.end_date = end_date;
     }
 
-    // 🧾 Leave type
     if (leave_type_id) {
       query += ` AND l.leave_type_id = :leave_type_id`;
+      countQuery += ` AND l.leave_type_id = :leave_type_id`;
       replacements.leave_type_id = leave_type_id;
     }
 
-    // 🏢 Branch
     if (branch_id) {
       query += ` AND l.branch_id = :branch_id`;
+      countQuery += ` AND l.branch_id = :branch_id`;
       replacements.branch_id = branch_id;
     }
 
-    // 🏛️ Department
     if (department_id) {
       query += ` AND e.department_id = :department_id`;
+      countQuery += ` AND e.department_id = :department_id`;
       replacements.department_id = department_id;
     }
 
-    // 🔍 Search
     if (search && search.trim() !== "") {
       query += `
         AND (
@@ -155,18 +177,49 @@ const getAllLeaves = async (req, res) => {
           LOWER(e.employee_no) LIKE :search
         )
       `;
+
+      countQuery += `
+        AND (
+          LOWER(l.reason) LIKE :search OR
+          LOWER(lt.leave_type_name) LIKE :search OR
+          LOWER(e.employee_name) LIKE :search OR
+          LOWER(e.employee_no) LIKE :search
+        )
+      `;
+
       replacements.search = `%${search.trim().toLowerCase()}%`;
     }
-
+    countQuery += ` GROUP BY l.status_id`;
     query += ` ORDER BY l.leave_date DESC`;
+    let pagination = null;
 
-    // Execute main query
-    const rows = await sequelize.query(query, {
-      replacements,
-      type: sequelize.QueryTypes.SELECT
-    });
+    if (page && limit) {
+      const pageNumber = parseInt(page);
+      const limitNumber = parseInt(limit);
+      const offset = (pageNumber - 1) * limitNumber;
 
-    // Structure Response
+      query += ` LIMIT :limit OFFSET :offset`;
+
+      replacements.limit = limitNumber;
+      replacements.offset = offset;
+
+      pagination = {
+        current_page: pageNumber,
+        per_page: limitNumber
+      };
+    }
+
+    const [rows, countRows] = await Promise.all([
+      sequelize.query(query, {
+        replacements,
+        type: sequelize.QueryTypes.SELECT
+      }),
+      sequelize.query(countQuery, {
+        replacements,
+        type: sequelize.QueryTypes.SELECT
+      })
+    ]);
+
     const leaves = rows.map((row) => ({
       id: row.id,
       leave_date: row.leave_date,
@@ -180,61 +233,67 @@ const getAllLeaves = async (req, res) => {
       created_at: row.created_at,
       updated_at: row.updated_at,
       leave_type_name: row.leave_type_name,
-      employee: row.employee_id ? {
-        employee_no: row.employee_no,
-        employee_name: row.employee_name,
-        profile_image_url: row.profile_image_url,
-        department_id: row.department_id,
-        role_id: row.role_id,
-        joining_date: row.joining_date,
-        employment_type: row.employment_type,
-        gender: row.gender,
-        date_of_birth: row.date_of_birth,
-        status: row.status,
-        role_name: row.role_name,
-        department_name: row.department_name
-      } : null,
-      branch: row.branch_id ? {
-        branch_name: row.branch_name,
-        address: row.branch_address,
-        mobile: row.branch_mobile,
-        email: row.branch_email,
-        status: row.branch_status
-      } : null,
-      approved_by: row.approved_by_id ? {
-        id: row.approved_by_id,
-        entity_type: row.entity_type_name,
-        name: row.approved_by_name,
-        email: row.approved_by_email,
-        mobile: row.approved_by_mobile
-      } : null
+
+      employee: row.employee_id
+        ? {
+          employee_no: row.employee_no,
+          employee_name: row.employee_name,
+          profile_image_url: row.profile_image_url,
+          department_id: row.department_id,
+          role_id: row.role_id,
+          joining_date: row.joining_date,
+          employment_type: row.employment_type,
+          gender: row.gender,
+          date_of_birth: row.date_of_birth,
+          status: row.status,
+          role_name: row.role_name,
+          department_name: row.department_name
+        }
+        : null,
+
+      branch: row.branch_id
+        ? {
+          branch_name: row.branch_name,
+          address: row.branch_address,
+          mobile: row.branch_mobile,
+          email: row.branch_email,
+          status: row.branch_status
+        }
+        : null,
+
+      approved_by: row.approved_by_id
+        ? {
+          id: row.approved_by_id,
+          entity_type: row.entity_type_name,
+          name: row.approved_by_name,
+          email: row.approved_by_email,
+          mobile: row.approved_by_mobile
+        }
+        : null
     }));
 
-    // =========================
-    // Correct Counts (based on filtered data)
-    // =========================
     let pending_count = 0;
     let approved_count = 0;
     let rejected_count = 0;
 
-    rows.forEach((row) => {
-      if (row.status_id === 1) pending_count++;
-      if (row.status_id === 2) approved_count++;
-      if (row.status_id === 3) rejected_count++;
+    countRows.forEach((row) => {
+      if (row.status_id === 1) pending_count = parseInt(row.count);
+      if (row.status_id === 2) approved_count = parseInt(row.count);
+      if (row.status_id === 3) rejected_count = parseInt(row.count);
     });
 
     return commonService.okResponse(res, {
       leaves,
       pending_count,
       approved_count,
-      rejected_count
+      rejected_count,
+      pagination
     });
 
   } catch (error) {
     return commonService.handleError(res, error);
   }
 };
-
 // Get leave by ID
 const getLeaveById = async (req, res) => {
   try {
