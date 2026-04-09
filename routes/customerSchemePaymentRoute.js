@@ -5,7 +5,7 @@ const svc = require("../services/customerSchemePaymentService");
 // CRUD
 router.post("/customer-scheme-payment", svc.createSchemePayment);
 router.post("/customer-scheme-payment/close", svc.closeEnrollment);
-router.get("/customer-scheme-payments", svc.listSchemeEnrollments);
+router.get("/admin/customer-scheme-payments", svc.listSchemeEnrollmentsForAdmin);// Same can be used for enrollment and scheme gets
 
 
 module.exports = router;

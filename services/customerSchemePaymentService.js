@@ -1,7 +1,7 @@
 const commonService = require("./commonService");
 const { models, sequelize } = require("../models");
 
-
+// Payinstallment via billing side
 const createSchemePayment = async (req, res) => {
     const t = await sequelize.transaction();
 
@@ -175,7 +175,7 @@ const closeEnrollment = async (req, res) => {
     }
 };
 
-const listSchemeEnrollments = async (req, res) => {
+const listSchemeEnrollmentsForAdmin = async (req, res) => {
     try {
         const { type = "ongoing", scheme_id, search, page, limit } = req.query;
 
@@ -326,8 +326,10 @@ const listSchemeEnrollments = async (req, res) => {
     }
 };
 
+
+
 module.exports = {
     createSchemePayment,
     closeEnrollment,
-    listSchemeEnrollments
+    listSchemeEnrollmentsForAdmin,
 };

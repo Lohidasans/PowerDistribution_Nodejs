@@ -353,6 +353,115 @@ const generateEnrollmentCode = async (req, res) => {
 };
 
 
+const getEnrolledSchemeDetails = async (req, res) => {
+  try {
+    const { enrollment_id } = req.params;
+
+    if (!enrollment_id) {
+      return commonService.badRequest(res, {
+        message: "enrollment_id is required",
+      });
+    }
+
+    // ================= ENROLLMENT =================
+    const enrollment = await models.Enrollment.findByPk(enrollment_id);
+    if (!enrollment) {
+      return commonService.notFound(res, { message: "Enrollment not found" });
+    }
+
+    // ================= MASTER DATA =================
+    const customer = await models.Customer.findByPk(enrollment.customer_id);
+    const scheme = await models.Scheme.findByPk(enrollment.scheme_plan_id);
+    const duration = await models.SchemeDuration.findByPk(scheme.duration_id);
+
+    // ================= SCHEME PAYMENTS =================
+    const schemePayments = await models.CustomerSchemePayment.findAll({
+      where: { enrollment_id },
+      order: [["installment_no", "ASC"]],
+    });
+
+    // ================= FORMAT TABLE =================
+    const paymentRows = [];
+
+    for (const sp of schemePayments) {
+      // get receipt manually
+      let receiptNo = null;
+      if (sp.receipt_id) {
+        const receipt = await models.VoucherReceipt.findByPk(sp.receipt_id);
+        receiptNo = receipt ? receipt.receipt_no : null;
+      }
+
+      const row = {
+        date: sp.payment_date,
+        receipt_no: receiptNo,
+        cash: 0,
+        upi: 0,
+        upi_txn: null,
+        card: 0,
+        card_txn: null,
+      };
+
+      // get payments manually
+      const payments = await models.Payment.findAll({
+        where: { scheme_payment_id: sp.id },
+      });
+
+      for (const p of payments) {
+        if (p.payment_mode === "Cash") {
+          row.cash += Number(p.amount_received);
+        }
+
+        if (p.payment_mode === "UPI") {
+          row.upi += Number(p.amount_received);
+          row.upi_txn = p.transaction_id;
+        }
+
+        if (p.payment_mode === "Card") {
+          row.card += Number(p.amount_received);
+          row.card_txn = p.transaction_id;
+        }
+      }
+
+      paymentRows.push(row);
+    }
+
+    // ================= CALCULATIONS =================
+    const paidInstallments = schemePayments.length;
+    const totalInstallments = duration.months;
+    const remaining = totalInstallments - paidInstallments;
+
+    // ================= END DATE =================
+    const startDate = new Date(enrollment.created_at);
+    const endDate = new Date(startDate);
+    endDate.setMonth(endDate.getMonth() + totalInstallments);
+
+    // ================= RESPONSE =================
+    return commonService.okResponse(res, {
+      paid_installments: paymentRows,
+
+      customer_details: {
+        customer_id: customer?.customer_code,
+        name: customer?.customer_name,
+        mobile_number: customer?.mobile_number,
+        address: customer?.address,
+        pincode: customer?.pin_code,
+      },
+
+      plan_details: {
+        scheme_name: scheme?.scheme_name,
+        date_of_scheme: enrollment.created_at,
+        installment_amount: enrollment.installment_amount_id,
+        remaining_dues: `${remaining} Months`,
+        end_of_scheme: endDate,
+      },
+    });
+
+  } catch (err) {
+    console.error(err);
+    return commonService.handleError(res, err);
+  }
+};
+
 // Billing side scheme - Quick enrollement screen
 /* const createQuickEnrollment = async (req, res) => {
   try {
@@ -412,5 +521,7 @@ module.exports = {
   createEnrollment,
   listEnrollments,
   getEnrollmentById,
-  generateEnrollmentCode
+  generateEnrollmentCode,
+  getEnrolledSchemeDetails,
+
 };
