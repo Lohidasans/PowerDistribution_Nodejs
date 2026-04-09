@@ -276,7 +276,10 @@ const listInstallmentAmounts = async (req, res) => {
       ? scheme.monthly_installments.map((a) => +a)
       : [];
 
-    return commonService.okResponse(res, { installments: amounts });
+    return commonService.okResponse(res, {
+      installments: amounts,
+      min_amount: scheme.min_amount ? +scheme.min_amount : 0
+    });
   } catch (err) {
     return commonService.handleError(res, err);
   }
