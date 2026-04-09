@@ -409,10 +409,23 @@ const deleteLeave = async (req, res) => {
 
 const getEmployeeLeaves = async (req, res) => {
   try {
-    const { status_id, start_date, end_date, search, branch_id, date } = req.query;
+    const {
+      status_id,
+      start_date,
+      end_date,
+      search,
+      branch_id,
+      date,
+      employee_id,
+      page,
+      limit
+    } = req.query;
 
-    // ✅ Default Pending
     const statusFilter = status_id ? parseInt(status_id) : 1;
+
+    const replacements = {
+      status_id: statusFilter
+    };
 
     let query = `
       SELECT 
@@ -420,14 +433,13 @@ const getEmployeeLeaves = async (req, res) => {
         l.leave_date,
         l.reason,
         l.status_id,
-
+        l.branch_id,
+        l.employee_id,
         lt.leave_type_name,
-
         e.employee_name,
         e.employee_no,
         e.profile_image_url,
 
-        -- ✅ Approved By Name
         CASE 
           WHEN l.entity_type_name = 'superadmin' THEN sa.proprietor
           WHEN l.entity_type_name = 'branches' THEN b2.branch_name
@@ -435,39 +447,61 @@ const getEmployeeLeaves = async (req, res) => {
         END AS approved_by_name
 
       FROM leaves l
-
       LEFT JOIN leave_types lt ON lt.id = l.leave_type_id
       LEFT JOIN employees e ON e.id = l.employee_id
-      LEFT JOIN superadmin_profiles sa  ON l.entity_type_name = 'superadmin' AND sa.id = l.approved_by_id
-      LEFT JOIN branches b2 ON l.entity_type_name = 'branches' AND b2.id = l.approved_by_id
+      LEFT JOIN superadmin_profiles sa  
+        ON l.entity_type_name = 'superadmin' 
+        AND sa.id = l.approved_by_id
+      LEFT JOIN branches b2 
+        ON l.entity_type_name = 'branches' 
+        AND b2.id = l.approved_by_id
+
       WHERE l.deleted_at IS NULL
       AND l.status_id = :status_id
     `;
 
-    const replacements = { status_id: statusFilter };
-    //  Date filter (single + range)
+    let countQuery = `
+      SELECT 
+        l.status_id,
+        COUNT(*) AS count
+      FROM leaves l
+      LEFT JOIN employees e ON e.id = l.employee_id
+      LEFT JOIN leave_types lt ON lt.id = l.leave_type_id
+      WHERE l.deleted_at IS NULL
+      AND l.status_id = :status_id
+    `;
+
     if (date) {
       query += ` AND l.leave_date = :date`;
+      countQuery += ` AND l.leave_date = :date`;
       replacements.date = date;
     } else if (start_date && end_date) {
       query += ` AND l.leave_date BETWEEN :start_date AND :end_date`;
+      countQuery += ` AND l.leave_date BETWEEN :start_date AND :end_date`;
       replacements.start_date = start_date;
       replacements.end_date = end_date;
     } else if (start_date) {
       query += ` AND l.leave_date >= :start_date`;
+      countQuery += ` AND l.leave_date >= :start_date`;
       replacements.start_date = start_date;
     } else if (end_date) {
       query += ` AND l.leave_date <= :end_date`;
+      countQuery += ` AND l.leave_date <= :end_date`;
       replacements.end_date = end_date;
     }
 
-    // Branch filter
     if (branch_id) {
       query += ` AND l.branch_id = :branch_id`;
+      countQuery += ` AND l.branch_id = :branch_id`;
       replacements.branch_id = branch_id;
     }
 
-    // Search
+    if (employee_id) {
+      query += ` AND l.employee_id = :employee_id`;
+      countQuery += ` AND l.employee_id = :employee_id`;
+      replacements.employee_id = employee_id;
+    }
+
     if (search && search.trim() !== "") {
       query += `
         AND (
@@ -477,33 +511,56 @@ const getEmployeeLeaves = async (req, res) => {
           LOWER(lt.leave_type_name) LIKE :search
         )
       `;
-      replacements.search = `%${search.toLowerCase()}%`;
+
+      countQuery += `
+        AND (
+          LOWER(e.employee_name) LIKE :search OR
+          LOWER(e.employee_no) LIKE :search OR
+          LOWER(l.reason) LIKE :search OR
+          LOWER(lt.leave_type_name) LIKE :search
+        )
+      `;
+
+      replacements.search = `%${search.trim().toLowerCase()}%`;
     }
+
+    countQuery += ` GROUP BY l.status_id`;
 
     query += ` ORDER BY l.leave_date DESC`;
 
-    const leaves = await sequelize.query(query, {
-      replacements,
-      type: sequelize.QueryTypes.SELECT
-    });
+    let pagination = null;
 
-    // ================= COUNTS =================
-    const countQuery = `
-      SELECT 
-        status_id,
-        COUNT(*) AS count
-      FROM leaves
-      WHERE deleted_at IS NULL
-      GROUP BY status_id
-    `;
+    if (page && limit) {
+      const pageNumber = parseInt(page);
+      const limitNumber = parseInt(limit);
+      const offset = (pageNumber - 1) * limitNumber;
 
-    const countRows = await sequelize.query(countQuery, {
-      type: sequelize.QueryTypes.SELECT
-    });
+      query += ` LIMIT :limit OFFSET :offset`;
 
-    let pending = 0, approved = 0, rejected = 0;
+      replacements.limit = limitNumber;
+      replacements.offset = offset;
 
-    countRows.forEach(row => {
+      pagination = {
+        current_page: pageNumber,
+        per_page: limitNumber
+      };
+    }
+    const [leaves, countRows] = await Promise.all([
+      sequelize.query(query, {
+        replacements,
+        type: sequelize.QueryTypes.SELECT
+      }),
+      sequelize.query(countQuery, {
+        replacements,
+        type: sequelize.QueryTypes.SELECT
+      })
+    ]);
+
+    let pending = 0;
+    let approved = 0;
+    let rejected = 0;
+
+    countRows.forEach((row) => {
       if (row.status_id === 1) pending = parseInt(row.count);
       if (row.status_id === 2) approved = parseInt(row.count);
       if (row.status_id === 3) rejected = parseInt(row.count);
@@ -515,13 +572,16 @@ const getEmployeeLeaves = async (req, res) => {
         pending,
         approved,
         rejected
-      }
+      },
+      pagination
     });
 
   } catch (error) {
     return commonService.handleError(res, error);
   }
 };
+
+
 module.exports = {
   createLeave,
   getAllLeaves,
