@@ -166,7 +166,7 @@ const getAllLeaves = async (req, res) => {
       type: sequelize.QueryTypes.SELECT
     });
 
-    // Structure response
+    // Structure Response
     const leaves = rows.map((row) => ({
       id: row.id,
       leave_date: row.leave_date,
@@ -192,42 +192,35 @@ const getAllLeaves = async (req, res) => {
         date_of_birth: row.date_of_birth,
         status: row.status,
         role_name: row.role_name,
-        department_name: row.department_name,
+        department_name: row.department_name
       } : null,
       branch: row.branch_id ? {
         branch_name: row.branch_name,
         address: row.branch_address,
         mobile: row.branch_mobile,
         email: row.branch_email,
-        status: row.branch_status,
+        status: row.branch_status
       } : null,
       approved_by: row.approved_by_id ? {
         id: row.approved_by_id,
         entity_type: row.entity_type_name,
         name: row.approved_by_name,
         email: row.approved_by_email,
-        mobile: row.approved_by_mobile,
-      } : null,
+        mobile: row.approved_by_mobile
+      } : null
     }));
 
-    // ✅ Correct counts (independent of filter)
-    const countQuery = `
-      SELECT status_id, COUNT(*) as count
-      FROM leaves
-      WHERE deleted_at IS NULL
-      GROUP BY status_id
-    `;
+    // =========================
+    // Correct Counts (based on filtered data)
+    // =========================
+    let pending_count = 0;
+    let approved_count = 0;
+    let rejected_count = 0;
 
-    const countRows = await sequelize.query(countQuery, {
-      type: sequelize.QueryTypes.SELECT
-    });
-
-    let pending_count = 0, approved_count = 0, rejected_count = 0;
-
-    countRows.forEach(row => {
-      if (row.status_id === 1) pending_count = parseInt(row.count);
-      if (row.status_id === 2) approved_count = parseInt(row.count);
-      if (row.status_id === 3) rejected_count = parseInt(row.count);
+    rows.forEach((row) => {
+      if (row.status_id === 1) pending_count++;
+      if (row.status_id === 2) approved_count++;
+      if (row.status_id === 3) rejected_count++;
     });
 
     return commonService.okResponse(res, {
