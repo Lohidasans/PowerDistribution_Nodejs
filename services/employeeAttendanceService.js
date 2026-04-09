@@ -17,16 +17,22 @@ const getEmployeeAttendance = async (req, res) => {
       department_id,
       role_id,
       employee_id,
-      status, // Filter: Present, Absent, Overtime
-      search // Search by employee name or number
+      status,// Filter: Present, Absent, Overtime
+      search,
+      page,
+      limit
     } = req.query;
 
-    // Default to today if no date provided
+    // Pagination setup
+    const currentPage = parseInt(page) || 1;
+    const perPage = parseInt(limit) || null; // optional
+    const offset = perPage ? (currentPage - 1) * perPage : 0;
+
+    // Default dates
     const targetDate = date || moment().format("YYYY-MM-DD");
     const startDate = from_date || targetDate;
     const endDate = to_date || targetDate;
 
-    // Office timings configuration
     const OFFICE_START = "10:30:00";
     const OFFICE_END = "20:30:00"; // 08:30 PM in 24-hour format
     const STANDARD_WORK_HOURS = 10; // 10 hours (10:30 AM to 08:30 PM)
@@ -55,7 +61,7 @@ const getEmployeeAttendance = async (req, res) => {
 
     const replacements = { startDate, endDate };
 
-    // Apply filters
+    // Filters
     if (branch_id) {
       query += ` AND e.branch_id = :branch_id`;
       replacements.branch_id = branch_id;
@@ -189,7 +195,7 @@ const getEmployeeAttendance = async (req, res) => {
       type: sequelize.QueryTypes.SELECT,
     });
 
-    // Format the response
+    // Mapping
     let attendance = rows.map((row) => {
       const totalHours = row.total_hours || 0;
       const actualWorkHours = row.actual_work_hours || 0;
@@ -218,7 +224,7 @@ const getEmployeeAttendance = async (req, res) => {
       };
     });
 
-    // Apply status filter (Present, Absent, Overtime)
+    // Status filter
     if (status) {
       if (status === "Present") {
         attendance = attendance.filter((a) => a.status === "Present");
@@ -229,7 +235,15 @@ const getEmployeeAttendance = async (req, res) => {
       }
     }
 
-    // Calculate summary statistics
+    // Pagination
+    const total_records = attendance.length;
+    let paginatedAttendance = attendance;
+    if (limit) {
+      paginatedAttendance = attendance.slice(offset, offset + limit);
+    }
+    const total_pages = limit ? Math.ceil(total_records / limit) : 1;
+
+    // Summary
     const summary = {
       total_employees: rows.length,
       present_count: rows.filter((a) => a.status === "Present").length,
@@ -256,7 +270,14 @@ const getEmployeeAttendance = async (req, res) => {
         total_overtime_hours: formatHours(summary.total_overtime_hours),
         average_work_hours: formatHours(summary.average_work_hours),
       },
-      attendance,
+      pagination: {
+        total_records,
+        total_pages,
+        current_page: page,
+        per_page: limit,
+      },
+
+      attendance: paginatedAttendance,
     });
   } catch (err) {
     console.error("Error in getEmployeeAttendance:", err);
