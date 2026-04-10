@@ -438,6 +438,7 @@ const getEnrolledSchemeDetailsById = async (req, res) => {
       }
 
       paymentRows.push({
+        scheme_payment_id: sp.id,
         date: sp.payment_date,
         receipt_no: receiptNo,
         cash,
@@ -500,10 +501,133 @@ const getEnrolledSchemeDetailsById = async (req, res) => {
     return commonService.handleError(res, err);
   }
 };
+
+// For Admin side and billing side - Get the receipt details of the enrolled scheme with payment breakup
+const getSchemeReceipt = async (req, res) => {
+  try {
+    const { scheme_payment_id } = req.params;
+
+    if (!scheme_payment_id) {
+      return commonService.badRequest(res, {
+        message: "scheme_payment_id is required",
+      });
+    }
+
+    // ================= SCHEME PAYMENT =================
+    const sp = await models.CustomerSchemePayment.findByPk(scheme_payment_id);
+    if (!sp) {
+      return commonService.notFound(res, { message: "Payment not found" });
+    }
+
+    // ================= ENROLLMENT =================
+    const enrollment = await models.Enrollment.findByPk(sp.enrollment_id);
+
+    // ================= CUSTOMER =================
+    const customer = await models.Customer.findByPk(enrollment.customer_id);
+
+    // ================= SCHEME =================
+    const scheme = await models.Scheme.findByPk(enrollment.scheme_plan_id);
+
+    // ================= BRANCH =================
+    const branch = await models.Branch.findByPk(scheme.branch_id);
+
+    // ================= RECEIPT NUMBER =================
+    let receiptNo = null;
+
+    if (sp.payment_source === "VOUCHER") {
+      const receipt = await models.VoucherReceipt.findOne({
+        where: {
+          id: sp.receipt_id,
+          bill_type_id: 5,
+          reference_type: "scheme",
+          reference_id: enrollment.id,
+          account_id: enrollment.customer_id,
+        },
+      });
+
+      receiptNo = receipt?.receipt_no || null;
+    } else {
+      receiptNo = sp.scheme_payment_code; // INSTALLMENT
+    }
+
+    // ================= PAYMENTS =================
+    const payments = await models.Payment.findAll({
+      where: { scheme_payment_id: sp.id },
+    });
+
+    let cash = 0;
+    let upi = 0;
+    let upi_txn = null;
+    let card = 0;
+    let card_txn = null;
+
+    for (const p of payments) {
+      if (p.payment_mode === "Cash") {
+        cash += Number(p.amount_received);
+      }
+
+      if (p.payment_mode === "UPI") {
+        upi += Number(p.amount_received);
+        upi_txn = p.transaction_id;
+      }
+
+      if (p.payment_mode === "Card") {
+        card += Number(p.amount_received);
+        card_txn = p.transaction_id;
+      }
+    }
+
+    // ================= NEXT DUE =================
+    const paymentDate = new Date(sp.payment_date);
+    const nextDue = new Date(paymentDate);
+    nextDue.setDate(nextDue.getDate() + 28); // ✅ FIXED 28 DAYS
+
+    // ================= RESPONSE =================
+    return commonService.okResponse(res, {
+      receipt_details: {
+        scheme_payment_id: sp.id,
+        receipt_no: receiptNo,
+        date: sp.payment_date,
+        bill_type: "Saving Scheme",
+        customer_name: customer?.customer_name,
+        installment_amount: sp.paid_amount,
+        amount_in_words: convertAmountToWords(sp.paid_amount), // optional helper
+        next_due: nextDue,
+      },
+
+      payment_breakup: {
+        cash,
+        upi,
+        upi_transaction: upi_txn,
+        card,
+        card_transaction: card_txn,
+      },
+
+      branch_details: {
+        branch_name: branch?.branch_name,
+        address: branch?.address,
+        mobile: branch?.mobile,
+        gst_no: branch?.gst_no,
+        signature: branch?.signature_url,
+      },
+    });
+
+  } catch (err) {
+    console.error(err);
+    return commonService.handleError(res, err);
+  }
+};
+
+const convertAmountToWords = (amount) => {
+  // simple example (you can use library like number-to-words)
+  return `${amount} Rupees Only`;
+};
+
 module.exports = {
   createEnrollment,
   listEnrollments,
   getEnrollmentById,
   generateEnrollmentCode,
-  getEnrolledSchemeDetailsById
+  getEnrolledSchemeDetailsById,
+  getSchemeReceipt
 };
