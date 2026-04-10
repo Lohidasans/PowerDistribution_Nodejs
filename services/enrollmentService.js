@@ -353,8 +353,8 @@ const generateEnrollmentCode = async (req, res) => {
   }
 };
 
-// For billing side - Get enrolled scheme details with payment history
-const getEnrolledSchemeDetails = async (req, res) => {
+// Admin side - EnrollmentViewById &  For billing side - Get enrolled scheme details with payment history
+const getEnrolledSchemeDetailsById = async (req, res) => {
   try {
     const { enrollment_id } = req.params;
 
@@ -367,79 +367,105 @@ const getEnrolledSchemeDetails = async (req, res) => {
     // ================= ENROLLMENT =================
     const enrollment = await models.Enrollment.findByPk(enrollment_id);
     if (!enrollment) {
-      return commonService.notFound(res, { message: "Enrollment not found" });
+      return commonService.notFound(res, {
+        message: "Enrollment not found",
+      });
     }
 
-    // ================= MASTER DATA =================
+    // ================= CUSTOMER =================
     const customer = await models.Customer.findByPk(enrollment.customer_id);
-    const scheme = await models.Scheme.findByPk(enrollment.scheme_plan_id);
-    const duration = await models.SchemeDuration.findByPk(scheme.duration_id);
 
-    // ================= SCHEME PAYMENTS =================
+    // ================= SCHEME =================
+    const scheme = await models.Scheme.findByPk(enrollment.scheme_plan_id);
+
+    //  ADD THIS (FOR DURATION)
+    const duration = await models.SchemeDuration.findByPk(
+      scheme.duration_id
+    );
+
+    // ================= PAYMENTS =================
     const schemePayments = await models.CustomerSchemePayment.findAll({
       where: { enrollment_id },
       order: [["installment_no", "ASC"]],
     });
 
-    // ================= FORMAT TABLE =================
     const paymentRows = [];
 
     for (const sp of schemePayments) {
-      // get receipt manually
+      // ================= RECEIPT LOGIC =================
       let receiptNo = null;
-      if (sp.receipt_id) {
-        const receipt = await models.VoucherReceipt.findByPk(sp.receipt_id);
-        receiptNo = receipt ? receipt.receipt_no : null;
+
+      if (sp.payment_source === "VOUCHER") {
+        const receipt = await models.VoucherReceipt.findOne({
+          where: {
+            id: sp.receipt_id,
+            bill_type_id: 5,
+            reference_type: "scheme",
+            reference_id: enrollment_id,
+            account_id: enrollment.customer_id,
+          },
+        });
+
+        receiptNo = receipt?.receipt_no || null;
+      } else {
+        // INSTALLMENT FLOW
+        receiptNo = sp.scheme_payment_code;
       }
 
-      const row = {
-        date: sp.payment_date,
-        receipt_no: receiptNo,
-        cash: 0,
-        upi: 0,
-        upi_txn: null,
-        card: 0,
-        card_txn: null,
-      };
-
-      // get payments manually
+      // ================= PAYMENT BREAKUP =================
       const payments = await models.Payment.findAll({
         where: { scheme_payment_id: sp.id },
       });
 
+      let cash = 0;
+      let upi = 0;
+      let upi_txn = null;
+      let card = 0;
+      let card_txn = null;
+
       for (const p of payments) {
         if (p.payment_mode === "Cash") {
-          row.cash += Number(p.amount_received);
+          cash += Number(p.amount_received);
         }
-
         if (p.payment_mode === "UPI") {
-          row.upi += Number(p.amount_received);
-          row.upi_txn = p.transaction_id;
+          upi += Number(p.amount_received);
+          upi_txn = p.transaction_id;
         }
-
         if (p.payment_mode === "Card") {
-          row.card += Number(p.amount_received);
-          row.card_txn = p.transaction_id;
+          card += Number(p.amount_received);
+          card_txn = p.transaction_id;
         }
       }
 
-      paymentRows.push(row);
+      paymentRows.push({
+        date: sp.payment_date,
+        receipt_no: receiptNo,
+        cash,
+        upi,
+        upi_txn,
+        card,
+        card_txn,
+      });
     }
 
     // ================= CALCULATIONS =================
     const paidInstallments = schemePayments.length;
-    const totalInstallments = duration.months;
+    const totalInstallments = duration?.months || 0;
     const remaining = totalInstallments - paidInstallments;
 
-    // ================= END DATE =================
+    //  END DATE CALCULATION
     const startDate = new Date(enrollment.created_at);
     const endDate = new Date(startDate);
     endDate.setMonth(endDate.getMonth() + totalInstallments);
 
+    // ================= TOTAL =================
+    const totalAmount = paymentRows.reduce(
+      (sum, row) => sum + row.cash + row.upi + row.card,
+      0
+    );
+
     // ================= RESPONSE =================
     return commonService.okResponse(res, {
-      paid_installments: paymentRows,
-
       customer_details: {
         customer_id: customer?.customer_code,
         name: customer?.customer_name,
@@ -451,10 +477,22 @@ const getEnrolledSchemeDetails = async (req, res) => {
       plan_details: {
         scheme_name: scheme?.scheme_name,
         date_of_scheme: enrollment.created_at,
+
+        // IMPORTANT FIELDS
         installment_amount: enrollment.installment_amount_id,
         remaining_dues: `${remaining} Months`,
         end_of_scheme: endDate,
+
+        // existing fields
+        nominee: enrollment.nominee,
+        nominee_relation_id: enrollment.nominee_relation_id,
+        identity_proof_id: enrollment.identity_proof_id,
+        identity_proof_no: enrollment.identity_proof_no,
       },
+
+      paid_installments: paymentRows,
+
+      total_paid: totalAmount,
     });
 
   } catch (err) {
@@ -462,67 +500,10 @@ const getEnrolledSchemeDetails = async (req, res) => {
     return commonService.handleError(res, err);
   }
 };
-
-// Billing side scheme - Quick enrollement screen
-/* const createQuickEnrollment = async (req, res) => {
-  try {
-    const required = [
-      "customer_id",
-      "scheme_plan_id",
-      "installment_amount_id"
-    ];
-
-    if (!validateRequired(req, res, required)) return;
-
-    // Get customer details automatically
-    const customer = await models.Customer.findByPk(req.body.customer_id);
-
-    if (!customer) {
-      throw new Error("Customer not found");
-    }
-
-    const payload = {
-      enrollment_code: generateEnrollmentCode(), // auto generate
-      customer_id: customer.id,
-      customer_no: customer.customer_code,
-      customer_name: customer.customer_name,
-      mobile_number: customer.mobile_number,
-      email: customer.email_id ?? "",
-      address: customer.address ?? "",
-      country_id: customer.country_id ?? 1,
-      state_id: customer.state_id ?? 1,
-      district_id: customer.district_id ?? 1,
-      pincode: customer.pin_code ?? "000000",
-
-      scheme_plan_id: +req.body.scheme_plan_id,
-      installment_amount_id: +req.body.installment_amount_id,
-
-      identity_proof_id: req.body.identity_proof_id ?? null,
-      identity_proof_no: req.body.identity_proof_no ?? null,
-
-      nominee: req.body.nominee ?? null,
-      nominee_relation_id: req.body.nominee_relation_id ?? null,
-
-      status: "Active"
-    };
-
-    const row = await models.Enrollment.create(payload);
-
-    return commonService.createdResponse(res, {
-      message: "Quick enrollment created",
-      enrollment: row
-    });
-
-  } catch (err) {
-    return commonService.handleError(res, err);
-  }
-};  */
-
 module.exports = {
   createEnrollment,
   listEnrollments,
   getEnrollmentById,
   generateEnrollmentCode,
-  getEnrolledSchemeDetails,
-
+  getEnrolledSchemeDetailsById
 };

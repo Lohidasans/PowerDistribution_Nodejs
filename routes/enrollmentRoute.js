@@ -7,7 +7,7 @@ router.post("/enrollments", enrollmentService.createEnrollment);
 router.get("/enrollments", enrollmentService.listEnrollments);
 router.post("/enrollments/code", enrollmentService.generateEnrollmentCode);
 router.get("/enrollments/:id", enrollmentService.getEnrollmentById);
-router.get("/enrollments/:enrollment_id/scheme", enrollmentService.getEnrolledSchemeDetails); // For billing side - scheme gets
+router.get("/enrollments/:enrollment_id/view", enrollmentService.getEnrolledSchemeDetailsById); // Admin side - EnrollmentViewById & For billing side - scheme gets
 
 module.exports = router;
 
