@@ -153,9 +153,17 @@ const createVoucherReceipt = async (req, res) => {
         throw new Error("Installment already paid");
       }
 
+      // Unique code generation for scheme payment
+      const schemePaymentCode = await generateFiscalSeriesCode(
+        models.CustomerSchemePayment,
+        "scheme_payment_code",
+        "SS",
+        { pad: 3 }
+      );
       // Create scheme payment
       const schemePayment = await models.CustomerSchemePayment.create(
         {
+          scheme_payment_code: schemePaymentCode,
           enrollment_id,
           scheme_id,
           installment_no: nextInstallment,

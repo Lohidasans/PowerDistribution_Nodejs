@@ -134,6 +134,7 @@ const listEnrollments = async (req, res) => {
         SELECT
           e.id,
           e.enrollment_code AS scheme_enrolled_code,
+          c.id AS customer_id,
           e.customer_name,
           e.mobile_number,
           e.created_at AS date_of_scheme,
@@ -352,7 +353,7 @@ const generateEnrollmentCode = async (req, res) => {
   }
 };
 
-
+// For billing side - Get enrolled scheme details with payment history
 const getEnrolledSchemeDetails = async (req, res) => {
   try {
     const { enrollment_id } = req.params;

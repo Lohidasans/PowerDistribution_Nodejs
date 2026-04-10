@@ -10,7 +10,7 @@ const generateSchemePaymentCode = async (req, res) => {
         const code = await generateFiscalSeriesCode(
             models.CustomerSchemePayment,
             "scheme_payment_code",
-            SS,
+            "SS",
             { pad: 3 }
         );
         return commonService.okResponse(res, { scheme_payment_code: code });
