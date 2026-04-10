@@ -1,4 +1,5 @@
 const { models, sequelize } = require("../models");
+const { Op } = require("sequelize");
 const commonService = require("./commonService");
 const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
 
@@ -252,13 +253,15 @@ const updateQuotationRequest = async (req, res) => {
     const quotationRequest = await models.Quotation.findByPk(id, {
       transaction,
     });
+
     if (!quotationRequest) {
       await transaction.rollback();
       return commonService.notFound(res, "Quotation Request not found");
     }
 
-    // 2. Update main quotation fields (excluding vendor_ids and status_id)
+    // 2. Update main quotation fields (excluding vendor_ids & status_id)
     const { vendor_ids: _, status_id: __, ...fieldsToUpdate } = updateData;
+
     if (Object.keys(fieldsToUpdate).length > 0) {
       await quotationRequest.update(fieldsToUpdate, { transaction });
     }
@@ -266,31 +269,32 @@ const updateQuotationRequest = async (req, res) => {
     // 3. Handle vendor_ids changes
     if (Array.isArray(vendor_ids)) {
       const currentVendorIds = quotationRequest.vendor_ids || [];
-      const newVendorIds = vendor_ids;
 
-      // Find vendors to add and remove
-      const vendorsToAdd = newVendorIds.filter(
-        (vid) => !currentVendorIds.includes(vid),
+      const vendorsToAdd = vendor_ids.filter(
+        (vid) => !currentVendorIds.includes(vid)
       );
+
       const vendorsToRemove = currentVendorIds.filter(
-        (vid) => !newVendorIds.includes(vid),
+        (vid) => !vendor_ids.includes(vid)
       );
 
-      // Add new vendor quotations
+      // ✅ Add new vendors
       if (vendorsToAdd.length > 0) {
         const newVendorQuotations = vendorsToAdd.map((vendorId) => ({
           quotation_id: id,
           vendor_id: vendorId,
           status: "pending",
           created_by: updateData.updated_by,
-          branch_id: quotationRequest.branch_id || updateData.branch_id || 1, // Use existing branch_id, or from update data, or default
+          branch_id:
+            quotationRequest.branch_id || updateData.branch_id || 1,
         }));
+
         await models.VendorQuotation.bulkCreate(newVendorQuotations, {
           transaction,
         });
       }
 
-      // Soft delete removed vendor quotations
+      // ✅ Remove vendors (soft delete)
       if (vendorsToRemove.length > 0) {
         await models.VendorQuotation.destroy({
           where: {
@@ -301,45 +305,90 @@ const updateQuotationRequest = async (req, res) => {
         });
       }
 
-      // Update vendor_ids array
       await quotationRequest.update({ vendor_ids }, { transaction });
     }
 
-    // 4. Handle base items updates (items without vendor_quotation_id)
-    if (items && items.length > 0) {
-      for (const item of items) {
-        if (item.id) {
-          // Update existing item
-          const existingItem = await models.QuotationItem.findOne({
-            where: {
-              id: item.id,
-              quotation_id: id,
-              vendor_quotation_id: null, // Only update base items
-            },
-            transaction,
-          });
+    // 4. 🔥 FULL ITEM SYNC (UPDATE + CREATE + DELETE)
 
-          if (existingItem) {
-            const updatable = {
-              material_type_id: item.material_type_id,
-              category_id: item.category_id,
-              subcategory_id: item.subcategory_id,
-              product_description: item.product_description,
-              purity: item.purity ? parseFloat(item.purity) : null,
-              weight: item.weight ? parseFloat(item.weight) : null,
-              quantity: item.quantity,
-            };
-            await existingItem.update(updatable, { transaction });
-          }
-        }
+    // Get existing base items
+    const existingItems = await models.QuotationItem.findAll({
+      where: {
+        quotation_id: id,
+        vendor_quotation_id: null,
+      },
+      transaction,
+    });
+
+    const existingItemMap = new Map(
+      existingItems.map((item) => [item.id, item])
+    );
+
+    const incomingIds = [];
+
+    for (const item of items) {
+      if (item.id && existingItemMap.has(item.id)) {
+        // ✅ UPDATE
+        const existingItem = existingItemMap.get(item.id);
+
+        await existingItem.update(
+          {
+            material_type_id: item.material_type_id,
+            category_id: item.category_id,
+            subcategory_id: item.subcategory_id,
+            product_description: item.product_description,
+            purity: item.purity ? parseFloat(item.purity) : null,
+            weight: item.weight ? parseFloat(item.weight) : null,
+            quantity: item.quantity,
+            updated_by: updateData.updated_by,
+          },
+          { transaction }
+        );
+
+        incomingIds.push(item.id);
+      } else {
+        // ✅ CREATE
+        const newItem = await models.QuotationItem.create(
+          {
+            quotation_id: id,
+            material_type_id: item.material_type_id,
+            category_id: item.category_id,
+            subcategory_id: item.subcategory_id,
+            product_description: item.product_description,
+            purity: item.purity ? parseFloat(item.purity) : null,
+            weight: item.weight ? parseFloat(item.weight) : null,
+            quantity: item.quantity,
+            created_by: updateData.updated_by,
+            branch_id:
+              quotationRequest.branch_id || updateData.branch_id || 1,
+          },
+          { transaction }
+        );
+
+        incomingIds.push(newItem.id);
       }
     }
 
+    // ✅ DELETE items not in payload
+    await models.QuotationItem.destroy({
+      where: {
+        quotation_id: id,
+        vendor_quotation_id: null,
+        id: {
+          [Op.notIn]: incomingIds.length ? incomingIds : [0], // safety
+        },
+      },
+      transaction,
+    });
+
     // 5. Recalculate quotation status
     const newStatus = await calculateQuotationStatus(id, transaction);
-    await quotationRequest.update({ status_id: newStatus }, { transaction });
 
-    // 6. Return fresh data (fetch before commit)
+    await quotationRequest.update(
+      { status_id: newStatus },
+      { transaction }
+    );
+
+    // 6. Fetch updated result
     const result = await getQuotationWithItems(id, transaction);
 
     await transaction.commit();
