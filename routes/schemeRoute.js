@@ -18,6 +18,7 @@ router.get("/dropdown/redemption-types", schemeService.listRedemptionTypes);
 router.get("/dropdown/identity-proofs", schemeService.listIdentityProofs);
 router.get("/dropdown/nominee-relations", schemeService.listNomineeRelations);
 router.get("/dropdown/installments", schemeService.listInstallmentAmounts);
+router.get("/dropdown/list-schemes", schemeService.getSchemeDropdown);
 
 module.exports = router;
 

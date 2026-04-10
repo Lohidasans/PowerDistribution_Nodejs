@@ -316,6 +316,33 @@ const listSchemeNumbers = async (req, res) => {
 };
 
 
+const getSchemeDropdown = async (req, res) => {
+  try {
+    const schemes = await models.Scheme.findAll({
+      attributes: [
+        ["id", "value"],        // dropdown value
+        ["scheme_name", "label"] // dropdown label
+      ],
+      where: {
+        status: "Active"
+      },
+      order: [["scheme_name", "ASC"]]
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: schemes
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch scheme dropdown"
+    });
+  }
+};
+
+
 module.exports = {
   createScheme,
   listSchemes,
@@ -329,5 +356,6 @@ module.exports = {
   listIdentityProofs,
   listNomineeRelations,
   listInstallmentAmounts,
-  listSchemeNumbers
+  listSchemeNumbers,
+  getSchemeDropdown
 };
