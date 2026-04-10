@@ -22,7 +22,7 @@ const calculateQuotationStatus = async (quotationId, transaction = null) => {
     const totalVendors = statuses.length;
 
     // Count different status types
-    const receivedCount = statuses.filter((s) => s === "received").length;
+    const receivedCount = statuses.filter((s) => s === "received" || s === "accepted").length;
     const rejectedCount = statuses.filter((s) => s === "rejected").length;
     const pendingCount = statuses.filter((s) => s === "pending").length;
 
