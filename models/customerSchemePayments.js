@@ -8,6 +8,12 @@ module.exports = (sequelize, DataTypes) => {
                 autoIncrement: true,
             },
 
+            scheme_payment_code: { //SS001
+                type: DataTypes.STRING,
+                allowNull: true,
+                unique: true,
+            },
+
             enrollment_id: {
                 type: DataTypes.INTEGER,
                 allowNull: false, // FK → customer_enrollments.id

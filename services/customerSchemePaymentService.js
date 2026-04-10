@@ -1,5 +1,23 @@
 const commonService = require("./commonService");
 const { models, sequelize } = require("../models");
+const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
+
+// Generate auto code: SS001
+const generateSchemePaymentCode = async (req, res) => {
+    try {
+        const { prefix } = req.query || {};
+
+        const code = await generateFiscalSeriesCode(
+            models.CustomerSchemePayment,
+            "scheme_payment_code",
+            SS,
+            { pad: 3 }
+        );
+        return commonService.okResponse(res, { scheme_payment_code: code });
+    } catch (err) {
+        return commonService.handleError(res, err);
+    }
+};
 
 // Payinstallment via billing side
 const createSchemePayment = async (req, res) => {
@@ -17,7 +35,6 @@ const createSchemePayment = async (req, res) => {
 
         if (!enrollment) throw new Error("Enrollment not found");
 
-        //  BLOCK IF CLOSED
         if (enrollment.status === "Closed") {
             throw new Error("Scheme is closed. Payment not allowed");
         }
@@ -38,7 +55,7 @@ const createSchemePayment = async (req, res) => {
             throw new Error("Scheme already completed. Payment not allowed");
         }
 
-        // ================= LAST INSTALLMENT =================
+        // ================= NEXT INSTALLMENT =================
         const lastPayment = await models.CustomerSchemePayment.findOne({
             where: { enrollment_id },
             order: [["installment_no", "DESC"]],
@@ -51,7 +68,7 @@ const createSchemePayment = async (req, res) => {
             throw new Error("All installments already completed");
         }
 
-        // ================= PREVENT DUPLICATE =================
+        // ================= DUPLICATE CHECK =================
         const existingInstallment = await models.CustomerSchemePayment.findOne({
             where: {
                 enrollment_id,
@@ -73,8 +90,17 @@ const createSchemePayment = async (req, res) => {
             throw new Error("Invalid payment amount");
         }
 
+        // ================= GENERATE CODE =================
+        const schemePaymentCode = await generateFiscalSeriesCode(
+            models.CustomerSchemePayment,
+            "scheme_payment_code",
+            "SS",
+            { pad: 3 }
+        );
+
         // ================= CREATE SCHEME PAYMENT =================
         const schemePayment = await models.CustomerSchemePayment.create({
+            scheme_payment_code: schemePaymentCode,
             enrollment_id,
             scheme_id,
             installment_no: nextInstallment,
@@ -91,7 +117,7 @@ const createSchemePayment = async (req, res) => {
                         : "FAILED",
         }, { transaction: t });
 
-        // ================= CREATE MULTIPLE PAYMENT ROWS =================
+        // ================= CREATE PAYMENT SPLITS =================
         for (const p of payments) {
             if (!p.amount || p.amount <= 0) continue;
 
@@ -110,6 +136,7 @@ const createSchemePayment = async (req, res) => {
         return commonService.createdResponse(res, {
             message: "Installment paid successfully",
             data: {
+                scheme_payment_code: schemePayment.scheme_payment_code,
                 installment_no: nextInstallment,
                 total_paid: totalAmount,
                 status: schemePayment.status
@@ -325,10 +352,114 @@ const listSchemeEnrollmentsForAdmin = async (req, res) => {
         return commonService.handleError(res, err);
     }
 };
+/*
+const getSchemeReceipt = async (req, res) => {
+    try {
+        const { scheme_payment_id } = req.params;
 
+        if (!scheme_payment_id) {
+            return commonService.badRequest(res, {
+                message: "scheme_payment_id is required",
+            });
+        }
 
+        // ================= SCHEME PAYMENT =================
+        const sp = await models.CustomerSchemePayment.findByPk(scheme_payment_id);
 
+        if (!sp) {
+            return commonService.notFound(res, {
+                message: "Payment not found",
+            });
+        }
+
+        // ================= ENROLLMENT =================
+        const enrollment = await models.Enrollment.findByPk(sp.enrollment_id);
+
+        // ================= CUSTOMER =================
+        const customer = await models.Customer.findByPk(enrollment.customer_id);
+
+        // ================= BRANCH =================
+        const branch = await models.Branch.findByPk(customer?.branch_id);
+
+        // ================= RECEIPT =================
+        let receipt = null;
+        if (sp.receipt_id) {
+            receipt = await models.VoucherReceipt.findByPk(sp.receipt_id);
+        }
+
+        // ================= PAYMENTS =================
+        const payments = await models.Payment.findAll({
+            where: { scheme_payment_id: sp.id },
+        });
+
+        let cash = 0;
+        let upi = 0;
+        let card = 0;
+        let upi_txn = null;
+        let card_txn = null;
+
+        for (const p of payments) {
+            if (p.payment_mode === "Cash") {
+                cash += Number(p.amount_received);
+            }
+
+            if (p.payment_mode === "UPI") {
+                upi += Number(p.amount_received);
+                upi_txn = p.transaction_id;
+            }
+
+            if (p.payment_mode === "Card") {
+                card += Number(p.amount_received);
+                card_txn = p.transaction_id;
+            }
+        }
+
+        // ================= NEXT DUE DATE =================
+        const scheme = await models.Scheme.findByPk(sp.scheme_id);
+        const duration = await models.SchemeDuration.findByPk(scheme.duration_id);
+
+        const nextDate = new Date(sp.payment_date);
+        nextDate.setMonth(nextDate.getMonth() + 1);
+
+        // ================= RESPONSE =================
+        return commonService.okResponse(res, {
+            receipt_details: {
+                receipt_no: receipt?.receipt_no || `SCH-${sp.id}`,
+                date: sp.payment_date,
+                bill_type: "Saving Scheme",
+                installment_amount: sp.installment_amount,
+                next_due: nextDate,
+                amount_in_words: convertToWords(sp.paid_amount), // optional helper
+            },
+
+            customer_details: {
+                customer_name: customer?.customer_name,
+            },
+
+            payment_details: {
+                cash,
+                upi,
+                upi_transaction: upi_txn,
+                card,
+                card_transaction: card_txn,
+            },
+
+            branch_details: {
+                address: branch?.address,
+                mobile: branch?.mobile,
+                gst_no: branch?.gst_no,
+                signature: branch?.signature_url,
+            },
+        });
+
+    } catch (err) {
+        console.error(err);
+        return commonService.handleError(res, err);
+    }
+};
+*/
 module.exports = {
+    generateSchemePaymentCode,
     createSchemePayment,
     closeEnrollment,
     listSchemeEnrollmentsForAdmin,
