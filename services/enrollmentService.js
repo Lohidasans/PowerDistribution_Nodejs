@@ -155,6 +155,14 @@ const listEnrollments = async (req, res) => {
           -- OPTIONAL EXTRA FIELD (useful)
           COALESCE(p.total_paid, 0) AS total_paid_amount,
 
+           CASE
+            WHEN COALESCE(p.paid_count, 0) >= COALESCE(d.months, 12)
+              THEN NULL  -- ✅ COMPLETED → NO NEXT DUE
+            WHEN p.last_payment_date IS NOT NULL
+              THEN (p.last_payment_date + INTERVAL '28 days')
+            ELSE (e.created_at + INTERVAL '28 days')
+          END AS next_due,
+
           CASE
             WHEN c.is_online = true THEN 'Online'
             ELSE 'Offline'
@@ -189,11 +197,13 @@ const listEnrollments = async (req, res) => {
         LEFT JOIN scheme_durations d 
           ON d.id = s.duration_id
 
+
         LEFT JOIN (
-          SELECT 
+          SELECT
             enrollment_id,
             COUNT(*) AS paid_count,
-            SUM(paid_amount) AS total_paid
+            SUM(paid_amount) AS total_paid,
+            MAX(payment_date) AS last_payment_date
           FROM customer_scheme_payments
           WHERE deleted_at IS NULL
           GROUP BY enrollment_id
@@ -228,6 +238,11 @@ const listEnrollments = async (req, res) => {
     if (branch_id) {
       sql += ` AND c.branch_id = :branch_id`;
       replacements.branch_id = branch_id;
+    }
+
+    if (req.query.customer_id) {
+      sql += ` AND c.id = :customer_id`;
+      replacements.customer_id = req.query.customer_id;
     }
 
     if (mode) {
