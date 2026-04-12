@@ -531,6 +531,20 @@ const getSchemeReceipt = async (req, res) => {
     // ================= BRANCH =================
     const branch = await models.Branch.findByPk(scheme.branch_id);
 
+    // MANUAL FETCH STATE & DISTRICT
+    let stateName = null;
+    let districtName = null;
+
+    if (branch?.state_id) {
+      const state = await models.State.findByPk(branch.state_id);
+      stateName = state?.state_name || null;
+    }
+
+    if (branch?.district_id) {
+      const district = await models.District.findByPk(branch.district_id);
+      districtName = district?.district_name || null;
+    }
+
     // ================= RECEIPT NUMBER =================
     let receiptNo = null;
 
@@ -608,6 +622,9 @@ const getSchemeReceipt = async (req, res) => {
         address: branch?.address,
         mobile: branch?.mobile,
         gst_no: branch?.gst_no,
+        pincode: branch?.pincode,
+        district: districtName,
+        state: stateName,    
         signature: branch?.signature_url,
       },
     });
