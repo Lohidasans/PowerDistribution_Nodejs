@@ -241,6 +241,12 @@ try {
     e.status,
     s.scheme_name,
     s.id as scheme_id,
+    CASE
+        WHEN e.completed_date IS NOT NULL
+            THEN e.completed_date
+        ELSE
+            (e.created_at + (d.months * INTERVAL '1 month'))
+        END AS scheme_completed_date,
 
     -- ALWAYS TOTAL PAID
     COALESCE(p.total_paid, 0) AS installment_amount,

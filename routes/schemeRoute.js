@@ -7,6 +7,7 @@ router.post("/schemes", schemeService.createScheme);
 router.get("/schemes", schemeService.listSchemes);
 router.get("/schemes/:id", schemeService.getSchemeById);
 router.put("/schemes/:id", schemeService.updateScheme);
+router.patch("/schemes/:id/status", schemeService.updateSchemeStatus);
 router.delete("/schemes/:id", schemeService.deleteScheme);
 
 // Dropdowns

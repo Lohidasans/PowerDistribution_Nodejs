@@ -306,6 +306,7 @@ const listSchemeNumbers = async (req, res) => {
           AND ce.status = 'Closed' 
           AND ce.deleted_at IS NULL
           AND s.deleted_at IS NULL
+          AND s.status = 'Active'
         ORDER BY s.scheme_name ASC
       `,
       {
@@ -321,7 +322,7 @@ const listSchemeNumbers = async (req, res) => {
   }
 };
 
-
+// Get all schemes for dropdown (id and scheme_name)
 const getSchemeDropdown = async (req, res) => {
   try {
     const schemes = await models.Scheme.findAll({
@@ -348,6 +349,41 @@ const getSchemeDropdown = async (req, res) => {
   }
 };
 
+// Activate/Deactivate scheme
+const updateSchemeStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    // ✅ Validate inputs
+    if (!id) {
+      return commonService.badRequest(res, "Scheme id is required");
+    }
+
+    if (!["Active", "Inactive"].includes(status)) {
+      return commonService.badRequest(res, "Invalid status value");
+    }
+
+    // ✅ Check if scheme exists
+    const scheme = await models.Scheme.findOne({
+      where: { id, deleted_at: null }
+    });
+
+    if (!scheme) {
+      return commonService.badRequest(res, "Scheme not found");
+    }
+
+    // ✅ Update status
+    await scheme.update({ status });
+
+    return commonService.okResponse(res, {
+      message: `Scheme ${status === "Active" ? "activated" : "deactivated"} successfully`
+    });
+
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
 
 module.exports = {
   createScheme,
@@ -363,5 +399,6 @@ module.exports = {
   listNomineeRelations,
   listInstallmentAmounts,
   listSchemeNumbers,
-  getSchemeDropdown
+  getSchemeDropdown,
+  updateSchemeStatus
 };
