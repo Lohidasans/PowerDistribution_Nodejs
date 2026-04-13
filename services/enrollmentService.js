@@ -7,9 +7,12 @@ const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
 const validateRequired = (req, res, fields) => {
   for (const f of fields) {
     const v = req.body?.[f];
+
     if (v === undefined || v === null || v === "") {
-      commonService.badRequest(res, enMessage.failure.requiredFields);
-      return false;
+      return commonService.badRequest(
+        res,
+        `${f} is required`   // ✅ show field name
+      );
     }
   }
   return true;
@@ -39,8 +42,8 @@ const createEnrollment = async (req, res) => {
       mobile_number: String(req.body.mobile_number),
       customer_no: String(req.body.customer_no),
       customer_name: req.body.customer_name,
-      email: req.body.email,
-      address: req.body.address,
+      email: req.body.email ?? null,
+      address: req.body.address ?? null,
       country_id: +req.body.country_id,
       state_id: +req.body.state_id,
       district_id: +req.body.district_id,

@@ -31,12 +31,11 @@ module.exports = (sequelize, DataTypes) => {
       },
       email: {
         type: DataTypes.STRING,
-        allowNull: false,
-        validate: { isEmail: true },
+        allowNull: true,
       },
       address: {
         type: DataTypes.TEXT,
-        allowNull: false,
+        allowNull: true,
       },
       country_id: {
         type: DataTypes.INTEGER,
