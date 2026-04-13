@@ -285,6 +285,7 @@ const listInstallmentAmounts = async (req, res) => {
   }
 };
 
+// List customer enrolled schemes for bill adjustment
 const listSchemeNumbers = async (req, res) => {
   try {
     const { customer_id } = req.query;
@@ -295,12 +296,17 @@ const listSchemeNumbers = async (req, res) => {
 
     const [rows] = await sequelize.query(
       `
-      SELECT s.id, s.scheme_name, ce.enrollment_code
-      FROM schemes s
-      INNER JOIN customer_enrollments ce
-        ON ce.scheme_plan_id = s.id
-      WHERE ce.customer_id = :customer_id
-      ORDER BY s.scheme_name ASC
+        SELECT s.id, s.scheme_name, ce.enrollment_code
+        FROM schemes s
+        INNER JOIN customer_enrollments ce
+          ON ce.scheme_plan_id = s.id
+        WHERE
+          ce.customer_id = :customer_id
+          AND ce.is_bill_adjusted = false
+          AND ce.status = 'Closed' 
+          AND ce.deleted_at IS NULL
+          AND s.deleted_at IS NULL
+        ORDER BY s.scheme_name ASC
       `,
       {
         replacements: { customer_id },

@@ -82,7 +82,12 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.ENUM("Active", "Closed", "Completed"),
         allowNull: false,
         defaultValue: "Active",
-      }
+      },
+      is_bill_adjusted: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+      },
     },
     {
       timestamps: true,
