@@ -5,6 +5,7 @@ const ledgerService = require("../services/ledgerService");
 ledgerRouter.post("/ledgers", ledgerService.create);
 ledgerRouter.post("/ledgers/bulk", ledgerService.bulkCreate);
 ledgerRouter.get("/ledgers", ledgerService.list);
+ledgerRouter.get("/ledgers/dropdown", ledgerService.getLedgerDropdown);
 ledgerRouter.get("/ledgers/generate-number", ledgerService.generateLedgerNo);
 ledgerRouter.get(
   "/ledgers/group/:ledgerGroupId",

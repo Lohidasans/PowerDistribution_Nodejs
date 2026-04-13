@@ -349,6 +349,25 @@ const generateLedgerNo = async (req, res) => {
   }
 };
 
+const getLedgerDropdown = async (req, res) => {
+  try {
+    const rows = await models.Ledger.findAll({
+      attributes: ["id", "ledger_name"], // ✅ only required fields
+      where: {
+        deleted_at: null   // ✅ exclude soft deleted records
+      },
+      order: [["ledger_name", "ASC"]] // optional sorting
+    });
+
+    return commonService.okResponse(res, {
+      ledger_list: rows
+    });
+
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
 module.exports = {
   create,
   bulkCreate,
@@ -358,4 +377,5 @@ module.exports = {
   update,
   remove,
   generateLedgerNo,
+  getLedgerDropdown
 };
