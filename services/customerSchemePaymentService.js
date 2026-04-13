@@ -117,6 +117,14 @@ const createSchemePayment = async (req, res) => {
                         : "FAILED",
         }, { transaction: t });
 
+        // ================= CHECK COMPLETION =================
+        if (nextInstallment === duration.months) {
+            await enrollment.update({
+                status: "Completed",
+                completed_date: payment_date
+            }, { transaction: t });
+        }
+
         // ================= CREATE PAYMENT SPLITS =================
         for (const p of payments) {
             if (!p.amount || p.amount <= 0) continue;
@@ -189,8 +197,8 @@ const closeEnrollment = async (req, res) => {
             });
         }
 
-        // ✅ CLOSE
-        await enrollment.update({ status: "Closed" });
+        // CLOSE
+        await enrollment.update({ status: "Closed", closed_date: new Date() });
 
         return commonService.okResponse(res, {
             message: "Scheme closed successfully"
@@ -203,261 +211,158 @@ const closeEnrollment = async (req, res) => {
 };
 
 const listSchemeEnrollmentsForAdmin = async (req, res) => {
-    try {
-        const { type = "ongoing", scheme_id, search, page, limit } = req.query;
+try {
+    const { type = "ongoing", scheme_id, search, page, limit } = req.query;
 
-        let replacements = {};
-        let pagination = false;
+    let replacements = {};
+    let pagination = false;
 
-        if (page && limit) {
-            pagination = true;
-            replacements.limit = parseInt(limit);
-            replacements.offset = (parseInt(page) - 1) * parseInt(limit);
-        }
+    if (page && limit) {
+        pagination = true;
+        replacements.limit = parseInt(limit);
+        replacements.offset = (parseInt(page) - 1) * parseInt(limit);
+    }
 
-        let sql = `
-      SELECT
-        e.id,
-        e.enrollment_code AS scheme_no,
-        e.customer_name,
-        e.mobile_number,
-        e.created_at AS date_of_scheme,
+    let sql = `
+    SELECT
+    e.id,
+    e.enrollment_code AS scheme_no,
+    e.customer_name,
+    e.mobile_number,
+    e.created_at AS date_of_scheme,
+    e.completed_date,
+    e.closed_date,
+    e.status,
+    s.scheme_name,
+    s.id as scheme_id,
 
-        s.scheme_name,
-        s.id as scheme_id,
+    -- ALWAYS TOTAL PAID
+    COALESCE(p.total_paid, 0) AS installment_amount,
 
-        -- ALWAYS TOTAL PAID
-        COALESCE(p.total_paid, 0) AS installment_amount,
+    COALESCE(p.paid_count, 0) AS paid_installments,
+    d.months AS total_installments,
 
-        COALESCE(p.paid_count, 0) AS paid_installments,
-        d.months AS total_installments,
+    CONCAT(
+        COALESCE(p.paid_count, 0), '/', d.months
+    ) AS dues
 
-        CONCAT(
-          COALESCE(p.paid_count, 0), '/', d.months
-        ) AS dues
+    FROM customer_enrollments e
 
-      FROM customer_enrollments e
+    LEFT JOIN schemes s 
+    ON s.id = e.scheme_plan_id
 
-      LEFT JOIN schemes s 
-        ON s.id = e.scheme_plan_id
+    LEFT JOIN scheme_durations d 
+    ON d.id = s.duration_id
 
-      LEFT JOIN scheme_durations d 
-        ON d.id = s.duration_id
+    LEFT JOIN (
+    SELECT 
+        enrollment_id,
+        COUNT(*) AS paid_count,
+        SUM(paid_amount) AS total_paid
+    FROM customer_scheme_payments
+    WHERE deleted_at IS NULL
+    GROUP BY enrollment_id
+    ) p ON p.enrollment_id = e.id
 
-      LEFT JOIN (
-        SELECT 
-          enrollment_id,
-          COUNT(*) AS paid_count,
-          SUM(paid_amount) AS total_paid
-        FROM customer_scheme_payments
-        WHERE deleted_at IS NULL
-        GROUP BY enrollment_id
-      ) p ON p.enrollment_id = e.id
+    WHERE e.deleted_at IS NULL
+`;
 
-      WHERE e.deleted_at IS NULL
+    // ================= TYPE FILTER =================
+
+    if (type === "ongoing") {
+        sql += `
+    AND e.status = 'Active'
+    AND COALESCE(p.paid_count, 0) < d.months
     `;
-
-        // ================= TYPE FILTER =================
-
-        if (type === "ongoing") {
-            sql += `
-        AND e.status = 'Active'
-        AND COALESCE(p.paid_count, 0) < d.months
-      `;
-        }
-
-        if (type === "completed") {
-            sql += `
-        AND COALESCE(p.paid_count, 0) >= d.months
-      `;
-        }
-
-        if (type === "closed") {
-            sql += `
-        AND e.status = 'Closed'
-      `;
-        }
-
-        // ================= FILTERS =================
-
-        if (scheme_id) {
-            sql += ` AND s.id = :scheme_id`;
-            replacements.scheme_id = scheme_id;
-        }
-
-        if (search) {
-            sql += `
-        AND (
-          e.customer_name ILIKE :search
-          OR e.mobile_number ILIKE :search
-          OR e.enrollment_code ILIKE :search
-          OR s.scheme_name ILIKE :search
-        )
-      `;
-            replacements.search = `%${search}%`;
-        }
-
-        // ================= ORDER =================
-        sql += ` ORDER BY e.created_at DESC`;
-
-        if (pagination) {
-            sql += ` LIMIT :limit OFFSET :offset`;
-        }
-
-        const [rows] = await sequelize.query(sql, { replacements });
-
-        // ================= SUMMARY =================
-        const [summary] = await sequelize.query(`
-      SELECT
-        COUNT(*) FILTER (
-          WHERE e.status = 'Active'
-        ) AS ongoing,
-
-        COUNT(*) FILTER (
-          WHERE COALESCE(p.paid_count, 0) >= d.months
-        ) AS completed,
-
-        COUNT(*) FILTER (
-          WHERE e.status = 'Closed'
-        ) AS closed
-
-      FROM customer_enrollments e
-
-      LEFT JOIN schemes s ON s.id = e.scheme_plan_id
-      LEFT JOIN scheme_durations d ON d.id = s.duration_id
-
-      LEFT JOIN (
-        SELECT enrollment_id, COUNT(*) AS paid_count
-        FROM customer_scheme_payments
-        WHERE deleted_at IS NULL
-        GROUP BY enrollment_id
-      ) p ON p.enrollment_id = e.id
-
-      WHERE e.deleted_at IS NULL
-    `);
-
-        return commonService.okResponse(res, {
-            enrollments: rows,
-            summary: summary[0],
-            ...(pagination && {
-                pagination: {
-                    page: parseInt(page),
-                    limit: parseInt(limit)
-                }
-            })
-        });
-
-    } catch (err) {
-        console.error(err);
-        return commonService.handleError(res, err);
     }
-};
-/*
-const getSchemeReceipt = async (req, res) => {
-    try {
-        const { scheme_payment_id } = req.params;
 
-        if (!scheme_payment_id) {
-            return commonService.badRequest(res, {
-                message: "scheme_payment_id is required",
-            });
-        }
-
-        // ================= SCHEME PAYMENT =================
-        const sp = await models.CustomerSchemePayment.findByPk(scheme_payment_id);
-
-        if (!sp) {
-            return commonService.notFound(res, {
-                message: "Payment not found",
-            });
-        }
-
-        // ================= ENROLLMENT =================
-        const enrollment = await models.Enrollment.findByPk(sp.enrollment_id);
-
-        // ================= CUSTOMER =================
-        const customer = await models.Customer.findByPk(enrollment.customer_id);
-
-        // ================= BRANCH =================
-        const branch = await models.Branch.findByPk(customer?.branch_id);
-
-        // ================= RECEIPT =================
-        let receipt = null;
-        if (sp.receipt_id) {
-            receipt = await models.VoucherReceipt.findByPk(sp.receipt_id);
-        }
-
-        // ================= PAYMENTS =================
-        const payments = await models.Payment.findAll({
-            where: { scheme_payment_id: sp.id },
-        });
-
-        let cash = 0;
-        let upi = 0;
-        let card = 0;
-        let upi_txn = null;
-        let card_txn = null;
-
-        for (const p of payments) {
-            if (p.payment_mode === "Cash") {
-                cash += Number(p.amount_received);
-            }
-
-            if (p.payment_mode === "UPI") {
-                upi += Number(p.amount_received);
-                upi_txn = p.transaction_id;
-            }
-
-            if (p.payment_mode === "Card") {
-                card += Number(p.amount_received);
-                card_txn = p.transaction_id;
-            }
-        }
-
-        // ================= NEXT DUE DATE =================
-        const scheme = await models.Scheme.findByPk(sp.scheme_id);
-        const duration = await models.SchemeDuration.findByPk(scheme.duration_id);
-
-        const nextDate = new Date(sp.payment_date);
-        nextDate.setMonth(nextDate.getMonth() + 1);
-
-        // ================= RESPONSE =================
-        return commonService.okResponse(res, {
-            receipt_details: {
-                receipt_no: receipt?.receipt_no || `SCH-${sp.id}`,
-                date: sp.payment_date,
-                bill_type: "Saving Scheme",
-                installment_amount: sp.installment_amount,
-                next_due: nextDate,
-                amount_in_words: convertToWords(sp.paid_amount), // optional helper
-            },
-
-            customer_details: {
-                customer_name: customer?.customer_name,
-            },
-
-            payment_details: {
-                cash,
-                upi,
-                upi_transaction: upi_txn,
-                card,
-                card_transaction: card_txn,
-            },
-
-            branch_details: {
-                address: branch?.address,
-                mobile: branch?.mobile,
-                gst_no: branch?.gst_no,
-                signature: branch?.signature_url,
-            },
-        });
-
-    } catch (err) {
-        console.error(err);
-        return commonService.handleError(res, err);
+    if (type === "completed") {
+        sql += `
+    AND COALESCE(p.paid_count, 0) >= d.months
+    `;
     }
+
+    if (type === "closed") {
+        sql += `
+    AND e.status = 'Closed'
+    `;
+    }
+
+    // ================= FILTERS =================
+
+    if (scheme_id) {
+        sql += ` AND s.id = :scheme_id`;
+        replacements.scheme_id = scheme_id;
+    }
+
+    if (search) {
+        sql += `
+    AND (
+        e.customer_name ILIKE :search
+        OR e.mobile_number ILIKE :search
+        OR e.enrollment_code ILIKE :search
+        OR s.scheme_name ILIKE :search
+    )
+    `;
+        replacements.search = `%${search}%`;
+    }
+
+    // ================= ORDER =================
+    sql += ` ORDER BY e.created_at DESC`;
+
+    if (pagination) {
+        sql += ` LIMIT :limit OFFSET :offset`;
+    }
+
+    const [rows] = await sequelize.query(sql, { replacements });
+
+    // ================= SUMMARY =================
+    const [summary] = await sequelize.query(`
+    SELECT
+    COUNT(*) FILTER (
+        WHERE e.status = 'Active'
+    ) AS ongoing,
+
+    COUNT(*) FILTER (
+        WHERE COALESCE(p.paid_count, 0) >= d.months
+    ) AS completed,
+
+    COUNT(*) FILTER (
+        WHERE e.status = 'Closed'
+    ) AS closed
+
+    FROM customer_enrollments e
+
+    LEFT JOIN schemes s ON s.id = e.scheme_plan_id
+    LEFT JOIN scheme_durations d ON d.id = s.duration_id
+
+    LEFT JOIN (
+    SELECT enrollment_id, COUNT(*) AS paid_count
+    FROM customer_scheme_payments
+    WHERE deleted_at IS NULL
+    GROUP BY enrollment_id
+    ) p ON p.enrollment_id = e.id
+
+    WHERE e.deleted_at IS NULL
+`);
+
+    return commonService.okResponse(res, {
+        enrollments: rows,
+        summary: summary[0],
+        ...(pagination && {
+            pagination: {
+                page: parseInt(page),
+                limit: parseInt(limit)
+            }
+        })
+    });
+
+} catch (err) {
+    console.error(err);
+    return commonService.handleError(res, err);
+}
 };
-*/
+
 module.exports = {
     generateSchemePaymentCode,
     createSchemePayment,

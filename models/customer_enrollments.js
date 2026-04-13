@@ -23,6 +23,7 @@ module.exports = (sequelize, DataTypes) => {
       customer_no: {
         type: DataTypes.STRING, 
         allowNull: false,
+        unique: true,
       },
       customer_name: {
         type: DataTypes.STRING,
@@ -82,10 +83,18 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
         defaultValue: "Active",
       },
-      is_bill_adjusted: {
+       is_bill_adjusted: {
         type: DataTypes.BOOLEAN,
         allowNull: false,
         defaultValue: false,
+      },
+      completed_date: {
+        type: DataTypes.DATE,
+        allowNull: true,
+      },
+      closed_date: {
+        type: DataTypes.DATE,
+        allowNull: true,
       },
     },
     {

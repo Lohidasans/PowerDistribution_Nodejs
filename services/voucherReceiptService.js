@@ -177,6 +177,14 @@ const createVoucherReceipt = async (req, res) => {
         { transaction: t }
       );
 
+      // ================= CHECK COMPLETION =================
+      if (nextInstallment === duration.months) {
+        await enrollment.update({
+          status: "Completed",
+          completed_date: receipt_date
+        }, { transaction: t });
+      }
+
       // Create payment entry
       await models.Payment.create(
         {
