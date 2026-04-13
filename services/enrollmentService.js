@@ -27,7 +27,6 @@ const createEnrollment = async (req, res) => {
       "country_id",
       "state_id",
       "district_id",
-      "pincode",
       "scheme_plan_id",
       "installment_amount_id",
       "identity_proof_id",
