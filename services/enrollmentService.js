@@ -23,7 +23,6 @@ const createEnrollment = async (req, res) => {
       "customer_no",
       "customer_name",
       "mobile_number",
-      "address",
       "country_id",
       "state_id",
       "district_id",
