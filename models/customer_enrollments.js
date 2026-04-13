@@ -23,7 +23,6 @@ module.exports = (sequelize, DataTypes) => {
       customer_no: {
         type: DataTypes.STRING, 
         allowNull: false,
-        unique: true,
       },
       customer_name: {
         type: DataTypes.STRING,

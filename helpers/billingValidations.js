@@ -158,6 +158,13 @@ const updateBillAdjustmentFlags = async (adjustments, transaction) => {
                     { where: { id: adj.reference_id }, transaction }
                 );
                 break;
+            
+            case 3: // Scheme
+                await models.Enrollment.update(
+                    { is_bill_adjusted: true },
+                    { where: { id: adj.reference_id }, transaction }
+                );
+                break;
 
             default:
                 // Future adjustment types can be handled here

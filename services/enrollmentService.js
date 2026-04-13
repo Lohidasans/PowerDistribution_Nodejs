@@ -37,6 +37,7 @@ const createEnrollment = async (req, res) => {
     if (!validateRequired(req, res, required)) return;
 
     const payload = {
+      enrollment_code: String(req.body.enrollment_code),
       customer_id: req.body.customer_id ?? null,
       mobile_number: String(req.body.mobile_number),
       customer_no: String(req.body.customer_no),
@@ -56,9 +57,37 @@ const createEnrollment = async (req, res) => {
       status: req.body.status ?? "Active",
     };
 
+    // Check if customer is already enrolled for this scheme
+    if (req.body.customer_id) {
+      const existingEnrollment = await models.Enrollment.findOne({
+        where: {
+          customer_id: req.body.customer_id,
+          scheme_plan_id: +req.body.scheme_plan_id,
+          deleted_at: null
+        }
+      });
+
+      if (existingEnrollment) {
+        return commonService.badRequest(res, {
+          message: "Customer already enrolled for this scheme"
+        });
+      }
+    }
+
     const row = await models.Enrollment.create(payload);
     return commonService.createdResponse(res, { enrollment: row });
   } catch (err) {
+    // Handle Sequelize validation errors with specific field info
+    if (err.name === "SequelizeValidationError" || err.name === "SequelizeUniqueConstraintError") {
+      const errorDetails = err.errors?.map(e => ({
+        field: e.path,
+        message: e.message
+      })) || [];
+      return commonService.badRequest(res, {
+        message: "Validation failed",
+        errors: errorDetails
+      });
+    }
     return commonService.handleError(res, err);
   }
 };
