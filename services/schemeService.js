@@ -296,7 +296,7 @@ const listSchemeNumbers = async (req, res) => {
 
     const [rows] = await sequelize.query(
       `
-        SELECT s.id, s.scheme_name, ce.enrollment_code
+        SELECT s.id, s.scheme_name, ce.enrollment_code, ce.id as customer_enrolled_id
         FROM schemes s
         INNER JOIN customer_enrollments ce
           ON ce.scheme_plan_id = s.id
