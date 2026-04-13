@@ -164,15 +164,110 @@ const getSchemeById = async (req, res) => {
 
 /** Update Scheme */
 const updateScheme = async (req, res) => {
-  const existing = await commonService.findById(models.Scheme, req.params.id, res);
-  if (!existing) return;
-
   try {
-    const updatedData = buildSchemePayload(req, existing);
-    await existing.update(updatedData);
+    const { id } = req.params;
 
-    return commonService.okResponse(res, { scheme: existing });
+    const scheme = await models.Scheme.findByPk(id);
+
+    if (!scheme) {
+      return commonService.notFound(res, { message: "Scheme not found" });
+    }
+
+    const usageCount = await models.Enrollment.count({
+      where: { scheme_plan_id: id }
+    });
+
+    if (usageCount > 0) {
+      return commonService.badRequest(res, {
+        message: "Scheme already in use. Create new scheme instead of updating."
+      });
+    }
+
+    // ================= VALIDATIONS =================
+
+    if (!req.body.scheme_name) {
+      return commonService.badRequest(res, { message: "Scheme name is required" });
+    }
+
+    if (!req.body.duration_id) {
+      return commonService.badRequest(res, { message: "Duration is required" });
+    }
+
+    if (!req.body.payment_frequency_id) {
+      return commonService.badRequest(res, { message: "Payment frequency is required" });
+    }
+
+    // ================= MONTHLY INSTALLMENTS =================
+
+    let installments = [];
+
+    if (req.body.monthly_installments) {
+      if (!Array.isArray(req.body.monthly_installments)) {
+        return commonService.badRequest(res, {
+          message: "monthly_installments must be an array",
+        });
+      }
+
+      // convert to numbers + remove invalid
+      installments = req.body.monthly_installments
+        .map((a) => Number(a))
+        .filter((a) => !isNaN(a) && a > 0);
+
+      // remove duplicates
+      installments = [...new Set(installments)];
+
+      // sort ascending (optional but clean)
+      installments.sort((a, b) => a - b);
+    }
+
+    // ================= MIN AMOUNT VALIDATION =================
+
+    if (req.body.min_amount) {
+      const minAmount = Number(req.body.min_amount);
+
+      if (installments.length && minAmount < Math.min(...installments)) {
+        return commonService.badRequest(res, {
+          message: "Minimum amount should not be less than installment values",
+        });
+      }
+    }
+
+    // ================= BUILD PAYLOAD =================
+
+    const payload = {
+      material_type_id: req.body.material_type_id ?? scheme.material_type_id,
+      scheme_name: req.body.scheme_name ?? scheme.scheme_name,
+      scheme_type_id: req.body.scheme_type_id ?? scheme.scheme_type_id,
+      duration_id: req.body.duration_id ?? scheme.duration_id,
+      monthly_installments: installments.length
+        ? installments
+        : scheme.monthly_installments,
+      payment_frequency_id:
+        req.body.payment_frequency_id ?? scheme.payment_frequency_id,
+      min_amount:
+        req.body.min_amount !== undefined
+          ? Number(req.body.min_amount)
+          : scheme.min_amount,
+      redemption_id: req.body.redemption_id ?? scheme.redemption_id,
+      visible_to: req.body.visible_to ?? scheme.visible_to,
+      status: req.body.status ?? scheme.status,
+      terms_and_conditions_url:
+        req.body.terms_and_conditions_url ??
+        scheme.terms_and_conditions_url,
+      branch_id: req.body.branch_id ?? scheme.branch_id,
+    };
+
+    // ================= UPDATE =================
+
+    await scheme.update(payload);
+
+    return commonService.okResponse(res, {
+      message: "Scheme updated successfully",
+      scheme,
+    });
+
   } catch (err) {
+    console.error(err);
     return commonService.handleError(res, err);
   }
 };
