@@ -119,10 +119,16 @@ const createSchemePayment = async (req, res) => {
 
         // ================= CHECK COMPLETION =================
         if (nextInstallment === duration.months) {
-            await enrollment.update({
+            await models.Enrollment.update(
+            {
                 status: "Completed",
-                completed_date: payment_date
-            }, { transaction: t });
+                completed_date: receipt_date
+            },
+            {
+                where: { id: enrollment_id },
+                transaction: t
+            }
+            );
         }
 
         // ================= CREATE PAYMENT SPLITS =================
