@@ -280,6 +280,7 @@ try {
     if (type === "completed") {
         sql += `
     AND COALESCE(p.paid_count, 0) >= d.months
+    AND e.status = 'Completed'
     `;
     }
 
@@ -326,6 +327,7 @@ try {
 
     COUNT(*) FILTER (
         WHERE COALESCE(p.paid_count, 0) >= d.months
+        AND e.status = 'Completed'
     ) AS completed,
 
     COUNT(*) FILTER (
