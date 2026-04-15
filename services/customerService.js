@@ -107,7 +107,7 @@ const createCustomer = async (req, res) => {
     const ledger = await models.Ledger.create(
       {
         ledger_no,
-        ledger_group_id: 26,
+        ledger_group_id: 26, // Sundry Debtors  - For live also its 26
         ledger_name: payload.customer_name,
         branch_id: payload.branch_id,
       },
