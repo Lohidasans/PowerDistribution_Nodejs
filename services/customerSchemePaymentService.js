@@ -182,29 +182,18 @@ const closeEnrollment = async (req, res) => {
             });
         }
 
-        // Already closed check
+        // ❌ Already closed
         if (enrollment.status === "Closed") {
             return commonService.badRequest(res, {
                 message: "Scheme already closed"
             });
         }
 
-        // Check completed
-        const paidCount = await models.CustomerSchemePayment.count({
-            where: { enrollment_id }
+        // ✅ CLOSE (allow Active + Completed)
+        await enrollment.update({
+            status: "Closed",
+            closed_date: new Date()
         });
-
-        const scheme = await models.Scheme.findByPk(enrollment.scheme_plan_id);
-        const duration = await models.SchemeDuration.findByPk(scheme.duration_id);
-
-        if (paidCount >= duration.months) {
-            return commonService.badRequest(res, {
-                message: "Scheme already completed, cannot close"
-            });
-        }
-
-        // CLOSE
-        await enrollment.update({ status: "Closed", closed_date: new Date() });
 
         return commonService.okResponse(res, {
             message: "Scheme closed successfully"
