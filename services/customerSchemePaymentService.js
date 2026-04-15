@@ -122,7 +122,7 @@ const createSchemePayment = async (req, res) => {
             await models.Enrollment.update(
             {
                 status: "Completed",
-                completed_date: receipt_date
+                completed_date: payment_date
             },
             {
                 where: { id: enrollment_id },
