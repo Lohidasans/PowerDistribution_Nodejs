@@ -96,31 +96,35 @@ const createEnrollment = async (req, res) => {
 const listEnrollments = async (req, res) => {
   try {
     const {
-      type, // total | active | completed | not_enrolled
+      type,
       branch_id,
       mode,
       search,
       page,
       limit,
-      scheme_id
+      scheme_id,
+      customer_id
     } = req.query;
 
     // ================= PAGINATION =================
-    let pagination = false;
-    let replacements = {};
+    const hasPagination =
+      Number(page) > 0 && Number(limit) > 0;
 
-    if (page && limit) {
-      pagination = true;
-      const offset = (parseInt(page) - 1) * parseInt(limit);
+    const replacements = {};
+
+    if (hasPagination) {
       replacements.limit = parseInt(limit);
-      replacements.offset = offset;
+      replacements.offset = (parseInt(page) - 1) * parseInt(limit);
     }
 
-    let sql = ``;
+    if (scheme_id) replacements.scheme_id = scheme_id;
+    if (customer_id) replacements.customer_id = customer_id;
+    if (branch_id) replacements.branch_id = branch_id;
+    if (search) replacements.search = `%${search}%`;
 
-    // =====================================================
-    // 🟡 NOT ENROLLED
-    // =====================================================
+    // ================= MAIN QUERY =================
+    let sql = "";
+
     if (type === "not_enrolled") {
       sql = `
         SELECT 
@@ -133,32 +137,18 @@ const listEnrollments = async (req, res) => {
           '-' AS scheme_type,
           '-' AS duration,
           0 AS installment_amount,
-
-          CASE 
-            WHEN c.is_online = true THEN 'Online'
-            ELSE 'Offline'
-          END AS mode,
-
+          CASE WHEN c.is_online THEN 'Online' ELSE 'Offline' END AS mode,
           c.branch_id,
           b.branch_name,
           '0/0' AS dues
-
         FROM customers c
-
         LEFT JOIN customer_enrollments e 
-          ON e.customer_id = c.id 
-          AND e.deleted_at IS NULL
-
-        LEFT JOIN branches b 
-          ON b.id = c.branch_id
-
+          ON e.customer_id = c.id AND e.deleted_at IS NULL
+        LEFT JOIN branches b ON b.id = c.branch_id
         WHERE c.deleted_at IS NULL
           AND e.id IS NULL
       `;
     } else {
-      // =====================================================
-      // 🟢 ENROLLMENT DATA
-      // =====================================================
       sql = `
         SELECT
           e.id,
@@ -168,34 +158,28 @@ const listEnrollments = async (req, res) => {
           e.mobile_number,
           e.created_at AS date_of_scheme,
           e.status,
-
           s.id as scheme_id,
           s.scheme_name,
           st.type_name AS scheme_type,
           d.duration_name AS duration,
 
-          -- ✅ FIXED INSTALLMENT LOGIC
           CASE 
             WHEN COALESCE(p.paid_count, 0) >= COALESCE(d.months, 12)
               THEN COALESCE(p.total_paid, 0)
             ELSE e.installment_amount_id
           END AS installment_amount,
 
-          -- OPTIONAL EXTRA FIELD (useful)
           COALESCE(p.total_paid, 0) AS total_paid_amount,
 
-           CASE
+          CASE
             WHEN COALESCE(p.paid_count, 0) >= COALESCE(d.months, 12)
-              THEN NULL  -- ✅ COMPLETED → NO NEXT DUE
+              THEN NULL
             WHEN p.last_payment_date IS NOT NULL
               THEN (p.last_payment_date + INTERVAL '28 days')
             ELSE (e.created_at + INTERVAL '28 days')
           END AS next_due,
 
-          CASE
-            WHEN c.is_online = true THEN 'Online'
-            ELSE 'Offline'
-          END AS mode,
+          CASE WHEN c.is_online THEN 'Online' ELSE 'Offline' END AS mode,
 
           c.branch_id,
           b.branch_name,
@@ -208,24 +192,11 @@ const listEnrollments = async (req, res) => {
           ) AS dues
 
         FROM customer_enrollments e
-
-        LEFT JOIN customers c 
-          ON c.id = e.customer_id 
-          AND c.deleted_at IS NULL
-
-        LEFT JOIN branches b 
-          ON b.id = c.branch_id
-
-        LEFT JOIN schemes s 
-          ON s.id = e.scheme_plan_id 
-          AND s.deleted_at IS NULL
-
-        LEFT JOIN scheme_types st 
-          ON st.id = s.scheme_type_id
-
-        LEFT JOIN scheme_durations d 
-          ON d.id = s.duration_id
-
+        LEFT JOIN customers c ON c.id = e.customer_id AND c.deleted_at IS NULL
+        LEFT JOIN branches b ON b.id = c.branch_id
+        LEFT JOIN schemes s ON s.id = e.scheme_plan_id AND s.deleted_at IS NULL
+        LEFT JOIN scheme_types st ON st.id = s.scheme_type_id
+        LEFT JOIN scheme_durations d ON d.id = s.duration_id
 
         LEFT JOIN (
           SELECT
@@ -241,43 +212,27 @@ const listEnrollments = async (req, res) => {
         WHERE e.deleted_at IS NULL
       `;
 
-      // ================= TYPE FILTER =================
       if (type === "active") {
-        sql += `
-          AND COALESCE(p.paid_count, 0) < COALESCE(d.months, 12)
-        `;
+        sql += ` AND COALESCE(p.paid_count, 0) < COALESCE(d.months, 12)`;
       }
 
       if (type === "completed") {
-        sql += `
-          AND COALESCE(p.paid_count, 0) >= COALESCE(d.months, 12)
-        `;
+        sql += ` AND COALESCE(p.paid_count, 0) >= COALESCE(d.months, 12)`;
       }
 
       if (scheme_id) {
         sql += ` AND s.id = :scheme_id`;
-        replacements.scheme_id = scheme_id;
       }
     }
 
-    // =====================================================
-    // 🔍 COMMON FILTERS
-    // =====================================================
-
-    if (branch_id) {
-      sql += ` AND c.branch_id = :branch_id`;
-      replacements.branch_id = branch_id;
-    }
-
-    if (req.query.customer_id) {
-      sql += ` AND c.id = :customer_id`;
-      replacements.customer_id = req.query.customer_id;
-    }
+    // ================= COMMON FILTERS (MAIN QUERY) =================
+    if (branch_id) sql += ` AND c.branch_id = :branch_id`;
+    if (customer_id) sql += ` AND c.id = :customer_id`;
 
     if (mode) {
       if (mode === "Online") {
         sql += ` AND c.is_online = true`;
-      } else if (mode === "Offline") {
+      } else {
         sql += ` AND (c.is_online = false OR c.is_online IS NULL)`;
       }
     }
@@ -291,26 +246,80 @@ const listEnrollments = async (req, res) => {
           ${type !== "not_enrolled" ? "OR s.scheme_name ILIKE :search" : ""}
         )
       `;
-      replacements.search = `%${search}%`;
     }
 
-    // ================= ORDER =================
     sql += ` ORDER BY 1 DESC`;
 
-    if (pagination) {
+    if (hasPagination) {
       sql += ` LIMIT :limit OFFSET :offset`;
     }
 
     const [rows] = await sequelize.query(sql, { replacements });
-    // SCORE CARDS
+
+    // ================= SCORE FILTERS =================
+    let scoreWhere = ` WHERE e.deleted_at IS NULL `;
+    let customerWhere = ` WHERE c.deleted_at IS NULL `;
+    let paymentWhere = ` WHERE csp.deleted_at IS NULL `;
+
+    if (branch_id) {
+      scoreWhere += ` AND c.branch_id = :branch_id`;
+      customerWhere += ` AND c.branch_id = :branch_id`;
+      paymentWhere += ` AND c.branch_id = :branch_id`;
+    }
+
+    if (customer_id) {
+      scoreWhere += ` AND c.id = :customer_id`;
+      customerWhere += ` AND c.id = :customer_id`;
+      paymentWhere += ` AND c.id = :customer_id`;
+    }
+
+    if (mode) {
+      if (mode === "Online") {
+        scoreWhere += ` AND c.is_online = true`;
+        customerWhere += ` AND c.is_online = true`;
+        paymentWhere += ` AND c.is_online = true`;
+      } else {
+        scoreWhere += ` AND (c.is_online = false OR c.is_online IS NULL)`;
+        customerWhere += ` AND (c.is_online = false OR c.is_online IS NULL)`;
+        paymentWhere += ` AND (c.is_online = false OR c.is_online IS NULL)`;
+      }
+    }
+
+    if (scheme_id) {
+      scoreWhere += ` AND s.id = :scheme_id`;
+      paymentWhere += ` AND s.id = :scheme_id`;
+    }
+
+    if (search) {
+      scoreWhere += `
+        AND (
+          e.customer_name ILIKE :search
+          OR e.mobile_number ILIKE :search
+          OR e.enrollment_code ILIKE :search
+          OR s.scheme_name ILIKE :search
+        )
+      `;
+
+      customerWhere += `
+        AND (
+          c.customer_name ILIKE :search
+          OR c.mobile_number ILIKE :search
+        )
+      `;
+    }
+
+    // ================= SCORE QUERY =================
     const scoreSql = `
       SELECT 
-        (SELECT COUNT(*)
-        FROM customer_enrollments
-        WHERE deleted_at IS NULL) AS total_enrollment,
+        (SELECT COUNT(*) 
+         FROM customer_enrollments e
+         LEFT JOIN customers c ON c.id = e.customer_id
+         LEFT JOIN schemes s ON s.id = e.scheme_plan_id
+         ${scoreWhere}) AS total_enrollment,
 
         (SELECT COUNT(*) 
          FROM customer_enrollments e
+         LEFT JOIN customers c ON c.id = e.customer_id
          LEFT JOIN schemes s ON s.id = e.scheme_plan_id
          LEFT JOIN scheme_durations d ON d.id = s.duration_id
          LEFT JOIN (
@@ -319,12 +328,13 @@ const listEnrollments = async (req, res) => {
            WHERE deleted_at IS NULL
            GROUP BY enrollment_id
          ) p ON p.enrollment_id = e.id
-         WHERE e.deleted_at IS NULL
-           AND COALESCE(p.paid_count, 0) < COALESCE(d.months, 12)
+         ${scoreWhere}
+         AND COALESCE(p.paid_count, 0) < COALESCE(d.months, 12)
         ) AS active,
 
         (SELECT COUNT(*) 
          FROM customer_enrollments e
+         LEFT JOIN customers c ON c.id = e.customer_id
          LEFT JOIN schemes s ON s.id = e.scheme_plan_id
          LEFT JOIN scheme_durations d ON d.id = s.duration_id
          LEFT JOIN (
@@ -333,30 +343,35 @@ const listEnrollments = async (req, res) => {
            WHERE deleted_at IS NULL
            GROUP BY enrollment_id
          ) p ON p.enrollment_id = e.id
-         WHERE e.deleted_at IS NULL
-           AND COALESCE(p.paid_count, 0) >= COALESCE(d.months, 12)
+         ${scoreWhere}
+         AND COALESCE(p.paid_count, 0) >= COALESCE(d.months, 12)
         ) AS completed,
 
         (SELECT COUNT(*) 
          FROM customers c
          LEFT JOIN customer_enrollments e 
            ON e.customer_id = c.id AND e.deleted_at IS NULL
-         WHERE c.deleted_at IS NULL 
-           AND e.id IS NULL
+         ${customerWhere}
+         AND e.id IS NULL
         ) AS not_enrolled,
 
-        (SELECT COALESCE(SUM(paid_amount), 0)
-         FROM customer_scheme_payments
-         WHERE deleted_at IS NULL
+        (SELECT COALESCE(SUM(csp.paid_amount), 0)
+         FROM customer_scheme_payments csp
+         LEFT JOIN customer_enrollments e ON e.id = csp.enrollment_id
+         LEFT JOIN customers c ON c.id = e.customer_id
+         LEFT JOIN schemes s ON s.id = e.scheme_plan_id
+         ${paymentWhere}
         ) AS total_value_till_date
     `;
 
-    const [summary] = await sequelize.query(scoreSql);
+    const [summary] = await sequelize.query(scoreSql, { replacements });
 
-    return commonService.okResponse(res, {
+    return res.json({
+      success: true,
       enrollments: rows,
       summary: summary[0],
-      ...(pagination && {
+
+      ...(hasPagination && {
         pagination: {
           page: parseInt(page),
           limit: parseInt(limit)
@@ -366,7 +381,7 @@ const listEnrollments = async (req, res) => {
 
   } catch (err) {
     console.error(err);
-    return commonService.handleError(res, err);
+    return res.status(500).json({ message: err.message });
   }
 };  
 
