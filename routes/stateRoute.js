@@ -8,6 +8,7 @@ stateRouter.get("/state", stateService.getAllStates);
 stateRouter.get("/state/dropdown", stateService.listStatesDropdown);
 stateRouter.get("/state/:id", stateService.getStateById);
 stateRouter.put("/state/:id", stateService.updateState);
+stateRouter.patch("/state/:id/status", stateService.toggleStateStatus);
 stateRouter.delete("/state/:id", stateService.deleteState);
 
 module.exports = stateRouter;

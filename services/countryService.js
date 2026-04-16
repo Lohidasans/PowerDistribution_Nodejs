@@ -143,6 +143,28 @@ const deleteCountry = async (req, res) => {
   }
 };
 
+const toggleCountryStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const country = await models.Country.findByPk(id);
+
+    if (!country) {
+      return res.status(404).json({ message: "Country not found" });
+    }
+
+    country.is_active = !country.is_active;
+    await country.save();
+
+    return res.json({
+      message: `Country ${country.is_active ? "Activated" : "Deactivated"}`,
+      data: country,
+    });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+};
+
 module.exports = {
   createCountry,
   getAllCountries,
@@ -150,4 +172,5 @@ module.exports = {
   getCountryById,
   updateCountry,
   deleteCountry,
+  toggleCountryStatus,
 };

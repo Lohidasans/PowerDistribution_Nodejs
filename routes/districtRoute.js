@@ -9,6 +9,7 @@ districtRouter.get("/district/dropdown", districtService.listDistrictsDropdown);
 districtRouter.get("/district/:id", districtService.getDistrictById);
 districtRouter.put("/district/:id", districtService.updateDistrict);
 districtRouter.delete("/district/:id", districtService.deleteDistrict);
+districtRouter.patch("/district/:id/status", districtService.toggleDistrictStatus);
 
 module.exports = districtRouter;
 

@@ -155,6 +155,28 @@ const deleteDistrict = async (req, res) => {
   }
 };
 
+const toggleDistrictStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const district = await models.District.findByPk(id);
+
+    if (!district) {
+      return res.status(404).json({ message: "District not found" });
+    }
+
+    district.is_active = !district.is_active;
+    await district.save();
+
+    return res.json({
+      message: `District ${district.is_active ? "Activated" : "Deactivated"}`,
+      data: district,
+    });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+};
+
 module.exports = {
   createDistrict,
   getAllDistricts,
@@ -162,4 +184,5 @@ module.exports = {
   getDistrictById,
   updateDistrict,
   deleteDistrict,
+  toggleDistrictStatus,
 };

@@ -131,6 +131,28 @@ const deleteState = async (req, res) => {
   }
 };
 
+const toggleStateStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const state = await models.State.findByPk(id);
+
+    if (!state) {
+      return res.status(404).json({ message: "State not found" });
+    }
+
+    state.is_active = !state.is_active;
+    await state.save();
+
+    return res.json({
+      message: `State ${state.is_active ? "Activated" : "Deactivated"}`,
+      data: state,
+    });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+};
+
 module.exports = {
   createState,
   getAllStates,
@@ -138,4 +160,5 @@ module.exports = {
   getStateById,
   updateState,
   deleteState,
+  toggleStateStatus,
 };

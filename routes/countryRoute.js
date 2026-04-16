@@ -8,6 +8,7 @@ router.get("/country", svc.getAllCountries);
 router.get("/country/dropdown", svc.listCountriesDropdown); 
 router.get("/country/:id", svc.getCountryById);
 router.put("/country/:id", svc.updateCountry); 
+router.patch("/country/:id/status", svc.toggleCountryStatus);
 router.delete("/country/:id", svc.deleteCountry); 
 
 module.exports = router;
