@@ -258,11 +258,11 @@ const mapPaymentMode = (id) => {
     case 2:
       return "Card";
     case 3:
-      return "UPI";
-    case 4:
       return "Bank Transfer";
-    case 5:
+    case 4:
       return "Cheque";
+    case 5:
+      return "UPI";
     default:
       return "Other";
   }
