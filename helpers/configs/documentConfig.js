@@ -41,6 +41,11 @@ const documentConfig = {
         model: models.JournalEntry,
         field: "journal_no",
     },
+    9: {
+        name: "Grn",
+        model: models.Grn,
+        field: "grn_no",
+    }
 };
 
 module.exports = documentConfig;
