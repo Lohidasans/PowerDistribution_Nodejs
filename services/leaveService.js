@@ -465,9 +465,15 @@ const getEmployeeLeaves = async (req, res) => {
 
         CASE 
           WHEN l.entity_type_name = 'superadmin' THEN sa.proprietor
-          WHEN l.entity_type_name = 'branches' THEN b2.branch_name
+          WHEN l.entity_type_name = 'branchadmin' THEN b2.contact_person
           ELSE NULL
-        END AS approved_by_name
+        END AS approved_by_name,
+
+        CASE
+          WHEN l.entity_type_name = 'superadmin' THEN sa.company_name
+          WHEN l.entity_type_name = 'branchadmin' THEN b2.branch_name
+          ELSE NULL
+        END AS approved_by_place
 
       FROM leaves l
       LEFT JOIN leave_types lt ON lt.id = l.leave_type_id
@@ -476,7 +482,7 @@ const getEmployeeLeaves = async (req, res) => {
         ON l.entity_type_name = 'superadmin' 
         AND sa.id = l.approved_by_id
       LEFT JOIN branches b2 
-        ON l.entity_type_name = 'branches' 
+        ON l.entity_type_name = 'branchadmin' 
         AND b2.id = l.approved_by_id
 
       WHERE l.deleted_at IS NULL
