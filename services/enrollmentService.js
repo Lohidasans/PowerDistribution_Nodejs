@@ -63,6 +63,7 @@ const createEnrollment = async (req, res) => {
         where: {
           customer_id: req.body.customer_id,
           scheme_plan_id: +req.body.scheme_plan_id,
+          status: "Active",
           deleted_at: null
         }
       });
