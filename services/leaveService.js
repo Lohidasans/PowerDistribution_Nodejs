@@ -28,7 +28,7 @@ const createLeave = async (req, res) => {
     return commonService.handleError(res, error);
   }
 };
-
+// Super admin and branch admin side - Get all leave requests with filters and pagination
 const getAllLeaves = async (req, res) => {
   try {
     const {
@@ -118,7 +118,7 @@ const getAllLeaves = async (req, res) => {
       LEFT JOIN employee_contacts AS aec 
         ON aec.employee_id = ae.id
       LEFT JOIN branches AS ab 
-        ON l.entity_type_name = 'branches' 
+        ON l.entity_type_name = 'branchadmin' 
         AND ab.id = l.approved_by_id
       WHERE l.deleted_at IS NULL
       AND l.status_id = :status_id
@@ -348,44 +348,6 @@ const updateLeave = async (req, res) => {
   }
 };
 
-/*const updateLeaveStatus = async (req, res) => {
-  const transaction = await sequelize.transaction();
-  try {
-    const { id } = req.params;
-    const { leave_date, leave_type_id, reason ,employee_id,branch_id,status_id,approved_by_id,entity_type_name  } = req.body;
-
-    const leave = await models.Leave.findByPk(id, { transaction });
-    if (!leave) {
-      await transaction.rollback();
-      return commonService.notFound(res, 'Leave request not found');
-    }
-
-    // Prepare updated data
-    const updateData = {
-      leave_date: leave_date || leave.leave_date,
-      leave_type_id: leave_type_id || leave.leave_type_id,
-      reason: reason !== undefined ? reason : leave.reason,
-      employee_id: employee_id || leave.employee_id,
-      branch_id: branch_id || leave.branch_id,
-      status_id: status_id || leave.status_id,
-      approved_by_id: approved_by_id || leave.approved_by_id,
-      entity_type_name: entity_type_name || leave.entity_type_name
-    };
-
-    // Update record
-    await leave.update(updateData, { transaction });
-    await transaction.commit();
-
-    // Fetch updated record (without associations)
-    const updatedLeave = await models.Leave.findByPk(id);
-
-    return commonService.okResponse(res, updatedLeave);
-  } catch (error) {
-    await transaction.rollback();
-    return commonService.handleError(res, error);
-  }
-};*/
-
 // Admin - Approve or Reject leave request
 const updateLeaveStatus = async (req, res) => {
   const transaction = await sequelize.transaction();
@@ -466,6 +428,7 @@ const deleteLeave = async (req, res) => {
   }
 };
 
+// Employee side - Get their own leave requests with filters and pagination
 const getEmployeeLeaves = async (req, res) => {
   try {
     const {
@@ -480,12 +443,13 @@ const getEmployeeLeaves = async (req, res) => {
       limit
     } = req.query;
 
-    const statusFilter = status_id ? parseInt(status_id) : 1;
+    const selectedStatus = status_id ? parseInt(status_id) : 1;
 
     const replacements = {
-      status_id: statusFilter
+      status_id: selectedStatus
     };
 
+    // ================= TABLE QUERY =================
     let query = `
       SELECT 
         l.id,
@@ -519,6 +483,7 @@ const getEmployeeLeaves = async (req, res) => {
       AND l.status_id = :status_id
     `;
 
+    // ================= COUNT QUERY =================
     let countQuery = `
       SELECT 
         l.status_id,
@@ -527,9 +492,9 @@ const getEmployeeLeaves = async (req, res) => {
       LEFT JOIN employees e ON e.id = l.employee_id
       LEFT JOIN leave_types lt ON lt.id = l.leave_type_id
       WHERE l.deleted_at IS NULL
-      AND l.status_id = :status_id
     `;
 
+    // ================= COMMON FILTERS =================
     if (date) {
       query += ` AND l.leave_date = :date`;
       countQuery += ` AND l.leave_date = :date`;
@@ -561,13 +526,12 @@ const getEmployeeLeaves = async (req, res) => {
       replacements.employee_id = employee_id;
     }
 
-    if (search && search.trim() !== "") {
+    if (search) {
       query += `
         AND (
           LOWER(e.employee_name) LIKE :search OR
           LOWER(e.employee_no) LIKE :search OR
-          LOWER(l.reason) LIKE :search OR
-          LOWER(lt.leave_type_name) LIKE :search
+          LOWER(l.reason) LIKE :search
         )
       `;
 
@@ -575,35 +539,34 @@ const getEmployeeLeaves = async (req, res) => {
         AND (
           LOWER(e.employee_name) LIKE :search OR
           LOWER(e.employee_no) LIKE :search OR
-          LOWER(l.reason) LIKE :search OR
-          LOWER(lt.leave_type_name) LIKE :search
+          LOWER(l.reason) LIKE :search
         )
       `;
 
-      replacements.search = `%${search.trim().toLowerCase()}%`;
+      replacements.search = `%${search.toLowerCase()}%`;
     }
 
     countQuery += ` GROUP BY l.status_id`;
 
     query += ` ORDER BY l.leave_date DESC`;
 
+    // ================= PAGINATION =================
     let pagination = null;
 
     if (page && limit) {
-      const pageNumber = parseInt(page);
-      const limitNumber = parseInt(limit);
-      const offset = (pageNumber - 1) * limitNumber;
+      const offset = (page - 1) * limit;
 
       query += ` LIMIT :limit OFFSET :offset`;
 
-      replacements.limit = limitNumber;
-      replacements.offset = offset;
+      replacements.limit = parseInt(limit);
+      replacements.offset = parseInt(offset);
 
       pagination = {
-        current_page: pageNumber,
-        per_page: limitNumber
+        page: parseInt(page),
+        limit: parseInt(limit)
       };
     }
+
     const [leaves, countRows] = await Promise.all([
       sequelize.query(query, {
         replacements,
@@ -620,9 +583,9 @@ const getEmployeeLeaves = async (req, res) => {
     let rejected = 0;
 
     countRows.forEach((row) => {
-      if (row.status_id === 1) pending = parseInt(row.count);
-      if (row.status_id === 2) approved = parseInt(row.count);
-      if (row.status_id === 3) rejected = parseInt(row.count);
+      if (row.status_id == 1) pending = parseInt(row.count);
+      if (row.status_id == 2) approved = parseInt(row.count);
+      if (row.status_id == 3) rejected = parseInt(row.count);
     });
 
     return commonService.okResponse(res, {
