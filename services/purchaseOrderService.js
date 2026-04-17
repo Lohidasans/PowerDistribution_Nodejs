@@ -173,7 +173,7 @@ const listPurchaseOrders = async (req, res) => {
     const {
       page,
       limit,
-      status_id = 1, // ✅ default = Approval Pending
+      status_id = 1, // default 1- pending, 2- Approved and 3- Rejected
       date,
       search,
       branch_id,
@@ -186,7 +186,7 @@ const listPurchaseOrders = async (req, res) => {
     let whereSql = `
       WHERE p.deleted_at IS NULL
     `;
-    // 2- Approved and 3- Rejected
+
     if (status_id) {
       whereSql += ` AND p.status_id = :status_id`;
       replacements.status_id = Number(status_id);
@@ -213,38 +213,45 @@ const listPurchaseOrders = async (req, res) => {
           p.po_no ILIKE :search
           OR v.vendor_name ILIKE :search
           OR b.branch_name ILIKE :search
+          OR sa.proprietor ILIKE :search
         )
       `;
       replacements.search = `%${search}%`;
     }
 
-    const joinVendors = "LEFT JOIN vendors v ON v.id = p.vendor_id";
-    const joinBranches = "LEFT JOIN branches b ON b.id = p.branch_id";
+    const commonJoins = `
+      LEFT JOIN vendors v ON v.id = p.vendor_id
+      LEFT JOIN branches b ON b.id = p.branch_id
 
-    // ---------------- SCORE CARD (FILTER-AWARE) ----------------
-    const statusCountQuery = `
-      SELECT 
+      -- created by branch
+      LEFT JOIN branches cb
+        ON p.entity_type = 'branch'
+        AND cb.id = p.order_by_user_id
+
+      -- created by superadmin
+      LEFT JOIN superadmin_profiles sa
+        ON p.entity_type = 'superadmin'
+        AND sa.id = p.order_by_user_id
+    `;
+
+    const countCardsSql = `
+      SELECT
         COUNT(CASE WHEN p.status_id = 1 THEN 1 END) AS approval_pending,
         COUNT(CASE WHEN p.status_id = 2 THEN 1 END) AS approved,
         COUNT(CASE WHEN p.status_id = 3 THEN 1 END) AS rejected
       FROM purchase_orders p
-      ${joinVendors}
-      ${joinBranches}
-      WHERE p.deleted_at IS NULL
-      ${date ? "AND p.po_date = :date" : ""}
-      ${branch_id ? "AND p.branch_id = :branch_id" : ""}
-      ${vendor_id ? "AND p.vendor_id = :vendor_id" : ""}
-      ${search ? "AND (p.po_no ILIKE :search OR v.vendor_name ILIKE :search OR b.branch_name ILIKE :search)" : ""}
+      ${commonJoins}
+      ${whereSql.replace("AND p.status_id = :status_id", "")}
     `;
 
-    const [statusCounts] = await sequelize.query(statusCountQuery, {
+    const [statusCounts] = await sequelize.query(countCardsSql, {
       replacements,
       type: sequelize.QueryTypes.SELECT,
     });
 
-    // ---------------- OPTIONAL PAGINATION ----------------
     let paginationSql = "";
-    let pageNum, limitNum;
+    let pageNum = null;
+    let limitNum = null;
 
     if (page || limit) {
       pageNum = Number(page) || 1;
@@ -256,51 +263,73 @@ const listPurchaseOrders = async (req, res) => {
       replacements.offset = offset;
     }
 
-    // ---------------- TOTAL COUNT ----------------
-    const countQuery = `
+    // TOTAL COUNT
+    const totalSql = `
       SELECT COUNT(DISTINCT p.id) AS total
       FROM purchase_orders p
-      ${joinVendors}
-      ${joinBranches}
+      ${commonJoins}
       ${whereSql}
     `;
 
-    const [countResult] = await sequelize.query(countQuery, {
+    const [countResult] = await sequelize.query(totalSql, {
       replacements,
       type: sequelize.QueryTypes.SELECT,
     });
 
     const total = Number(countResult.total || 0);
 
-    // ---------------- LIST DATA ----------------
-    const dataQuery = `
-      SELECT 
+    const listSql = `
+      SELECT
         p.id,
         p.po_no,
         p.po_date AS date,
         p.status_id,
         p.branch_id,
         p.entity_type,
+        p.order_by_user_id,
+
         b.branch_name,
+
         v.id AS vendor_id,
         v.vendor_name,
         v.vendor_image_url,
-        u.email AS created_by,
+
+        -- created by dynamic
+        CASE
+          WHEN p.entity_type = 'superadmin'
+            THEN sa.proprietor
+          WHEN p.entity_type = 'branch'
+            THEN cb.branch_name
+          ELSE NULL
+        END AS created_by_name,
+
+        CASE
+          WHEN p.entity_type = 'superadmin'
+            THEN sa.email_id
+          WHEN p.entity_type = 'branch'
+            THEN cb.email
+          ELSE NULL
+        END AS created_by_mail,
+
         COALESCE(SUM(poi.ordered_weight), 0) AS ordered_weight
+
       FROM purchase_orders p
-      ${joinVendors}
-      ${joinBranches}
+
+      ${commonJoins}
+
       LEFT JOIN purchase_order_items poi 
         ON poi.po_id = p.id AND poi.deleted_at IS NULL
-      LEFT JOIN users u ON u.id = p.order_by_user_id
+
       ${whereSql}
-      GROUP BY 
-        p.id, b.branch_name, v.id, v.vendor_name, v.vendor_image_url, u.email
+
+      GROUP BY p.id, b.branch_name, v.id, v.vendor_name, v.vendor_image_url, sa.proprietor, sa.email_id, cb.branch_name, cb.email
+
       ORDER BY p.po_date DESC, p.id DESC
-      ${paginationSql};
+
+      ${paginationSql}
     `;
 
-    const rows = await sequelize.query(dataQuery, {
+    const rows = await sequelize.query(listSql, {
       replacements,
       type: sequelize.QueryTypes.SELECT,
     });
@@ -316,6 +345,7 @@ const listPurchaseOrders = async (req, res) => {
         ? {
           page: pageNum,
           totalPages: Math.ceil(total / limitNum),
+          limit: limitNum,
         }
         : {}),
       data: rows,
