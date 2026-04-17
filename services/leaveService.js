@@ -44,8 +44,10 @@ const getAllLeaves = async (req, res) => {
     } = req.query;
 
     // Default status = Pending
+    const selectedStatus = status_id ? parseInt(status_id) : 1;
+
     const replacements = {
-      status_id: status_id ? parseInt(status_id) : 1
+      status_id: selectedStatus
     };
 
     let query = `
@@ -75,51 +77,62 @@ const getAllLeaves = async (req, res) => {
         r.role_name,
         d.department_name,
         b.branch_name,
-        b.address as branch_address,
-        b.mobile as branch_mobile,
-        b.email as branch_email,
-        b.status as branch_status,
+        b.address AS branch_address,
+        b.mobile AS branch_mobile,
+        b.email AS branch_email,
+        b.status AS branch_status,
+
         CASE 
           WHEN l.entity_type_name = 'superadmin' THEN sa.proprietor
           WHEN l.entity_type_name = 'vendors' THEN v.vendor_name
           WHEN l.entity_type_name = 'employees' THEN ae.employee_name
-          WHEN l.entity_type_name = 'branches' THEN ab.branch_name
+          WHEN l.entity_type_name = 'branchadmin' THEN ab.branch_name
           ELSE NULL
-        END as approved_by_name,
+        END AS approved_by_name,
+
         CASE 
           WHEN l.entity_type_name = 'superadmin' THEN sa.email_id
           WHEN l.entity_type_name = 'vendors' THEN v.email
           WHEN l.entity_type_name = 'employees' THEN aec.email_id
-          WHEN l.entity_type_name = 'branches' THEN ab.email
+          WHEN l.entity_type_name = 'branchadmin' THEN ab.email
           ELSE NULL
-        END as approved_by_email,
+        END AS approved_by_email,
+
         CASE 
           WHEN l.entity_type_name = 'superadmin' THEN sa.mobile_number
           WHEN l.entity_type_name = 'vendors' THEN v.mobile
           WHEN l.entity_type_name = 'employees' THEN aec.mobile_number
-          WHEN l.entity_type_name = 'branches' THEN ab.mobile
+          WHEN l.entity_type_name = 'branchadmin' THEN ab.mobile
           ELSE NULL
-        END as approved_by_mobile
-      FROM leaves AS l
-      LEFT JOIN leave_types AS lt ON lt.id = l.leave_type_id
-      LEFT JOIN employees AS e ON e.id = l.employee_id
-      LEFT JOIN roles AS r ON r.id = e.role_id
-      LEFT JOIN employee_departments AS d ON d.id = e.department_id
-      LEFT JOIN branches AS b ON b.id = l.branch_id
-      LEFT JOIN superadmin_profiles AS sa 
-        ON l.entity_type_name = 'superadmin' 
+        END AS approved_by_mobile
+
+      FROM leaves l
+
+      LEFT JOIN leave_types lt ON lt.id = l.leave_type_id
+      LEFT JOIN employees e ON e.id = l.employee_id
+      LEFT JOIN roles r ON r.id = e.role_id
+      LEFT JOIN employee_departments d ON d.id = e.department_id
+      LEFT JOIN branches b ON b.id = l.branch_id
+
+      LEFT JOIN superadmin_profiles sa
+        ON l.entity_type_name = 'superadmin'
         AND sa.id = l.approved_by_id
-      LEFT JOIN vendors AS v 
-        ON l.entity_type_name = 'vendors' 
+
+      LEFT JOIN vendors v
+        ON l.entity_type_name = 'vendors'
         AND v.id = l.approved_by_id
-      LEFT JOIN employees AS ae 
-        ON l.entity_type_name = 'employees' 
+
+      LEFT JOIN employees ae
+        ON l.entity_type_name = 'employees'
         AND ae.id = l.approved_by_id
-      LEFT JOIN employee_contacts AS aec 
+
+      LEFT JOIN employee_contacts aec
         ON aec.employee_id = ae.id
-      LEFT JOIN branches AS ab 
-        ON l.entity_type_name = 'branchadmin' 
+
+      LEFT JOIN branches ab
+        ON l.entity_type_name = 'branchadmin'
         AND ab.id = l.approved_by_id
+
       WHERE l.deleted_at IS NULL
       AND l.status_id = :status_id
     `;
@@ -128,11 +141,10 @@ const getAllLeaves = async (req, res) => {
       SELECT 
         l.status_id,
         COUNT(*) AS count
-      FROM leaves AS l
-      LEFT JOIN employees AS e ON e.id = l.employee_id
-      LEFT JOIN leave_types AS lt ON lt.id = l.leave_type_id
+      FROM leaves l
+      LEFT JOIN employees e ON e.id = l.employee_id
+      LEFT JOIN leave_types lt ON lt.id = l.leave_type_id
       WHERE l.deleted_at IS NULL
-      AND l.status_id = :status_id
     `;
 
     if (start_date && end_date) {
@@ -147,24 +159,28 @@ const getAllLeaves = async (req, res) => {
     } else if (end_date) {
       query += ` AND l.leave_date <= :end_date`;
       countQuery += ` AND l.leave_date <= :end_date`;
+
       replacements.end_date = end_date;
     }
 
     if (leave_type_id) {
       query += ` AND l.leave_type_id = :leave_type_id`;
       countQuery += ` AND l.leave_type_id = :leave_type_id`;
+
       replacements.leave_type_id = leave_type_id;
     }
 
     if (branch_id) {
       query += ` AND l.branch_id = :branch_id`;
       countQuery += ` AND l.branch_id = :branch_id`;
+
       replacements.branch_id = branch_id;
     }
 
     if (department_id) {
       query += ` AND e.department_id = :department_id`;
       countQuery += ` AND e.department_id = :department_id`;
+
       replacements.department_id = department_id;
     }
 
@@ -189,7 +205,6 @@ const getAllLeaves = async (req, res) => {
 
       replacements.search = `%${search.trim().toLowerCase()}%`;
     }
-    countQuery += ` GROUP BY l.status_id`;
     query += ` ORDER BY l.leave_date DESC`;
     let pagination = null;
 
@@ -208,6 +223,8 @@ const getAllLeaves = async (req, res) => {
         per_page: limitNumber
       };
     }
+
+    countQuery += ` GROUP BY l.status_id`;
 
     const [rows, countRows] = await Promise.all([
       sequelize.query(query, {
@@ -277,9 +294,9 @@ const getAllLeaves = async (req, res) => {
     let rejected_count = 0;
 
     countRows.forEach((row) => {
-      if (row.status_id === 1) pending_count = parseInt(row.count);
-      if (row.status_id === 2) approved_count = parseInt(row.count);
-      if (row.status_id === 3) rejected_count = parseInt(row.count);
+      if (parseInt(row.status_id) === 1) pending_count = parseInt(row.count);
+      if (parseInt(row.status_id) === 2) approved_count = parseInt(row.count);
+      if (parseInt(row.status_id) === 3) rejected_count = parseInt(row.count);
     });
 
     return commonService.okResponse(res, {
@@ -473,7 +490,7 @@ const getEmployeeLeaves = async (req, res) => {
           WHEN l.entity_type_name = 'superadmin' THEN sa.company_name
           WHEN l.entity_type_name = 'branchadmin' THEN b2.branch_name
           ELSE NULL
-        END AS approved_by_place
+        END AS approved_at_place
 
       FROM leaves l
       LEFT JOIN leave_types lt ON lt.id = l.leave_type_id
