@@ -148,6 +148,7 @@ const getSalesReport = async (req, res) => {
         SELECT
             t.*,
             b.branch_name,
+            c.customer_code,
             c.customer_name,
             e.employee_name,
             c.mobile_number,
