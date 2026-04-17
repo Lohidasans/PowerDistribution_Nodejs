@@ -394,6 +394,7 @@ const getVoucherReceipts = async (req, res) => {
         vr.account_id,
         vr.user_type_id,
         vr.bill_type_id,
+        vr.created_at,
         vr.is_active,
         CASE
           WHEN vr.reference_type = 'invoice' THEN si.invoice_no
@@ -435,7 +436,7 @@ const getVoucherReceipts = async (req, res) => {
       LEFT JOIN grns g ON g.id = vr.reference_id AND vr.reference_type = 'grn' AND g.deleted_at IS NULL
       LEFT JOIN customer_enrollments ce ON ce.id = vr.reference_id AND vr.reference_type = 'scheme' AND ce.deleted_at IS NULL
       ${whereSql}
-      ORDER BY vr.receipt_no DESC
+      ORDER BY vr.created_at DESC
       ${paginationSql}
     `;
 
