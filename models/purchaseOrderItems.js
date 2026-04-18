@@ -29,8 +29,9 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: true,
       },
       purity: {
-        type: DataTypes.DECIMAL(10, 3),
+        type: DataTypes.ENUM("80", "92.5", "99.9", "91.75", "100"),
         allowNull: true,
+        defaultValue: "92.5"
       },
       ordered_weight: {
         type: DataTypes.DECIMAL(15, 3),
