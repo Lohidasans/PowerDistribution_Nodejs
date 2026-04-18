@@ -90,27 +90,65 @@ const listMaterialTypes = async (req, res) => {
 // Update the listMaterialTypesDropdown to include new fields if needed
 const listMaterialTypesDropdown = async (req, res) => {
   try {
-    const { branch_id } = req.query;
-    const where = {};
+    const { branch_id, vendor_id } = req.query;
 
+    const where = {
+      deleted_at: null
+    };
+
+    // Branch filter
     if (branch_id) {
       where.branch_id = branch_id;
+    }
+
+    // Vendor filter
+    if (vendor_id) {
+      const vendor = await models.Vendor.findOne({
+        where: {
+          id: vendor_id,
+          deleted_at: null
+        },
+        attributes: ["id", "material_type_ids"]
+      });
+
+      if (!vendor) {
+        return commonService.badRequest(res, {
+          message: "Vendor not found"
+        });
+      }
+
+      const selectedIds = vendor.material_type_ids || [];
+
+      // If vendor has no mapped materials
+      if (selectedIds.length === 0) {
+        return commonService.okResponse(res, {
+          materialTypes: []
+        });
+      }
+
+      where.id = {
+        [Op.in]: selectedIds
+      };
     }
 
     const items = await models.MaterialType.findAll({
       where,
       attributes: [
-        "id", 
-        "material_type", 
+        "id",
+        "material_type",
         "material_price",
         "purity_name",
         "purity_percentage",
         "website_visibility",
         "branch_id"
       ],
-      order: [["material_type", "ASC"]],
+      order: [["material_type", "ASC"]]
     });
-    return commonService.okResponse(res, { materialTypes: items });
+
+    return commonService.okResponse(res, {
+      materialTypes: items
+    });
+
   } catch (err) {
     return commonService.handleError(res, err);
   }
