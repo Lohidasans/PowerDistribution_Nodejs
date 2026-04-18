@@ -38,6 +38,7 @@ const getAllDistricts = async (req, res) => {
         d.state_id,
         d.short_name,
         d.district_name,
+        d.is_active,
         c.country_name,
         s.state_name
       FROM districts d
@@ -165,7 +166,7 @@ const toggleDistrictStatus = async (req, res) => {
       return res.status(404).json({ message: "District not found" });
     }
 
-    district.is_active = !district.is_active;
+    district.is_active = req.body.is_active;
     await district.save();
 
     return res.json({

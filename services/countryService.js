@@ -50,7 +50,8 @@ const getAllCountries = async (req, res) => {
         c.short_name,
         c.currency_symbol,
         c.country_code,
-        c.country_image_url
+        c.country_image_url,
+        c.is_active
       FROM countries c
       WHERE c.deleted_at IS NULL
     `;
@@ -153,7 +154,7 @@ const toggleCountryStatus = async (req, res) => {
       return res.status(404).json({ message: "Country not found" });
     }
 
-    country.is_active = !country.is_active;
+    country.is_active = req.body.is_active;
     await country.save();
 
     return res.json({

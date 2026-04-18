@@ -35,6 +35,7 @@ const getAllStates = async (req, res) => {
         s.country_id,
         s.state_code,
         s.state_name,
+        s.is_active,
         c.country_name,
         c.short_name AS country_short_name
       FROM states s
@@ -141,7 +142,7 @@ const toggleStateStatus = async (req, res) => {
       return res.status(404).json({ message: "State not found" });
     }
 
-    state.is_active = !state.is_active;
+    state.is_active = req.body.is_active;
     await state.save();
 
     return res.json({
