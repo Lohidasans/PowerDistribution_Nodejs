@@ -4,7 +4,8 @@ const svc = require("../services/purchaseOrderService");
 
 // CRUD
 router.post("/purchase-orders", svc.createPurchaseOrder);
-router.get("/purchase-orders", svc.listPurchaseOrders);
+router.get("/purchase-orders", svc.listPurchaseOrdersForBranchAdmin);
+router.get("/purchase-orders/super-admin", svc.listPurchaseOrdersForSuperAdmin);
 router.get("/purchase-orders/dropdown", svc.listPurchaseOrderNumbers);
 router.get("/purchase-orders/:id", svc.getPurchaseOrderById);
 router.get("/purchase-orders/:id/view", svc.getPurchaseOrderView);

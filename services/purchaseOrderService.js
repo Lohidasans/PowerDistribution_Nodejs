@@ -168,7 +168,7 @@ const deletePurchaseOrder = async (req, res) => {
 };
 
 // List POs with pagination and filters (raw SQL)
-const listPurchaseOrders = async (req, res) => {
+const listPurchaseOrdersForBranchAdmin = async (req, res) => {
   try {
     const {
       page,
@@ -317,7 +317,7 @@ const listPurchaseOrders = async (req, res) => {
 
       ${commonJoins}
 
-      LEFT JOIN purchase_order_items poi 
+      LEFT JOIN purchase_order_items poi
         ON poi.po_id = p.id AND poi.deleted_at IS NULL
 
       ${whereSql}
@@ -348,6 +348,319 @@ const listPurchaseOrders = async (req, res) => {
           limit: limitNum,
         }
         : {}),
+      data: rows,
+    });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
+const listPurchaseOrdersForSuperAdmin = async (req, res) => {
+  try {
+    const {
+      page,
+      limit,
+      status_id = 1,
+      date,
+      search,
+      branch_id,
+      vendor_id,
+    } = req.query;
+
+    const replacements = {};
+
+    let whereSql = `
+      WHERE p.deleted_at IS NULL
+    `;
+
+    if (date) {
+      whereSql += ` AND p.po_date = :date`;
+      replacements.date = date;
+    }
+
+    if (branch_id) {
+      whereSql += ` AND p.branch_id = :branch_id`;
+      replacements.branch_id = Number(branch_id);
+    }
+
+    if (vendor_id) {
+      whereSql += ` AND p.vendor_id = :vendor_id`;
+      replacements.vendor_id = Number(vendor_id);
+    }
+
+    if (search) {
+      whereSql += `
+        AND (
+          p.po_no ILIKE :search
+          OR v.vendor_name ILIKE :search
+          OR b.branch_name ILIKE :search
+          OR cb.branch_name ILIKE :search
+          OR sa.proprietor ILIKE :search
+        )
+      `;
+      replacements.search = `%${search}%`;
+    }
+
+    const commonJoins = `
+      LEFT JOIN vendors v 
+        ON v.id = p.vendor_id
+
+      LEFT JOIN branches b 
+        ON b.id = p.branch_id
+
+      LEFT JOIN sales_orders so
+        ON so.po_id = p.id
+       AND so.deleted_at IS NULL
+
+      -- if branch created
+      LEFT JOIN branches cb
+        ON p.entity_type = 'branch'
+       AND cb.id = p.order_by_user_id
+
+      -- if superadmin created
+      LEFT JOIN superadmin_profiles sa
+        ON p.entity_type = 'superadmin'
+       AND sa.id = p.order_by_user_id
+    `;
+
+    // ==========================================================
+    // SCORE CARD COUNTS
+    //
+    // 1 = Pending Admin Approval 
+    // 2 = Approved + Vendor Accepted / Pending Vendor Response
+    // 3 = Rejected by Superadmin
+    // 4 = Approved by Admin but Vendor Rejected
+    // ==========================================================
+    const countCardsSql = `
+      SELECT
+        COUNT(
+          CASE
+            WHEN p.status_id = 1
+            THEN 1
+          END
+        ) AS approval_pending,
+
+        COUNT(
+          CASE
+            WHEN p.status_id = 2
+            AND (
+                  so.status IS NULL
+                  OR so.status = 'pending'
+                  OR so.status = 'accepted'
+            )
+            THEN 1
+          END
+        ) AS approved,
+
+        COUNT(
+          CASE
+            WHEN p.status_id = 3
+            THEN 1
+          END
+        ) AS rejected_by_superadmin,
+
+        COUNT(
+          CASE
+            WHEN p.status_id = 2
+            AND so.status = 'rejected'
+            THEN 1
+          END
+        ) AS rejected_by_vendor
+
+      FROM purchase_orders p
+      ${commonJoins}
+      ${whereSql}
+    `;
+
+    const [statusCounts] = await sequelize.query(countCardsSql, {
+      replacements,
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    let statusWhere = "";
+
+    //status_id: 1 = Approval Pending, 2 = Approved, 3 = Rejected by Superadmin, 4 = Rejected by Vendor
+    if (Number(status_id) === 1) {
+      statusWhere = `
+        AND p.status_id = 1
+      `;
+    }
+
+    if (Number(status_id) === 2) {
+      statusWhere = `
+      AND p.status_id = 2
+      AND (
+        so.status IS NULL
+        OR so.status = 'pending'
+        OR so.status = 'accepted'
+      )`;
+    }
+
+    if (Number(status_id) === 3) {
+      statusWhere = `
+        AND p.status_id = 3
+      `;
+    }
+
+    if (Number(status_id) === 4) {
+      statusWhere = `
+        AND p.status_id = 2
+        AND so.status = 'rejected'
+      `;
+    }
+
+    const finalWhereSql = whereSql + statusWhere;
+
+    let paginationSql = "";
+    let pageNum = null;
+    let limitNum = null;
+
+    if (page || limit) {
+      pageNum = Number(page) || 1;
+      limitNum = Number(limit) || 10;
+
+      const offset = (pageNum - 1) * limitNum;
+
+      paginationSql = `
+        LIMIT :limit OFFSET :offset
+      `;
+
+      replacements.limit = limitNum;
+      replacements.offset = offset;
+    }
+
+    const totalSql = `
+      SELECT COUNT(DISTINCT p.id) AS total
+      FROM purchase_orders p
+      ${commonJoins}
+      ${finalWhereSql}
+    `;
+
+    const [countResult] = await sequelize.query(totalSql, {
+      replacements,
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    const total = Number(countResult.total || 0);
+
+    // MAIN LIST
+    const listSql = `
+      SELECT
+        p.id,
+        p.po_no,
+        p.po_date AS date,
+        p.status_id,
+        p.branch_id,
+        p.entity_type,
+        p.order_by_user_id,
+
+        so.status AS vendor_status,
+
+        b.branch_name,
+
+        v.id AS vendor_id,
+        v.vendor_name,
+        v.vendor_image_url,
+
+        CASE
+          WHEN p.entity_type = 'superadmin'
+            THEN sa.proprietor
+          WHEN p.entity_type = 'branch'
+            THEN cb.branch_name
+          ELSE NULL
+        END AS created_by_name,
+
+        CASE
+          WHEN p.entity_type = 'superadmin'
+            THEN sa.email_id
+          WHEN p.entity_type = 'branch'
+            THEN cb.email
+          ELSE NULL
+        END AS created_by_mail,
+
+        CASE
+          WHEN p.status_id = 3
+            THEN 'Rejected by Superadmin'
+
+          WHEN p.status_id = 2
+           AND so.status = 'rejected'
+            THEN 'Rejected by Vendor'
+
+          WHEN p.status_id = 2
+           AND so.status = 'accepted'
+            THEN 'Approved'
+
+          WHEN p.status_id = 2
+            AND (so.status = 'pending' OR so.status IS NULL)
+              THEN 'Approved'
+
+          WHEN p.status_id = 1
+            THEN 'Approval Pending'
+
+          ELSE '-'
+        END AS approval_label,
+
+        COALESCE(SUM(poi.ordered_weight), 0) AS ordered_weight
+
+      FROM purchase_orders p
+
+      ${commonJoins}
+
+      LEFT JOIN purchase_order_items poi
+        ON poi.po_id = p.id
+       AND poi.deleted_at IS NULL
+
+      ${finalWhereSql}
+
+      GROUP BY
+        p.id,
+        so.status,
+        b.branch_name,
+        v.id,
+        v.vendor_name,
+        v.vendor_image_url,
+        sa.proprietor,
+        sa.email_id,
+        cb.branch_name,
+        cb.email
+
+      ORDER BY p.po_date DESC, p.id DESC
+
+      ${paginationSql}
+    `;
+
+    const rows = await sequelize.query(listSql, {
+      replacements,
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    // RESPONSE
+    return commonService.okResponse(res, {
+      status_counts: {
+        approval_pending: Number(
+          statusCounts.approval_pending || 0
+        ),
+        approved: Number(
+          statusCounts.approved || 0
+        ),
+        rejected_by_vendor: Number(
+          statusCounts.rejected_by_vendor || 0
+        ),
+        rejected_by_superadmin: Number(
+          statusCounts.rejected_by_superadmin || 0
+        ),
+      },
+
+      total,
+
+      ...(page || limit
+        ? {
+          page: pageNum,
+          totalPages: Math.ceil(total / limitNum),
+          limit: limitNum,
+        }
+        : {}),
+
       data: rows,
     });
   } catch (err) {
@@ -584,7 +897,8 @@ module.exports = {
   getPurchaseOrderById,
   updatePurchaseOrder,
   deletePurchaseOrder,
-  listPurchaseOrders,
+  listPurchaseOrdersForBranchAdmin,
+  listPurchaseOrdersForSuperAdmin,
   getPurchaseOrderView,
   listPurchaseOrderNumbers,
   generatePoCode,
