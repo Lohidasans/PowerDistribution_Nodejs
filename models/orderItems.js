@@ -104,6 +104,40 @@ module.exports = (sequelize, DataTypes) => {
                 allowNull: false,
                 defaultValue: "New Order"
             },
+            shipment_partner: {
+                type: DataTypes.STRING,
+                allowNull: true
+            },
+
+            tracking_id: {
+                type: DataTypes.STRING,
+                allowNull: true
+            },
+
+            processed_by: {
+                type: DataTypes.STRING,
+                allowNull: true
+            },
+
+            shipped_at: {
+                type: DataTypes.DATE,
+                allowNull: true
+            },
+
+            delivered_date: {
+                type: DataTypes.DATEONLY,
+                allowNull: true
+            },
+
+            delivered_time: {
+                type: DataTypes.STRING,
+                allowNull: true
+            },
+
+            delivered_by: {
+                type: DataTypes.STRING,
+                allowNull: true
+            }
         },
         {
         timestamps: true,

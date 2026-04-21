@@ -1,4 +1,4 @@
-const { sequelize } = require("../models");
+const { models, sequelize } = require("../models");
 const { QueryTypes } = require("sequelize");
 const commonService = require("./commonService");
 const { dateFilter } = require("../helpers/dateHelper");
@@ -282,8 +282,328 @@ const getOnlineOrders = async (req, res) => {
     }
 };
 
+const updateShipmentDetails = async (req, res) => {
+    try {
+        const { order_item_id } = req.params;
 
+        const {
+            shipment_partner,
+            tracking_id,
+            processed_by
+        } = req.body;
+
+        await models.OrderItem.update(
+            {
+                shipment_partner,
+                tracking_id,
+                processed_by,
+                shipped_at: new Date(),
+                item_status: "Shipped"
+            },
+            {
+                where: { id: order_item_id }
+            }
+        );
+
+        return commonService.okResponse(res, {
+            message: "Shipment updated successfully"
+        });
+
+    } catch (error) {
+        return commonService.handleError(res, error);
+    }
+};
+
+const updateDeliveredDetails = async (req, res) => {
+    try {
+        const { order_item_id } = req.params;
+
+        const {
+            delivered_date,
+            delivered_time,
+            delivered_by
+        } = req.body;
+
+        const orderItem = await models.OrderItem.findOne({
+            where: {
+                id: order_item_id,
+                deleted_at: null
+            }
+        });
+
+        if (!orderItem) {
+            return commonService.badRequest(
+                res,
+                "Order item not found"
+            );
+        }
+
+        // ONLY SHIPPED ITEMS CAN BE DELIVERED
+        if (orderItem.item_status !== "Shipped") {
+            return commonService.badRequest(
+                res,
+                "Only shipped items can be moved to delivered status"
+            );
+        }
+
+        await models.OrderItem.update(
+            {
+                delivered_date,
+                delivered_time,
+                delivered_by,
+                item_status: "Delivered"
+            },
+            {
+                where: { id: order_item_id }
+            }
+        );
+
+        return commonService.okResponse(res, {
+            message: "Delivered updated successfully"
+        });
+
+    } catch (error) {
+        return commonService.handleError(res, error);
+    }
+};
+
+const getOnlineOrderDetails = async (req, res) => {
+    try {
+        const { order_id } = req.params;
+
+        const orderQuery = `
+      SELECT
+        o.id,
+        o.order_number,
+        TO_CHAR(o.order_date,'DD/MM/YYYY') AS order_date,
+        o.subtotal,
+        o.tax_amount,
+        o.shipping_charge,
+        o.discount_amount,
+        o.total_amount,
+
+        c.customer_name,
+        c.mobile_number,
+        c.email_id,
+
+        c.address AS billing_address,
+        c.pin_code AS billing_pin,
+
+        p.payment_mode,
+        p.transaction_id,
+        TO_CHAR(p.payment_date,'DD/MM/YYYY') AS payment_date,
+        p.amount_received,
+
+        c.address AS shipping_address
+
+      FROM orders o
+
+      JOIN customers c
+        ON c.id = o.customer_id
+        AND c.deleted_at IS NULL
+
+      LEFT JOIN payments p
+        ON p.order_id = o.id
+        AND p.deleted_at IS NULL
+        AND p.status = 'Completed'
+
+      WHERE o.id = :order_id
+      AND o.deleted_at IS NULL
+      LIMIT 1
+    `;
+
+        const [orderInfo] = await sequelize.query(orderQuery, {
+            replacements: { order_id },
+            type: sequelize.QueryTypes.SELECT
+        });
+
+        if (!orderInfo) {
+            return commonService.notFoundResponse(res, "Order not found");
+        }
+
+        // ORDER ITEMS
+        const itemsQuery = `
+      SELECT
+        oi.id AS order_item_id,
+        oi.product_id,
+        oi.product_name,
+        oi.sku_id,
+        oi.image_url,
+        oi.quantity,
+        oi.amount,
+        oi.item_status,
+
+        oi.shipment_partner,
+        oi.tracking_id,
+        oi.processed_by,
+        oi.shipped_at,
+
+        oi.delivered_date,
+        oi.delivered_time,
+        oi.delivered_by,
+
+        b.branch_name
+
+      FROM order_items oi
+
+      JOIN products pr
+        ON pr.id = oi.product_id
+        AND pr.deleted_at IS NULL
+
+      LEFT JOIN branches b
+        ON b.id = pr.branch_id
+        AND b.deleted_at IS NULL
+
+      WHERE oi.order_id = :order_id
+      AND oi.deleted_at IS NULL
+
+      ORDER BY oi.id ASC
+    `;
+
+        const items = await sequelize.query(itemsQuery, {
+            replacements: { order_id },
+            type: sequelize.QueryTypes.SELECT
+        });
+
+        // BUILD TIMELINE PER ITEM
+        const formattedItems = items.map((item, index) => {
+            const timeline = [
+                {
+                    title: `Order Received (${orderInfo.order_number})`,
+                    desc: "Order has been placed successfully",
+                    date: orderInfo.order_date
+                },
+                {
+                    title: "Payment Completed Successfully",
+                    desc: `Amount Paid Via ${orderInfo.payment_mode || ""} Ref No : ${orderInfo.transaction_id || ""}`,
+                    date: orderInfo.payment_date
+                },
+                {
+                    title: "Invoice Generated Successfully",
+                    desc: "Invoice was sent to customer email ID",
+                    date: orderInfo.order_date
+                }
+            ];
+
+            if (
+                item.item_status === "Shipped" ||
+                item.item_status === "Delivered"
+            ) {
+                timeline.push({
+                    title: "Item Shipped Successfully",
+                    desc: `Item shipped via ${item.shipment_partner || ""} Tracking ID: ${item.tracking_id || ""}`,
+                    date: item.shipped_at
+                        ? new Date(item.shipped_at).toLocaleString()
+                        : ""
+                });
+            }
+
+            if (item.item_status === "Delivered") {
+                timeline.push({
+                    title: "Item Delivered Successfully",
+                    desc: "Item delivered successfully to customer",
+                    date:
+                        item.delivered_date && item.delivered_time
+                            ? `${item.delivered_date} ${item.delivered_time}`
+                            : ""
+                });
+            }
+
+            return {
+                item_no: index + 1,
+                order_item_id: item.order_item_id,
+                product_id: item.product_id,
+                product_name: item.product_name,
+                sku_id: item.sku_id,
+                image_url: item.image_url,
+                quantity: item.quantity,
+                amount: item.amount,
+                branch_name: item.branch_name,
+                item_status: item.item_status || "New Order",
+
+                shipment_details: {
+                    shipment_partner: item.shipment_partner,
+                    tracking_id: item.tracking_id,
+                    processed_by: item.processed_by,
+                    shipped_at: item.shipped_at
+                },
+
+                delivered_details: {
+                    delivered_date: item.delivered_date,
+                    delivered_time: item.delivered_time,
+                    delivered_by: item.delivered_by
+                },
+
+                timeline
+            };
+        });
+
+        // OVERALL ORDER STATUS
+        const totalItems = formattedItems.length;
+        const deliveredCount = formattedItems.filter(
+            x => x.item_status === "Delivered"
+        ).length;
+
+        const shippedCount = formattedItems.filter(
+            x => x.item_status === "Shipped"
+        ).length;
+
+        let overall_status = "New Order";
+
+        if (deliveredCount === totalItems) {
+            overall_status = "Delivered";
+        } else if (deliveredCount > 0) {
+            overall_status = "Partially Delivered";
+        } else if (shippedCount === totalItems) {
+            overall_status = "Shipped";
+        } else if (shippedCount > 0) {
+            overall_status = "Partially Shipped";
+        }
+
+        // FINAL RESPONSE
+        return commonService.okResponse(res, {
+            order: {
+                id: orderInfo.id,
+                order_number: orderInfo.order_number,
+                order_date: orderInfo.order_date,
+                overall_status
+            },
+
+            customer_details: {
+                customer_name: orderInfo.customer_name,
+                mobile_number: orderInfo.mobile_number,
+                email_id: orderInfo.email_id,
+                billing_address: orderInfo.billing_address,
+                shipping_address: orderInfo.shipping_address
+            },
+
+            order_summary: {
+                subtotal: orderInfo.subtotal,
+                tax_amount: orderInfo.tax_amount,
+                shipping_charge: orderInfo.shipping_charge,
+                discount_amount: orderInfo.discount_amount,
+                total_amount: orderInfo.total_amount
+            },
+
+            payment_details: {
+                transaction_id: orderInfo.transaction_id,
+                payment_mode: orderInfo.payment_mode,
+                payment_date: orderInfo.payment_date,
+                amount_paid: orderInfo.amount_received
+            },
+
+            items: formattedItems
+        });
+
+    } catch (error) {
+        console.error("getOnlineOrderDetails Error:", error);
+        return commonService.handleError(res, error);
+    }
+};
 
 module.exports = {
-    getOnlineOrders
+    getOnlineOrders,
+    updateShipmentDetails,
+    updateDeliveredDetails,
+    getOnlineOrderDetails
 };
