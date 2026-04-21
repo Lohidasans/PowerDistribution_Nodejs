@@ -94,6 +94,16 @@ module.exports = (sequelize, DataTypes) => {
                 type: DataTypes.JSONB, //[{"label_name": "Length", "value": "18", "measurement_type": "Inches" }]
                 allowNull: true,
             },
+            item_status: {
+                type: DataTypes.ENUM(
+                    "New Order",
+                    "Shipped",
+                    "Delivered",
+                    "Cancelled"
+                ),
+                allowNull: false,
+                defaultValue: "New Order"
+            },
         },
         {
         timestamps: true,
