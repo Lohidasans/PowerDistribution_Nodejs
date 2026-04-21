@@ -18,7 +18,7 @@ module.exports = (sequelize, DataTypes) => {
             },
             reference_id: {
                 type: DataTypes.INTEGER,
-                allowNull: true, //scheme_id, old_jewel_id, or sales_return_id depending on type
+                allowNull: true, //scheme_enrollment_id, old_jewel_id, or sales_return_id depending on type
             },
             reference_no: {
                 type: DataTypes.STRING, // SCH 25/24-25, OJ-001, SR-002 etc.
