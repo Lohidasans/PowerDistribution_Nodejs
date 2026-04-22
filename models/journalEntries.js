@@ -12,7 +12,6 @@ module.exports = (sequelize, DataTypes) => {
       journal_no: {
         type: DataTypes.STRING,
         allowNull: false,
-        unique: true,
       },
 
       date: {

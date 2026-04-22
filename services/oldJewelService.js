@@ -13,6 +13,31 @@ const createOldJewel = async (req, res) => {
     const totalAmount = items.reduce((sum, item) => {
       return sum + (parseFloat(item.amount) || 0);
     }, 0);
+
+    // VALIDATE branch_id
+    if (!jewelData.branch_id) {
+      await transaction.rollback();
+      return commonService.badRequest(res, "branch_id is required");
+    }
+
+    // CHECK DUPLICATE
+    if (jewelData.old_jewel_code) {
+      const existing = await models.OldJewel.findOne({
+        where: {
+          old_jewel_code: jewelData.old_jewel_code,
+          branch_id: jewelData.branch_id,
+        },
+        transaction,
+      });
+
+      if (existing) {
+        await transaction.rollback();
+        return commonService.badRequest(
+          res,
+          "Old jewel code already exists for this branch"
+        );
+      }
+    }
         
     // Create the main jewel record with calculated values
     const jewel = await models.OldJewel.create({

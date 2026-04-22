@@ -87,6 +87,31 @@ const createSalesReturn = async (req, res) => {
     const igstAmt = hasHeaderIgst ? Number(header.igst_amount || 0) : 0;
     const total = subtotal + cgstAmt + sgstAmt + igstAmt;
 
+
+    //  VALIDATE branch_id
+    if (!header.branch_id) {
+      await t.rollback();
+      return commonService.badRequest(res, "branch_id is required");
+    }
+
+    // CHECK DUPLICATE
+    if (header.sales_return_no) {
+      const existing = await models.SalesReturn.findOne({
+        where: {
+          sales_return_no: header.sales_return_no,
+          branch_id: header.branch_id,
+        },
+        transaction: t,
+      });
+
+      if (existing) {
+        await t.rollback();
+        return commonService.badRequest(
+          res,
+          "Sales return number already exists for this branch"
+        );
+      }
+    }
     // Create sales return header
     const salesReturn = await models.SalesReturn.create(
       {

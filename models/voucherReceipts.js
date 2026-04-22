@@ -12,7 +12,6 @@ module.exports = (sequelize) => {
       receipt_no: {
         type: DataTypes.STRING(50),
         allowNull: false,
-        unique: true,
       },
       receipt_date: {
         type: DataTypes.DATEONLY,

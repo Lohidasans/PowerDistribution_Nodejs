@@ -31,6 +31,24 @@ const createEstimate = async (req, res) => {
       return commonService.badRequest(res, "At least one item is required");
     }
 
+    if (header.estimate_no) {
+      const existing = await models.EstimateBill.findOne({
+        where: {
+          estimate_no: header.estimate_no,
+          branch_id: header.branch_id, 
+          deleted_at: null,
+        },
+        transaction: t
+      });
+
+      if (existing) {
+        await t.rollback();
+        return commonService.badRequest(
+          res,
+          "Estimate number already exists for this branch"
+        );
+      }
+    }
     // Run validations
     await validateProducts(items, t);
     await validateProductItemDetails(items, t);

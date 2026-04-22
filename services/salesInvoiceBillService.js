@@ -264,6 +264,7 @@ const listSalesInvoices = async (req, res) => {
               'rate', rate,
               'discount_amount', discount_amount,
               'amount', amount,
+              'is_returned', is_returned,
               'created_at', created_at,
               'updated_at', updated_at
             )

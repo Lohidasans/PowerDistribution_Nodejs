@@ -25,13 +25,14 @@ const createGrn = async (req, res) => {
       const existing = await models.Grn.findOne({
         where: {
           grn_no: grn_no,
+          branch_id: grnData.branch_id, 
           deleted_at: null,     // only check active (non-deleted) records
         },
       });
 
       if (existing) {
         return commonService.badRequest(res, {
-          message: "Grn code already exists",
+          message: "Grn code already exists for this branch",
         });
       }
     }

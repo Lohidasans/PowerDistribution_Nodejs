@@ -11,7 +11,6 @@ module.exports = (sequelize, DataTypes) => {
       sales_return_no: {
         type: DataTypes.STRING,
         allowNull: false,
-        unique: true,
       },
       return_date: {
         type: DataTypes.DATEONLY,

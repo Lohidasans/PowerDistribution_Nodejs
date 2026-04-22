@@ -47,7 +47,7 @@ const createJournalEntry = async (req, res) => {
     /* ================= CHECK DUPLICATE ================= */
 
     const existing = await models.JournalEntry.findOne({
-      where: { journal_no: payload.journal_no },
+      where: { journal_no: payload.journal_no, branch_id: payload.branch_id, },
       paranoid: false, // include soft-deleted
       transaction: t,
     });
@@ -56,16 +56,15 @@ const createJournalEntry = async (req, res) => {
 
     if (existing) {
       if (existing.deleted_at) {
-        // 🔁 Restore soft-deleted record
+        // restore
         await existing.restore({ transaction: t });
         await existing.update(payload, { transaction: t });
         journalEntry = existing;
       } else {
-        // ❌ Active duplicate
         await t.rollback();
         return commonService.badRequest(
           res,
-          "journal_no already exists"
+          "journal_no already exists for this branch"
         );
       }
     } else {

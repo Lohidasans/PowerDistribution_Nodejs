@@ -11,7 +11,6 @@ module.exports = (sequelize, DataTypes) => {
       estimate_no: {
         type: DataTypes.STRING,
         allowNull: false,
-        unique: true,
       },
       estimate_date: {
         type: DataTypes.DATEONLY,

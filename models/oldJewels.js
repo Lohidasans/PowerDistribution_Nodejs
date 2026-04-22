@@ -11,7 +11,6 @@ module.exports = (sequelize, DataTypes) => {
       old_jewel_code: {
         type: DataTypes.STRING,
         allowNull: true,
-        unique:true
       },
       employee_id: {
         type: DataTypes.INTEGER,

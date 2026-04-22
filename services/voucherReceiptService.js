@@ -39,16 +39,23 @@ const createVoucherReceipt = async (req, res) => {
       remarks,
     } = req.body;
 
+    if (!branch_id) {
+      await t.rollback();
+      return commonService.badRequest(res, "branch_id is required");
+    }
+
     const existing = await models.VoucherReceipt.findOne({
       where: {
         receipt_no,
-        deleted_at: null,
+        branch_id,
       },
+      transaction: t,
     });
 
     if (existing) {
+      await t.rollback();
       return commonService.badRequest(res, {
-        message: "Receipt number already exists",
+        message: "Receipt number already exists for this branch",
       });
     }
 
