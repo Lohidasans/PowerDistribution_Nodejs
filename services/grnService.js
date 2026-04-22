@@ -904,16 +904,19 @@ const updateGrnStatus = async (req, res) => {
       return commonService.notFound(res, "GRN not found");
     }
 
-    // 2️. Check if GRN has items
+    // 2. Check if products exist for this GRN
     if (is_active === false) {
-      const itemCount = await models.GrnItem.count({
+      const productCount = await models.Product.count({
         where: { grn_id },
         transaction: t,
       });
 
-      if (itemCount > 0) {
+      if (productCount > 0) {
         await t.rollback();
-        return commonService.notFound(res, "Cannot deactivate GRN because items exist for this GRN");
+        return commonService.badRequest(
+          res,
+          "Cannot deactivate GRN because products exist for this GRN"
+        );
       }
     }
 
@@ -934,6 +937,182 @@ const updateGrnStatus = async (req, res) => {
   }
 };
 
+const completeGrn = async (req, res) => {
+  const transaction = await sequelize.transaction();
+
+  try {
+    const { grn_id } = req.params;
+
+    const {
+      adjustment_weight_in_g = 0,
+      adjustment_quantity = 0,
+      adjustment_type = "MANUAL",
+      remarks,
+      completed_by,
+      branch_id
+    } = req.body;
+
+    /* ---------------------------------
+       VALIDATION
+    --------------------------------- */
+    if (!remarks) {
+      await transaction.rollback();
+      return commonService.badRequest(res, {
+        message: "remarks is required"
+      });
+    }
+
+    const grn = await models.Grn.findOne({
+      where: {
+        id: grn_id,
+        deleted_at: null
+      },
+      transaction
+    });
+
+    if (!grn) {
+      await transaction.rollback();
+      return commonService.badRequest(res, {
+        message: "GRN not found"
+      });
+    }
+
+    if (grn.status_id === 2) {
+      await transaction.rollback();
+      return commonService.badRequest(res, {
+        message: "GRN already completed"
+      });
+    }
+
+    /* ---------------------------------
+       GET ORDERED VALUES
+    --------------------------------- */
+    const ordered = await models.GrnItem.findOne({
+      attributes: [
+        [
+          sequelize.fn(
+            "COALESCE",
+            sequelize.fn("SUM", sequelize.col("net_wt_in_g")),
+            0
+          ),
+          "ordered_weight"
+        ],
+        [
+          sequelize.fn(
+            "COALESCE",
+            sequelize.fn("SUM", sequelize.col("quantity")),
+            0
+          ),
+          "ordered_qty"
+        ]
+      ],
+      where: {
+        grn_id,
+        deleted_at: null
+      },
+      raw: true,
+      transaction
+    });
+
+    const orderedWeight =
+      parseFloat(ordered.ordered_weight) || 0;
+
+    const orderedQty =
+      parseInt(ordered.ordered_qty) || 0;
+
+    /* ---------------------------------
+       GET SYSTEM UPDATED VALUES
+    --------------------------------- */
+    const [updated] = await sequelize.query(
+      `
+      SELECT
+        COALESCE(SUM(pid.net_weight * pid.quantity),0) AS updated_weight,
+        COALESCE(SUM(pid.quantity),0) AS updated_qty
+      FROM products p
+      JOIN "productItemDetails" pid
+        ON pid.product_id = p.id
+       AND pid.deleted_at IS NULL
+      WHERE p.deleted_at IS NULL
+        AND p.grn_id = :grn_id
+      `,
+      {
+        replacements: { grn_id },
+        type: sequelize.QueryTypes.SELECT,
+        transaction
+      }
+    );
+
+    const updatedWeight =
+      parseFloat(updated.updated_weight) || 0;
+
+    const updatedQty =
+      parseInt(updated.updated_qty) || 0;
+
+    /* ---------------------------------
+       FINAL VALUES AFTER MANUAL ADJUSTMENT
+    --------------------------------- */
+    const finalWeight =
+      updatedWeight + Number(adjustment_weight_in_g);
+
+    const finalQty =
+      updatedQty + Number(adjustment_quantity);
+
+    /* ---------------------------------
+       SAVE ADJUSTMENT ENTRY
+    --------------------------------- */
+    await models.GrnAdjustment.create(
+      {
+        grn_id,
+        adjustment_weight_in_g,
+        adjustment_quantity,
+        adjustment_type,
+        remarks,
+        completed_by,
+        branch_id
+      },
+      { transaction }
+    );
+
+    /* ---------------------------------
+       COMPLETE MAIN GRN
+    --------------------------------- */
+    await models.Grn.update(
+      {
+        status_id: 2,
+        remarks
+      },
+      {
+        where: { id: grn_id },
+        transaction
+      }
+    );
+
+    await transaction.commit();
+
+    return commonService.okResponse(res, {
+      message: "GRN completed successfully",
+      data: {
+        grn_id,
+        ordered_weight: orderedWeight,
+        updated_weight: updatedWeight,
+        final_weight: finalWeight,
+
+        ordered_quantity: orderedQty,
+        updated_quantity: updatedQty,
+        final_quantity: finalQty,
+
+        adjustment_weight_in_g,
+        adjustment_quantity,
+        adjustment_type
+      }
+    });
+
+  } catch (error) {
+    await transaction.rollback();
+    return commonService.handleError(res, error);
+  }
+};
+
 
 module.exports = {
   createGrn,
@@ -947,4 +1126,5 @@ module.exports = {
   getAllGrnInfos,
   updateGrnStatus,
   exportGrnReport,
+  completeGrn
 };

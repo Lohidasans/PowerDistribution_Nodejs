@@ -3,7 +3,8 @@ const router = express.Router();
 const svc = require("../services/grnService");
 
 // Routes
-router.post("/grns",  svc.createGrn);
+router.post("/grns", svc.createGrn);
+router.post("/grns/:grn_id/complete", svc.completeGrn);
 router.get("/grns", svc.getAllGrns);
 router.get("/grns/refno", svc.getAllGrnInfos);
 router.get("/grns/dropdown", svc.listGrnNumbers);

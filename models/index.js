@@ -101,6 +101,7 @@ const ProductVariant = require("./productVariants")(sequelize, Sequelize.DataTyp
 // GRN related models
 const Grn = require("./grns")(sequelize, Sequelize.DataTypes);
 const GrnItem = require("./grnItems")(sequelize, Sequelize.DataTypes);
+const GrnAdjustment = require("./grnAdjustments")(sequelize, Sequelize.DataTypes);
 const ProductGrnInfo = require("./productGrnInfos")(sequelize, Sequelize.DataTypes);
 const Purity = require("./purities")(sequelize, Sequelize.DataTypes);
 
@@ -225,6 +226,7 @@ const models = {
   Product,
   Grn,
   GrnItem,
+  GrnAdjustment,
   ProductGrnInfo,
   PurchaseOrder,
   PurchaseOrderItem,
