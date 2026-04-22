@@ -74,7 +74,8 @@ const generateCode = async (req, res) => {
             field,
             prefix,
             suffix,
-            startNo
+            startNo,
+            branch_id
         );
 
         return commonService.okResponse(res, { unique_code: code });

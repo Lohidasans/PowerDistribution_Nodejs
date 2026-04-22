@@ -203,16 +203,15 @@ const generateBranchSeriesCode = async (
   prefix,
   suffix,
   startNo,
+  branch_id,
   { pad = 3 } = {}
 ) => {
   const cleanPrefix = String(prefix).trim().toUpperCase();
   const cleanSuffix = String(suffix).trim();
 
-  // Escape regex
   const escapedPrefix = cleanPrefix.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&");
   const escapedSuffix = cleanSuffix.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&");
 
-  // 🔥 KEY: match full pattern PREFIX + NUMBER + / + SUFFIX
   const regexPattern = `^${escapedPrefix}[0-9]+/${escapedSuffix}$`;
 
   const [result] = await model.sequelize.query(
@@ -225,10 +224,13 @@ const generateBranchSeriesCode = async (
       ) AS max_no
     FROM ${model.getTableName()}
     WHERE ${field} ~* :regex
+      AND branch_id = :branch_id
+      AND deleted_at IS NULL
     `,
     {
       replacements: {
-        regex: regexPattern
+        regex: regexPattern,
+        branch_id
       },
       type: model.sequelize.QueryTypes.SELECT,
     }
