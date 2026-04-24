@@ -9,7 +9,13 @@ const createGrn = async (req, res) => {
 
   try {
     const { items = [], ...grnData } = req.body;
-    const { grn_no } = grnData;
+    const {
+      grn_no,
+      entity_type,
+      order_by_user_id,
+      branch_id
+    } = grnData;
+
 
     // Required validation
     const requiredFields = ["grn_no", "grn_date", "vendor_id"];
@@ -20,12 +26,19 @@ const createGrn = async (req, res) => {
       }
     }
 
+    let validationBranchId = branch_id;
+    if (
+      entity_type === "superadmin" ||
+      entity_type === "branch"
+    ) {
+      validationBranchId = order_by_user_id;
+    }
     // Check if a non-deleted grn already uses this code
     if (grn_no) {
       const existing = await models.Grn.findOne({
         where: {
           grn_no: grn_no,
-          branch_id: grnData.branch_id, 
+          branch_id: validationBranchId,
           deleted_at: null,     // only check active (non-deleted) records
         },
       });
