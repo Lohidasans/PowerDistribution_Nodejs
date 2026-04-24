@@ -410,39 +410,39 @@ const getAllGrns = async (req, res) => {
 
       -- ✅ UPDATED WEIGHT(FIXED LOGIC)
       LEFT JOIN (
-        SELECT 
-              p.grn_id,
-              -- STOCK WEIGHT(remaining in system)
-              SUM(pid.quantity * pid.net_weight) AS stock_weight,
-              --SOLD WEIGHT
-              COALESCE(SUM(sii.quantity * sii.net_weight), 0) AS sold_weight,
-              --FINAL UPDATED
-              SUM(pid.quantity * pid.net_weight) +
-              COALESCE(SUM(sii.quantity * sii.net_weight), 0) AS total_updated_weight,
+        SELECT
+          p.grn_id,          
+          SUM(pid.quantity * pid.net_weight)     --CURRENT STOCK
+            + COALESCE(SUM(                    --OFFLINE BILL SOLD
+              CASE
+                WHEN sib.status = 'Invoice'
+                THEN sii.quantity * sii.net_weight
+                ELSE 0
+              END
+            ),0)         
+          + COALESCE(SUM(oi.quantity * pid.net_weight),0) AS total_updated_weight,   --ONLINE ORDER SOLD
 
-              SUM(pid.quantity) + COALESCE(SUM(sii.quantity), 0) AS total_updated_qty
+          SUM(pid.quantity) + COALESCE(SUM(   --QTY 
+              CASE
+                WHEN sib.status = 'Invoice'
+                THEN sii.quantity
+                ELSE 0
+              END
+            ),0) + COALESCE(SUM(oi.quantity),0) AS total_updated_qty
 
         FROM products p
 
-        JOIN "productItemDetails" pid
-          ON pid.product_id = p.id
-          AND pid.deleted_at IS NULL
-
-        LEFT JOIN sales_invoice_bill_items sii
-          ON sii.product_item_detail_id = pid.id
-          AND sii.deleted_at IS NULL
-          AND sii.is_returned = false
-
-        LEFT JOIN sales_invoice_bills sib
-          ON sib.id = sii.invoice_bill_id
-          AND sib.deleted_at IS NULL
-          AND sib.status = 'Invoice'
+        JOIN "productItemDetails" pid ON pid.product_id = p.id  AND pid.deleted_at IS NULL
+        LEFT JOIN sales_invoice_bill_items sii ON sii.product_item_detail_id = pid.id AND sii.deleted_at IS NULL AND sii.is_returned = false
+        LEFT JOIN sales_invoice_bills sib ON sib.id = sii.invoice_bill_id AND sib.deleted_at IS NULL
+        LEFT JOIN order_items oi ON oi.product_item_id = pid.id AND oi.deleted_at IS NULL AND oi.item_status != 'Cancelled'
 
         WHERE p.deleted_at IS NULL
-        AND (
-          (:isHeadOffice = true) -- ✅ HO sees ALL
-          OR (p.branch_id = :branch_id)-- ✅ Branch sees own
-        )
+          AND (
+            (:isHeadOffice = true)
+            OR p.branch_id = :branch_id
+          )
+
         GROUP BY p.grn_id
       ) pi ON pi.grn_id = g.id
 
@@ -477,10 +477,10 @@ const getAllGrns = async (req, res) => {
       const orderedWeight = parseFloat(row.ordered_weight) || 0;
       const orderedQty = parseInt(row.ordered_qty) || 0;
 
-      const systemUpdatedWeight =
+      const updatedWeight =
         parseFloat(row.system_updated_weight) || 0;
 
-      const systemUpdatedQty =
+      const updatedQty =
         parseInt(row.system_updated_qty) || 0;
 
       const adjustmentWeight =
@@ -488,22 +488,22 @@ const getAllGrns = async (req, res) => {
 
       const adjustmentQty =
         parseInt(row.adjustment_qty) || 0;
-
-      const finalUpdatedWeight =
-        systemUpdatedWeight + adjustmentWeight;
-
-      const finalUpdatedQty =
-        systemUpdatedQty + adjustmentQty;
-
+      
       const yetToUpdateWeight =
-        row.status_id === 2
-          ? 0
-          : Math.max(0, orderedWeight - finalUpdatedWeight);
+        orderedWeight - updatedWeight;
 
       const yetToUpdateQty =
-        row.status_id === 2
-          ? 0
-          : Math.max(0, orderedQty - finalUpdatedQty);
+        orderedQty - updatedQty;
+
+      // const yetToUpdateWeight =
+      //   row.status_id === 2
+      //     ? 0
+      //     : Math.max(0, orderedWeight - updatedWeight);
+
+      // const yetToUpdateQty =
+      //   row.status_id === 2
+      //     ? 0
+      //     : Math.max(0, orderedQty - updatedQty);
 
       if (row.status_id === 2) completedCount++;
       else pendingCount++;
@@ -512,9 +512,11 @@ const getAllGrns = async (req, res) => {
         id: row.id,
         grn_no: row.grn_no,
         date: row.date,
+
         vendor_id: row.vendor_id,
         vendor_name: row.vendor_name,
         vendor_image_url: row.vendor_image_url,
+
         created_by: row.created_by,
         location: row.location,
         remarks: row.remarks,
@@ -523,14 +525,19 @@ const getAllGrns = async (req, res) => {
         status:
           row.status_id === 2 ? "Completed" : "Pending",
 
+        /* ORDER */
         ordered_weight: +orderedWeight.toFixed(3),
-        updated_weight: +finalUpdatedWeight.toFixed(3),
-        yet_to_update_weight: +yetToUpdateWeight.toFixed(3),
-
         ordered_qty: orderedQty,
-        updated_qty: finalUpdatedQty,
+
+        /* UPDATED */
+        updated_weight: +updatedWeight.toFixed(3),
+        updated_qty: updatedQty,
+
+        /* BALANCE */
+        yet_to_update_weight: +yetToUpdateWeight.toFixed(3),
         yet_to_update_qty: yetToUpdateQty,
 
+        /* SEPARATE ADJUSTMENT */
         adjustment_weight: +adjustmentWeight.toFixed(3),
         adjustment_qty: adjustmentQty
       };
