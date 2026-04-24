@@ -6,6 +6,7 @@ const svc = require("../services/grnService");
 router.post("/grns", svc.createGrn);
 router.post("/grns/:grn_id/complete", svc.completeGrn);
 router.get("/grns", svc.getAllGrns);
+router.get("/grns/:grn_id/complete-details", svc.getCompleteGrnDetails);
 router.get("/grns/refno", svc.getAllGrnInfos);
 router.get("/grns/dropdown", svc.listGrnNumbers);
 router.get("/grns/export", svc.exportGrnReport);

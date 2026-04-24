@@ -295,14 +295,15 @@ const getAllGrns = async (req, res) => {
       limit
     } = req.query;
 
-    // ✅ branch_id mandatory
+    /* -----------------------------
+       VALIDATION
+    ----------------------------- */
     if (!branch_id) {
       return commonService.badRequest(res, {
         message: "branch_id is required"
       });
     }
 
-    // ✅ Identify Head Office (adjust logic if needed)
     const isHeadOffice = parseInt(branch_id) === 1; 
 
     const hasPagination = page && limit;
@@ -336,20 +337,41 @@ const getAllGrns = async (req, res) => {
       replacements.search = `%${search}%`;
     }
 
-    const whereSql = `WHERE ${ whereConditions.join(" AND ") } `;
+    if (status === "completed") {
+      whereConditions.push(`g.status_id = 2`);
+    }
 
+    if (status === "pending") {
+      whereConditions.push(`g.status_id = 1`);
+    }
+
+    const whereSql = `WHERE ${whereConditions.join(" AND ")}`;
+
+    /* -----------------------------
+       MAIN QUERY
+    ----------------------------- */
     const listRows = await sequelize.query(
-      `SELECT
+      `
+      SELECT
         g.id,
         g.grn_no,
         g.grn_date AS date,
         g.status_id,
         g.entity_type,
+        g.remarks,
+
         v.id AS vendor_id,
         v.vendor_name,
         v.vendor_image_url,
 
-        COALESCE(gi.total_net_weight, 0) AS "order",
+        COALESCE(gi.total_order_weight, 0) AS ordered_weight,
+        COALESCE(gi.total_order_qty, 0) AS ordered_qty,
+
+        COALESCE(pi.total_updated_weight, 0) AS system_updated_weight,
+        COALESCE(pi.total_updated_qty, 0) AS system_updated_qty,
+
+        COALESCE(ga.adjustment_weight, 0) AS adjustment_weight,
+        COALESCE(ga.adjustment_qty, 0) AS adjustment_qty,
 
         CASE
           WHEN g.entity_type = 'superadmin' THEN sp.company_name
@@ -358,37 +380,35 @@ const getAllGrns = async (req, res) => {
           ELSE 'Unknown'
         END AS created_by,
 
-        d.district_name AS location,
-
-        COALESCE(pi.total_updated_weight, 0) AS updated_weight
+        d.district_name AS location
 
       FROM grns g
 
       LEFT JOIN vendors v ON v.id = g.vendor_id
 
       LEFT JOIN superadmin_profiles sp
-      ON sp.id = g.order_by_user_id AND g.entity_type = 'superadmin'
+        ON sp.id = g.order_by_user_id AND g.entity_type = 'superadmin'
 
       LEFT JOIN branches b
-      ON b.id = g.order_by_user_id AND g.entity_type = 'branch'
+        ON b.id = g.order_by_user_id AND g.entity_type = 'branch'
 
       LEFT JOIN employees e
-      ON e.id = g.order_by_user_id AND g.entity_type = 'employee'
+        ON e.id = g.order_by_user_id AND g.entity_type = 'employee'
 
       LEFT JOIN districts d ON (
         (g.entity_type = 'superadmin' AND d.id = sp.district_id) OR
         (g.entity_type = 'branch' AND d.id = b.district_id)
       )
 
--- ✅ ORDER WEIGHT
+      -- ORDER WEIGHT
       LEFT JOIN (
-        SELECT grn_id, SUM(net_wt_in_g) total_net_weight
+        SELECT grn_id, SUM(net_wt_in_g) AS total_order_weight, SUM(quantity) AS total_order_qty
         FROM "grnItems"
         WHERE deleted_at IS NULL
         GROUP BY grn_id
       ) gi ON gi.grn_id = g.id
 
--- ✅ UPDATED WEIGHT(FIXED LOGIC)
+      -- ✅ UPDATED WEIGHT(FIXED LOGIC)
       LEFT JOIN (
         SELECT 
               p.grn_id,
@@ -398,23 +418,26 @@ const getAllGrns = async (req, res) => {
               COALESCE(SUM(sii.quantity * sii.net_weight), 0) AS sold_weight,
               --FINAL UPDATED
               SUM(pid.quantity * pid.net_weight) +
-              COALESCE(SUM(sii.quantity * sii.net_weight), 0) AS total_updated_weight
+              COALESCE(SUM(sii.quantity * sii.net_weight), 0) AS total_updated_weight,
+
+              SUM(pid.quantity) + COALESCE(SUM(sii.quantity), 0) AS total_updated_qty
 
         FROM products p
 
         JOIN "productItemDetails" pid
-              ON pid.product_id = p.id
-              AND pid.deleted_at IS NULL
+          ON pid.product_id = p.id
+          AND pid.deleted_at IS NULL
 
         LEFT JOIN sales_invoice_bill_items sii
-              ON sii.product_item_detail_id = pid.id
-              AND sii.deleted_at IS NULL
-              AND sii.is_returned = false
+          ON sii.product_item_detail_id = pid.id
+          AND sii.deleted_at IS NULL
+          AND sii.is_returned = false
 
         LEFT JOIN sales_invoice_bills sib
-              ON sib.id = sii.invoice_bill_id
-              AND sib.deleted_at IS NULL
-              AND sib.status = 'Invoice'
+          ON sib.id = sii.invoice_bill_id
+          AND sib.deleted_at IS NULL
+          AND sib.status = 'Invoice'
+
         WHERE p.deleted_at IS NULL
         AND (
           (:isHeadOffice = true) -- ✅ HO sees ALL
@@ -423,54 +446,109 @@ const getAllGrns = async (req, res) => {
         GROUP BY p.grn_id
       ) pi ON pi.grn_id = g.id
 
-      ${ whereSql }
+      /* ADJUSTMENTS */
+      LEFT JOIN (
+        SELECT
+          grn_id,
+          SUM(adjustment_weight_in_g) AS adjustment_weight,
+          SUM(adjustment_quantity) AS adjustment_qty
+        FROM grn_adjustments
+        WHERE deleted_at IS NULL
+        GROUP BY grn_id
+      ) ga ON ga.grn_id = g.id
 
-      ORDER BY g.created_at DESC, g.grn_date DESC, g.grn_no DESC
+      ${whereSql}
+
+      ORDER BY g.created_at DESC, g.id DESC
       `,
-      { replacements, type: sequelize.QueryTypes.SELECT }
+      {
+        replacements,
+        type: sequelize.QueryTypes.SELECT
+      }
     );
 
-    let updatedCount = 0;
-    let yetToUpdateCount = 0;
+    /* -----------------------------
+       RESPONSE TRANSFORM
+    ----------------------------- */
+    let completedCount = 0;
+    let pendingCount = 0;
 
     const transformedRows = listRows.map((row) => {
-      const order = parseFloat(row.order) || 0;
-      const updated = parseFloat(row.updated_weight) || 0;
-      const yetToUpdate = Math.max(0, order - updated);
+      const orderedWeight = parseFloat(row.ordered_weight) || 0;
+      const orderedQty = parseInt(row.ordered_qty) || 0;
 
-      const status_id = yetToUpdate <= 0.001 ? 2 : 1;
+      const systemUpdatedWeight =
+        parseFloat(row.system_updated_weight) || 0;
 
-      if (status_id === 2) updatedCount++;
-      else yetToUpdateCount++;
+      const systemUpdatedQty =
+        parseInt(row.system_updated_qty) || 0;
+
+      const adjustmentWeight =
+        parseFloat(row.adjustment_weight) || 0;
+
+      const adjustmentQty =
+        parseInt(row.adjustment_qty) || 0;
+
+      const finalUpdatedWeight =
+        systemUpdatedWeight + adjustmentWeight;
+
+      const finalUpdatedQty =
+        systemUpdatedQty + adjustmentQty;
+
+      const yetToUpdateWeight =
+        row.status_id === 2
+          ? 0
+          : Math.max(0, orderedWeight - finalUpdatedWeight);
+
+      const yetToUpdateQty =
+        row.status_id === 2
+          ? 0
+          : Math.max(0, orderedQty - finalUpdatedQty);
+
+      if (row.status_id === 2) completedCount++;
+      else pendingCount++;
 
       return {
-        ...row,
-        order: parseFloat(order.toFixed(3)),
-        updated: parseFloat(updated.toFixed(3)),
-        yetToUpdate: parseFloat(yetToUpdate.toFixed(3)),
-        status_id
+        id: row.id,
+        grn_no: row.grn_no,
+        date: row.date,
+        vendor_id: row.vendor_id,
+        vendor_name: row.vendor_name,
+        vendor_image_url: row.vendor_image_url,
+        created_by: row.created_by,
+        location: row.location,
+        remarks: row.remarks,
+
+        status_id: row.status_id,
+        status:
+          row.status_id === 2 ? "Completed" : "Pending",
+
+        ordered_weight: +orderedWeight.toFixed(3),
+        updated_weight: +finalUpdatedWeight.toFixed(3),
+        yet_to_update_weight: +yetToUpdateWeight.toFixed(3),
+
+        ordered_qty: orderedQty,
+        updated_qty: finalUpdatedQty,
+        yet_to_update_qty: yetToUpdateQty,
+
+        adjustment_weight: +adjustmentWeight.toFixed(3),
+        adjustment_qty: adjustmentQty
       };
     });
 
-    // ✅ STATUS FILTER
-    let filteredRows = transformedRows;
-
-    if (status === "updated") {
-      filteredRows = transformedRows.filter((r) => r.status_id === 2);
-    }
-
-    if (status === "pending") {
-      filteredRows = transformedRows.filter((r) => r.status_id === 1);
-    }
-
-    // ✅ PAGINATION
-    let paginatedData = filteredRows;
+    /* -----------------------------
+       PAGINATION
+    ----------------------------- */
+    let finalData = transformedRows;
     let pagination = null;
 
     if (hasPagination) {
-      const totalItems = filteredRows.length;
+      const totalItems = transformedRows.length;
 
-      paginatedData = filteredRows.slice(offset, offset + pageSize);
+      finalData = transformedRows.slice(
+        offset,
+        offset + pageSize
+      );
 
       pagination = {
         page: pageNumber,
@@ -483,11 +561,11 @@ const getAllGrns = async (req, res) => {
     return commonService.okResponse(res, {
       summary: {
         totalGrns: transformedRows.length,
-        updated: updatedCount,
-        yetToUpdate: yetToUpdateCount
+        completed: completedCount,
+        pending: pendingCount
       },
       pagination,
-      data: paginatedData
+      data: finalData
     });
 
   } catch (error) {
@@ -966,9 +1044,6 @@ const completeGrn = async (req, res) => {
       branch_id
     } = req.body;
 
-    /* ---------------------------------
-       VALIDATION
-    --------------------------------- */
     if (!remarks) {
       await transaction.rollback();
       return commonService.badRequest(res, {
@@ -998,82 +1073,6 @@ const completeGrn = async (req, res) => {
       });
     }
 
-    /* ---------------------------------
-       GET ORDERED VALUES
-    --------------------------------- */
-    const ordered = await models.GrnItem.findOne({
-      attributes: [
-        [
-          sequelize.fn(
-            "COALESCE",
-            sequelize.fn("SUM", sequelize.col("net_wt_in_g")),
-            0
-          ),
-          "ordered_weight"
-        ],
-        [
-          sequelize.fn(
-            "COALESCE",
-            sequelize.fn("SUM", sequelize.col("quantity")),
-            0
-          ),
-          "ordered_qty"
-        ]
-      ],
-      where: {
-        grn_id,
-        deleted_at: null
-      },
-      raw: true,
-      transaction
-    });
-
-    const orderedWeight =
-      parseFloat(ordered.ordered_weight) || 0;
-
-    const orderedQty =
-      parseInt(ordered.ordered_qty) || 0;
-
-    /* ---------------------------------
-       GET SYSTEM UPDATED VALUES
-    --------------------------------- */
-    const [updated] = await sequelize.query(
-      `
-      SELECT
-        COALESCE(SUM(pid.net_weight * pid.quantity),0) AS updated_weight,
-        COALESCE(SUM(pid.quantity),0) AS updated_qty
-      FROM products p
-      JOIN "productItemDetails" pid
-        ON pid.product_id = p.id
-       AND pid.deleted_at IS NULL
-      WHERE p.deleted_at IS NULL
-        AND p.grn_id = :grn_id
-      `,
-      {
-        replacements: { grn_id },
-        type: sequelize.QueryTypes.SELECT,
-        transaction
-      }
-    );
-
-    const updatedWeight =
-      parseFloat(updated.updated_weight) || 0;
-
-    const updatedQty =
-      parseInt(updated.updated_qty) || 0;
-
-    /* ---------------------------------
-       FINAL VALUES AFTER MANUAL ADJUSTMENT
-    --------------------------------- */
-    const finalWeight =
-      updatedWeight + Number(adjustment_weight_in_g);
-
-    const finalQty =
-      updatedQty + Number(adjustment_quantity);
-
-    /* ---------------------------------
-       SAVE ADJUSTMENT ENTRY
-    --------------------------------- */
     await models.GrnAdjustment.create(
       {
         grn_id,
@@ -1087,9 +1086,6 @@ const completeGrn = async (req, res) => {
       { transaction }
     );
 
-    /* ---------------------------------
-       COMPLETE MAIN GRN
-    --------------------------------- */
     await models.Grn.update(
       {
         status_id: 2,
@@ -1104,25 +1100,221 @@ const completeGrn = async (req, res) => {
     await transaction.commit();
 
     return commonService.okResponse(res, {
-      message: "GRN completed successfully",
-      data: {
-        grn_id,
-        ordered_weight: orderedWeight,
-        updated_weight: updatedWeight,
-        final_weight: finalWeight,
-
-        ordered_quantity: orderedQty,
-        updated_quantity: updatedQty,
-        final_quantity: finalQty,
-
-        adjustment_weight_in_g,
-        adjustment_quantity,
-        adjustment_type
-      }
+      message: "GRN completed successfully"
     });
 
   } catch (error) {
     await transaction.rollback();
+    return commonService.handleError(res, error);
+  }
+};
+
+const getCompleteGrnDetails = async (req, res) => {
+  try {
+    const { grn_id } = req.params;
+    const { branch_id } = req.query;
+
+    if (!grn_id) {
+      return commonService.badRequest(res, {
+        message: "grn_id is required"
+      });
+    }
+
+    if (!branch_id) {
+      return commonService.badRequest(res, {
+        message: "branch_id is required"
+      });
+    }
+
+    const isHeadOffice = parseInt(branch_id) === 1;
+
+    const [row] = await sequelize.query(
+      `
+      SELECT
+        g.id,
+        g.grn_no,
+        g.grn_date,
+        g.status_id,
+
+        v.id AS vendor_id,
+        v.vendor_name,
+        v.vendor_code,
+        v.vendor_image_url,
+        v.mobile,
+        v.gst_no,
+        v.address,
+        v.pin_code,
+
+        s.state_name,
+        d.district_name,
+
+        COALESCE(gi.ordered_weight, 0) AS ordered_weight,
+        COALESCE(gi.ordered_qty, 0) AS ordered_qty,
+
+        COALESCE(pi.updated_weight, 0) AS updated_weight,
+        COALESCE(pi.updated_qty, 0) AS updated_qty,
+
+        COALESCE(ga.adjustment_weight, 0) AS adjustment_weight,
+        COALESCE(ga.adjustment_qty, 0) AS adjustment_qty
+
+      FROM grns g
+
+      LEFT JOIN vendors v
+        ON v.id = g.vendor_id
+       AND v.deleted_at IS NULL
+
+      LEFT JOIN states s
+        ON s.id = v.state_id
+
+      LEFT JOIN districts d
+        ON d.id = v.district_id
+
+      /* ORDERED */
+      LEFT JOIN (
+        SELECT
+          grn_id,
+          SUM(net_wt_in_g) AS ordered_weight,
+          SUM(quantity) AS ordered_qty
+        FROM "grnItems"
+        WHERE deleted_at IS NULL
+        GROUP BY grn_id
+      ) gi ON gi.grn_id = g.id
+
+      /* UPDATED */
+      LEFT JOIN (
+        SELECT
+          p.grn_id,
+
+          SUM(pid.quantity * pid.net_weight)
+          +
+          COALESCE(SUM(
+            CASE
+              WHEN sib.status = 'Invoice'
+              THEN sii.quantity * sii.net_weight
+              ELSE 0
+            END
+          ),0) AS updated_weight,
+
+          SUM(pid.quantity)
+          +
+          COALESCE(SUM(
+            CASE
+              WHEN sib.status = 'Invoice'
+              THEN sii.quantity
+              ELSE 0
+            END
+          ),0) AS updated_qty
+
+        FROM products p
+
+        JOIN "productItemDetails" pid
+          ON pid.product_id = p.id
+         AND pid.deleted_at IS NULL
+
+        LEFT JOIN sales_invoice_bill_items sii
+          ON sii.product_item_detail_id = pid.id
+         AND sii.deleted_at IS NULL
+         AND sii.is_returned = false
+
+        LEFT JOIN sales_invoice_bills sib
+          ON sib.id = sii.invoice_bill_id
+         AND sib.deleted_at IS NULL
+
+        WHERE p.deleted_at IS NULL
+          AND (
+            (:isHeadOffice = true)
+            OR p.branch_id = :branch_id
+          )
+
+        GROUP BY p.grn_id
+      ) pi ON pi.grn_id = g.id
+
+      /* ADJUSTMENT */
+      LEFT JOIN (
+        SELECT
+          grn_id,
+          SUM(adjustment_weight_in_g) AS adjustment_weight,
+          SUM(adjustment_quantity) AS adjustment_qty
+        FROM grn_adjustments
+        WHERE deleted_at IS NULL
+        GROUP BY grn_id
+      ) ga ON ga.grn_id = g.id
+
+      WHERE g.id = :grn_id
+        AND g.deleted_at IS NULL
+      `,
+      {
+        replacements: {
+          grn_id,
+          branch_id,
+          isHeadOffice
+        },
+        type: sequelize.QueryTypes.SELECT
+      }
+    );
+
+    if (!row) {
+      return commonService.badRequest(res, {
+        message: "GRN not found"
+      });
+    }
+
+    const orderedWeight = parseFloat(row.ordered_weight) || 0;
+    const orderedQty = parseInt(row.ordered_qty) || 0;
+
+    const updatedWeight =
+      (parseFloat(row.updated_weight) || 0) +
+      (parseFloat(row.adjustment_weight) || 0);
+
+    const updatedQty =
+      (parseInt(row.updated_qty) || 0) +
+      (parseInt(row.adjustment_qty) || 0);
+
+    const yetToUpdateWeight =
+      Math.max(0, orderedWeight - updatedWeight);
+
+    const yetToUpdateQty =
+      Math.max(0, orderedQty - updatedQty);
+
+    return commonService.okResponse(res, {
+      data: {
+        grn_id: row.id,
+        grn_no: row.grn_no,
+        grn_date: row.grn_date,
+        status_id: row.status_id,
+
+        vendor: {
+          id: row.vendor_id,
+          vendor_name: row.vendor_name,
+          vendor_code: row.vendor_code,
+          vendor_image_url: row.vendor_image_url,
+          mobile: row.mobile,
+          gst_no: row.gst_no,
+          address: row.address,
+          district_name: row.district_name,
+          state_name: row.state_name,
+          pin_code: row.pin_code
+        },
+
+        ordered: {
+          weight: +orderedWeight.toFixed(3),
+          quantity: orderedQty
+        },
+
+        updated: {
+          weight: +updatedWeight.toFixed(3),
+          quantity: updatedQty
+        },
+
+        yet_to_update: {
+          weight: +yetToUpdateWeight.toFixed(3),
+          quantity: yetToUpdateQty
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error("getCompleteGrnDetails Error:", error);
     return commonService.handleError(res, error);
   }
 };
@@ -1140,5 +1332,6 @@ module.exports = {
   getAllGrnInfos,
   updateGrnStatus,
   exportGrnReport,
-  completeGrn
+  completeGrn,
+  getCompleteGrnDetails
 };
