@@ -1192,40 +1192,43 @@ const getCompleteGrnDetails = async (req, res) => {
         SELECT
           p.grn_id,
 
-          SUM(pid.quantity * pid.net_weight)
-          +
-          COALESCE(SUM(
-            CASE
-              WHEN sib.status = 'Invoice'
-              THEN sii.quantity * sii.net_weight
-              ELSE 0
-            END
-          ),0) AS updated_weight,
+          /* WEIGHT */
+          SUM(pid.quantity * pid.net_weight) + COALESCE(SUM(
+              CASE
+                WHEN sib.status = 'Invoice'
+                THEN sii.quantity * sii.net_weight
+                ELSE 0
+              END
+            ),0) + COALESCE(SUM(oi.quantity * pid.net_weight),0) AS updated_weight,
 
-          SUM(pid.quantity)
-          +
-          COALESCE(SUM(
-            CASE
-              WHEN sib.status = 'Invoice'
-              THEN sii.quantity
-              ELSE 0
-            END
-          ),0) AS updated_qty
+          /* QTY */
+          SUM(pid.quantity) + COALESCE(SUM(
+              CASE
+                WHEN sib.status = 'Invoice'
+                THEN sii.quantity
+                ELSE 0
+              END
+            ),0) + COALESCE(SUM(oi.quantity),0) AS updated_qty
 
         FROM products p
 
         JOIN "productItemDetails" pid
           ON pid.product_id = p.id
-         AND pid.deleted_at IS NULL
+        AND pid.deleted_at IS NULL
 
         LEFT JOIN sales_invoice_bill_items sii
           ON sii.product_item_detail_id = pid.id
-         AND sii.deleted_at IS NULL
-         AND sii.is_returned = false
+        AND sii.deleted_at IS NULL
+        AND sii.is_returned = false
 
         LEFT JOIN sales_invoice_bills sib
           ON sib.id = sii.invoice_bill_id
-         AND sib.deleted_at IS NULL
+        AND sib.deleted_at IS NULL
+
+        LEFT JOIN order_items oi
+          ON oi.product_item_id = pid.id
+        AND oi.deleted_at IS NULL
+        AND oi.item_status != 'Cancelled'
 
         WHERE p.deleted_at IS NULL
           AND (
