@@ -13,13 +13,14 @@ const createVendorPayment = async (req, res) => {
       const existing = await models.VendorPayment.findOne({
         where: {
           payment_no: payment_no,
+          branch_id: branch_id,
           deleted_at: null,     // only check active (non-deleted) records
         },
       });
 
       if (existing) {
         return commonService.badRequest(res, {
-          message: "Vendor Payment number already exists",
+          message: "Vendor Payment number already exists for this branch",
         });
       }
     }
