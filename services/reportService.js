@@ -1295,8 +1295,15 @@ const getProductWiseReport = async (req, res) => {
       const countQuery = `
         SELECT COUNT(DISTINCT p.id) AS total
         FROM products p
+
         LEFT JOIN grns g ON g.id = p.grn_id
         LEFT JOIN "grnItems" gi ON gi.id = p.ref_no_id
+        LEFT JOIN vendors v ON v.id = p.vendor_id
+        LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
+        LEFT JOIN categories c ON c.id = p.category_id
+        LEFT JOIN subcategories sc ON sc.id = p.subcategory_id
+        LEFT JOIN "productItemDetails" pid ON pid.product_id = p.id
+
         ${where}
       `;
 
