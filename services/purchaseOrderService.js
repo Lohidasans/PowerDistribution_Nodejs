@@ -311,7 +311,7 @@ const listPurchaseOrdersForBranchAdmin = async (req, res) => {
           ELSE NULL
         END AS created_by_mail,
 
-        COALESCE(SUM(poi.ordered_weight), 0) AS ordered_weight
+        COALESCE(SUM(poi.gross_wt_in_g), 0) AS ordered_weight
 
       FROM purchase_orders p
 
@@ -600,7 +600,7 @@ const listPurchaseOrdersForSuperAdmin = async (req, res) => {
           ELSE '-'
         END AS approval_label,
 
-        COALESCE(SUM(poi.ordered_weight), 0) AS ordered_weight
+        COALESCE(SUM(poi.gross_wt_in_g), 0) AS ordered_weight
 
       FROM purchase_orders p
 
@@ -624,7 +624,7 @@ const listPurchaseOrdersForSuperAdmin = async (req, res) => {
         cb.branch_name,
         cb.email
 
-      ORDER BY p.po_date DESC, p.id DESC
+      ORDER BY p.po_no DESC, p.id DESC
 
       ${paginationSql}
     `;
@@ -736,11 +736,10 @@ const getPurchaseOrderView = async (req, res) => {
       `
       SELECT 
         poi.id,
-        poi.description,
         poi.purity,
-        poi.ordered_weight,
+        poi.gross_wt_in_g,
         poi.quantity,
-        poi.rate,
+        poi.rate_per_g,
         poi.amount,
         mt.material_type   AS material_type_name,
         c.category_name    AS category_name,
@@ -760,7 +759,7 @@ const getPurchaseOrderView = async (req, res) => {
     const [totals] = await sequelize.query(
       `
       SELECT 
-        COALESCE(SUM(poi.ordered_weight), 0) AS total_ordered_weight,
+        COALESCE(SUM(poi.gross_wt_in_g), 0) AS total_ordered_weight,
         COALESCE(SUM(poi.amount), 0)         AS total_amount
       FROM purchase_order_items poi
       WHERE poi.po_id = :id
