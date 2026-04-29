@@ -461,20 +461,36 @@ const updateSchemeStatus = async (req, res) => {
 
     // ✅ Check if scheme exists
     const scheme = await models.Scheme.findOne({
-      where: { id, deleted_at: null }
+      where: { id, deleted_at: null,},
     });
 
     if (!scheme) {
       return commonService.badRequest(res, "Scheme not found");
     }
 
+    // ✅ If trying to deactivate, check customer enrollments
+    if (status === "Inactive") {
+      const enrolledCustomer = await models.Enrollment.findOne({
+        where: {
+          scheme_plan_id: id, // scheme id linked in enrollment
+          deleted_at: null,
+        },
+      });
+
+      if (enrolledCustomer) {
+        return commonService.badRequest(
+          res,
+          "Cannot deactivate scheme. Customers are already enrolled under this scheme"
+        );
+      }
+    }
+
     // ✅ Update status
     await scheme.update({ status });
 
     return commonService.okResponse(res, {
-      message: `Scheme ${status === "Active" ? "activated" : "deactivated"} successfully`
+      message: status === "Active" ? "Scheme activated successfully" : "Scheme deactivated successfully",
     });
-
   } catch (err) {
     return commonService.handleError(res, err);
   }
