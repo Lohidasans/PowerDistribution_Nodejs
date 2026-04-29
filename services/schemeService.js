@@ -127,7 +127,12 @@ const listSchemes = async (req, res) => {
       replacements.status = status;
     }
     if (branch_id) {
-      query += ` AND s.branch_id = :branch_id`;
+      query += `
+        AND (
+          s.branch_id = :branch_id
+          OR :branch_id = ANY(s.visible_to)
+        )
+      `;
       replacements.branch_id = +branch_id;
     }
 
