@@ -735,12 +735,7 @@ const getPurchaseOrderView = async (req, res) => {
     const items = await sequelize.query(
       `
       SELECT 
-        poi.id,
-        poi.purity,
-        poi.gross_wt_in_g,
-        poi.quantity,
-        poi.rate_per_g,
-        poi.amount,
+        poi.*,
         mt.material_type   AS material_type_name,
         c.category_name    AS category_name,
         sc.subcategory_name AS subcategory_name
