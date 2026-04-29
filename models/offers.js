@@ -48,11 +48,11 @@ module.exports = (sequelize, DataTypes) => {
                 type: DataTypes.INTEGER, // FK → offer_applicable_types.id
                 allowNull: false,
             },
-         branch_id:{
+            branch_id:{
                 type: DataTypes.INTEGER,
                 allowNull: true,
                 defaultValue: 1, // default branch_id to 1 for all offers
-       },
+            },
             status: {
                 type: DataTypes.ENUM("Active", "Inactive"),
                 allowNull: false,
