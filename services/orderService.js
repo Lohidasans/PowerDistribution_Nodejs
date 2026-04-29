@@ -320,14 +320,18 @@ const getWebsiteProductById = async (req, res) => {
     const row = await commonService.findById(models.Product, productId, res);
     if (!row) return;
 
+    const product = row.get({ plain: true });
+
     // Fetch material type name
     let materialTypeName = null;
     let materialPrice = 0;
-    if (row.material_type_id) {
+
+    if (product.material_type_id) {
       const material = await sequelize.query(
-        `SELECT material_type, material_price FROM "materialTypes" WHERE id = :id`,
+        `SELECT material_type, material_price FROM 
+        "materialTypes" WHERE id = :id`,
         {
-          replacements: { id: row.material_type_id },
+          replacements: { id: product.material_type_id },
           type: sequelize.QueryTypes.SELECT,
           plain: true,
         }
@@ -339,11 +343,12 @@ const getWebsiteProductById = async (req, res) => {
     // fetch product item details & additional details
     const [itemDetails, additionalDetails] = await Promise.all([
       models.ProductItemDetail.findAll({
-        where: { product_id: row.id },
+        where: { product_id: product.id },
         order: [["id", "ASC"]],
       }),
+
       models.ProductAdditionalDetail.findAll({
-        where: { product_id: row.id },
+        where: { product_id: product.id },
         order: [["id", "ASC"]],
       }),
     ]);
@@ -359,7 +364,7 @@ const getWebsiteProductById = async (req, res) => {
     const userItems = await models.CartWishlistItem.findAll({
       where: {
         user_id: 0,
-        product_id: row.id,
+        product_id: product.id,
         deleted_at: null,
       },
       attributes: ["product_item_id", "is_wishlisted", "is_in_cart"],
@@ -367,37 +372,189 @@ const getWebsiteProductById = async (req, res) => {
 
     // Build lookup map by product_item_id
     const itemStateMap = {};
-    userItems.forEach((ui) => {
-      itemStateMap[ui.product_item_id] = {
-        is_wishlisted: Boolean(ui.is_wishlisted),
-        is_in_cart: Boolean(ui.is_in_cart),
+    userItems.forEach((x) => {
+      itemStateMap[x.product_item_id] = {
+        is_wishlisted: Boolean(x.is_wishlisted),
+        is_in_cart: Boolean(x.is_in_cart),
       };
     });
 
-    // Build item_details with correct flags
+    // GET ALL ACTIVE OFFERS
+    const today = new Date().toISOString().slice(0, 10);
+
+    const allOffers = await sequelize.query(
+      `
+      SELECT
+        o.id,
+        o.offer_code,
+        o.offer_description,
+        o.offer_type,
+        o.offer_value,
+        o.applicable_type_id,
+        oa.material_type_id,
+        oa.category_id,
+        oa.subcategory_id,
+        oa.product_id
+      FROM offers o
+      JOIN offer_applicables oa ON oa.offer_id = o.id
+      WHERE o.status = 'Active'
+        AND o.deleted_at IS NULL
+        AND oa.deleted_at IS NULL
+        AND :today BETWEEN o.valid_from AND o.valid_to
+      `,
+      {
+        replacements: { today },
+        type: sequelize.QueryTypes.SELECT,
+      }
+    );
+
+    // FUNCTIONS
+    const calcOffer = (amount, offerType, offerValue) => {
+      amount = Number(amount || 0);
+
+      if (offerType === "Percentage") {
+        return (amount * Number(offerValue)) / 100;
+      }
+
+      return Number(offerValue);
+    };
+
+    const calcChargeAmount = (value, type, netWeight) => {
+      value = Number(value || 0);
+      netWeight = Number(netWeight || 0);
+
+      if (type === "Amount") return value;
+      if (type === "Per Gram") return value * netWeight;
+      if (type === "Percentage") {
+        const metalValue = netWeight * materialPrice;
+        return (metalValue * value) / 100;
+      }
+
+      return 0;
+    };
+
+    const getBestOffer = (item) => {
+      let bestOffer = null;
+      let maxDiscount = 0;
+
+      for (const offer of allOffers) {
+        let applicable = false;
+        let discount = 0;
+
+        // 1. MATERIAL TYPE
+        if (
+          offer.applicable_type_id === 1 &&
+          offer.material_type_id === product.material_type_id
+        ) {
+          applicable = true;
+          discount = calcOffer(item.item_price, offer.offer_type, offer.offer_value);
+        }
+
+        // 2 CATEGORY
+        if (
+          offer.applicable_type_id === 2 &&
+          offer.category_id === product.category_id
+        ) {
+          applicable = true;
+          discount = calcOffer(item.item_price, offer.offer_type, offer.offer_value);
+        }
+
+        // 3 SUBCATEGORY
+        if (
+          offer.applicable_type_id === 3 &&
+          offer.subcategory_id === product.subcategory_id
+        ) {
+          applicable = true;
+          discount = calcOffer(item.item_price, offer.offer_type, offer.offer_value);
+        }
+
+        // 4 PRODUCT
+        if (
+          offer.applicable_type_id === 4 &&
+          offer.product_id === product.id
+        ) {
+          applicable = true;
+          discount = calcOffer(item.item_price, offer.offer_type, offer.offer_value);
+        }
+
+        // 5 MAKING CHARGE
+        if (
+          offer.applicable_type_id === 5 &&
+          offer.product_id === product.id
+        ) {
+          applicable = true;
+
+          const makingCharge = calcChargeAmount(
+            item.making_charge,
+            item.making_charge_type,
+            item.net_weight
+          );
+
+          discount = calcOffer(
+            makingCharge,
+            offer.offer_type,
+            offer.offer_value
+          );
+        }
+
+        // 6 WASTAGE
+        if (
+          offer.applicable_type_id === 6 &&
+          offer.product_id === product.id
+        ) {
+          applicable = true;
+
+          const wastage = calcChargeAmount(
+            item.wastage,
+            item.wastage_type,
+            item.net_weight
+          );
+
+          discount = calcOffer(
+            wastage,
+            offer.offer_type,
+            offer.offer_value
+          );
+        }
+
+        if (applicable && discount > maxDiscount) {
+          maxDiscount = discount;
+
+          bestOffer = {
+            offer_id: offer.id,
+            offer_code: offer.offer_code,
+            offer_description: offer.offer_description,
+            discount_amount: Number(discount.toFixed(2)),
+          };
+        }
+      }
+
+      return bestOffer;
+    };
+
+    // BUILD ITEM DETAILS
     const itemsWithAdds = await Promise.all(
       itemDetails.map(async (it) => {
         const plainItem = it.get({ plain: true });
 
-        // Keep your async function for single product view (response stays same)
         const priceDetails = calculateSellingPrice(
-          row.get({ plain: true }),
+          product,
           plainItem,
           models
         );
 
-        plainItem.price_details = priceDetails;
-
         const finalPrice = calculateFinalPriceRate(
-          row.get({ plain: true }),
+          product,
           plainItem,
-          Number(materialPrice)
+          materialPrice
         );
 
         const itemState = itemStateMap[it.id] || {
           is_wishlisted: false,
           is_in_cart: false,
         };
+
+        const bestOffer = getBestOffer(plainItem);
 
         return {
           ...plainItem,
@@ -406,6 +563,7 @@ const getWebsiteProductById = async (req, res) => {
             ...priceDetails,
             final_price_rate: finalPrice.final_price_rate,
           },
+          best_offer: bestOffer,
           is_wishlisted: itemState.is_wishlisted,
           is_in_cart: itemState.is_in_cart,
         };
@@ -415,7 +573,7 @@ const getWebsiteProductById = async (req, res) => {
     // Fetch add-on products
     let addon_products = [];
     const isAddOn =
-      row.is_addOn === true || row.is_addOn === 1 || row.is_addOn === "true";
+      product.is_addOn === true || product.is_addOn === 1 || product.is_addOn === "true";
 
     if (isAddOn) {
       const [addonRows] = await sequelize.query(
@@ -431,8 +589,9 @@ const getWebsiteProductById = async (req, res) => {
         WHERE pa.product_id = :pid
         ORDER BY pa.id ASC
         `,
-        { replacements: { pid: row.id } }
+        { replacements: { pid: product.id },}
       );
+
       addon_products = addonRows;
     }
 
@@ -444,24 +603,24 @@ const getWebsiteProductById = async (req, res) => {
         v.variant_type,
         COALESCE(
           json_agg(
-            json_build_object('id', vv.id, 'value', vv.value)
+            json_build_object('id', vv.id,'value', vv.value)
             ORDER BY vv.id
           ) FILTER (WHERE vv.id IS NOT NULL),
           '[]'::json
         ) AS values
-      FROM "product_variants" pv
+      FROM product_variants pv
       JOIN variants v ON v.id = pv.variant_id AND v.deleted_at IS NULL
       LEFT JOIN "variantValues" vv ON vv.id = ANY(pv.variant_type_ids) AND vv.deleted_at IS NULL
       WHERE pv.product_id = :pid AND pv.deleted_at IS NULL
       GROUP BY pv.variant_id, v.variant_type
       ORDER BY pv.variant_id ASC
       `,
-      { replacements: { pid: row.id } }
+      { replacements: { pid: product.id }, }
     );
 
     return commonService.okResponse(res, {
       product: {
-        ...row.get({ plain: true }),
+        ...product,
         material_type_name: materialTypeName,
         material_price: materialPrice,
       },
