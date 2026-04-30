@@ -389,26 +389,19 @@ const getOnlineOrderDetails = async (req, res) => {
         c.address AS billing_address,
         c.pin_code AS billing_pin,
 
-        p.payment_mode,
-        p.transaction_id,
-        TO_CHAR(p.payment_date,'DD/MM/YYYY') AS payment_date,
-        p.amount_received,
+        --p.payment_mode,
+        --p.transaction_id,
+        --TO_CHAR(p.payment_date,'DD/MM/YYYY') AS payment_date,
+        --p.amount_received,
 
         c.address AS shipping_address
 
       FROM orders o
 
-      JOIN customers c
-        ON c.id = o.customer_id
-        AND c.deleted_at IS NULL
+      JOIN customers c ON c.id = o.customer_id AND c.deleted_at IS NULL
+      --LEFT JOIN payments p  ON p.order_id = o.id AND p.deleted_at IS NULL AND p.status = 'Completed'
 
-      LEFT JOIN payments p
-        ON p.order_id = o.id
-        AND p.deleted_at IS NULL
-        AND p.status = 'Completed'
-
-      WHERE o.id = :order_id
-      AND o.deleted_at IS NULL
+      WHERE o.id = :order_id AND o.deleted_at IS NULL
       LIMIT 1
     `;
 
@@ -418,7 +411,7 @@ const getOnlineOrderDetails = async (req, res) => {
         });
 
         if (!orderInfo) {
-            return commonService.notFoundResponse(res, "Order not found");
+            return commonService.badRequest(res, "Order not found");
         }
 
         // ORDER ITEMS
@@ -473,11 +466,11 @@ const getOnlineOrderDetails = async (req, res) => {
                     desc: "Order has been placed successfully",
                     date: orderInfo.order_date
                 },
-                {
-                    title: "Payment Completed Successfully",
-                    desc: `Amount Paid Via ${orderInfo.payment_mode || ""} Ref No : ${orderInfo.transaction_id || ""}`,
-                    date: orderInfo.payment_date
-                },
+                // {
+                //     title: "Payment Completed Successfully",
+                //     desc: `Amount Paid Via ${orderInfo.payment_mode || ""} Ref No : ${orderInfo.transaction_id || ""}`,
+                //     date: orderInfo.payment_date
+                // },
                 {
                     title: "Invoice Generated Successfully",
                     desc: "Invoice was sent to customer email ID",
