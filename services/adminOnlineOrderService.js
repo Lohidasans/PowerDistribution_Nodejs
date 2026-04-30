@@ -368,14 +368,16 @@ const updateDeliveredDetails = async (req, res) => {
 };
 
 const getOnlineOrderDetails = async (req, res) => {
-    try {
-        const { order_id } = req.params;
-
-        const orderQuery = `
+  try {
+    const { order_id } = req.params;
+   
+    // ORDER + CUSTOMER + ADDRESS   
+    const orderQuery = `
       SELECT
         o.id,
         o.order_number,
         TO_CHAR(o.order_date,'DD/MM/YYYY') AS order_date,
+        o.created_at,
         o.subtotal,
         o.tax_amount,
         o.shipping_charge,
@@ -386,36 +388,49 @@ const getOnlineOrderDetails = async (req, res) => {
         c.mobile_number,
         c.email_id,
 
-        c.address AS billing_address,
-        c.pin_code AS billing_pin,
+        -- Billing Address
+        ca_bill.name AS billing_name,
+        ca_bill.mobile_number AS billing_mobile,
+        ca_bill.address_line || ', ' || ca_bill.pin_code AS billing_address,
 
-        --p.payment_mode,
-        --p.transaction_id,
-        --TO_CHAR(p.payment_date,'DD/MM/YYYY') AS payment_date,
-        --p.amount_received,
-
-        c.address AS shipping_address
+        -- Shipping Address
+        ca_ship.name AS shipping_name,
+        ca_ship.mobile_number AS shipping_mobile,
+        ca_ship.address_line || ', ' || ca_ship.pin_code AS shipping_address
 
       FROM orders o
 
-      JOIN customers c ON c.id = o.customer_id AND c.deleted_at IS NULL
-      --LEFT JOIN payments p  ON p.order_id = o.id AND p.deleted_at IS NULL AND p.status = 'Completed'
+      JOIN customers c 
+        ON c.id = o.customer_id 
+        AND c.deleted_at IS NULL
 
-      WHERE o.id = :order_id AND o.deleted_at IS NULL
+      LEFT JOIN customer_addresses ca_bill
+        ON ca_bill.customer_id = c.id
+        AND ca_bill.is_default = true
+        AND ca_bill.deleted_at IS NULL
+
+      LEFT JOIN customer_addresses ca_ship
+        ON ca_ship.customer_id = c.id
+        AND ca_ship.is_default = true
+        AND ca_ship.deleted_at IS NULL
+
+      WHERE o.id = :order_id 
+      AND o.deleted_at IS NULL
+
       LIMIT 1
     `;
 
-        const [orderInfo] = await sequelize.query(orderQuery, {
-            replacements: { order_id },
-            type: sequelize.QueryTypes.SELECT
-        });
+    const [orderInfo] = await sequelize.query(orderQuery, {
+      replacements: { order_id },
+      type: sequelize.QueryTypes.SELECT,
+    });
 
-        if (!orderInfo) {
-            return commonService.badRequest(res, "Order not found");
-        }
-
-        // ORDER ITEMS
-        const itemsQuery = `
+    if (!orderInfo) {
+      return commonService.badRequest(res, "Order not found");
+    }
+    
+    // ORDER ITEMS (RAW DATA ONLY)  
+    const itemsQuery = `
       SELECT
         oi.id AS order_item_id,
         oi.product_id,
@@ -453,145 +468,70 @@ const getOnlineOrderDetails = async (req, res) => {
       ORDER BY oi.id ASC
     `;
 
-        const items = await sequelize.query(itemsQuery, {
-            replacements: { order_id },
-            type: sequelize.QueryTypes.SELECT
-        });
+    const items = await sequelize.query(itemsQuery, {
+      replacements: { order_id },
+      type: sequelize.QueryTypes.SELECT,
+    });
 
-        // BUILD TIMELINE PER ITEM
-        const formattedItems = items.map((item, index) => {
-            const timeline = [
-                {
-                    title: `Order Received (${orderInfo.order_number})`,
-                    desc: "Order has been placed successfully",
-                    date: orderInfo.order_date
-                },
-                // {
-                //     title: "Payment Completed Successfully",
-                //     desc: `Amount Paid Via ${orderInfo.payment_mode || ""} Ref No : ${orderInfo.transaction_id || ""}`,
-                //     date: orderInfo.payment_date
-                // },
-                {
-                    title: "Invoice Generated Successfully",
-                    desc: "Invoice was sent to customer email ID",
-                    date: orderInfo.order_date
-                }
-            ];
+    // OVERALL STATUS    
+    const totalItems = items.length;
+    const deliveredCount = items.filter((x) => x.item_status === "Delivered").length;
+    const shippedCount = items.filter((x) => x.item_status === "Shipped").length;
 
-            if (
-                item.item_status === "Shipped" ||
-                item.item_status === "Delivered"
-            ) {
-                timeline.push({
-                    title: "Item Shipped Successfully",
-                    desc: `Item shipped via ${item.shipment_partner || ""} Tracking ID: ${item.tracking_id || ""}`,
-                    date: item.shipped_at
-                        ? new Date(item.shipped_at).toLocaleString()
-                        : ""
-                });
-            }
-
-            if (item.item_status === "Delivered") {
-                timeline.push({
-                    title: "Item Delivered Successfully",
-                    desc: "Item delivered successfully to customer",
-                    date:
-                        item.delivered_date && item.delivered_time
-                            ? `${item.delivered_date} ${item.delivered_time}`
-                            : ""
-                });
-            }
-
-            return {
-                item_no: index + 1,
-                order_item_id: item.order_item_id,
-                product_id: item.product_id,
-                product_name: item.product_name,
-                sku_id: item.sku_id,
-                image_url: item.image_url,
-                quantity: item.quantity,
-                amount: item.amount,
-                branch_name: item.branch_name,
-                item_status: item.item_status || "New Order",
-
-                shipment_details: {
-                    shipment_partner: item.shipment_partner,
-                    tracking_id: item.tracking_id,
-                    processed_by: item.processed_by,
-                    shipped_at: item.shipped_at
-                },
-
-                delivered_details: {
-                    delivered_date: item.delivered_date,
-                    delivered_time: item.delivered_time,
-                    delivered_by: item.delivered_by
-                },
-
-                timeline
-            };
-        });
-
-        // OVERALL ORDER STATUS
-        const totalItems = formattedItems.length;
-        const deliveredCount = formattedItems.filter(
-            x => x.item_status === "Delivered"
-        ).length;
-
-        const shippedCount = formattedItems.filter(
-            x => x.item_status === "Shipped"
-        ).length;
-
-        let overall_status = "New Order";
-
-        if (deliveredCount === totalItems) {
-            overall_status = "Delivered";
-        } else if (deliveredCount > 0) {
-            overall_status = "Partially Delivered";
-        } else if (shippedCount === totalItems) {
-            overall_status = "Shipped";
-        } else if (shippedCount > 0) {
-            overall_status = "Partially Shipped";
-        }
-
-        // FINAL RESPONSE
-        return commonService.okResponse(res, {
-            order: {
-                id: orderInfo.id,
-                order_number: orderInfo.order_number,
-                order_date: orderInfo.order_date,
-                overall_status
-            },
-
-            customer_details: {
-                customer_name: orderInfo.customer_name,
-                mobile_number: orderInfo.mobile_number,
-                email_id: orderInfo.email_id,
-                billing_address: orderInfo.billing_address,
-                shipping_address: orderInfo.shipping_address
-            },
-
-            order_summary: {
-                subtotal: orderInfo.subtotal,
-                tax_amount: orderInfo.tax_amount,
-                shipping_charge: orderInfo.shipping_charge,
-                discount_amount: orderInfo.discount_amount,
-                total_amount: orderInfo.total_amount
-            },
-
-            payment_details: {
-                transaction_id: orderInfo.transaction_id,
-                payment_mode: orderInfo.payment_mode,
-                payment_date: orderInfo.payment_date,
-                amount_paid: orderInfo.amount_received
-            },
-
-            items: formattedItems
-        });
-
-    } catch (error) {
-        console.error("getOnlineOrderDetails Error:", error);
-        return commonService.handleError(res, error);
+    let overall_status = "New Order";
+    if (deliveredCount === totalItems && totalItems > 0) {
+      overall_status = "Delivered";
+    } else if (deliveredCount > 0) {
+      overall_status = "Partially Delivered";
+    } else if (shippedCount === totalItems && totalItems > 0) {
+      overall_status = "Shipped";
+    } else if (shippedCount > 0) {
+      overall_status = "Partially Shipped";
     }
+   
+    // FINAL RESPONSE   
+    return commonService.okResponse(res, {
+      order: {
+        id: orderInfo.id,
+        order_number: orderInfo.order_number,
+        order_date: orderInfo.order_date,
+        order_created_date: orderInfo.created_at,
+        overall_status,
+      },
+
+      customer_details: {
+        customer_name: orderInfo.customer_name,
+        mobile_number: orderInfo.mobile_number,
+        email_id: orderInfo.email_id,
+
+        billing_address: {
+          name: orderInfo.billing_name,
+          mobile: orderInfo.billing_mobile,
+          address: orderInfo.billing_address,
+        },
+
+        shipping_address: {
+          name: orderInfo.shipping_name,
+          mobile: orderInfo.shipping_mobile,
+          address: orderInfo.shipping_address,
+        },
+      },
+
+      order_summary: {
+        subtotal: orderInfo.subtotal,
+        tax_amount: orderInfo.tax_amount,
+        shipping_charge: orderInfo.shipping_charge,
+        discount_amount: orderInfo.discount_amount,
+        total_amount: orderInfo.total_amount,
+      },
+
+      payment_details: {}, // keep empty or add later
+      items: items,
+    });
+  } catch (error) {
+    console.error("getOnlineOrderDetails Error:", error);
+    return commonService.handleError(res, error);
+  }
 };
 
 module.exports = {
