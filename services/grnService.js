@@ -182,6 +182,15 @@ const updateGrn = async (req, res) => {
     const { id } = req.params;
     const { items = [], grn_no, ...updateData } = req.body;
 
+    // ❌ Block GRN number update
+    if (grn_no !== undefined) {
+      await transaction.rollback();
+      return commonService.badRequest(
+        res,
+        "GRN number cannot be modified once created"
+      );
+    }
+
     // Find existing GRN
     const grn = await models.Grn.findByPk(id, { transaction });
     if (!grn) {
@@ -204,26 +213,8 @@ const updateGrn = async (req, res) => {
       );
     }
 
-    // GRN NO VALIDATION (only if provided)
-    if (grn_no) {
-      const existing = await models.Grn.findOne({
-        where: {
-          grn_no,
-          id: { [Op.ne]: id },   // exclude current GRN
-          deleted_at: null,
-        },
-      });
-
-      if (existing) {
-        await transaction.rollback();
-        return commonService.badRequest(res, "GRN number already exists");
-      }
-    }
     // Update GRN header fields
-    await grn.update(
-      { ...updateData, ...(grn_no && { grn_no }) },
-      { transaction }
-    );
+    await grn.update(updateData,{transaction });
 
     // HARD DELETE old items
     await models.GrnItem.destroy({
