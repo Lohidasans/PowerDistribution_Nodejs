@@ -283,7 +283,7 @@ const getAllGrns = async (req, res) => {
       search,
       status,
       page,
-      limit
+      limit,
     } = req.query;
 
     /* -----------------------------
@@ -291,34 +291,70 @@ const getAllGrns = async (req, res) => {
     ----------------------------- */
     if (!branch_id) {
       return commonService.badRequest(res, {
-        message: "branch_id is required"
+        message: "branch_id is required",
       });
     }
 
-    const isHeadOffice = parseInt(branch_id) === 1; 
+    const isHeadOffice = parseInt(branch_id) === 1;
 
     const hasPagination = page && limit;
     const pageNumber = hasPagination ? parseInt(page) : null;
     const pageSize = hasPagination ? parseInt(limit) : null;
     const offset = hasPagination ? (pageNumber - 1) * pageSize : null;
 
-    const replacements = {branch_id, isHeadOffice };
+    const replacements = { branch_id, isHeadOffice };
 
-    const whereConditions = [`g.deleted_at IS NULL`];
+    //1. SUMMARY QUERY (NO STATUS FILTER)
+    const summaryConditions = [`g.deleted_at IS NULL`];
 
     if (vendor_id) {
-      whereConditions.push(`g.vendor_id = :vendor_id`);
+      summaryConditions.push(`g.vendor_id = :vendor_id`);
       replacements.vendor_id = vendor_id;
     }
 
     if (start_date) {
-      whereConditions.push(`g.grn_date >= :start_date`);
+      summaryConditions.push(`g.grn_date >= :start_date`);
       replacements.start_date = start_date;
     }
 
     if (end_date) {
-      whereConditions.push(`g.grn_date <= :end_date`);
+      summaryConditions.push(`g.grn_date <= :end_date`);
       replacements.end_date = end_date;
+    }
+
+    const summaryWhere = `WHERE ${summaryConditions.join(" AND ")}`;
+
+    const summaryQuery = `
+      SELECT
+        COUNT(*) AS total,
+        SUM(CASE WHEN g.status_id = 2 THEN 1 ELSE 0 END) AS completed,
+        SUM(CASE WHEN g.status_id = 1 THEN 1 ELSE 0 END) AS pending
+      FROM grns g
+      ${summaryWhere}
+      AND (
+        (:isHeadOffice = true)
+        OR g.branch_id = :branch_id
+      )
+    `;
+
+    const [summaryData] = await sequelize.query(summaryQuery, {
+      replacements,
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    // 2. LIST QUERY (WITH STATUS FILTER)
+    const whereConditions = [`g.deleted_at IS NULL`];
+
+    if (vendor_id) {
+      whereConditions.push(`g.vendor_id = :vendor_id`);
+    }
+
+    if (start_date) {
+      whereConditions.push(`g.grn_date >= :start_date`);
+    }
+
+    if (end_date) {
+      whereConditions.push(`g.grn_date <= :end_date`);
     }
 
     if (search) {
@@ -338,9 +374,6 @@ const getAllGrns = async (req, res) => {
 
     const whereSql = `WHERE ${whereConditions.join(" AND ")}`;
 
-    /* -----------------------------
-       MAIN QUERY
-    ----------------------------- */
     const listRows = await sequelize.query(
       `
       SELECT
@@ -402,7 +435,7 @@ const getAllGrns = async (req, res) => {
       -- ✅ UPDATED WEIGHT(FIXED LOGIC)
       LEFT JOIN (
         SELECT
-          p.grn_id,          
+          p.grn_id,
           SUM(pid.quantity * pid.net_weight)     --CURRENT STOCK
             + COALESCE(SUM(                    --OFFLINE BILL SOLD
               CASE
@@ -410,10 +443,10 @@ const getAllGrns = async (req, res) => {
                 THEN sii.quantity * sii.net_weight
                 ELSE 0
               END
-            ),0)         
+            ),0)
           + COALESCE(SUM(oi.quantity * pid.net_weight),0) AS total_updated_weight,   --ONLINE ORDER SOLD
 
-          SUM(pid.quantity) + COALESCE(SUM(   --QTY 
+          SUM(pid.quantity) + COALESCE(SUM(   --QTY
               CASE
                 WHEN sib.status = 'Invoice'
                 THEN sii.quantity
@@ -423,7 +456,7 @@ const getAllGrns = async (req, res) => {
 
         FROM products p
 
-        JOIN "productItemDetails" pid ON pid.product_id = p.id  AND pid.deleted_at IS NULL
+        JOIN "productItemDetails" pid ON pid.product_id = p.id AND pid.deleted_at IS NULL
         LEFT JOIN sales_invoice_bill_items sii ON sii.product_item_detail_id = pid.id AND sii.deleted_at IS NULL AND sii.is_returned = false
         LEFT JOIN sales_invoice_bills sib ON sib.id = sii.invoice_bill_id AND sib.deleted_at IS NULL
         LEFT JOIN order_items oi ON oi.product_item_id = pid.id AND oi.deleted_at IS NULL AND oi.item_status != 'Cancelled'
@@ -454,15 +487,9 @@ const getAllGrns = async (req, res) => {
       `,
       {
         replacements,
-        type: sequelize.QueryTypes.SELECT
+        type: sequelize.QueryTypes.SELECT,
       }
     );
-
-    /* -----------------------------
-       RESPONSE TRANSFORM
-    ----------------------------- */
-    let completedCount = 0;
-    let pendingCount = 0;
 
     const transformedRows = listRows.map((row) => {
       const orderedWeight = parseFloat(row.ordered_weight) || 0;
@@ -479,25 +506,9 @@ const getAllGrns = async (req, res) => {
 
       const adjustmentQty =
         parseInt(row.adjustment_qty) || 0;
-      
-      const yetToUpdateWeight =
-        orderedWeight - updatedWeight;
 
-      const yetToUpdateQty =
-        orderedQty - updatedQty;
-
-      // const yetToUpdateWeight =
-      //   row.status_id === 2
-      //     ? 0
-      //     : Math.max(0, orderedWeight - updatedWeight);
-
-      // const yetToUpdateQty =
-      //   row.status_id === 2
-      //     ? 0
-      //     : Math.max(0, orderedQty - updatedQty);
-
-      if (row.status_id === 2) completedCount++;
-      else pendingCount++;
+      const yetToUpdateWeight = orderedWeight - updatedWeight;
+      const yetToUpdateQty = orderedQty - updatedQty;
 
       return {
         id: row.id,
@@ -513,30 +524,23 @@ const getAllGrns = async (req, res) => {
         remarks: row.remarks,
 
         status_id: row.status_id,
-        status:
-          row.status_id === 2 ? "Completed" : "Pending",
+        status: row.status_id === 2 ? "Completed" : "Pending",
 
-        /* ORDER */
         ordered_weight: +orderedWeight.toFixed(3),
         ordered_qty: orderedQty,
 
-        /* UPDATED */
         updated_weight: +updatedWeight.toFixed(3),
         updated_qty: updatedQty,
 
-        /* BALANCE */
         yet_to_update_weight: +yetToUpdateWeight.toFixed(3),
         yet_to_update_qty: yetToUpdateQty,
 
-        /* SEPARATE ADJUSTMENT */
         adjustment_weight: +adjustmentWeight.toFixed(3),
-        adjustment_qty: adjustmentQty
+        adjustment_qty: adjustmentQty,
       };
     });
 
-    /* -----------------------------
-       PAGINATION
-    ----------------------------- */
+    // Pagination
     let finalData = transformedRows;
     let pagination = null;
 
@@ -552,20 +556,19 @@ const getAllGrns = async (req, res) => {
         page: pageNumber,
         limit: pageSize,
         totalItems,
-        totalPages: Math.ceil(totalItems / pageSize)
+        totalPages: Math.ceil(totalItems / pageSize),
       };
     }
 
     return commonService.okResponse(res, {
       summary: {
-        totalGrns: transformedRows.length,
-        completed: completedCount,
-        pending: pendingCount
+        totalGrns: parseInt(summaryData.total) || 0,
+        completed: parseInt(summaryData.completed) || 0,
+        pending: parseInt(summaryData.pending) || 0,
       },
       pagination,
-      data: finalData
+      data: finalData,
     });
-
   } catch (error) {
     console.error("getAllGrns Error:", error);
     return commonService.handleError(res, error);
