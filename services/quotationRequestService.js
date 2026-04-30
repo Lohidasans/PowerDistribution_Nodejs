@@ -1335,7 +1335,6 @@ const getAllVendorQuotations = async (req, res) => {
           WHERE qi.quotation_id = q.id
             AND qi.vendor_quotation_id IS NULL
             AND qi.deleted_at IS NULL
-            AND qi.product_description ILIKE :search
         )
       )
     `;
