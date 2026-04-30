@@ -24,16 +24,20 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.INTEGER,
         allowNull: false,
       },
-      product_description: {
-        type: DataTypes.TEXT,
+      ref_no: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+      material_price_per_g: {
+        type: DataTypes.DECIMAL(15, 4),
         allowNull: true,
       },
       purity: {
         type: DataTypes.DECIMAL(10, 3),
         allowNull: true,
       },
-      weight: {
-        type: DataTypes.DECIMAL(15, 3),
+      type: {
+        type: DataTypes.ENUM("Weight", "Piece"),
         allowNull: true,
       },
       quantity: {
@@ -45,8 +49,52 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.INTEGER,
         allowNull: true,
       },
-      rate: {
-        type: DataTypes.DECIMAL(15, 2),
+      total_wt_in_g: {
+        type: DataTypes.DECIMAL(15, 4),
+        allowNull: true,
+      },
+      bag_wt_in_g: {
+        type: DataTypes.DECIMAL(15, 4),
+        allowNull: true,
+      },
+      gross_wt_in_g: {
+        type: DataTypes.DECIMAL(15, 4),
+        allowNull: true,
+      },
+      stone_wt_in_g: {
+        type: DataTypes.DECIMAL(15, 4),
+        allowNull: true,
+      },
+      others: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+      others_wt_in_g: {
+        type: DataTypes.DECIMAL(15, 4),
+        allowNull: true,
+      },
+      others_value: {
+        type: DataTypes.DECIMAL(15, 4),
+        allowNull: true,
+      },
+      net_wt_in_g: {
+        type: DataTypes.DECIMAL(15, 4),
+        allowNull: true,
+      },
+      purchase_rate: {
+        type: DataTypes.DECIMAL(15, 4),
+        allowNull: true,
+      },
+      stone_rate: {
+        type: DataTypes.DECIMAL(15, 4),
+        allowNull: true,
+      },
+      making_charge: {
+        type: DataTypes.DECIMAL(15, 4),
+        allowNull: true,
+      },
+      rate_per_g: {
+        type: DataTypes.DECIMAL(15, 4),
         allowNull: true,
       },
       amount: {

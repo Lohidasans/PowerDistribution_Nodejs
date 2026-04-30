@@ -199,6 +199,36 @@ const createQuotationRequest = async (req, res) => {
         ...item,
         quotation_id: quotationRequest.id,
         vendor_quotation_id: null, // Base items don't belong to any vendor yet
+        material_type_id: item.material_type_id,
+        category_id: item.category_id,
+        subcategory_id: item.subcategory_id,
+
+        ref_no: item.ref_no || null,
+        material_price_per_g: item.material_price_per_g || null,
+        purity: item.purity || null,
+        type: item.type || null,
+        quantity: item.quantity || 1,
+
+        total_wt_in_g: item.total_wt_in_g || null,
+        bag_wt_in_g: item.bag_wt_in_g || null,
+        gross_wt_in_g: item.gross_wt_in_g || null,
+        stone_wt_in_g: item.stone_wt_in_g || null,
+
+        others: item.others || null,
+        others_wt_in_g: item.others_wt_in_g || null,
+        others_value: item.others_value || null,
+
+        net_wt_in_g: item.net_wt_in_g || null,
+
+        purchase_rate: item.purchase_rate || null,
+        stone_rate: item.stone_rate || null,
+        making_charge: item.making_charge || null,
+        rate_per_g: item.rate_per_g || null,
+
+        amount: item.amount || null,
+        vendor_remarks: item.vendor_remarks || null,
+
+        created_by: quotationData.created_by,
       }));
       await models.QuotationItem.bulkCreate(quotationItems, { transaction });
     }
@@ -331,18 +361,39 @@ const updateQuotationRequest = async (req, res) => {
         const existingItem = existingItemMap.get(item.id);
 
         await existingItem.update(
-          {
-            material_type_id: item.material_type_id,
-            category_id: item.category_id,
-            subcategory_id: item.subcategory_id,
-            product_description: item.product_description,
-            purity: item.purity ? parseFloat(item.purity) : null,
-            weight: item.weight ? parseFloat(item.weight) : null,
-            quantity: item.quantity,
-            updated_by: updateData.updated_by,
-          },
-          { transaction }
-        );
+        {
+          material_type_id: item.material_type_id,
+          category_id: item.category_id,
+          subcategory_id: item.subcategory_id,
+
+          ref_no: item.ref_no || null,
+          material_price_per_g: item.material_price_per_g || null,
+          purity: item.purity || null,
+          type: item.type || null,
+          quantity: item.quantity,
+
+          total_wt_in_g: item.total_wt_in_g || null,
+          bag_wt_in_g: item.bag_wt_in_g || null,
+          gross_wt_in_g: item.gross_wt_in_g || null,
+          stone_wt_in_g: item.stone_wt_in_g || null,
+
+          others: item.others || null,
+          others_wt_in_g: item.others_wt_in_g || null,
+          others_value: item.others_value || null,
+
+          net_wt_in_g: item.net_wt_in_g || null,
+
+          purchase_rate: item.purchase_rate || null,
+          stone_rate: item.stone_rate || null,
+          making_charge: item.making_charge || null,
+          rate_per_g: item.rate_per_g || null,
+
+          amount: item.amount || null,
+
+          updated_by: updateData.updated_by,
+        },
+        { transaction }
+      );
 
         incomingIds.push(item.id);
       } else {
@@ -350,16 +401,38 @@ const updateQuotationRequest = async (req, res) => {
         const newItem = await models.QuotationItem.create(
           {
             quotation_id: id,
+            vendor_quotation_id: null,
+
             material_type_id: item.material_type_id,
             category_id: item.category_id,
             subcategory_id: item.subcategory_id,
-            product_description: item.product_description,
-            purity: item.purity ? parseFloat(item.purity) : null,
-            weight: item.weight ? parseFloat(item.weight) : null,
-            quantity: item.quantity,
-            created_by: updateData.updated_by,
-            branch_id:
-              quotationRequest.branch_id || updateData.branch_id || 1,
+
+            ref_no: item.ref_no || null,
+            material_price_per_g: item.material_price_per_g || null,
+            purity: item.purity || null,
+            type: item.type || null,
+            quantity: item.quantity || 1,
+
+            total_wt_in_g: item.total_wt_in_g || null,
+            bag_wt_in_g: item.bag_wt_in_g || null,
+            gross_wt_in_g: item.gross_wt_in_g || null,
+            stone_wt_in_g: item.stone_wt_in_g || null,
+
+            others: item.others || null,
+            others_wt_in_g: item.others_wt_in_g || null,
+            others_value: item.others_value || null,
+
+            net_wt_in_g: item.net_wt_in_g || null,
+
+            purchase_rate: item.purchase_rate || null,
+            stone_rate: item.stone_rate || null,
+            making_charge: item.making_charge || null,
+            rate_per_g: item.rate_per_g || null,
+
+            amount: item.amount || null,
+            vendor_remarks: item.vendor_remarks || null,
+            branch_id: quotationRequest.branch_id || updateData.branch_id || 1,
+            created_by: updateData.created_by,
           },
           { transaction }
         );
@@ -593,7 +666,7 @@ const getAllQuotationRequests = async (req, res) => {
           v.id AS vendor_id,
           v.vendor_name,
           v.vendor_image_url,
-          STRING_AGG(DISTINCT qi.product_description, ', ') AS item_details,
+          STRING_AGG(qi.ref_no, ', ') AS ref_details, 
           COALESCE(SUM(qi.quantity), 0) AS total_quantity
         FROM vendor_quotations vq
         LEFT JOIN quotations q ON q.id = vq.quotation_id
@@ -650,7 +723,7 @@ const getAllQuotationRequests = async (req, res) => {
           ARRAY_AGG(DISTINCT v.vendor_name) FILTER (WHERE v.vendor_name IS NOT NULL) AS vendor_names,
           ARRAY_AGG(DISTINCT v.vendor_image_url) FILTER (WHERE v.vendor_image_url IS NOT NULL) AS vendor_images,
 
-          STRING_AGG(DISTINCT qi.product_description, ', ') AS item_details,
+          STRING_AGG(qi.ref_no, ', ') AS ref_details, 
 
           -- FIXED TOTAL QUANTITY (NO DUPLICATION)
           COALESCE(qi_sum.total_quantity, 0) * COUNT(DISTINCT v.id) AS total_quantity,
@@ -761,10 +834,17 @@ const getQuotationComparisonById = async (req, res) => {
         ct.category_name,
         qi.subcategory_id,
         sc.subcategory_name,
-        qi.product_description,
         qi.purity,
-        qi.weight,
-        qi.quantity
+        qi.quantity,
+        qi.ref_no,
+        qi.material_price_per_g,
+        qi.type,
+        qi.total_wt_in_g,
+        qi.net_wt_in_g,
+        qi.rate_per_g,
+        qi.purchase_rate,
+        qi.making_charge,
+        qi.amount
       FROM quotation_items qi
       LEFT JOIN "materialTypes" mt
         ON mt.id = qi.material_type_id
@@ -797,11 +877,17 @@ const getQuotationComparisonById = async (req, res) => {
         ct.category_name,
         qi.subcategory_id,
         sc.subcategory_name,
-        qi.product_description,
         qi.purity,
         qi.weight,
         qi.quantity,
-        qi.rate,
+        qi.ref_no,
+        qi.material_price_per_g,
+        qi.type,
+        qi.total_wt_in_g,
+        qi.net_wt_in_g,
+        qi.rate_per_g,
+        qi.purchase_rate,
+        qi.making_charge,
         qi.amount,
         vq.total_amount,
         vq.terms_and_conditions,
@@ -1096,15 +1182,34 @@ const submitVendorRates = async (req, res) => {
       return {
         quotation_id: vendorQuotation.quotation_id,
         vendor_quotation_id: id,
+
         material_type_id: baseItem.material_type_id,
         category_id: baseItem.category_id,
         subcategory_id: baseItem.subcategory_id,
-        product_description: baseItem.product_description,
+
+        ref_no: baseItem.ref_no,
+        material_price_per_g: baseItem.material_price_per_g,
         purity: baseItem.purity,
-        weight: baseItem.weight,
+        type: baseItem.type,
         quantity: baseItem.quantity,
-        rate: item.rate ? parseFloat(item.rate) : null,
-        amount: item.amount ? parseFloat(item.amount) : null,
+
+        total_wt_in_g: baseItem.total_wt_in_g,
+        bag_wt_in_g: baseItem.bag_wt_in_g,
+        gross_wt_in_g: baseItem.gross_wt_in_g,
+        stone_wt_in_g: baseItem.stone_wt_in_g,
+
+        others: baseItem.others,
+        others_wt_in_g: baseItem.others_wt_in_g,
+        others_value: baseItem.others_value,
+
+        net_wt_in_g: baseItem.net_wt_in_g,
+
+        purchase_rate: item.purchase_rate || null,
+        stone_rate: item.stone_rate || null,
+        making_charge: item.making_charge || null,
+        rate_per_g: item.rate_per_g || null,
+
+        amount: item.amount || null,
         vendor_remarks: item.vendor_remarks || null,
       };
     });
@@ -1287,10 +1392,7 @@ const getAllVendorQuotations = async (req, res) => {
         q.request_date,
         q.expiry_date,
 
-        STRING_AGG(
-          DISTINCT qi.product_description,
-          ', '
-        ) AS item_details,
+        STRING_AGG(qi.ref_no, ', ') AS ref_details, 
 
         COALESCE(SUM(qi.quantity), 0) AS quantity
 
