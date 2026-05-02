@@ -155,32 +155,101 @@ const getPurchaseOrderById = async (req, res) => {
 // Update PO (header + update items by id only)
 const updatePurchaseOrder = async (req, res) => {
   const t = await sequelize.transaction();
+
   try {
     const { id } = req.params;
-    const { items = [], ...updateData } = req.body || {};
+    const { items = [], po_no, ...updateData } = req.body || {};
 
+    // ❌ Block po_no update
+    if (po_no !== undefined) {
+      await t.rollback();
+      return commonService.badRequest(
+        res,
+        "PO number cannot be modified once created"
+      );
+    }
+
+    // Find PO
     const po = await models.PurchaseOrder.findByPk(id, { transaction: t });
     if (!po) {
       await t.rollback();
       return commonService.notFound(res, "Purchase Order not found");
     }
 
+    // ❌ BLOCK if used in GRN
+    const grnExists = await models.Grn.findOne({
+      where: { po_id: id },
+      attributes: ["id"],
+      transaction: t,
+    });
+
+    if (grnExists) {
+      await t.rollback();
+      return commonService.badRequest(
+        res,
+        "This PO is already used in GRN and cannot be modified"
+      );
+    }
+
+    // UPDATE HEADER
     await po.update(updateData, { transaction: t });
 
+    // DELETE OLD MATERIALS FIRST
+    const oldItems = await models.PurchaseOrderItem.findAll({
+      where: { po_id: id },
+      attributes: ["id"],
+      raw: true,
+      transaction: t,
+    });
+
+    const oldItemIds = oldItems.map((i) => i.id);
+
+    if (oldItemIds.length) {
+      await models.AdditionalMaterial.destroy({
+        where: {
+          parent_type: "po_item",
+          parent_id: oldItemIds,
+        },
+        force: true,
+        transaction: t,
+      });
+    }
+
+    // DELETE OLD ITEMS
+    await models.PurchaseOrderItem.destroy({
+      where: { po_id: id },
+      force: true,
+      transaction: t,
+    });
+
+    // CREATE NEW ITEMS + MATERIALS
     for (const item of items) {
-      if (item && item.id) {
-        const existing = await models.PurchaseOrderItem.findOne({
-          where: { id: item.id, po_id: id },
+      const createdItem = await models.PurchaseOrderItem.create(
+        {
+          ...item,
+          po_id: id,
+        },
+        { transaction: t }
+      );
+
+      // ADD MATERIALS
+      if (item.additional_materials?.length) {
+        const materials = item.additional_materials.map((m) => ({
+          parent_type: "po_item",
+          parent_id: createdItem.id,
+          label: m.label,
+          weight_in_g: m.weight_in_g || 0,
+          value: m.value || 0,
+        }));
+
+        await models.AdditionalMaterial.bulkCreate(materials, {
           transaction: t,
         });
-        if (existing) {
-          const { id: _i, po_id: _p, created_at, updated_at, deleted_at, ...updatable } = item;
-          await existing.update(updatable, { transaction: t });
-        }
       }
     }
 
     await t.commit();
+
     const result = await getPOWithItems(id);
     return commonService.okResponse(res, result);
   } catch (err) {
