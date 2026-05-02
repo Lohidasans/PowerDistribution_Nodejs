@@ -257,7 +257,7 @@ const updateGrn = async (req, res) => {
       );
     }
 
-    // Find existing GRN
+    // Find GRN
     const grn = await models.Grn.findByPk(id, { transaction });
     if (!grn) {
       await transaction.rollback();
@@ -280,23 +280,60 @@ const updateGrn = async (req, res) => {
     }
 
     // Update GRN header fields
-    await grn.update(updateData,{transaction });
+    await grn.update(updateData, { transaction });
 
-    // HARD DELETE old items
+    // DELETE OLD MATERIALS FIRST
+    const oldItems = await models.GrnItem.findAll({
+      where: { grn_id: id },
+      attributes: ["id"],
+      raw: true,
+      transaction,
+    });
+
+    const oldItemIds = oldItems.map((i) => i.id);
+
+    if (oldItemIds.length) {
+      await models.AdditionalMaterial.destroy({
+        where: {
+          parent_type: "grn_item",
+          parent_id: oldItemIds,
+        },
+        force: true,
+        transaction,
+      });
+    }
+
+    // DELETE OLD ITEMS
     await models.GrnItem.destroy({
       where: { grn_id: id },
       force: true,
       transaction,
     });
 
-    // Insert new items
-    const newItems = items.map((item) => ({
-      ...item,
-      grn_id: id,
-    }));
+    // CREATE NEW ITEMS + MATERIALS
+    for (const item of items) {
+      const createdItem = await models.GrnItem.create(
+        {
+          ...item,
+          grn_id: id,
+        },
+        { transaction }
+      );
 
-    if (newItems.length > 0) {
-      await models.GrnItem.bulkCreate(newItems, { transaction });
+      // ADDITIONAL MATERIALS
+      if (item.additional_materials?.length) {
+        const materials = item.additional_materials.map((m) => ({
+          parent_type: "grn_item",
+          parent_id: createdItem.id,
+          label: m.label,
+          weight_in_g: m.weight_in_g || 0,
+          value: m.value || 0,
+        }));
+
+        await models.AdditionalMaterial.bulkCreate(materials, {
+          transaction,
+        });
+      }
     }
 
     await transaction.commit();
@@ -304,6 +341,7 @@ const updateGrn = async (req, res) => {
     return commonService.okResponse(res, result);
   } catch (error) {
     await transaction.rollback();
+    console.error("GRN Update Error =>", error);
     return commonService.handleError(res, error);
   }
 };
