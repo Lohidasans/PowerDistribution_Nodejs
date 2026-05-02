@@ -23,6 +23,7 @@ const createPurchaseOrder = async (req, res) => {
         po_no: header.po_no,
         deleted_at: null,
       },
+      transaction: t,
     });
 
     if (existing) {
@@ -32,25 +33,41 @@ const createPurchaseOrder = async (req, res) => {
       });
     }
 
-    // Decide status
     const status_id = header.entity_type === "superadmin" ? 2 : 1;
 
-    // ✅ CREATE PO FIRST
+    // CREATE PO
     const po = await models.PurchaseOrder.create(
-      {
-        ...header,
-        status_id,
-      },
+      { ...header, status_id },
       { transaction: t }
     );
 
-    // Create PO Items
-    if (Array.isArray(items) && items.length > 0) {
-      const rows = items.map((it) => ({ ...it, po_id: po.id }));
-      await models.PurchaseOrderItem.bulkCreate(rows, { transaction: t });
+    // ✅ CREATE ITEMS + ADDITIONAL MATERIALS
+    for (const item of items) {
+      const createdItem = await models.PurchaseOrderItem.create(
+        {
+          ...item,
+          po_id: po.id,
+        },
+        { transaction: t }
+      );
+
+      // 👇 ADDITIONAL MATERIALS
+      if (item.additional_materials?.length) {
+        const materials = item.additional_materials.map((m) => ({
+          parent_type: "po_item",
+          parent_id: createdItem.id,
+          label: m.label,
+          weight_in_g: m.weight_in_g || 0,
+          value: m.value || 0,
+        }));
+
+        await models.AdditionalMaterial.bulkCreate(materials, {
+          transaction: t,
+        });
+      }
     }
 
-    // ✅ Now create Sales Order if approved
+    // Sales Order creation if approved
     if (Number(status_id) === 2) {
       const existingSO = await models.SalesOrder.findOne({
         where: { po_id: po.id },
@@ -93,8 +110,35 @@ const getPOWithItems = async (poId) => {
     { replacements: { id: poId }, type: sequelize.QueryTypes.SELECT }
   );
 
-  return { ...po, items };
+  // FETCH ADDITIONAL MATERIALS
+  const itemIds = items.map((i) => i.id);
+
+  const materials = await models.AdditionalMaterial.findAll({
+    where: {
+      parent_type: "po_item",
+      parent_id: itemIds,
+    },
+    raw: true,
+  });
+
+  // GROUP MATERIALS
+  const materialMap = {};
+  for (const m of materials) {
+    if (!materialMap[m.parent_id]) {
+      materialMap[m.parent_id] = [];
+    }
+    materialMap[m.parent_id].push(m);
+  }
+
+  // ATTACH TO ITEMS
+  const enrichedItems = items.map((item) => ({
+    ...item,
+    additional_materials: materialMap[item.id] || [],
+  }));
+
+  return { ...po, items: enrichedItems };
 };
+
 
 // Get PO by ID
 const getPurchaseOrderById = async (req, res) => {

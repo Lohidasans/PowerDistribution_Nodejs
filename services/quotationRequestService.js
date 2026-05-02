@@ -53,17 +53,13 @@ const calculateQuotationStatus = async (quotationId, transaction = null) => {
 // Helper function to get quotation with items and vendor responses
 const getQuotationWithItems = async (quotationId, transaction = null) => {
   try {
-    // --- Get quotation details ---
+    // --- Get quotation ---
     const quotation = await models.Quotation.findByPk(quotationId, {
-      transaction
+      transaction,
     });
 
-    if (!quotation) {
-      console.log(`Quotation with id ${quotationId} not found`);
-      return null;
-    }
+    if (!quotation) return null;
 
-    // Convert to plain object
     const quotationData = quotation.toJSON();
 
     // --- Get quotation items (base items without vendor-specific data) ---
@@ -86,11 +82,34 @@ const getQuotationWithItems = async (quotationId, transaction = null) => {
       {
         replacements: { quotationId },
         type: sequelize.QueryTypes.SELECT,
-        transaction
-      },
+        transaction,
+      }
     );
 
-    // --- Get vendor quotations with their responses ---
+    const itemIds = items.map((i) => i.id);
+
+    // FETCH MATERIALS
+    const materials = await models.AdditionalMaterial.findAll({
+      where: {
+        parent_type: "quotation_item",
+        parent_id: itemIds,
+      },
+      raw: true,
+      transaction,
+    });
+
+    // GROUP MATERIALS
+    const materialMap = {};
+    materials.forEach((m) => {
+      if (!materialMap[m.parent_id]) materialMap[m.parent_id] = [];
+      materialMap[m.parent_id].push(m);
+    });
+
+    const enrichedItems = items.map((item) => ({
+      ...item,
+      additional_materials: materialMap[item.id] || [],
+    }));
+
     const vendorQuotations = await sequelize.query(
       `
       SELECT 
@@ -108,11 +127,11 @@ const getQuotationWithItems = async (quotationId, transaction = null) => {
       {
         replacements: { quotationId },
         type: sequelize.QueryTypes.SELECT,
-        transaction
-      },
+        transaction,
+      }
     );
 
-    // --- For each vendor quotation, get their item responses ---
+// --- For each vendor quotation, get their item responses ---
     for (let vq of vendorQuotations) {
       const vendorItems = await sequelize.query(
         `
@@ -132,18 +151,37 @@ const getQuotationWithItems = async (quotationId, transaction = null) => {
         {
           replacements: { vendorQuotationId: vq.id },
           type: sequelize.QueryTypes.SELECT,
-          transaction
-        },
+          transaction,
+        }
       );
 
-      vq.items = vendorItems || [];
+      const vendorItemIds = vendorItems.map((i) => i.id);
+      const vendorMaterials = await models.AdditionalMaterial.findAll({
+        where: {
+          parent_type: "quotation_item",
+          parent_id: vendorItemIds,
+        },
+        raw: true,
+        transaction,
+      });
+
+      const vendorMaterialMap = {};
+      vendorMaterials.forEach((m) => {
+        if (!vendorMaterialMap[m.parent_id])
+          vendorMaterialMap[m.parent_id] = [];
+        vendorMaterialMap[m.parent_id].push(m);
+      });
+
+      vq.items = vendorItems.map((item) => ({
+        ...item,
+        additional_materials: vendorMaterialMap[item.id] || [],
+      }));
     }
 
-    // --- Assemble final result ---
     return {
       ...quotationData,
-      items: items || [],
-      vendor_quotations: vendorQuotations || [],
+      items: enrichedItems,
+      vendor_quotations: vendorQuotations,
     };
   } catch (error) {
     console.error("Error in getQuotationWithItems:", error);
@@ -180,7 +218,7 @@ const createQuotationRequest = async (req, res) => {
       await transaction.rollback();
       return commonService.badRequest(
         res,
-        "vendor_ids must be a non-empty array",
+        "vendor_ids must be a non-empty array"
       );
     }
 
@@ -190,50 +228,67 @@ const createQuotationRequest = async (req, res) => {
         ...quotationData,
         status_id: 1, // Pending
       },
-      { transaction },
+      { transaction }
     );
 
-    // Create base Quotation Items (without vendor_quotation_id)
-    if (items && items.length > 0) {
-      const quotationItems = items.map((item) => ({
-        ...item,
-        quotation_id: quotationRequest.id,
-        vendor_quotation_id: null, // Base items don't belong to any vendor yet
-        material_type_id: item.material_type_id,
-        category_id: item.category_id,
-        subcategory_id: item.subcategory_id,
+    // Create base Quotation Items (without vendor_quotation_id) + ADDITIONAL MATERIALS
+    for (const item of items) {
+      const createdItem = await models.QuotationItem.create(
+        {
+          quotation_id: quotationRequest.id,
+          vendor_quotation_id: null,
 
-        ref_no: item.ref_no || null,
-        material_price_per_g: item.material_price_per_g || null,
-        purity: item.purity || null,
-        type: item.type || null,
-        quantity: item.quantity || 1,
+          material_type_id: item.material_type_id,
+          category_id: item.category_id,
+          subcategory_id: item.subcategory_id,
 
-        total_wt_in_g: item.total_wt_in_g || null,
-        bag_wt_in_g: item.bag_wt_in_g || null,
-        gross_wt_in_g: item.gross_wt_in_g || null,
-        stone_wt_in_g: item.stone_wt_in_g || null,
+          ref_no: item.ref_no || null,
+          material_price_per_g: item.material_price_per_g || null,
+          purity: item.purity || null,
+          type: item.type || null,
+          quantity: item.quantity || 1,
 
-        others: item.others || null,
-        others_wt_in_g: item.others_wt_in_g || null,
-        others_value: item.others_value || null,
+          total_wt_in_g: item.total_wt_in_g || null,
+          bag_wt_in_g: item.bag_wt_in_g || null,
+          gross_wt_in_g: item.gross_wt_in_g || null,
+          stone_wt_in_g: item.stone_wt_in_g || null,
 
-        net_wt_in_g: item.net_wt_in_g || null,
+          others: item.others || null,
+          others_wt_in_g: item.others_wt_in_g || null,
+          others_value: item.others_value || null,
 
-        purchase_rate: item.purchase_rate || null,
-        stone_rate: item.stone_rate || null,
-        making_charge: item.making_charge || null,
-        rate_per_g: item.rate_per_g || null,
+          net_wt_in_g: item.net_wt_in_g || null,
 
-        amount: item.amount || null,
-        vendor_remarks: item.vendor_remarks || null,
+          purchase_rate: item.purchase_rate || null,
+          stone_rate: item.stone_rate || null,
+          making_charge: item.making_charge || null,
+          rate_per_g: item.rate_per_g || null,
 
-        created_by: quotationData.created_by,
-      }));
-      await models.QuotationItem.bulkCreate(quotationItems, { transaction });
+          amount: item.amount || null,
+          vendor_remarks: item.vendor_remarks || null,
+
+          created_by: quotationData.created_by,
+        },
+        { transaction }
+      );
+
+      // 👇 ADDITIONAL MATERIALS
+      if (item.additional_materials?.length) {
+        const materials = item.additional_materials.map((m) => ({
+          parent_type: "quotation_item",
+          parent_id: createdItem.id,
+          label: m.label,
+          weight_in_g: m.weight_in_g || 0,
+          value: m.value || 0,
+        }));
+
+        await models.AdditionalMaterial.bulkCreate(materials, {
+          transaction,
+        });
+      }
     }
 
-    // Create VendorQuotation records for each vendor (status = 'pending')
+    // Vendor quotations
     const vendorQuotations = quotationData.vendor_ids.map((vendorId) => ({
       quotation_id: quotationRequest.id,
       vendor_id: vendorId,
@@ -243,7 +298,6 @@ const createQuotationRequest = async (req, res) => {
     }));
     await models.VendorQuotation.bulkCreate(vendorQuotations, { transaction });
 
-    // Fetch the complete result BEFORE committing (pass transaction)
     const result = await getQuotationWithItems(quotationRequest.id, transaction);
 
     await transaction.commit();

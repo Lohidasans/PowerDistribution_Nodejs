@@ -108,23 +108,41 @@ const getGrnById = async (req, res) => {
 
 const getGrnWithItems = async (grnId) => {
   try {
-    // Get GRN details with explicit attributes to ensure entity_type and timestamps are included
     const grn = await models.Grn.findByPk(grnId, {
       attributes: [
-        'id', 'grn_no', 'grn_date', 'grn_info_ids', 'po_id', 'vendor_id', 
-        'branch_id', 'order_by_user_id', 'reference_id', 'gst_no', 
-        'billing_address', 'shipping_address', 'subtotal_amount', 
-        'sgst_percent', 'cgst_percent', 'discount_percent', 'total_amount', 
-        'total_gross_wt_in_g', 'remarks', 'status_id', 'is_active', 
-        'entity_type', 'created_at', 'updated_at'
+        "id",
+        "grn_no",
+        "grn_date",
+        "grn_info_ids",
+        "po_id",
+        "vendor_id",
+        "branch_id",
+        "order_by_user_id",
+        "reference_id",
+        "gst_no",
+        "billing_address",
+        "shipping_address",
+        "subtotal_amount",
+        "sgst_percent",
+        "cgst_percent",
+        "discount_percent",
+        "total_amount",
+        "total_gross_wt_in_g",
+        "remarks",
+        "status_id",
+        "is_active",
+        "entity_type",
+        "created_at",
+        "updated_at",
       ],
       raw: true,
-      nest: true,
     });
 
     if (!grn) return null;
 
-    // Get GRN items
+    // =========================
+    // ITEMS
+    // =========================
     const items = await sequelize.query(
       `
       SELECT
@@ -145,7 +163,31 @@ const getGrnWithItems = async (grnId) => {
       }
     );
 
-    // Fetch Purchase Order Date
+    const itemIds = items.map((i) => i.id);
+
+    // 🔥 FETCH MATERIALS
+    const materials = await models.AdditionalMaterial.findAll({
+      where: {
+        parent_type: "grn_item",
+        parent_id: itemIds,
+      },
+      raw: true,
+    });
+
+    const materialMap = {};
+    materials.forEach((m) => {
+      if (!materialMap[m.parent_id]) materialMap[m.parent_id] = [];
+      materialMap[m.parent_id].push(m);
+    });
+
+    const enrichedItems = items.map((item) => ({
+      ...item,
+      additional_materials: materialMap[item.id] || [],
+    }));
+
+    // =========================
+    // PURCHASE ORDER
+    // =========================
     let purchaseOrder = null;
     if (grn.po_id) {
       purchaseOrder = await models.PurchaseOrder.findByPk(grn.po_id, {
@@ -154,13 +196,21 @@ const getGrnWithItems = async (grnId) => {
       });
     }
 
-    // Get vendor details
-    const vendor = (await models.Vendor.findByPk(grn.vendor_id, {
+    // =========================
+    // VENDOR
+    // =========================
+    const vendor =
+      (await models.Vendor.findByPk(grn.vendor_id, {
         attributes: ["id", "vendor_name"],
         raw: true,
-      })) || { id: grn.vendor_id, vendor_name: "Vendor Not Found"};
+      })) || {
+        id: grn.vendor_id,
+        vendor_name: "Vendor Not Found",
+      };
 
-    // Get user details
+    // =========================
+    // USER
+    // =========================
     let user = null;
     if (grn.order_by_user_id) {
       user = await models.User.findByPk(grn.order_by_user_id, {
@@ -178,10 +228,10 @@ const getGrnWithItems = async (grnId) => {
 
     return {
       ...grn,
-      purchase_order: purchaseOrder, // po_date comes here
+      purchase_order: purchaseOrder,
       vendor,
       order_by_user: user,
-      items,
+      items: enrichedItems,
     };
   } catch (error) {
     console.error("Error in getGrnWithItems:", error);
