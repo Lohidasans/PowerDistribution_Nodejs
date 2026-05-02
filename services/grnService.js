@@ -1394,12 +1394,12 @@ const getVendorSummary = async (req, res) => {
       raw: true
     });
 
-    const grnNos = grns.map(g => g.grn_no);
+    const grnIds = grns.map(g => String(g.id));
 
     // ✅ 4. Get Payments grouped by bill_no (IMPORTANT OPTIMIZATION)
     const payments = await models.VendorPayment.findAll({
       where: {
-        purchase_id: grnNos,
+        purchase_id: grnIds,
         account_name_id: vendor_id,
         user_type_id: 1,
         bill_type_id: 1,
@@ -1416,13 +1416,13 @@ const getVendorSummary = async (req, res) => {
     // Convert to map for fast lookup
     const paymentMap = {};
     payments.forEach(p => {
-      paymentMap[p.purchase_id] = parseFloat(p.paid);
+      paymentMap[Number(p.purchase_id)] = parseFloat(p.paid);
     });
 
     // ✅ 5. Prepare GRN-wise data
     const grnData = grns.map(grn => {
       const total = parseFloat(grn.total_amount || 0);
-      const paid = paymentMap[grn.grn_no] || 0;
+      const paid = paymentMap[grn.id] || 0;
       const due = total - paid;
 
       return {
