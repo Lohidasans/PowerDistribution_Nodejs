@@ -68,10 +68,6 @@ module.exports = (sequelize, DataTypes) => {
                 type: DataTypes.INTEGER,
                 allowNull: true,
             },
-            branch_id: {
-                type: DataTypes.INTEGER, // branches table
-                allowNull: true,
-            },
             is_active: {
                 type: DataTypes.BOOLEAN,
                 allowNull: false,

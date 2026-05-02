@@ -1,4 +1,4 @@
-const { models, sequelize } = require("../models");
+const { models, sequelize  } = require("../models");
 const commonService = require("./commonService");
 const { Op } = require("sequelize");
 const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
@@ -9,13 +9,12 @@ const createGrn = async (req, res) => {
 
   try {
     const { items = [], ...grnData } = req.body;
-    const {
-      grn_no,
-      entity_type,
-      order_by_user_id,
-      branch_id
+    const { 
+      grn_no, 
+      entity_type, 
+      order_by_user_id, 
+      branch_id 
     } = grnData;
-
 
     // Required validation
     const requiredFields = ["grn_no", "grn_date", "vendor_id"];
@@ -28,39 +27,56 @@ const createGrn = async (req, res) => {
 
     let validationBranchId = branch_id;
     if (
-      entity_type === "superadmin" ||
+      entity_type === "superadmin" || 
       entity_type === "branch"
     ) {
       validationBranchId = order_by_user_id;
     }
     // Check if a non-deleted grn already uses this code
-    if (grn_no) {
-      const existing = await models.Grn.findOne({
-        where: {
-          grn_no: grn_no,
-          branch_id: validationBranchId,
-          deleted_at: null,     // only check active (non-deleted) records
-        },
-      });
+    const existing = await models.Grn.findOne({
+      where: {
+        grn_no,
+        branch_id: validationBranchId,
+        deleted_at: null,
+      },
+      transaction,
+    });
 
-      if (existing) {
-        return commonService.badRequest(res, {
-          message: "Grn code already exists for this branch",
-        });
-      }
+    if (existing) {
+      await transaction.rollback();
+      return commonService.badRequest(res, {
+        message: "Grn code already exists for this branch",
+      });
     }
-        
-    // Create GRN
+
+    // CREATE GRN
     const grn = await models.Grn.create(grnData, { transaction });
 
-    // Insert items directly (NO backend calculations)
-    const processedItems = items.map((item) => ({
-      ...item,
-      grn_id: grn.id,
-    }));
+    // CREATE ITEMS + ADDITIONAL MATERIALS
+    for (const item of items) {
+      // 1️⃣ Create GRN Item
+      const createdItem = await models.GrnItem.create(
+        {
+          ...item,
+          grn_id: grn.id,
+        },
+        { transaction }
+      );
 
-    if (processedItems.length > 0) {
-      await models.GrnItem.bulkCreate(processedItems, { transaction });
+      // 2️⃣ Handle Additional Materials (optional)
+      if (item.additional_materials?.length) {
+        const materials = item.additional_materials.map((m) => ({
+          parent_type: "grn_item",
+          parent_id: createdItem.id,
+          label: m.label,
+          weight_in_g: m.weight_in_g || 0,
+          value: m.value || 0,
+        }));
+
+        await models.AdditionalMaterial.bulkCreate(materials, {
+          transaction,
+        });
+      }
     }
 
     await transaction.commit();
@@ -1323,6 +1339,124 @@ const getCompleteGrnDetails = async (req, res) => {
   }
 };
 
+// Get vendor details in Grn Create Page
+const getVendorSummary = async (req, res) => {
+  try {
+    const { vendor_id } = req.params;
+
+    if (!vendor_id) {
+      return res.status(400).json({ message: "vendor_id is required" });
+    }
+
+    // ✅ 1. Get Vendor
+    const vendor = await models.Vendor.findOne({
+      where: { id: vendor_id },
+      attributes: [
+        "id",
+        "vendor_name",
+        "mobile",
+        "gst_no",
+        "address",
+        "state_id",
+        "district_id"
+      ],
+      raw: true
+    });
+
+    if (!vendor) {
+      return res.status(404).json({ message: "Vendor not found" });
+    }
+
+    // ✅ 2. Get State & District manually
+    const state = await models.State.findOne({
+      where: { id: vendor.state_id },
+      attributes: ["state_name"],
+      raw: true
+    });
+
+    const district = await models.District.findOne({
+      where: { id: vendor.district_id },
+      attributes: ["district_name"],
+      raw: true
+    });
+
+    // attach manually
+    vendor.state = state || null;
+    vendor.district = district || null;
+
+    // ✅ 3. Get all GRNs
+    const grns = await models.Grn.findAll({
+      where: {
+        vendor_id,
+        is_active: true
+      },
+      attributes: ["id", "grn_no", "total_amount"],
+      raw: true
+    });
+
+    const grnNos = grns.map(g => g.grn_no);
+
+    // ✅ 4. Get Payments grouped by bill_no (IMPORTANT OPTIMIZATION)
+    const payments = await models.VendorPayment.findAll({
+      where: {
+        purchase_id: grnNos,
+        account_name_id: vendor_id,
+        user_type_id: 1,
+        bill_type_id: 1,
+        status: "Completed",
+        is_active: true
+      },
+      attributes: [
+        "purchase_id",
+        [sequelize.fn("SUM", sequelize.col("amount")), "paid"]
+      ],
+      group: ["purchase_id"],
+      raw: true
+    });
+    // Convert to map for fast lookup
+    const paymentMap = {};
+    payments.forEach(p => {
+      paymentMap[p.purchase_id] = parseFloat(p.paid);
+    });
+
+    // ✅ 5. Prepare GRN-wise data
+    const grnData = grns.map(grn => {
+      const total = parseFloat(grn.total_amount || 0);
+      const paid = paymentMap[grn.grn_no] || 0;
+      const due = total - paid;
+
+      return {
+        grn_id: grn.id,
+        grn_no: grn.grn_no,
+        total_purchase: total,
+        paid,
+        due
+      };
+    });
+
+    // ✅ 6. Totals
+    const total_purchase = grnData.reduce((sum, g) => sum + g.total_purchase, 0);
+    const total_paid = grnData.reduce((sum, g) => sum + g.paid, 0);
+    const total_due = total_purchase - total_paid;
+
+    return commonService.okResponse(res, {
+      success: true,
+      data: {
+        vendor,
+        transaction_details: {
+          total_purchase,
+          paid: total_paid,
+          due: total_due
+        },
+        grn_wise: grnData
+      }
+    });
+
+  } catch (error) {
+    console.error("getVendorSummary Error:", error);
+    return commonService.handleError(res, error);
+  }
+};
 
 module.exports = {
   createGrn,
@@ -1337,5 +1471,6 @@ module.exports = {
   updateGrnStatus,
   exportGrnReport,
   completeGrn,
-  getCompleteGrnDetails
+  getCompleteGrnDetails,
+  getVendorSummary
 };

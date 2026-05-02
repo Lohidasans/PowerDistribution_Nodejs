@@ -12,6 +12,7 @@ router.get("/grns/dropdown", svc.listGrnNumbers);
 router.get("/grns/export", svc.exportGrnReport);
 router.get("/grns/:id", svc.getGrnById);
 router.get("/grns/:id/view", svc.getGrnView);
+router.get("/grns/vendor-details/:vendor_id", svc.getVendorSummary)
 router.put("/grns/:id", svc.updateGrn);
 router.put("/grns/:grn_id/status", svc.updateGrnStatus);
 router.delete("/grns/:id", svc.deleteGrn);

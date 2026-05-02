@@ -99,6 +99,7 @@ const ProductAddOn = require("./productAddOns")(sequelize, Sequelize.DataTypes);
 const ProductVariant = require("./productVariants")(sequelize, Sequelize.DataTypes);
 
 // GRN related models
+const AdditionalMaterial = require("./additionalMaterials")(sequelize, Sequelize.DataTypes);
 const Grn = require("./grns")(sequelize, Sequelize.DataTypes);
 const GrnItem = require("./grnItems")(sequelize, Sequelize.DataTypes);
 const GrnAdjustment = require("./grnAdjustments")(sequelize, Sequelize.DataTypes);
@@ -224,6 +225,7 @@ const models = {
   VariantValue,
   Uom,
   Product,
+  AdditionalMaterial,
   Grn,
   GrnItem,
   GrnAdjustment,
