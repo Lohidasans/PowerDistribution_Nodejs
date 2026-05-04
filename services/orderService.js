@@ -519,6 +519,7 @@ const getWebsiteProductById = async (req, res) => {
           bestOffer = {
             offer_id: offer.id,
             offer_code: offer.offer_code,
+            offer_applicable_type: offer.applicable_type_id,
             offer_description: offer.offer_description,
             discount_amount: Number(discount.toFixed(2)),
           };
@@ -533,11 +534,12 @@ const getWebsiteProductById = async (req, res) => {
       itemDetails.map(async (it) => {
         const plainItem = it.get({ plain: true });
 
-        const priceDetails = calculateSellingPrice(
+        const priceDetails = await calculateSellingPrice(
           product,
           plainItem,
           models
         );
+        plainItem.price_details = priceDetails;
 
         const finalPrice = calculateFinalPriceRate(
           product,
