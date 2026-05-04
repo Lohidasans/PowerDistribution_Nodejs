@@ -766,7 +766,8 @@ const getAllQuotationRequests = async (req, res) => {
           v.id AS vendor_id,
           v.vendor_name,
           v.vendor_image_url,
-          STRING_AGG(qi.ref_no, ', ') AS ref_details, 
+          STRING_AGG(sc.subcategory_name, ', ') AS item_details,
+          
           COALESCE(SUM(qi.quantity), 0) AS total_quantity
         FROM vendor_quotations vq
         LEFT JOIN quotations q ON q.id = vq.quotation_id
@@ -774,6 +775,7 @@ const getAllQuotationRequests = async (req, res) => {
         LEFT JOIN quotation_items qi 
           ON qi.vendor_quotation_id = vq.id 
           AND qi.deleted_at IS NULL
+        LEFT JOIN subcategories sc ON sc.id = qi.subcategory_id
         ${vqWhereSql}
         GROUP BY vq.id, q.id, v.id
         ORDER BY vq.response_date DESC, vq.id DESC
@@ -823,7 +825,7 @@ const getAllQuotationRequests = async (req, res) => {
           ARRAY_AGG(DISTINCT v.vendor_name) FILTER (WHERE v.vendor_name IS NOT NULL) AS vendor_names,
           ARRAY_AGG(DISTINCT v.vendor_image_url) FILTER (WHERE v.vendor_image_url IS NOT NULL) AS vendor_images,
 
-          STRING_AGG(qi.ref_no, ', ') AS ref_details, 
+          STRING_AGG(sc.subcategory_name, ', ') AS item_details,
 
           -- FIXED TOTAL QUANTITY (NO DUPLICATION)
           COALESCE(qi_sum.total_quantity, 0) * COUNT(DISTINCT v.id) AS total_quantity,
@@ -835,12 +837,13 @@ const getAllQuotationRequests = async (req, res) => {
         FROM quotations q
         LEFT JOIN vendors v ON v.id = ANY(q.vendor_ids)
         LEFT JOIN vendor_quotations vq ON vq.quotation_id = q.id AND vq.deleted_at IS NULL
-
+        
         -- KEEP THIS ONLY FOR ITEM DETAILS (NOT FOR SUM)
         LEFT JOIN quotation_items qi 
           ON qi.quotation_id = q.id 
           AND qi.vendor_quotation_id IS NULL 
           AND qi.deleted_at IS NULL
+        LEFT JOIN subcategories sc ON sc.id = qi.subcategory_id
 
         -- FIXED TOTAL QUANTITY (NO DUPLICATION)
         LEFT JOIN (
@@ -1491,8 +1494,7 @@ const getAllVendorQuotations = async (req, res) => {
         q.request_date,
         q.expiry_date,
 
-        STRING_AGG(qi.ref_no, ', ') AS ref_details, 
-
+        STRING_AGG(sc.subcategory_name, ', ') AS item_details,
         COALESCE(SUM(qi.quantity), 0) AS quantity
 
       FROM vendor_quotations vq
@@ -1503,6 +1505,8 @@ const getAllVendorQuotations = async (req, res) => {
         ON qi.quotation_id = q.id
         AND qi.vendor_quotation_id IS NULL
         AND qi.deleted_at IS NULL
+
+      LEFT JOIN subcategories sc ON sc.id = qi.subcategory_id
 
       ${whereSql}
 
