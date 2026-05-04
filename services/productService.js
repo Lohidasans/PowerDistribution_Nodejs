@@ -507,7 +507,7 @@ const getProductById = async (req, res) => {
         const plainItem = it.get({ plain: true });
 
         // Keep your async function for single product view (response stays same)
-        const priceDetails = awaitcalculateSellingPrice(
+        const priceDetails = await calculateSellingPrice(
           row.get({ plain: true }),
           plainItem,
           models
