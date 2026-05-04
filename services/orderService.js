@@ -380,8 +380,6 @@ const getWebsiteProductById = async (req, res) => {
     });
 
     // GET ALL ACTIVE OFFERS
-    const today = new Date().toISOString().slice(0, 10);
-
     const allOffers = await sequelize.query(
       `
       SELECT
@@ -400,10 +398,8 @@ const getWebsiteProductById = async (req, res) => {
       WHERE o.status = 'Active'
         AND o.deleted_at IS NULL
         AND oa.deleted_at IS NULL
-        AND :today BETWEEN o.valid_from AND o.valid_to
       `,
       {
-        replacements: { today },
         type: sequelize.QueryTypes.SELECT,
       }
     );
