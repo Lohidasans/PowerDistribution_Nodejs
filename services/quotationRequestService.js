@@ -331,9 +331,17 @@ const updateQuotationRequest = async (req, res) => {
 
   try {
     const { id } = req.params;
-    const { items = [], vendor_ids, ...updateData } = req.body;
+    const { items = [], vendor_ids, qr_id, ...updateData } = req.body;
 
-    // 1. Find existing quotation
+    // ❌ Block qr_id update
+    if (qr_id !== undefined) {
+      await transaction.rollback();
+      return commonService.badRequest(
+        res,
+        "QR ID cannot be modified once created"
+      );
+    }
+
     const quotationRequest = await models.Quotation.findByPk(id, {
       transaction,
     });
@@ -343,7 +351,7 @@ const updateQuotationRequest = async (req, res) => {
       return commonService.notFound(res, "Quotation Request not found");
     }
 
-    // 2. Update main quotation fields (excluding vendor_ids & status_id)
+ // 2. Update main quotation fields (excluding vendor_ids & status_id)
     const { vendor_ids: _, status_id: __, ...fieldsToUpdate } = updateData;
 
     if (Object.keys(fieldsToUpdate).length > 0) {
@@ -363,7 +371,7 @@ const updateQuotationRequest = async (req, res) => {
       );
 
       // ✅ Add new vendors
-      if (vendorsToAdd.length > 0) {
+      if (vendorsToAdd.length) {
         const newVendorQuotations = vendorsToAdd.map((vendorId) => ({
           quotation_id: id,
           vendor_id: vendorId,
@@ -379,7 +387,7 @@ const updateQuotationRequest = async (req, res) => {
       }
 
       // ✅ Remove vendors (soft delete)
-      if (vendorsToRemove.length > 0) {
+      if (vendorsToRemove.length) {
         await models.VendorQuotation.destroy({
           where: {
             quotation_id: id,
@@ -409,50 +417,51 @@ const updateQuotationRequest = async (req, res) => {
 
     const incomingIds = [];
 
+    // UPSERT ITEMS + MATERIALS
     for (const item of items) {
+      let quotationItem;
+
       if (item.id && existingItemMap.has(item.id)) {
-        // ✅ UPDATE
-        const existingItem = existingItemMap.get(item.id);
+        // UPDATE
+        quotationItem = existingItemMap.get(item.id);
 
-        await existingItem.update(
-        {
-          material_type_id: item.material_type_id,
-          category_id: item.category_id,
-          subcategory_id: item.subcategory_id,
+        await quotationItem.update(
+          {
+            material_type_id: item.material_type_id,
+            category_id: item.category_id,
+            subcategory_id: item.subcategory_id,
 
-          ref_no: item.ref_no || null,
-          material_price_per_g: item.material_price_per_g || null,
-          purity: item.purity || null,
-          type: item.type || null,
-          quantity: item.quantity,
+            ref_no: item.ref_no || null,
+            material_price_per_g: item.material_price_per_g || null,
+            purity: item.purity || null,
+            type: item.type || null,
+            quantity: item.quantity,
 
-          total_wt_in_g: item.total_wt_in_g || null,
-          bag_wt_in_g: item.bag_wt_in_g || null,
-          gross_wt_in_g: item.gross_wt_in_g || null,
-          stone_wt_in_g: item.stone_wt_in_g || null,
+            total_wt_in_g: item.total_wt_in_g || null,
+            bag_wt_in_g: item.bag_wt_in_g || null,
+            gross_wt_in_g: item.gross_wt_in_g || null,
+            stone_wt_in_g: item.stone_wt_in_g || null,
 
-          others: item.others || null,
-          others_wt_in_g: item.others_wt_in_g || null,
-          others_value: item.others_value || null,
+            others: item.others || null,
+            others_wt_in_g: item.others_wt_in_g || null,
+            others_value: item.others_value || null,
 
-          net_wt_in_g: item.net_wt_in_g || null,
+            net_wt_in_g: item.net_wt_in_g || null,
 
-          purchase_rate: item.purchase_rate || null,
-          stone_rate: item.stone_rate || null,
-          making_charge: item.making_charge || null,
-          rate_per_g: item.rate_per_g || null,
+            purchase_rate: item.purchase_rate || null,
+            stone_rate: item.stone_rate || null,
+            making_charge: item.making_charge || null,
+            rate_per_g: item.rate_per_g || null,
 
-          amount: item.amount || null,
+            amount: item.amount || null,
 
-          updated_by: updateData.updated_by,
-        },
-        { transaction }
-      );
-
-        incomingIds.push(item.id);
+            updated_by: updateData.updated_by,
+          },
+          { transaction }
+        );
       } else {
-        // ✅ CREATE
-        const newItem = await models.QuotationItem.create(
+        // CREATE
+        quotationItem = await models.QuotationItem.create(
           {
             quotation_id: id,
             vendor_quotation_id: null,
@@ -490,22 +499,59 @@ const updateQuotationRequest = async (req, res) => {
           },
           { transaction }
         );
-
-        incomingIds.push(newItem.id);
       }
+
+      const parentId = quotationItem.id;
+      // ADDITIONAL MATERIALS
+      // DELETE OLD
+      await models.AdditionalMaterial.destroy({
+        where: {
+          parent_type: "quotation_item",
+          parent_id: parentId,
+        },
+        force: true,
+        transaction,
+      });
+
+      // INSERT NEW
+      if (item.additional_materials?.length) {
+        const materials = item.additional_materials.map((m) => ({
+          parent_type: "quotation_item",
+          parent_id: parentId,
+          label: m.label,
+          weight_in_g: m.weight_in_g || 0,
+          value: m.value || 0,
+        }));
+
+        await models.AdditionalMaterial.bulkCreate(materials, {
+          transaction,
+        });
+      }
+
+      incomingIds.push(parentId);
     }
 
-    // ✅ DELETE items not in payload
-    await models.QuotationItem.destroy({
-      where: {
-        quotation_id: id,
+    // DELETE REMOVED ITEMS + MATERIALS
+    const itemsToDelete = existingItems
+      .filter((item) => !incomingIds.includes(item.id))
+      .map((item) => item.id);
+
+    if (itemsToDelete.length) {
+      await models.QuotationItem.destroy({
+        where: { id: itemsToDelete },        
         vendor_quotation_id: null,
-        id: {
-          [Op.notIn]: incomingIds.length ? incomingIds : [0], // safety
+        transaction,
+      });
+
+      await models.AdditionalMaterial.destroy({
+        where: {
+          parent_type: "quotation_item",
+          parent_id: itemsToDelete,
         },
-      },
-      transaction,
-    });
+        force: true,
+        transaction,
+      });
+    }
 
     // 5. Recalculate quotation status
     const newStatus = await calculateQuotationStatus(id, transaction);
@@ -1461,7 +1507,7 @@ const getAllVendorQuotations = async (req, res) => {
       ${whereSql}
 
       GROUP BY vq.id, q.id
-      ORDER BY q.request_date DESC, vq.id DESC
+      ORDER BY q.qr_id DESC, vq.id DESC
     `;
 
     if (isPaginated) {
