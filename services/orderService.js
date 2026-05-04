@@ -443,7 +443,7 @@ const getWebsiteProductById = async (req, res) => {
           offer.material_type_id === product.material_type_id
         ) {
           applicable = true;
-          discount = calcOffer(item.item_price, offer.offer_type, offer.offer_value);
+          discount = calcOffer(item.price_details.final_price_rate, offer.offer_type, offer.offer_value);
         }
 
         // 2 CATEGORY
@@ -452,7 +452,7 @@ const getWebsiteProductById = async (req, res) => {
           offer.category_id === product.category_id
         ) {
           applicable = true;
-          discount = calcOffer(item.item_price, offer.offer_type, offer.offer_value);
+          discount = calcOffer(item.price_details.final_price_rate, offer.offer_type, offer.offer_value);
         }
 
         // 3 SUBCATEGORY
@@ -461,7 +461,7 @@ const getWebsiteProductById = async (req, res) => {
           offer.subcategory_id === product.subcategory_id
         ) {
           applicable = true;
-          discount = calcOffer(item.item_price, offer.offer_type, offer.offer_value);
+          discount = calcOffer(item.price_details.final_price_rate, offer.offer_type, offer.offer_value);
         }
 
         // 4 PRODUCT
@@ -470,7 +470,7 @@ const getWebsiteProductById = async (req, res) => {
           offer.product_id === product.id
         ) {
           applicable = true;
-          discount = calcOffer(item.item_price, offer.offer_type, offer.offer_value);
+          discount = calcOffer(item.price_details.final_price_rate, offer.offer_type, offer.offer_value);
         }
 
         // 5 MAKING CHARGE
