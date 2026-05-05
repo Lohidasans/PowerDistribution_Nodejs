@@ -1111,7 +1111,7 @@ const getVendorQuotationById = async (req, res) => {
       {
         replacements: { id },
         type: sequelize.QueryTypes.SELECT,
-      },
+      }
     );
 
     if (!vendorQuotation || vendorQuotation.length === 0) {
@@ -1140,10 +1140,35 @@ const getVendorQuotationById = async (req, res) => {
       {
         replacements: { quotationId: vq.quotation_id },
         type: sequelize.QueryTypes.SELECT,
-      },
+      }
     );
 
     // Get vendor-specific items (if vendor has submitted rates)
+    const baseItemIds = baseItems.map((i) => i.id);
+
+    let baseMaterialMap = {};
+    if (baseItemIds.length) {
+      const materials = await models.AdditionalMaterial.findAll({
+        where: {
+          parent_type: "quotation_item",
+          parent_id: baseItemIds,
+        },
+        raw: true,
+      });
+
+      materials.forEach((m) => {
+        if (!baseMaterialMap[m.parent_id]) {
+          baseMaterialMap[m.parent_id] = [];
+        }
+        baseMaterialMap[m.parent_id].push(m);
+      });
+    }
+
+    const enrichedBaseItems = baseItems.map((item) => ({
+      ...item,
+      additional_materials: baseMaterialMap[item.id] || [],
+    }));
+
     const vendorItems = await sequelize.query(
       `
       SELECT 
@@ -1165,10 +1190,36 @@ const getVendorQuotationById = async (req, res) => {
       },
     );
 
+    // 👉 FETCH VENDOR ADDITIONAL MATERIALS
+    const vendorItemIds = vendorItems.map((i) => i.id);
+
+    let vendorMaterialMap = {};
+    if (vendorItemIds.length) {
+      const materials = await models.AdditionalMaterial.findAll({
+        where: {
+          parent_type: "quotation_item",
+          parent_id: vendorItemIds,
+        },
+        raw: true,
+      });
+
+      materials.forEach((m) => {
+        if (!vendorMaterialMap[m.parent_id]) {
+          vendorMaterialMap[m.parent_id] = [];
+        }
+        vendorMaterialMap[m.parent_id].push(m);
+      });
+    }
+
+    const enrichedVendorItems = vendorItems.map((item) => ({
+      ...item,
+      additional_materials: vendorMaterialMap[item.id] || [],
+    }));
+
     return commonService.okResponse(res, {
       ...vq,
-      base_items: baseItems || [],
-      vendor_items: vendorItems || [],
+      base_items: enrichedBaseItems,
+      vendor_items: enrichedVendorItems,
     });
   } catch (error) {
     return commonService.handleError(res, error);
