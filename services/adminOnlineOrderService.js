@@ -170,6 +170,7 @@ const getOnlineOrders = async (req, res) => {
       ${baseCTE}
 
       SELECT
+        id AS order_id,
         ROW_NUMBER() OVER(ORDER BY order_date DESC) AS s_no,
         order_number,
         TO_CHAR(order_date,'DD/MM/YYYY') AS order_date,
