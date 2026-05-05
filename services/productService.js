@@ -953,22 +953,10 @@ const getAllProductDetails = async (req, res) => {
     // MAIN QUERY
     let query = `
       SELECT
-        p.id,
-        p.product_code,
-        p.product_name,
-        p.description,
-        p.is_published,
-        p.image_urls,
-        p.qr_image_url,
-        p.vendor_id,
-        p.material_type_id,
-        p.category_id,
+        p.*,
         ct.category_name,
         ct.category_image_url,
-        p.subcategory_id,
         sc.subcategory_name,
-        p.ref_no_id,
-        p.grn_id,
         g.grn_no,
         g.grn_date,
         g.total_gross_wt_in_g,
@@ -997,20 +985,7 @@ const getAllProductDetails = async (req, res) => {
         COALESCE(SUM(COALESCE(pid.quantity, 0)), 0) AS total_quantity,
         COALESCE(SUM(COALESCE(pid.quantity, 0) * COALESCE(pid.net_weight, 0)), 0) AS total_weight,
         COUNT(DISTINCT pid.id) AS variation_count,
-        p.branch_id,
-        b.branch_name,
-        p.sku_id,
-        p.hsn_code,
-        p.purity,
-        p.product_type,
-        p.variation_type,
-        p.product_variations,
-        p."is_addOn",
-        p.total_grn_value,
-        p.total_products,
-        p.remaining_weight,
-        p.created_at,
-        p.updated_at
+        b.branch_name
       FROM products p
       LEFT JOIN "productItemDetails" pid ON pid.product_id = p.id
       LEFT JOIN grns g ON g.id = p.grn_id AND g.deleted_at IS NULL
