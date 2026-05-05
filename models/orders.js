@@ -43,6 +43,18 @@ module.exports = (sequelize, DataTypes) => {
                 type: DataTypes.DECIMAL(15, 2),
                 allowNull: true,
             },
+            cancelled_by: {
+                type: DataTypes.INTEGER,  // pass the login id here
+                allowNull: true,
+            },
+            cancel_reason: {
+                type: DataTypes.TEXT,
+                allowNull: true,
+            },
+            cancelled_at: {
+                type: DataTypes.DATE,
+                allowNull: true,
+            }
         },
         {
             timestamps: true,

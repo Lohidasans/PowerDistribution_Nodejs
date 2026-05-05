@@ -72,6 +72,7 @@ const getOnlineOrders = async (req, res) => {
           b.branch_name,
 
           CASE
+            WHEN oi.item_status = 'Cancelled' THEN 'Cancelled'
             WHEN oi.item_status = 'Delivered' THEN 'Delivered'
             WHEN oi.item_status = 'Shipped' THEN 'Shipped'
             ELSE 'New Order'
@@ -114,7 +115,7 @@ const getOnlineOrders = async (req, res) => {
           STRING_AGG(DISTINCT branch_name, ', ') AS branch_names,
 
           COUNT(*) AS total_items,
-
+          SUM(CASE WHEN item_status = 'Cancelled' THEN 1 ELSE 0 END) AS cancelled_cnt,
           SUM(CASE WHEN item_status = 'New Order' THEN 1 ELSE 0 END) AS new_cnt,
           SUM(CASE WHEN item_status = 'Shipped' THEN 1 ELSE 0 END) AS shipped_cnt,
           SUM(CASE WHEN item_status = 'Delivered' THEN 1 ELSE 0 END) AS delivered_cnt
@@ -162,7 +163,7 @@ const getOnlineOrders = async (req, res) => {
         }
 
         if (status === "cancelled") {
-            statusCondition = `WHERE 1=0`; // future use
+            statusCondition = `WHERE cancelled_cnt = total_items`;
         }
 
         // LIST QUERY        
@@ -181,6 +182,7 @@ const getOnlineOrders = async (req, res) => {
         branch_names AS branch_name,
 
         CASE
+          WHEN cancelled_cnt = total_items THEN 'Cancelled'
           WHEN delivered_cnt = total_items THEN 'Delivered'
           WHEN delivered_cnt > 0 THEN 'Partially Delivered'
           WHEN shipped_cnt = total_items THEN 'Shipped'
@@ -248,7 +250,12 @@ const getOnlineOrders = async (req, res) => {
           END
         ) AS delivered,
 
-        0 AS cancelled_order
+        SUM(
+          CASE
+            WHEN cancelled_cnt = total_items 
+            THEN 1 ELSE 0 
+          END
+        ) AS cancelled_order
 
       FROM order_summary
     `;
@@ -535,9 +542,103 @@ const getOnlineOrderDetails = async (req, res) => {
   }
 };
 
+const cancelOrder = async (req, res) => {
+  const transaction = await sequelize.transaction();
+
+  try {
+    const { order_id } = req.params;
+    const { cancelled_by, cancel_reason } = req.body;
+
+    // 1️⃣ Get Order
+    const order = await models.Order.findByPk(order_id, { transaction });
+
+    if (!order) {
+      await transaction.rollback();
+      return commonService.notFound(res, "Order not found");
+    }
+
+    // ❌ Prevent already cancelled
+    if (order.order_status === 3) {
+      await transaction.rollback();
+      return commonService.badRequest(res, "Order already cancelled");
+    }
+
+    // 2️⃣ Get Order Items
+    const items = await models.OrderItem.findAll({
+      where: { order_id },
+      transaction,
+    });
+
+    if (!items.length) {
+      await transaction.rollback();
+      return commonService.badRequest(res, "No items found for this order");
+    }
+
+    // ❌ Prevent cancel if any item delivered
+    const blockedItems = items.some(
+      (item) =>
+        item.item_status === "Shipped" ||
+        item.item_status === "Delivered"
+    );
+
+    if (blockedItems) {
+      await transaction.rollback();
+      return commonService.badRequest(
+        res,
+        "Cannot cancel order. Some items are already shipped or delivered"
+      );
+    }
+
+    // 3️⃣ Restore Stock
+    for (const item of items) {
+      const productItem = await models.ProductItemDetail.findByPk(
+        item.product_item_id,
+        { transaction, lock: transaction.LOCK.UPDATE }
+      );
+
+      if (productItem) {
+        await productItem.update(
+          {
+            quantity: productItem.quantity + item.quantity,
+          },
+          { transaction }
+        );
+      }
+    }
+
+    // 4️⃣ Update Order Items
+    await models.OrderItem.update(
+      { item_status: "Cancelled" },
+      { where: { order_id }, transaction }
+    );
+
+    // 5️⃣ Update Order
+    await order.update(
+      {
+        order_status: 3,
+        cancelled_by,
+        cancel_reason,
+        cancelled_at: new Date(),
+      },
+      { transaction }
+    );
+
+    await transaction.commit();
+
+    return commonService.okResponse(res, {
+      message: "Order cancelled successfully",
+    });
+  } catch (error) {
+    await transaction.rollback();
+    console.error("Cancel Order Error:", error);
+    return commonService.handleError(res, error);
+  }
+};
+
 module.exports = {
     getOnlineOrders,
     updateShipmentDetails,
     updateDeliveredDetails,
-    getOnlineOrderDetails
+    getOnlineOrderDetails,
+    cancelOrder
 };
