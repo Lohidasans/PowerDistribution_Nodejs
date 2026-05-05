@@ -862,19 +862,40 @@ const getAllProductDetails = async (req, res) => {
 
     if (stock === "out_of_stock") {
       whereClause += `
-   
-      -- Must be invoiced
-      AND EXISTS (
-        SELECT 1
-        FROM sales_invoice_bill_items sii
-        JOIN sales_invoice_bills sib
-          ON sib.id = sii.invoice_bill_id
-          AND sib.deleted_at IS NULL
-          AND sib.status = 'Invoice'
-          AND sib.is_active = true AND sii.is_returned = false
-        WHERE sii.deleted_at IS NULL
-          AND sii.product_item_detail_id = pid.id
-      )
+        AND EXISTS (
+          SELECT 1
+          FROM "productItemDetails" pid2
+          WHERE pid2.product_id = p.id
+          AND pid2.deleted_at IS NULL
+          AND (            
+            -- ✅ Invoice sales
+            EXISTS (
+              SELECT 1
+              FROM sales_invoice_bill_items sii
+              JOIN sales_invoice_bills sib
+                ON sib.id = sii.invoice_bill_id
+                AND sib.deleted_at IS NULL
+                AND sib.status = 'Invoice'
+                AND sib.is_active = true
+              WHERE sii.deleted_at IS NULL
+                AND sii.is_returned = false
+                AND sii.product_item_detail_id = pid2.id
+            )
+            OR
+            -- ✅ Online order sales
+            EXISTS (
+              SELECT 1
+              FROM order_items oi
+              JOIN orders o
+                ON o.id = oi.order_id
+                AND o.deleted_at IS NULL
+                AND o.order_status != 3 -- exclude cancelled
+              WHERE oi.deleted_at IS NULL
+                AND oi.product_item_id = pid2.id
+            )
+
+          )
+        )
       `;
     }
 
@@ -1053,18 +1074,42 @@ const getAllProductDetails = async (req, res) => {
         const soldRows = await sequelize.query(
           `
           SELECT
-            sii.product_item_detail_id,
-            SUM(sii.quantity) AS sold_quantity
-          FROM sales_invoice_bill_items sii
-          JOIN sales_invoice_bills sib
-            ON sib.id = sii.invoice_bill_id
-            AND sib.deleted_at IS NULL
-            AND sib.status = 'Invoice'
-            AND sib.is_active = true
-          WHERE sii.deleted_at IS NULL
-            AND sii.is_returned = false   -- ✅ FIX
-            AND sii.product_item_detail_id IN (:itemIds)
-          GROUP BY sii.product_item_detail_id
+            product_item_detail_id,
+            SUM(sold_quantity) AS sold_quantity
+          FROM (
+
+            -- ✅ INVOICE SALES (existing logic untouched)
+            SELECT
+              sii.product_item_detail_id,
+              SUM(sii.quantity) AS sold_quantity
+            FROM sales_invoice_bill_items sii
+            JOIN sales_invoice_bills sib
+              ON sib.id = sii.invoice_bill_id
+              AND sib.deleted_at IS NULL
+              AND sib.status = 'Invoice'
+              AND sib.is_active = true
+            WHERE sii.deleted_at IS NULL
+              AND sii.is_returned = false
+              AND sii.product_item_detail_id IN (:itemIds)
+            GROUP BY sii.product_item_detail_id
+
+            UNION ALL
+
+            -- ✅ ONLINE ORDER SALES (NEW ADDITION)
+            SELECT
+              oi.product_item_id AS product_item_detail_id,
+              SUM(oi.quantity) AS sold_quantity
+            FROM order_items oi
+            JOIN orders o
+              ON o.id = oi.order_id
+              AND o.deleted_at IS NULL
+              AND o.order_status != 3   -- ❗ ignore cancelled orders
+            WHERE oi.deleted_at IS NULL
+              AND oi.product_item_id IN (:itemIds)
+            GROUP BY oi.product_item_id
+
+          ) t
+          GROUP BY product_item_detail_id
           `,
           {
             replacements: { itemIds },
