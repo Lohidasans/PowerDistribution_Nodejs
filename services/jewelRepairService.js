@@ -2,6 +2,7 @@ const { Op } = require('sequelize');
 const commonService = require('./commonService');
 const { models, sequelize } = require('../models/index');
 const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
+const { validateDuplicateUniqueCode } = require('../helpers/billingValidations');
 
 // Create a new jewel repair record with items
 const createJewelRepair = async (req, res) => {
@@ -41,21 +42,14 @@ const createJewelRepair = async (req, res) => {
     const totalAmount = subTotal - discountCalculated;
 
     // Prevent duplicate repair code
-    if (repairData.repair_code) {
-      const exists = await models.JewelRepair.findOne({
-        where: {
-          repair_code: repairData.repair_code,
-          deleted_at: null,
-        },
-      });
-
-      if (exists) {
-        return commonService.badRequest(
-          res,
-          "Jewel Repair code already exists"
-        );
-      }
-    }
+    const employeeData = await validateDuplicateUniqueCode({
+      model: models.JewelRepair,
+      billField: "repair_code",
+      billValue: repairData.repair_code,
+      employee_id: repairData.employee_id,
+      transaction,
+      bill_name: "Jewel Repair",
+    });
 
     // Create Jewel Repair
     const repair = await models.JewelRepair.create(

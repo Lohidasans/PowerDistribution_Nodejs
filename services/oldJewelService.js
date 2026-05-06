@@ -2,6 +2,7 @@ const { Op } = require('sequelize');
 const commonService = require('./commonService');
 const { models, sequelize } = require('../models/index');
 const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
+const { validateDuplicateUniqueCode } = require('../helpers/billingValidations');
 
 // Create a new old jewel record with items
 const createOldJewel = async (req, res) => {
@@ -14,30 +15,16 @@ const createOldJewel = async (req, res) => {
       return sum + (parseFloat(item.amount) || 0);
     }, 0);
 
-    // VALIDATE branch_id
-    if (!jewelData.branch_id) {
-      await transaction.rollback();
-      return commonService.badRequest(res, "branch_id is required");
-    }
 
     // CHECK DUPLICATE
-    if (jewelData.old_jewel_code) {
-      const existing = await models.OldJewel.findOne({
-        where: {
-          old_jewel_code: jewelData.old_jewel_code,
-          branch_id: jewelData.branch_id,
-        },
-        transaction,
-      });
-
-      if (existing) {
-        await transaction.rollback();
-        return commonService.badRequest(
-          res,
-          "Old jewel code already exists for this branch"
-        );
-      }
-    }
+    const employee = await validateDuplicateUniqueCode({
+      model: models.OldJewel,
+      billField: "old_jewel_code",
+      billValue: jewelData.old_jewel_code,
+      employee_id: jewelData.employee_id,
+      transaction,
+      bill_name: "Old Jewel",
+    });
         
     // Create the main jewel record with calculated values
     const jewel = await models.OldJewel.create({
