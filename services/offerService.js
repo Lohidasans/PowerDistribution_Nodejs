@@ -478,7 +478,7 @@ const generateOfferCode = async (req, res) => {
 const getProducts = async (req, res) => {
   try {
 
-    const query = `
+   const query = `
       SELECT 
         p.id,
         p.product_name,
@@ -501,6 +501,16 @@ const getProducts = async (req, res) => {
         p.deleted_at IS NULL
         AND p.status = 'Active'
         AND s.deleted_at IS NULL
+
+        -- ✅ Show only products having stock
+        AND EXISTS (
+          SELECT 1
+          FROM "productItemDetails" pid
+          WHERE pid.product_id = p.id
+            AND pid.deleted_at IS NULL
+            AND COALESCE(pid.quantity, 0) > 0
+        )
+
       ORDER BY p.created_at DESC
     `;
 
