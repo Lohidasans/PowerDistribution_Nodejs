@@ -16,7 +16,7 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.STRING,
         allowNull: true,
       },
-      material_type_id: {
+      material_price_per_g: {
         type: DataTypes.INTEGER,
         allowNull: false,
       },
