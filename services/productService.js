@@ -1138,6 +1138,12 @@ const getAllProductDetails = async (req, res) => {
         const productItems = itemsByProduct[product.id] || [];
 
         const enrichedItems = productItems.filter(item => {
+        // ✅ STOCK IN HAND
+          if (stock === "stock_in_hand") {
+            return Number(item.quantity || 0) > 0;
+          }
+
+          // ✅ SOLD OUT
           if (stock === "out_of_stock") {
             return (soldMap[item.id] || 0) > 0;
           }
@@ -1167,6 +1173,9 @@ const getAllProductDetails = async (req, res) => {
       });
 
       products = itemsWithPrices;
+      if (stock === "stock_in_hand" || stock === "out_of_stock") {
+        products = products.filter(p => p.item_details && p.item_details.length > 0);
+      }
     }
 
     const response = { products };
@@ -1748,6 +1757,7 @@ const searchProductBySkuNew = async (req, res) => {
     return commonService.handleError(res, error);
   }
 };
+
 const searchProductBySkuStockTransfer = async (req, res) => {
   try {
     const { sku, branch_id } = req.query;
