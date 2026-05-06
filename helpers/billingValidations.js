@@ -2,6 +2,45 @@ const { Op } = require('sequelize');
 const { models, sequelize } = require('../models');
 const { ValidationError } = require("../utils/errors");
 
+const validateDuplicateUniqueCode = async ({
+  model,
+  bill_no,
+  employee_id,
+  transaction,
+  bill_name = "Bill"
+}) => {
+
+  // ✅ Employee validation
+  const employee = await models.Employee.findOne({
+    where: {
+      id: employee_id,
+      deleted_at: null,
+    },
+    transaction,
+  });
+
+  if (!employee) {
+    throw new Error("Employee not found");
+  }
+
+  // Duplicate validation
+  const existing = await model.findOne({
+    where: {
+      estimate_no: bill_no,
+      branch_id: employee.branch_id,
+      deleted_at: null,
+    },
+    transaction,
+  });
+
+  if (existing) {
+    throw new Error(
+      `${bill_name} number already exists for this branch`
+    );
+  }
+  return employee;
+};
+
 const validateProductItemDetails = async (items, transaction) => {
     const pairs = items
         .filter(i => i.product_id && i.product_item_detail_id)
@@ -303,6 +342,7 @@ const restoreStockForSalesReturn = async (items, transaction) => {
 
 
 module.exports = {
+    validateDuplicateUniqueCode,
     validateProductItemDetails,
     validateProducts,
     reduceStockForInvoice,

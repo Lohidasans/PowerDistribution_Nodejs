@@ -3,7 +3,7 @@ const commonService = require("./commonService");
 const enMessage = require("../constants/en.json");
 const { Op } = require("sequelize");
 const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
-const { validateProductItemDetails, validateProducts } = require('../helpers/billingValidations');
+const { validateProductItemDetails, validateProducts, validateDuplicateUniqueCode } = require('../helpers/billingValidations');
 
 // Generate estimate number (series)
 const generateEstimateNo = async (req, res) => {
@@ -31,24 +31,18 @@ const createEstimate = async (req, res) => {
       return commonService.badRequest(res, "At least one item is required");
     }
 
-    if (header.estimate_no) {
-      const existing = await models.EstimateBill.findOne({
-        where: {
-          estimate_no: header.estimate_no,
-          branch_id: header.branch_id, 
-          deleted_at: null,
-        },
-        transaction: t
-      });
+   let employee = null;
 
-      if (existing) {
-        await t.rollback();
-        return commonService.badRequest(
-          res,
-          "Estimate number already exists for this branch"
-        );
-      }
+    if (header.estimate_no) {
+      employee = await validateDuplicateUniqueCode({
+        model: models.EstimateBill,
+        bill_no: header.estimate_no,
+        employee_id: header.employee_id,
+        transaction: t,
+        bill_name: "Estimate"
+      });
     }
+
     // Run validations
     await validateProducts(items, t);
     await validateProductItemDetails(items, t);
@@ -344,7 +338,6 @@ const updateEstimate = async (req, res) => {
 
     await bill.update(
       {
-        estimate_no: header.estimate_no ?? bill.estimate_no,
         estimate_date: header.estimate_date ?? bill.estimate_date,
         estimate_time: header.estimate_time ?? bill.estimate_time,
         employee_id: header.employee_id ?? bill.employee_id,
