@@ -10,7 +10,6 @@ router.get("/products/search/sku", svc.searchProductBySkuNew);
 router.get("/products/search/sku/stock-transfer", svc.searchProductBySkuStockTransfer);
 router.post("/products/generateSku", svc.createProductSKUCode);
 router.get("/products/list-details", svc.getAllProductDetails);
-// router.get("/products/list-details", svc.newGetAllProductDetails);
 router.get("/products/addon-list", svc.getProductAddonList);
 router.get("/products/stock/counts", svc.getProductStockCounts);
 router.get("/products/top-selling-subcategories", svc.getTopSellingSubcategories);
