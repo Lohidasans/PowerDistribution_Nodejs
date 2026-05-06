@@ -31,17 +31,14 @@ const createEstimate = async (req, res) => {
       return commonService.badRequest(res, "At least one item is required");
     }
 
-   let employee = null;
-
-    if (header.estimate_no) {
-      employee = await validateDuplicateUniqueCode({
-        model: models.EstimateBill,
-        bill_no: header.estimate_no,
-        employee_id: header.employee_id,
-        transaction: t,
-        bill_name: "Estimate"
-      });
-    }
+    const employee = await validateDuplicateUniqueCode({
+      model: models.EstimateBill,
+      billField: "estimate_no",
+      billValue: header.estimate_no,
+      employee_id: header.employee_id,
+      transaction: t,
+      bill_name: "Estimate",
+    });
 
     // Run validations
     await validateProducts(items, t);

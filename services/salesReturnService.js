@@ -3,7 +3,7 @@ const commonService = require("./commonService");
 const enMessage = require("../constants/en.json");
 const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
 const { Op } = require("sequelize");
-const { restoreStockForSalesReturn } = require('../helpers/billingValidations');
+const { restoreStockForSalesReturn, validateDuplicateUniqueCode } = require('../helpers/billingValidations');
 
 // Generate sales return number (series)
 const generateSalesReturnNo = async (req, res) => {
@@ -87,31 +87,15 @@ const createSalesReturn = async (req, res) => {
     const igstAmt = hasHeaderIgst ? Number(header.igst_amount || 0) : 0;
     const total = subtotal + cgstAmt + sgstAmt + igstAmt;
 
-
-    //  VALIDATE branch_id
-    if (!header.branch_id) {
-      await t.rollback();
-      return commonService.badRequest(res, "branch_id is required");
-    }
-
     // CHECK DUPLICATE
-    if (header.sales_return_no) {
-      const existing = await models.SalesReturn.findOne({
-        where: {
-          sales_return_no: header.sales_return_no,
-          branch_id: header.branch_id,
-        },
-        transaction: t,
-      });
-
-      if (existing) {
-        await t.rollback();
-        return commonService.badRequest(
-          res,
-          "Sales return number already exists for this branch"
-        );
-      }
-    }
+    const employee = await validateDuplicateUniqueCode({
+      model: models.SalesReturn,
+      billField: "sales_return_no",
+      billValue: header.sales_return_no,
+      employee_id: header.employee_id,
+      transaction: t,
+      bill_name: "Sales Return",
+    });
     // Create sales return header
     const salesReturn = await models.SalesReturn.create(
       {
@@ -535,8 +519,7 @@ const updateSalesReturn = async (req, res) => {
     // 4. UPDATE SALES RETURN HEADER
     await salesReturn.update(
       {
-        sales_return_no:
-        header.sales_return_no ?? salesReturn.sales_return_no,
+        sales_return_no: header.sales_return_no ?? salesReturn.sales_return_no,
         return_date: header.return_date || salesReturn.return_date,
         return_time: header.return_time || salesReturn.return_time,
         employee_id: header.employee_id,

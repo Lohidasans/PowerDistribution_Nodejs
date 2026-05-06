@@ -17,8 +17,8 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: true,
       },
       material_price_per_g: {
-        type: DataTypes.INTEGER,
-        allowNull: false,
+        type: DataTypes.DECIMAL(15, 4),
+        allowNull: true,
       },
       material_type_id: {
         type: DataTypes.INTEGER,

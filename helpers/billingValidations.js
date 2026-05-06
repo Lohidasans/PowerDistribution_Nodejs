@@ -4,13 +4,20 @@ const { ValidationError } = require("../utils/errors");
 
 const validateDuplicateUniqueCode = async ({
   model,
-  bill_no,
+  billField,
+  billValue,
   employee_id,
   transaction,
-  bill_name = "Bill"
+  bill_name,
+  exclude_id = null,
 }) => {
 
-  // ✅ Employee validation
+  // REQUIRED VALIDATION
+  if (!billValue) {
+    throw new Error(`${bill_name} number is required`);
+  }
+
+  // Employee Validation
   const employee = await models.Employee.findOne({
     where: {
       id: employee_id,
@@ -23,21 +30,33 @@ const validateDuplicateUniqueCode = async ({
     throw new Error("Employee not found");
   }
 
-  // Duplicate validation
+  const where = {
+    [billField]: billValue,
+    branch_id: employee.branch_id,
+    deleted_at: null,
+  };
+
+  if (exclude_id) {
+    where.id = {
+      [Op.ne]: exclude_id,
+    };
+  }
+
+  console.log("DUPLICATE WHERE => ", where);
+
   const existing = await model.findOne({
-    where: {
-      estimate_no: bill_no,
-      branch_id: employee.branch_id,
-      deleted_at: null,
-    },
+    where,
     transaction,
   });
+
+  console.log("EXISTING => ", existing);
 
   if (existing) {
     throw new Error(
       `${bill_name} number already exists for this branch`
     );
   }
+
   return employee;
 };
 
@@ -234,31 +253,6 @@ const validateInvoiceItems = async ({
         if (!invoice) {
             throw new ValidationError("Invoice not found");
         }
-
-        // if (invoice.status === "Invoice") {
-        //     throw new ValidationError("Finalized invoice cannot be edited");
-        // }
-    }
-
-    // invoice_no uniqueness (only on create or when changed)
-    if (header.invoice_no) {
-        const where = {
-            invoice_no: header.invoice_no,
-            deleted_at: null,
-        };
-
-        if (!isCreate) {
-            where.id = { [Op.ne]: excludeInvoiceId };
-        }
-
-        const existing = await models.SalesInvoiceBill.findOne({
-            where,
-            transaction,
-        });
-
-        if (existing) {
-            throw new ValidationError("Invoice no already exists");
-        }
     }
 
     // product_item_detail_id required
@@ -267,7 +261,7 @@ const validateInvoiceItems = async ({
         throw new ValidationError("product_item_detail_id is required for all items");
     }
 
-    return invoice; // IMPORTANT
+    return invoice;
 };
 
 const validateEstimateForInvoice = async (

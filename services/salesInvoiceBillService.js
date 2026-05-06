@@ -3,6 +3,7 @@ const commonService = require("./commonService");
 const enMessage = require("../constants/en.json");
 const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
 const { validateProductItemDetails,
+  validateDuplicateUniqueCode,
   validateProducts,
   reduceStockForInvoice,
   validateCashPayment,
@@ -559,6 +560,16 @@ const createSalesInvoice = async (req, res) => {
       estimateBill = await validateEstimateForInvoice(header.estimate_bill_id, { models, transaction: t });
     }
 
+    // ✅ DUPLICATE INVOICE NUMBER VALIDATION
+    const employee = await validateDuplicateUniqueCode({
+      model: models.SalesInvoiceBill,
+      billField: "invoice_no",
+      billValue: header.invoice_no,
+      employee_id: header.employee_id,
+      transaction: t,
+      bill_name: "Invoice",
+    })
+
     // Validate products
     await validateProducts(items, t);
     await validateProductItemDetails(items, t);
@@ -760,9 +771,7 @@ const createSalesInvoice = async (req, res) => {
 
 const updateSalesInvoice = async (req, res) => {
   const t = await sequelize.transaction();
-
   try {
-
     const invoiceId = req.params.id;
     const { header = {}, items = [], payment = [], adjustments = [] } = req.body || {};
 
