@@ -2405,11 +2405,10 @@ const getProductStockCounts = async (req, res) => {
         COALESCE(SUM(pid.quantity), 0) as total_quantity
       FROM "products" p
       ${searchJoins}
-      INNER JOIN "productItemDetails" pid ON p.id = pid.product_id
+      INNER JOIN "productItemDetails" pid ON p.id = pid.product_id AND pid.deleted_at IS NULL
       ${whereClause}
       AND pid.quantity > 0
-      AND pid.deleted_at IS NULL
-    `,
+      `,
       {
         type: sequelize.QueryTypes.SELECT,
         replacements
@@ -2442,16 +2441,31 @@ const getProductStockCounts = async (req, res) => {
         AND pid.deleted_at IS NULL
       ${whereClause}
 
-      AND EXISTS (
-        SELECT 1
-        FROM sales_invoice_bill_items sii
-        JOIN sales_invoice_bills sib
-          ON sib.id = sii.invoice_bill_id
-          AND sib.deleted_at IS NULL
-          AND sib.status = 'Invoice'
-          AND sib.is_active = true AND sii.is_returned = false
-        WHERE sii.deleted_at IS NULL
-          AND sii.product_item_detail_id = pid.id
+      AND (
+        -- ✅ Invoice sold items
+        EXISTS (
+          SELECT 1
+          FROM sales_invoice_bill_items sii
+          JOIN sales_invoice_bills sib
+            ON sib.id = sii.invoice_bill_id
+            AND sib.deleted_at IS NULL
+            AND sib.status = 'Invoice'
+            AND sib.is_active = true
+          WHERE sii.deleted_at IS NULL AND sii.is_returned = false
+            AND sii.product_item_detail_id = pid.id
+        )
+        OR
+        -- ✅ Online order sold items
+        EXISTS (
+          SELECT 1
+          FROM order_items oi
+          JOIN orders o
+            ON o.id = oi.order_id
+            AND o.deleted_at IS NULL
+            AND o.order_status != 3
+          WHERE oi.deleted_at IS NULL
+            AND oi.product_item_id = pid.id
+        )
       )
       `,
       {
