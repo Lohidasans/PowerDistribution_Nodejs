@@ -5,6 +5,9 @@ const attendanceSvc = require("../services/employeeAttendanceService");
 // Get employee attendance for a specific date
 router.get("/employees/attendance", attendanceSvc.getEmployeeAttendance);
 
+// Get attendance detail (date-by-date) for a specific employee
+router.get("/employees/:employee_id/attendance", attendanceSvc.getEmployeeAttendanceDetail);
+
 // Get attendance history for a specific employee
 router.get("/employees/:employee_id/attendance/history", attendanceSvc.getEmployeeAttendanceHistory);
 
