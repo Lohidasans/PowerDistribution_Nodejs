@@ -2700,6 +2700,107 @@ const getStockUpdates = async (req, res) => {
   }
 };
 
+const getProductGrnSummary = async (req, res) => {
+  try {
+    const { ref_no_id } = req.params;
+
+    if (!ref_no_id) {
+      return commonService.badRequest(
+        res,
+        "ref_no_id is required"
+      );
+    }
+
+    const query = `
+      SELECT
+        p.ref_no_id,      
+        COALESCE(SUM(pid.quantity), 0) AS current_qty, /* CURRENT STOCK */        
+        COALESCE(SUM(pid.gross_weight), 0) AS current_weight, /* CURRENT STOCK WEIGHT */
+
+        COALESCE(SUM(
+          CASE
+            WHEN sib.status = 'Invoice'
+              AND sii.is_returned = false
+            THEN sii.quantity
+            ELSE 0
+          END
+        ), 0) AS invoice_sold_qty,    /* SOLD INVOICE QTY */       
+
+        COALESCE(SUM(
+          CASE
+            WHEN sib.status = 'Invoice'
+              AND sii.is_returned = false
+            THEN pid.gross_weight
+            ELSE 0
+          END
+        ), 0) AS invoice_sold_weight,  /* SOLD INVOICE WEIGHT */
+
+        COALESCE(SUM(
+          CASE
+            WHEN oi.item_status != 'Cancelled'
+            THEN oi.quantity
+            ELSE 0
+          END
+        ), 0) AS online_order_sold_qty,    /* SOLD ONLINE ORDER QTY */
+
+        COALESCE(SUM(
+          CASE
+            WHEN oi.item_status != 'Cancelled'
+            THEN pid.gross_weight
+            ELSE 0
+          END
+        ), 0) AS online_order_sold_weight    /* SOLD ONLINE ORDER WEIGHT */
+
+      FROM products p
+
+      JOIN "productItemDetails" pid ON pid.product_id = p.id AND pid.deleted_at IS NULL
+      LEFT JOIN sales_invoice_bill_items sii ON sii.product_item_detail_id = pid.id AND sii.deleted_at IS NULL
+      LEFT JOIN sales_invoice_bills sib ON sib.id = sii.invoice_bill_id AND sib.deleted_at IS NULL
+      LEFT JOIN order_items oi ON oi.product_item_id = pid.id AND oi.deleted_at IS NULL
+      WHERE p.deleted_at IS NULL AND p.ref_no_id = :ref_no_id
+      GROUP BY p.ref_no_id
+    `;
+
+    const [data] = await sequelize.query(query, {
+      replacements: { ref_no_id },
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    if (!data) {
+      return commonService.okResponse(res, {
+        total_products_added_qty: 0,
+        total_products_added_gm: 0,
+      });
+    }
+
+    const currentQty = parseInt(data.current_qty) || 0;
+    const invoiceSoldQty = parseInt(data.invoice_sold_qty) || 0;
+    const onlineOrderSoldQty = parseInt(data.online_order_sold_qty) || 0;
+    const currentWeight = parseFloat(data.current_weight) || 0;
+    const invoiceSoldWeight = parseFloat(data.invoice_sold_weight) || 0;
+    const onlineOrderSoldWeight = parseFloat(data.online_order_sold_weight) || 0;
+    const totalProductsAddedQty = currentQty + invoiceSoldQty + onlineOrderSoldQty;
+    const totalProductsAddedGm = currentWeight + invoiceSoldWeight + onlineOrderSoldWeight;
+
+    return commonService.okResponse(res, {
+      total_products_added_qty: totalProductsAddedQty,
+      total_products_added_gm: Number(currentWeight.toFixed(3)),
+      breakdown: {
+        current_qty: currentQty,
+        invoice_sold_qty: invoiceSoldQty,
+        online_order_sold_qty: onlineOrderSoldQty,
+        current_weight: Number(currentWeight.toFixed(3)),
+        invoice_sold_weight: Number(invoiceSoldWeight.toFixed(3)),
+        online_order_sold_weight: Number(onlineOrderSoldWeight.toFixed(3)),
+      },
+    });
+
+  } catch (error) {
+    console.error("getProductGrnSummary Error:", error);
+    return commonService.handleError(res, error);
+  }
+};
+
 module.exports = {
   createProductSKUCode,
   createProduct,
@@ -2723,5 +2824,8 @@ module.exports = {
   getTopSellingSubcategories,
   getStockUpdates,
   searchProductBySkuStockTransfer,
-  calculateSellingPriceSync
+  calculateSellingPriceSync,
+  getProductGrnSummary
 };
+
+

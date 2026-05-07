@@ -239,7 +239,6 @@ const getGrnWithItems = async (grnId) => {
   }
 };
 
-
 // Update GRN and its items (upsert by item.id; do not destroy existing rows)
 const updateGrn = async (req, res) => {
   const transaction = await sequelize.transaction();
