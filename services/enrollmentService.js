@@ -681,8 +681,8 @@ const getSchemeReceipt = async (req, res) => {
         date: sp.payment_date,
         bill_type: "Saving Scheme",
         customer_name: customer?.customer_name,
-        installment_amount: sp.paid_amount,
-        amount_in_words: convertAmountToWords(sp.paid_amount), // optional helper
+        installment_amount: enrollment.installment_amount_id,
+        amount_in_words: enrollment.installment_amount_id, // optional helper
         next_due: nextDue,
       },
 
@@ -712,10 +712,6 @@ const getSchemeReceipt = async (req, res) => {
   }
 };
 
-const convertAmountToWords = (amount) => {
-  // simple example (you can use library like number-to-words)
-  return `${amount} Rupees Only`;
-};
 
 module.exports = {
   createEnrollment,

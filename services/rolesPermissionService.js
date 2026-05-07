@@ -119,7 +119,7 @@ const getRolePermissionById = async (req, res) => {
     });
 
     if (!rolePermission) {
-      return commonService.notFoundResponse(res, "Role permission not found");
+      return commonService.notFound(res, "Role permission not found");
     }
 
     // 2. Manual lookup for the Module

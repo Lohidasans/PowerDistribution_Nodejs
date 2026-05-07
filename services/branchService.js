@@ -267,7 +267,7 @@ const getBranchById = async (req, res) => {
     });
 
     if (!branch) {
-      return commonService.notFoundResponse(res, "Branch not found");
+      return commonService.notFound(res, "Branch not found");
     }
 
     const [bank_account, kyc_documents, login, invoice_settings] =

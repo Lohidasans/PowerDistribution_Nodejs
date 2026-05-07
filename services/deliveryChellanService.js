@@ -289,7 +289,7 @@ const getDeliveryChellanById = async (req, res) => {
     });
 
     if (!results || results.length === 0) {
-      return commonService.notFoundResponse(res, "Delivery Chellan not found");
+      return commonService.notFound(res, "Delivery Chellan not found");
     }
 
     const header = results[0];
