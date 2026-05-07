@@ -59,6 +59,7 @@ const getOnlineOrders = async (req, res) => {
           o.id,
           o.order_number,
           o.order_date,
+          o.created_at,
           o.total_amount,
 
           c.customer_name,
@@ -108,6 +109,7 @@ const getOnlineOrders = async (req, res) => {
           id,
           order_number,
           order_date,
+          created_at,
           customer_name,
           mobile_number,
           total_amount,
@@ -125,6 +127,7 @@ const getOnlineOrders = async (req, res) => {
           id,
           order_number,
           order_date,
+          created_at,
           customer_name,
           mobile_number,
           total_amount
@@ -175,6 +178,7 @@ const getOnlineOrders = async (req, res) => {
         ROW_NUMBER() OVER(ORDER BY order_date DESC) AS s_no,
         order_number,
         TO_CHAR(order_date,'DD/MM/YYYY') AS order_date,
+        created_at,
         customer_name,
         mobile_number,
         total_items AS items,
@@ -193,7 +197,7 @@ const getOnlineOrders = async (req, res) => {
       FROM order_summary
       ${statusCondition}
 
-      ORDER BY order_date DESC
+      ORDER BY created_at DESC
 
       ${hasPagination
                 ? "LIMIT :limit OFFSET :offset"
