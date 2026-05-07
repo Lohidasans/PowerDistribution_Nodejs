@@ -566,6 +566,246 @@ const getAttendanceSummary = async (req, res) => {
   }
 };
 
+/**
+ * Get attendance detail for a single employee (date-by-date history)
+ * GET /api/v1/employees/:employee_id/attendance
+ */
+const getEmployeeAttendanceDetail = async (req, res) => {
+  try {
+    const { employee_id } = req.params;
+    const { from_date, to_date, status, search, page, limit } = req.query;
+
+    const OFFICE_START = "10:30:00";
+    const OFFICE_END = "20:30:00";
+    const STANDARD_WORK_HOURS = 10;
+
+    // Default: current month start → today
+    const startDate = from_date || moment().startOf("month").format("YYYY-MM-DD");
+    const endDate = to_date || moment().format("YYYY-MM-DD");
+
+    const currentPage = parseInt(page) || 1;
+    const perPage = parseInt(limit) || null;
+
+    const query = `
+      WITH date_range AS (
+        SELECT generate_series(
+          :start_date::date,
+          :end_date::date,
+          '1 day'::interval
+        )::date AS date
+      ),
+      employee_info AS (
+        SELECT
+          e.id,
+          e.ref_employee_id,
+          e.employee_no,
+          e.employee_name,
+          e.profile_image_url,
+          b.branch_name,
+          d.department_name,
+          r.role_name AS designation_name
+        FROM employees e
+        LEFT JOIN branches b ON b.id = e.branch_id
+        LEFT JOIN employee_departments d ON d.id = e.department_id
+        LEFT JOIN roles r ON r.id = e.role_id
+        WHERE e.id = :employee_id AND e.deleted_at IS NULL
+      ),
+      tracking_data AS (
+        SELECT
+          et.ref_employee_id,
+          et.date,
+          et.time,
+          ROW_NUMBER() OVER (PARTITION BY et.ref_employee_id, et.date ORDER BY et.time ASC) AS row_num,
+          COUNT(*) OVER (PARTITION BY et.ref_employee_id, et.date) AS total_punches
+        FROM employee_tracking et
+        WHERE et.date BETWEEN :start_date AND :end_date
+          AND et.status_id = 1
+      ),
+      punch_pairs AS (
+        SELECT
+          ref_employee_id,
+          date,
+          time AS start_time,
+          LEAD(time) OVER (PARTITION BY ref_employee_id, date ORDER BY time) AS end_time,
+          row_num,
+          total_punches
+        FROM tracking_data
+      ),
+      work_periods AS (
+        SELECT
+          ref_employee_id,
+          date,
+          SUM(
+            CASE
+              WHEN row_num % 2 = 1 AND end_time IS NOT NULL THEN
+                EXTRACT(EPOCH FROM (end_time - start_time)) / 3600
+              WHEN row_num % 2 = 1 AND end_time IS NULL AND total_punches % 2 = 1 AND date = CURRENT_DATE THEN
+                EXTRACT(EPOCH FROM (CURRENT_TIME - start_time)) / 3600
+              ELSE 0
+            END
+          ) AS total_work_duration
+        FROM punch_pairs
+        GROUP BY ref_employee_id, date
+      ),
+      daily_attendance AS (
+        SELECT
+          td.ref_employee_id,
+          td.date,
+          MIN(td.time) AS clock_in,
+          CASE
+            WHEN COUNT(DISTINCT td.time) > 1 THEN MAX(td.time)
+            ELSE NULL
+          END AS clock_out
+        FROM tracking_data td
+        GROUP BY td.ref_employee_id, td.date
+      )
+      SELECT
+        ei.*,
+        dr.date,
+        da.clock_in,
+        da.clock_out,
+        CASE
+          WHEN da.clock_in IS NOT NULL AND da.clock_out IS NOT NULL THEN
+            EXTRACT(EPOCH FROM (da.clock_out - da.clock_in)) / 3600
+          WHEN da.clock_in IS NOT NULL AND da.clock_out IS NULL AND dr.date = CURRENT_DATE THEN
+            EXTRACT(EPOCH FROM (CURRENT_TIME - da.clock_in)) / 3600
+          ELSE NULL
+        END AS total_hours,
+        CASE
+          WHEN da.clock_in IS NOT NULL THEN 'Present'
+          ELSE 'Absent'
+        END AS status,
+        CASE
+          WHEN da.clock_in IS NOT NULL AND da.clock_in > :office_start::time THEN
+            EXTRACT(EPOCH FROM (da.clock_in - :office_start::time)) / 3600
+          ELSE 0
+        END AS late_by_hours,
+        COALESCE(wp.total_work_duration, 0) AS actual_work_hours,
+        CASE
+          WHEN da.clock_in IS NOT NULL AND wp.total_work_duration IS NOT NULL THEN
+            LEAST(wp.total_work_duration, :standard_hours)
+          ELSE 0
+        END AS production_hours,
+        CASE
+          WHEN da.clock_out IS NOT NULL AND da.clock_out > :office_end::time THEN
+            GREATEST(0,
+              EXTRACT(EPOCH FROM (da.clock_out - :office_end::time)) / 3600 -
+              CASE WHEN da.clock_in > :office_start::time THEN EXTRACT(EPOCH FROM (da.clock_in - :office_start::time)) / 3600 ELSE 0 END
+            )
+          WHEN da.clock_out IS NULL AND da.clock_in IS NOT NULL AND dr.date = CURRENT_DATE AND CURRENT_TIME > :office_end::time THEN
+            GREATEST(0,
+              EXTRACT(EPOCH FROM (CURRENT_TIME - :office_end::time)) / 3600 -
+              CASE WHEN da.clock_in > :office_start::time THEN EXTRACT(EPOCH FROM (da.clock_in - :office_start::time)) / 3600 ELSE 0 END
+            )
+          ELSE 0
+        END AS overtime_hours
+      FROM employee_info ei
+      CROSS JOIN date_range dr
+      LEFT JOIN daily_attendance da ON da.ref_employee_id = ei.ref_employee_id AND da.date = dr.date
+      LEFT JOIN work_periods wp ON wp.ref_employee_id = ei.ref_employee_id AND wp.date = dr.date
+      ORDER BY dr.date DESC
+    `;
+
+    const rows = await sequelize.query(query, {
+      replacements: {
+        employee_id,
+        start_date: startDate,
+        end_date: endDate,
+        office_start: OFFICE_START,
+        office_end: OFFICE_END,
+        standard_hours: STANDARD_WORK_HOURS,
+      },
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    if (rows.length === 0) {
+      return commonService.notFound(res, "Employee not found");
+    }
+
+    const employeeInfo = {
+      employee_id: rows[0].id,
+      employee_no: rows[0].employee_no,
+      employee_name: rows[0].employee_name,
+      profile_image_url: rows[0].profile_image_url,
+      branch_name: rows[0].branch_name,
+      department_name: rows[0].department_name,
+      designation_name: rows[0].designation_name,
+    };
+
+    let history = rows.map((row, index) => {
+      const totalHours = row.total_hours || 0;
+      const actualWorkHours = row.actual_work_hours || 0;
+      const productionHours = row.production_hours || 0;
+      const overtimeHours = row.overtime_hours || 0;
+      const breakHours = Math.max(0, totalHours - actualWorkHours);
+
+      return {
+        s_no: index + 1,
+        date: moment(row.date).format("DD/MM/YYYY"),
+        day: moment(row.date).format("dddd"),
+        status: row.status,
+        clock_in: row.clock_in ? moment(row.clock_in, "HH:mm:ss").format("hh:mm A") : null,
+        clock_out: row.clock_out ? moment(row.clock_out, "HH:mm:ss").format("hh:mm A") : null,
+        production: formatHours(productionHours),
+        break: formatHours(breakHours),
+        overtime: formatHours(overtimeHours),
+        total_hours: formatHours(totalHours),
+        late_by: formatHours(row.late_by_hours || 0),
+      };
+    });
+
+    // Apply filters
+    if (status) {
+      history = history.filter((h) => h.status === status);
+    }
+    if (search) {
+      const s = search.toLowerCase();
+      history = history.filter(
+        (h) =>
+          h.date.includes(s) ||
+          h.day.toLowerCase().includes(s)
+      );
+    }
+
+    // Summary (before pagination)
+    const totalDays = history.length;
+    const presentDays = history.filter((h) => h.status === "Present").length;
+    const absentDays = history.filter((h) => h.status === "Absent").length;
+
+    // Re-assign s_no after filtering
+    history = history.map((h, i) => ({ ...h, s_no: i + 1 }));
+
+    // Pagination
+    const totalRecords = history.length;
+    const totalPages = perPage ? Math.ceil(totalRecords / perPage) : 1;
+    const offset = perPage ? (currentPage - 1) * perPage : 0;
+    const paginatedHistory = perPage ? history.slice(offset, offset + perPage) : history;
+
+    return commonService.okResponse(res, {
+      employee: employeeInfo,
+      period: {
+        from_date: startDate,
+        to_date: endDate,
+      },
+      summary: {
+        total: totalDays,
+        present: presentDays,
+        absent: absentDays,
+      },
+      pagination: {
+        total_records: totalRecords,
+        total_pages: totalPages,
+        current_page: currentPage,
+        per_page: perPage,
+      },
+      attendance: paginatedHistory,
+    });
+  } catch (err) {
+    console.error("Error in getEmployeeAttendanceDetail:", err);
+    return commonService.handleError(res, err);
+  }
+};
+
 // Helper functions
 function formatHours(hours) {
   if (!hours || hours === 0) return "00h 00m";
@@ -585,4 +825,5 @@ module.exports = {
   getEmployeeAttendance,
   getEmployeeAttendanceHistory,
   getAttendanceSummary,
+  getEmployeeAttendanceDetail,
 };

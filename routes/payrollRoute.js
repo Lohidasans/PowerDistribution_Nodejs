@@ -32,9 +32,17 @@ router.post("/payrolls/auto-generate", async (req, res) => {
 router.post("/payrolls", svc.createPayroll);
 router.get("/payrolls", svc.getPayrolls);
 router.get("/payrolls/attendance-preview", svc.getPayrollAttendancePreview);
+router.get("/payrolls/timing", svc.getPayrollTimingDetails);
 router.get("/payrolls/:id", svc.getPayrollById);
 router.put("/payrolls/:id", svc.updatePayroll);
 router.delete("/payrolls/:id", svc.deletePayroll);
+
+// ── Employee-specific payroll list ───────────────────────────────────────────
+// GET /api/v1/employees/:employee_id/payrolls
+router.get("/employees/:employee_id/payrolls", svc.getEmployeePayrolls);
+
+// GET /api/v1/employees/:employee_id/payrolls/:payroll_id  (payslip detail)
+router.get("/employees/:employee_id/payrolls/:payroll_id", svc.getEmployeePayrollById);
 
 /**
  * @openapi

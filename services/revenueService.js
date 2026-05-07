@@ -318,7 +318,7 @@ const getBranchRevenueDetails = async (req, res) => {
 
             GROUP BY description
             ${payment_mode ? 'HAVING ROUND(SUM(p.amount_received) ' + rowRefundDeduction + ', 2) > 0' : ''}
-            ORDER BY payment_date DESC
+            ORDER BY payment_date DESC,description DESC
             `;
 
         if (hasPagination) {
