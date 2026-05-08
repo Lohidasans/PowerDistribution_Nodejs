@@ -77,6 +77,7 @@ const CodeGeneratorRoute = require('./codeGeneratorRoute');
 const CustomerSchemePaymentRoute = require('./customerSchemePaymentRoute');
 const AdminOnlineOrderRoute = require('./adminOnlineOrderRoute');
 const vendorDashboardRoute = require('./vendorDashboardRoute');
+const employeeDashboardRoute = require('./employeeDashboardRoute');
 
 module.exports = (app) => {
   app.use("/api/v1", RoleRouter);
@@ -158,5 +159,6 @@ module.exports = (app) => {
   app.use("/api/v1", CustomerSchemePaymentRoute);
   app.use("/api/v1", AdminOnlineOrderRoute);
   app.use("/api/v1", vendorDashboardRoute);
+  app.use("/api/v1", employeeDashboardRoute);
 };
 
