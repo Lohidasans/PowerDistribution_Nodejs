@@ -2815,6 +2815,40 @@ const getProductGrnSummary = async (req, res) => {
   }
 };
 
+const getVendorsForProduct = async (req, res) => {
+  const { branch_id } = req.query;
+
+  if (!branch_id) {
+    return commonService.badRequest(res, "Branch ID is required");
+  }
+
+  try {
+    const branchIdInt = parseInt(branch_id, 10);
+
+    let whereClause = {
+      status: "Active",
+      deleted_at: null,
+    };
+
+    // If it's a Branch Admin (not super admin), apply strict visibility filter
+    if (branchIdInt !== 0 && branchIdInt !== 1) {   // Adjust according to your super admin logic
+      whereClause.visibilities = { [Op.contains]: [branchIdInt] };
+    }
+    // Super Admin: No additional filter (all vendors)
+
+    const vendors = await models.Vendor.findAll({
+      where: whereClause,
+      attributes: ["id", "vendor_code", "vendor_name", "visibilities"],
+      order: [["vendor_name", "ASC"]]
+    });
+
+    res.json(vendors);
+  } catch (error) {
+    console.error("getVendorsForProduct Error:", error);
+    return commonService.handleError(res, error);
+  }
+};
+
 module.exports = {
   createProductSKUCode,
   createProduct,
@@ -2839,7 +2873,8 @@ module.exports = {
   getStockUpdates,
   searchProductBySkuStockTransfer,
   calculateSellingPriceSync,
-  getProductGrnSummary
+  getProductGrnSummary,
+  getVendorsForProduct
 };
 
 

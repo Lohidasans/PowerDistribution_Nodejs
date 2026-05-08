@@ -18,6 +18,7 @@ router.get("/product-id-by-sku", svc.getProductIdBySku);
 router.get("/products/deleted", svc.getDeletedProducts);
 router.get("/products/:id", svc.getProductById);
 router.get("/products/grn-summary/:ref_no_id", svc.getProductGrnSummary);
+router.get("/products/dropdown/vendors", svc.getVendorsForProduct);
 router.put("/products/:id", svc.updateProduct);
 router.delete("/products/:id", svc.deleteProduct);
 router.patch("/products/:id/status", svc.updateProductStatus);
