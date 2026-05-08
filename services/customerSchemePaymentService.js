@@ -230,6 +230,7 @@ try {
     e.status,
     s.scheme_name,
     s.id as scheme_id,
+    inv.invoice_no,
     CASE
         WHEN e.completed_date IS NOT NULL
             THEN e.completed_date
@@ -264,6 +265,20 @@ try {
     WHERE deleted_at IS NULL
     GROUP BY enrollment_id
     ) p ON p.enrollment_id = e.id
+
+    LEFT JOIN (
+    SELECT 
+        sia.reference_id,
+        MAX(sib.invoice_no) AS invoice_no
+    FROM sales_invoice_adjustments sia
+    INNER JOIN sales_invoice_bills sib
+        ON sib.id = sia.sales_invoice_id
+        AND sib.deleted_at IS NULL
+    WHERE 
+        sia.deleted_at IS NULL
+        AND sia.adjustment_type_id = '3'
+    GROUP BY sia.reference_id
+    ) inv ON inv.reference_id = e.id
 
     WHERE e.deleted_at IS NULL
 `;
