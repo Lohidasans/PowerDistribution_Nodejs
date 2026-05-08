@@ -5,13 +5,8 @@ const { dateFilter } = require("../helpers/dateHelper");
 
 const getQuotationDashboard = async (req, res) => {
   try {
-    const {
-      branch_id,
-      year,
-      from_date,
-      to_date,
-      date_filter,
-    } = req.query;
+    const { branch_id, year, from_date, to_date, date_filter, vendor_id } =
+      req.query;
 
     let replacements = {};
 
@@ -23,6 +18,23 @@ const getQuotationDashboard = async (req, res) => {
       quotationWhere += ` AND q.branch_id = :branch_id `;
       salesOrderWhere += ` AND po.branch_id = :branch_id `;
       replacements.branch_id = branch_id;
+    }
+
+    // VENDOR FILTER
+    if (vendor_id) {
+      quotationWhere += `
+    AND EXISTS (
+      SELECT 1
+      FROM vendor_quotations vq
+      WHERE vq.quotation_id = q.id
+      AND vq.vendor_id = :vendor_id
+      AND vq.deleted_at IS NULL
+    )
+  `;
+      salesOrderWhere += `
+    AND po.vendor_id = :vendor_id
+  `;
+      replacements.vendor_id = vendor_id;
     }
 
     // YEAR FILTER
@@ -42,13 +54,13 @@ const getQuotationDashboard = async (req, res) => {
     const quotationDateFilter = dateFilter(
       { from_date, to_date, date_filter },
       "q.request_date",
-      replacements
+      replacements,
     );
 
     const salesOrderDateFilter = dateFilter(
       { from_date, to_date, date_filter },
       "po.created_at",
-      replacements
+      replacements,
     );
 
     quotationWhere += quotationDateFilter;
@@ -161,46 +173,40 @@ const getQuotationDashboard = async (req, res) => {
       LIMIT 10
     `;
 
-
     // EXECUTE ALL
 
-    const [
-      scoreCards,
-      salesOrders,
-      conversionRate,
-      quotationReceived,
-    ] = await Promise.all([
-      sequelize.query(scoreCardQuery, {
-        replacements,
-        type: sequelize.QueryTypes.SELECT,
-      }),
+    const [scoreCards, salesOrders, conversionRate, quotationReceived] =
+      await Promise.all([
+        sequelize.query(scoreCardQuery, {
+          replacements,
+          type: sequelize.QueryTypes.SELECT,
+        }),
 
-      sequelize.query(salesOrderQuery, {
-        replacements,
-        type: sequelize.QueryTypes.SELECT,
-      }),
+        sequelize.query(salesOrderQuery, {
+          replacements,
+          type: sequelize.QueryTypes.SELECT,
+        }),
 
-      sequelize.query(conversionRateQuery, {
-        replacements,
-        type: sequelize.QueryTypes.SELECT,
-      }),
+        sequelize.query(conversionRateQuery, {
+          replacements,
+          type: sequelize.QueryTypes.SELECT,
+        }),
 
-      sequelize.query(quotationReceivedQuery, {
-        replacements,
-        type: sequelize.QueryTypes.SELECT,
-      }),
-    ]);
+        sequelize.query(quotationReceivedQuery, {
+          replacements,
+          type: sequelize.QueryTypes.SELECT,
+        }),
+      ]);
 
     return commonService.okResponse(res, {
       score_cards: {
-        total_quotation_received:
-          Number(scoreCards[0]?.total_quotation_received || 0),
+        total_quotation_received: Number(
+          scoreCards[0]?.total_quotation_received || 0,
+        ),
 
-        total_sales_order:
-          Number(salesOrders[0]?.total_sales_order || 0),
+        total_sales_order: Number(salesOrders[0]?.total_sales_order || 0),
 
-        rejected_quotation:
-          Number(scoreCards[0]?.rejected_quotation || 0),
+        rejected_quotation: Number(scoreCards[0]?.rejected_quotation || 0),
       },
 
       conversion_rate: conversionRate.map((row) => ({
@@ -217,6 +223,6 @@ const getQuotationDashboard = async (req, res) => {
   }
 };
 
-module.exports ={
-    getQuotationDashboard,
-}
+module.exports = {
+  getQuotationDashboard,
+};
