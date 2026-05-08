@@ -150,47 +150,74 @@ const getPurchaseReturnWithItems = async (prId) => {
   }
 };
 
-// Update Purchase Return and its items (upsert by item.id; do not destroy existing rows)
+// Update Purchase Return 
 const updatePurchaseReturn = async (req, res) => {
   const transaction = await sequelize.transaction();
 
   try {
     const { id } = req.params;
-    const { items = [], ...updateData } = req.body;
+    const { items = [], pr_no, ...updateData } = req.body || {};
 
-    // Find existing Purchase Return
-    const pr = await models.PurchaseReturn.findByPk(id, { transaction });
+    // ❌ Block PR number update
+    if (pr_no !== undefined) {
+      await transaction.rollback();
+      return commonService.badRequest(
+        res,
+        "Purchase Return number cannot be modified once created"
+      );
+    }
+
+    // FIND PURCHASE RETURN
+    const pr = await models.PurchaseReturn.findByPk(id, {
+      transaction,});
     if (!pr) {
       await transaction.rollback();
-      return commonService.notFound(res, "Purchase Return not found");
+      return commonService.notFound(res,"Purchase Return not found"
+      );
     }
 
     // Update Purchase Return header fields
     await pr.update(updateData, { transaction });
 
-    // Update each existing item only when id is provided. Items without id are ignored.
+    // DELETE OLD ITEMS
+    await models.PurchaseReturnItem.destroy({
+      where: { pr_id: id },
+      force: true,
+      transaction,
+    });
+
+    // CREATE NEW ITEMS
     for (const item of items) {
-      if (item && item.id) {
-        const existingItem = await models.PurchaseReturnItem.findOne({
-          where: { id: item.id, pr_id: id },
-          transaction,
-        });
-        if (existingItem) {
-          const { id: _omit, pr_id: _omit2, created_at, updated_at, deleted_at, ...updatable } = item; // ignore non-updatable
-          await existingItem.update(updatable, { transaction });
-        }
-      }
+
+      const {
+        id: _omitId,
+        pr_id: _omitPrId,
+        created_at,
+        updated_at,
+        deleted_at,
+        ...itemData
+      } = item;
+
+      await models.PurchaseReturnItem.create(
+        {
+          ...itemData,
+          pr_id: id,
+        },
+        { transaction }
+      );
     }
 
     await transaction.commit();
+
     const result = await getPurchaseReturnWithItems(id);
+
     return commonService.okResponse(res, result);
+
   } catch (error) {
     await transaction.rollback();
     return commonService.handleError(res, error);
   }
 };
-
 // Delete Purchase Return (soft delete)
 const deletePurchaseReturn = async (req, res) => {
   const transaction = await sequelize.transaction();
