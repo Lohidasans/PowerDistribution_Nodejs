@@ -1,6 +1,7 @@
 const { sequelize, models } = require("../models/index");
 const commonService = require("./commonService");
 const message = require("../constants/en.json");
+const { dateFilter } = require("../helpers/dateHelper");
 
 /**
  * Get total vendor count (excluding soft-deleted)
@@ -291,33 +292,40 @@ const getTopBuyingCategories = async (req, res) => {
  * Get transaction history (GRN transactions with payment details)
  */
 const getTransactionHistory = async (req, res) => {
-    try {
-        const { page = 1, limit = 10, vendor_id, start_date, end_date } = req.query;
-        const offset = (page - 1) * limit;
+  try {
+    const { page, limit, vendor_id, from_date, to_date,   date_filter, } = req.query;
 
-        // Build filters
-        let whereConditions = "WHERE g.deleted_at IS NULL";
-        const replacements = { limit: parseInt(limit), offset: parseInt(offset) };
+    const isPaginationEnabled = page && limit;
+    const parsedPage = parseInt(page || 1);
+    const parsedLimit = parseInt(limit || 10);
+    const offset = (parsedPage - 1) * parsedLimit;
 
-        if (vendor_id) {
-            whereConditions += " AND g.vendor_id = :vendor_id";
-            replacements.vendor_id = parseInt(vendor_id);
-        }
+    let replacements = {};
 
-        if (start_date && end_date) {
-            whereConditions += " AND g.grn_date BETWEEN CAST(:start_date AS DATE) AND CAST(:end_date AS DATE)";
-            replacements.start_date = start_date;
-            replacements.end_date = end_date;
-        } else if (start_date) {
-            whereConditions += " AND g.grn_date >= CAST(:start_date AS DATE)";
-            replacements.start_date = start_date;
-        } else if (end_date) {
-            whereConditions += " AND g.grn_date <= CAST(:end_date AS DATE)";
-            replacements.end_date = end_date;
-        }
+    if (isPaginationEnabled) {
+      replacements.limit = parsedLimit;
+      replacements.offset = offset;
+    }
 
-        // Get transaction history with payment details
-        const query = `
+    let whereConditions = `
+      WHERE g.deleted_at IS NULL
+    `;
+
+    if (vendor_id) {
+        whereConditions += ` AND g.vendor_id = :vendor_id`;
+        replacements.vendor_id = parseInt(vendor_id);
+    }
+
+    const filterQuery = dateFilter(
+      { from_date, to_date, date_filter },
+      "g.grn_date",
+      replacements
+    );
+
+    whereConditions += filterQuery;
+
+    // Get transaction history with payment details
+    let query = `
       SELECT 
         g.id,
         g.grn_no,
@@ -325,8 +333,10 @@ const getTransactionHistory = async (req, res) => {
         g.vendor_id,
         v.vendor_name,
         v.vendor_code,
-        g.total_amount as total_purchase,
-         COALESCE(
+
+        COALESCE(g.total_amount, 0) AS total_purchase,
+
+        COALESCE(
           (
             SELECT SUM(vp.amount)
             FROM vendor_payments vp
@@ -337,65 +347,150 @@ const getTransactionHistory = async (req, res) => {
               AND vp.is_active = true
               AND vp.purchase_id::integer = g.id
           ), 0
-        ) as total_paid,
-        (g.total_amount - COALESCE(
-          (
-            SELECT SUM(vp.amount)
-            FROM vendor_payments vp
-            WHERE vp.deleted_at IS NULL
-              AND vp.bill_type_id = 1
-              AND vp.user_type_id = 1
-              AND vp.status = 'Completed'
-              AND vp.is_active = true
-              AND vp.purchase_id::integer = g.id
-          ), 0
-        )) as outstanding
+        ) AS total_paid,
+
+        (COALESCE(g.total_amount, 0)
+          -
+          COALESCE(
+            (
+              SELECT SUM(vp.amount)
+              FROM vendor_payments vp
+              WHERE vp.deleted_at IS NULL
+                AND vp.bill_type_id = 1
+                AND vp.user_type_id = 1
+                AND vp.status = 'Completed'
+                AND vp.is_active = true
+                AND vp.purchase_id::integer = g.id
+            ), 0
+          )) AS outstanding
       FROM grns g
       LEFT JOIN vendors v ON v.id = g.vendor_id
       ${whereConditions}
       ORDER BY g.grn_date DESC, g.id DESC
-      LIMIT :limit OFFSET :offset
     `;
 
-        // Get total count for pagination
-        const countQuery = `
-      SELECT COUNT(*) as total
+    if (isPaginationEnabled) {
+      query += `
+        LIMIT :limit OFFSET :offset
+      `;
+    }
+
+    // Get total count for pagination
+    const countQuery = `
+      SELECT COUNT(*) AS total
       FROM grns g
       ${whereConditions}
     `;
 
-        const [transactions, [countResult]] = await Promise.all([
-            sequelize.query(query, { replacements }),
-            sequelize.query(countQuery, {
-                replacements: { vendor_id: replacements.vendor_id, start_date: replacements.start_date, end_date: replacements.end_date },
-                type: sequelize.QueryTypes.SELECT,
-            }),
-        ]);
+    const scoreCardQuery = `
+      SELECT
 
-        const formattedTransactions = transactions[0].map((transaction) => ({
-            id: transaction.id,
-            grn_no: transaction.grn_no,
-            date: transaction.grn_date,
-            vendor_id: transaction.vendor_id,
-            vendor_name: transaction.vendor_name,
-            vendor_code: transaction.vendor_code,
-            total_purchase: parseFloat(transaction.total_purchase).toFixed(2),
-            total_paid: parseFloat(transaction.total_paid).toFixed(2),
-            outstanding: parseFloat(transaction.outstanding).toFixed(2),
-        }));
+        COALESCE(SUM(g.total_amount), 0) AS total_amount,
 
-        return commonService.okResponse(res, {
-            transactions: formattedTransactions,
-            pagination: {
-                page: parseInt(page),
-                limit: parseInt(limit),
-                total: parseInt(countResult.total),
-                totalPages: Math.ceil(countResult.total / limit),
-            },
-        });
-    } catch (err) {
-        return commonService.handleError(res, err);
-    }
+        COALESCE(
+          SUM(
+            (
+              SELECT COALESCE(SUM(vp.amount), 0)
+              FROM vendor_payments vp
+              WHERE vp.deleted_at IS NULL
+                AND vp.bill_type_id = 1
+                AND vp.user_type_id = 1
+                AND vp.status = 'Completed'
+                AND vp.is_active = true
+                AND vp.purchase_id::integer = g.id
+            )
+          ),
+          0
+        ) AS amount_received,
+        (
+          COALESCE(SUM(g.total_amount), 0) -
+          COALESCE(
+            SUM(
+              (
+                SELECT COALESCE(SUM(vp.amount), 0)
+                FROM vendor_payments vp
+                WHERE vp.deleted_at IS NULL
+                  AND vp.bill_type_id = 1
+                  AND vp.user_type_id = 1
+                  AND vp.status = 'Completed'
+                  AND vp.is_active = true
+                  AND vp.purchase_id::integer = g.id
+              )
+            ),
+            0
+          )
+        ) AS outstanding_amount
+
+      FROM grns g
+
+      ${whereConditions}
+    `;
+
+    const [
+      transactions,
+      countResult,
+      scoreCards,
+    ] = await Promise.all([
+      sequelize.query(query, {
+        replacements,
+        type: sequelize.QueryTypes.SELECT,
+      }),
+
+      sequelize.query(countQuery, {
+        replacements,
+        type: sequelize.QueryTypes.SELECT,
+      }),
+
+      sequelize.query(scoreCardQuery, {
+        replacements,
+        type: sequelize.QueryTypes.SELECT,
+      }),
+    ]);
+
+    const formattedTransactions = transactions.map((transaction) => ({
+      id: transaction.id,
+      grn_no: transaction.grn_no,
+      date: transaction.grn_date,
+      vendor_id: transaction.vendor_id,
+      vendor_name: transaction.vendor_name,
+      vendor_code: transaction.vendor_code,
+      total_purchase: Number(transaction.total_purchase || 0).toFixed(2),
+      total_paid: Number(transaction.total_paid || 0).toFixed(2),
+      outstanding: Number(transaction.outstanding || 0).toFixed(2),
+    }));
+
+    return commonService.okResponse(res, {
+      score_cards: {
+        total_amount: Number(
+          scoreCards[0]?.total_amount || 0
+        ).toFixed(2),
+
+        amount_received: Number(
+          scoreCards[0]?.amount_received || 0
+        ).toFixed(2),
+
+        outstanding_amount: Number(
+          scoreCards[0]?.outstanding_amount || 0
+        ).toFixed(2),
+      },
+
+      transactions: formattedTransactions,
+
+      ...(isPaginationEnabled && {
+        pagination: {
+          page: parsedPage,
+          limit: parsedLimit,
+          total: parseInt(countResult[0]?.total || 0),
+          totalPages: Math.ceil(
+            parseInt(countResult[0]?.total || 0) / parsedLimit
+          ),
+        },
+      }),
+    });
+  } catch (err) {
+    console.error(err);
+    return commonService.handleError(res, err);
+  }
 };
 
 /**

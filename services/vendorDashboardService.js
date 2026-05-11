@@ -170,7 +170,6 @@ const getQuotationDashboard = async (req, res) => {
       GROUP BY q.id
 
       ORDER BY q.created_at DESC
-      LIMIT 10
     `;
 
     // EXECUTE ALL
