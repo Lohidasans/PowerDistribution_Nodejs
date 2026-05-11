@@ -148,7 +148,7 @@ const createSchemePayment = async (req, res) => {
         await t.commit();
 
         return commonService.createdResponse(res, {
-            message: "Installment paid successfully",
+            message: "Installment amount paid successfully",
             data: {
                 scheme_payment_code: schemePayment.scheme_payment_code,
                 installment_no: nextInstallment,
