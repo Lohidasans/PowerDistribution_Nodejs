@@ -5,161 +5,74 @@ const { dateFilter } = require("../helpers/dateHelper");
 
 const getEmployeeWiseSalesReport = async (req, res) => {
   try {
-    const { employee_id, branch_id, from_date, to_date, date_filter, year } =
-      req.query;
+    const {
+      employee_id,
+      branch_id,
+      from_date,
+      to_date,
+      date_filter,
+      year,
+    } = req.query;
 
     let replacements = {};
 
+    // WHERE CONDITIONS
     let invoiceWhere = `
       WHERE sib.deleted_at IS NULL
-      AND sib.status != 'Cancelled'
-    `;
-
-    let repairWhere = `
-      WHERE jr.deleted_at IS NULL
-      AND jr.status != 'Cancelled'
+      AND sib.status = 'Invoice' AND sib.is_active = true
     `;
 
     // EMPLOYEE FILTER
     if (employee_id) {
-      invoiceWhere += ` AND sib.employee_id = :employee_id `;
-      repairWhere += ` AND jr.employee_id = :employee_id `;
-
+      invoiceWhere += ` AND sib.employee_id = :employee_id`;
       replacements.employee_id = employee_id;
     }
 
-    // BRANCH FILTER
     if (branch_id) {
-      invoiceWhere += ` AND sib.branch_id = :branch_id `;
-      repairWhere += ` AND jr.branch_id = :branch_id `;
-
+      invoiceWhere += ` AND sib.branch_id = :branch_id`;
       replacements.branch_id = branch_id;
     }
 
-    // YEAR FILTER
     if (year) {
-      invoiceWhere += `
-        AND EXTRACT(YEAR FROM sib.invoice_date) = :year
-      `;
-
-      repairWhere += `
-        AND EXTRACT(YEAR FROM jr.date) = :year
-      `;
-
+      invoiceWhere += ` AND EXTRACT(YEAR FROM sib.invoice_date) = :year`;
       replacements.year = parseInt(year);
     }
 
-    // DATE FILTER
     const invoiceDateFilter = dateFilter(
       { from_date, to_date, date_filter },
       "sib.invoice_date",
-      replacements,
-    );
-
-    const repairDateFilter = dateFilter(
-      { from_date, to_date, date_filter },
-      "jr.date",
-      replacements,
+      replacements
     );
 
     invoiceWhere += invoiceDateFilter;
-    repairWhere += repairDateFilter;
 
     // MONTH WISE SALES
     const salesReportQuery = `
-      WITH invoice_sales AS (
-
-        SELECT
-          EXTRACT(MONTH FROM sib.invoice_date) AS month_number,
-          TO_CHAR(sib.invoice_date, 'Mon') AS month,
-
-          COALESCE(SUM(sib.total_amount), 0) AS invoice_amount
-
-        FROM sales_invoice_bills sib
-
-        ${invoiceWhere}
-
-        GROUP BY
-          EXTRACT(MONTH FROM sib.invoice_date),
-          TO_CHAR(sib.invoice_date, 'Mon')
-      ),
-
-      repair_sales AS (
-
-        SELECT
-          EXTRACT(MONTH FROM jr.date) AS month_number,
-          TO_CHAR(jr.date, 'Mon') AS month,
-
-          COALESCE(SUM(jr.total_amount), 0) AS repair_amount
-
-        FROM jewel_repairs jr
-
-        ${repairWhere}
-
-        GROUP BY
-          EXTRACT(MONTH FROM jr.date),
-          TO_CHAR(jr.date, 'Mon')
-      )
-
       SELECT
-        COALESCE(i.month_number, r.month_number) AS month_number,
+        EXTRACT(MONTH FROM sib.invoice_date) AS month_number,
+        TO_CHAR(sib.invoice_date, 'Mon') AS month,
+        COALESCE(SUM(sib.total_amount), 0) AS total_sales
+      FROM sales_invoice_bills sib
+      ${invoiceWhere}
 
-        COALESCE(i.month, r.month) AS month,
-
-        COALESCE(i.invoice_amount, 0) AS invoice_sales,
-
-        COALESCE(r.repair_amount, 0) AS repair_sales,
-
-        (
-          COALESCE(i.invoice_amount, 0)
-          +
-          COALESCE(r.repair_amount, 0)
-        ) AS total_sales
-
-      FROM invoice_sales i
-
-      FULL OUTER JOIN repair_sales r
-        ON r.month_number = i.month_number
+      GROUP BY
+        EXTRACT(MONTH FROM sib.invoice_date),
+        TO_CHAR(sib.invoice_date, 'Mon')
 
       ORDER BY month_number
     `;
 
-    // SUMMARY CARD
+    // SCORE CARD
     const summaryQuery = `
       SELECT
-        (
-          COALESCE((
-            SELECT SUM(sib.total_amount)
-            FROM sales_invoice_bills sib
-            ${invoiceWhere}
-          ), 0)
+        COALESCE(SUM(sib.total_amount), 0) AS total_sales_value,
+        COALESCE(SUM(sib.total_quantity), 0) AS total_sales_quantity,
+        COALESCE(SUM(sibi.gross_weight * sibi.quantity), 0) AS total_sales_weight,
+        COUNT(DISTINCT sib.id) AS total_transactions
+      FROM sales_invoice_bills sib
+      LEFT JOIN sales_invoice_bill_items sibi ON sibi.invoice_bill_id = sib.id AND sibi.deleted_at IS NULL
 
-          +
-
-          COALESCE((
-            SELECT SUM(jr.total_amount)
-            FROM jewel_repairs jr
-            ${repairWhere}
-          ), 0)
-
-        ) AS total_sales,
-
-        (
-          COALESCE((
-            SELECT COUNT(*)
-            FROM sales_invoice_bills sib
-            ${invoiceWhere}
-          ), 0)
-
-          +
-
-          COALESCE((
-            SELECT COUNT(*)
-            FROM jewel_repairs jr
-            ${repairWhere}
-          ), 0)
-
-        ) AS total_transactions
+      ${invoiceWhere}
     `;
 
     const [salesReport, summary] = await Promise.all([
@@ -175,15 +88,27 @@ const getEmployeeWiseSalesReport = async (req, res) => {
     ]);
 
     return commonService.okResponse(res, {
-      summary: {
-        total_sales: Number(summary[0]?.total_sales || 0),
-        total_transactions: Number(summary[0]?.total_transactions || 0),
+      score_card: {
+        total_value: Number(
+          summary[0]?.total_sales_value || 0
+        ),
+
+        total_weight: Number(
+          summary[0]?.total_sales_weight || 0
+        ),
+
+        total_quantity: Number(
+          summary[0]?.total_sales_quantity || 0
+        ),
+
+        total_transactions: Number(
+          summary[0]?.total_transactions || 0
+        ),
       },
 
       monthly_sales_report: salesReport.map((row) => ({
         month: row.month,
-        invoice_sales: Number(row.invoice_sales || 0),
-        repair_sales: Number(row.repair_sales || 0),
+
         total_sales: Number(row.total_sales || 0),
       })),
     });

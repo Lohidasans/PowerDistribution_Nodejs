@@ -3,6 +3,89 @@ const commonService = require("./commonService");
 const message = require("../constants/en.json");
 const { dateFilter } = require("../helpers/dateHelper");
 
+const getVendorRevenueStatistics = async (req, res) => {
+  try {
+    const {
+      vendor_id,
+      from_date,
+      to_date,
+      date_filter,
+      branch_id,
+    } = req.query;
+
+    const replacements = {};
+
+    let whereConditions = ` WHERE g.deleted_at IS NULL`;
+
+    if (vendor_id) {
+      whereConditions += ` AND g.vendor_id = :vendor_id`;
+      replacements.vendor_id = parseInt(vendor_id);
+    }
+
+    if (branch_id) {
+      whereConditions += ` AND g.branch_id = :branch_id `;
+      replacements.branch_id = parseInt(branch_id);
+    }
+
+    whereConditions += dateFilter(
+      { from_date, to_date, date_filter },
+      "g.grn_date",
+      replacements
+    );
+
+    // MATERIAL TYPE WISE TOTAL
+    const query = `
+      SELECT
+        mt.id AS material_type_id,
+        mt.material_type,
+        COALESCE(SUM(gi.total_amount), 0) AS total_amount
+      FROM grns g
+      INNER JOIN "grnItems" gi ON gi.grn_id = g.id AND gi.deleted_at IS NULL
+      LEFT JOIN "materialTypes" mt ON mt.id = gi.material_type_id
+      
+      ${whereConditions}
+
+      GROUP BY mt.id, mt.material_type
+      ORDER BY total_amount DESC
+    `;
+
+    const results = await sequelize.query(query, {
+      replacements,
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    // TOTAL AMOUNT
+    const grandTotal = results.reduce(
+      (sum, item) => sum + Number(item.total_amount || 0),
+      0
+    );
+
+    const formatted = results.map((item) => {
+      const amount = Number(item.total_amount || 0);
+
+      return {
+        material_type_id: item.material_type_id,
+        material_type: item.material_type,
+        total_amount: amount.toFixed(2),
+
+        percentage:
+          grandTotal > 0
+            ? ((amount / grandTotal) * 100).toFixed(2)
+            : "0.00",
+      };
+    });
+
+    return commonService.okResponse(res, {
+      total_amount: grandTotal.toFixed(2),
+
+      statistics: formatted,
+    });
+  } catch (err) {
+    console.error(err);
+    return commonService.handleError(res, err);
+  }
+};
+
 const getQuotationDashboard = async (req, res) => {
   try {
     const { branch_id, year, from_date, to_date, date_filter, vendor_id } =
@@ -223,5 +306,6 @@ const getQuotationDashboard = async (req, res) => {
 };
 
 module.exports = {
+  getVendorRevenueStatistics,
   getQuotationDashboard,
 };
