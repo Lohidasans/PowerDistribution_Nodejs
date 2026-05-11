@@ -767,12 +767,13 @@ const getBranchRevenueDetailsNew = async (req, res) => {
                     COALESCE(sib.invoice_no, jr.repair_code) AS description,
                     CASE
                         WHEN sib.id IS NOT NULL AND p.payment_mode = 'Cash'
-                        THEN
-                            p.amount_received
-                            - COALESCE(
-                                MAX(sib.refund_amount) OVER (PARTITION BY sib.id),0)
-                        ELSE p.amount_received
-                    END AS amount
+                    THEN
+                       p.amount_received 
+                       - COALESCE(
+                       sib.refund_amount, 0)
+                    ELSE p.amount_received
+                END AS amount,
+                COALESCE(sib.refund_amount, 0) AS refund_amount
                 FROM payments p
                 LEFT JOIN sales_invoice_bills sib
                     ON sib.id = p.invoice_bill_id
@@ -793,7 +794,8 @@ const getBranchRevenueDetailsNew = async (req, res) => {
                     vr.receipt_date,
                     pm.payment_mode,
                     vr.receipt_no,
-                    vr.amount
+                    vr.amount,
+                    0 AS refund_amount
                 FROM voucher_receipts vr
                 JOIN payment_modes pm
                     ON pm.id = vr.payment_mode_id
@@ -808,7 +810,8 @@ const getBranchRevenueDetailsNew = async (req, res) => {
                     sp.payment_date,
                     p.payment_mode::text,
                     sp.scheme_payment_code,
-                    p.amount_received
+                    p.amount_received,
+                    0 AS refund_amount
                 FROM customer_scheme_payments sp
 
                 JOIN customer_enrollments e
@@ -835,7 +838,8 @@ const getBranchRevenueDetailsNew = async (req, res) => {
                     vp.payment_date,
                     pm.payment_mode,
                     vp.payment_no,
-                    -vp.amount
+                    -vp.amount,
+                    0 AS refund_amount
                 FROM vendor_payments vp
                 JOIN payment_modes pm
                     ON pm.id = vp.payment_mode
@@ -862,7 +866,7 @@ const getBranchRevenueDetailsNew = async (req, res) => {
                 ROUND(SUM(CASE WHEN payment_mode='Cash' THEN amount ELSE 0 END),2) AS cash,
                 ROUND(SUM(CASE WHEN payment_mode='UPI' THEN amount ELSE 0 END),2) AS upi,
                 ROUND(SUM(CASE WHEN payment_mode='Card' THEN amount ELSE 0 END),2) AS card,
-                0 AS refund,
+                ROUND(MAX(refund_amount), 2) AS refund,
                 ROUND(SUM(amount),2) AS total_amount,
                 MAX(txn_date) AS payment_date
 
