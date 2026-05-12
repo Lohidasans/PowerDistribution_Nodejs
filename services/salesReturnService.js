@@ -450,64 +450,29 @@ const updateSalesReturn = async (req, res) => {
 
     if (valid !== true) return;
 
-    // 3. RECALCULATE TOTALS
-    let subtotal = 0;
-    let totalQty = 0;
+    // 3. USE UI CALCULATED VALUES DIRECTLY
+    const itemRows = items.map((it) => ({
+      id: it.id || null,
+      product_id: it.product_id,
+      product_item_detail_id: it.product_item_detail_id,
+      sku_id: it.sku_id || null,
+      product_description: it.product_description || null,
+      net_weight: it.net_weight || null,
+      gross_weight: it.gross_weight || null,
+      quantity: Number(it.quantity || 0),
+      rate: Number(it.rate || 0),
+      amount: Number(it.amount || 0),
+      cgst_percent: it.cgst_percent ?? null,
+      sgst_percent: it.sgst_percent ?? null,
+      igst_percent: it.igst_percent ?? null,
+      cgst_amount: Number(it.cgst_amount || 0),
+      sgst_amount: Number(it.sgst_amount || 0),
+      igst_amount: Number(it.igst_amount || 0),
+    }));
 
-    const itemRows = items.map(it => {
-      const qty = Number(it.quantity || 0);
-      const rate = Number(it.rate || 0);
-      const amount = Number(
-        it.amount != null ? it.amount : qty * rate
-      );
-
-      subtotal += amount;
-      totalQty += qty;
-
-      // Handle IGST vs SGST/CGST logic
-      const hasIgst = it.igst_amount && Number(it.igst_amount) > 0;
-
-      return {
-        id: it.id || null,
-        product_id: it.product_id,
-        product_item_detail_id: it.product_item_detail_id,
-        sku_id: it.sku_id || null,
-        product_description: it.product_description || null,
-        net_weight: it.net_weight || null,
-        gross_weight: it.gross_weight || null,
-        quantity: qty,
-        rate,
-        amount,
-        cgst_percent: hasIgst ? null : (it.cgst_percent ?? null),
-        sgst_percent: hasIgst ? null : (it.sgst_percent ?? null),
-        cgst_amount: hasIgst ? 0 : (it.cgst_amount ?? 0),
-        sgst_amount: hasIgst ? 0 : (it.sgst_amount ?? 0),
-        igst_percent: hasIgst ? (it.igst_percent ?? null) : null,
-        igst_amount: hasIgst ? (it.igst_amount ?? 0) : 0,
-      };
-    });
-
-    // Handle IGST vs SGST/CGST logic for header totals
-    const hasHeaderIgst = header.igst_amount && Number(header.igst_amount) > 0;
-    const cgstAmt = hasHeaderIgst ? 0 : (
-      header.cgst_amount !== undefined
-        ? Number(header.cgst_amount)
-        : Number(salesReturn.cgst_amount || 0)
-    );
-
-    const sgstAmt = hasHeaderIgst ? 0 : (
-      header.sgst_amount !== undefined
-        ? Number(header.sgst_amount)
-        : Number(salesReturn.sgst_amount || 0)
-    );
-
-    const igstAmt = hasHeaderIgst ? (
-      header.igst_amount !== undefined
-        ? Number(header.igst_amount)
-        : Number(salesReturn.igst_amount || 0)
-    ) : 0;
-
-    const total = subtotal + cgstAmt + sgstAmt + igstAmt;
+    const subtotal = Number(header.subtotal_amount || 0);
+    const totalQty = Number(header.total_quantity || 0);
+    const total = Number(header.total_amount || 0);
 
     // 4. UPDATE SALES RETURN HEADER
     await salesReturn.update(
