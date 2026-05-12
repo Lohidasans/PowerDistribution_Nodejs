@@ -558,6 +558,14 @@ const getTopBuyingCustomers = async (req, res) => {
             replacements
         );
 
+        // BRANCH FILTER
+        let branchCondition = "";
+
+        if (req.query.branch_id) {
+            branchCondition = ` AND sib.branch_id = :branch_id `;
+            replacements.branch_id = Number(req.query.branch_id);
+        }
+
         // Pagination logic (ONLY if provided)
         let paginationSql = "";
 
@@ -590,6 +598,7 @@ const getTopBuyingCustomers = async (req, res) => {
                 AND sib.is_active = true
                 AND sib.status = 'Invoice'
                 ${dateCondition}
+                ${branchCondition}
 
                 GROUP BY
                 c.id,
