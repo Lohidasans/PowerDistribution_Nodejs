@@ -529,7 +529,7 @@ const getAllGrns = async (req, res) => {
 
       -- ORDER WEIGHT
       LEFT JOIN (
-        SELECT grn_id, SUM(net_wt_in_g) AS total_order_weight, SUM(quantity) AS total_order_qty
+        SELECT grn_id, SUM(gross_wt_in_g) AS total_order_weight, SUM(quantity) AS total_order_qty
         FROM "grnItems"
         WHERE deleted_at IS NULL
         GROUP BY grn_id
@@ -539,15 +539,15 @@ const getAllGrns = async (req, res) => {
       LEFT JOIN (
         SELECT
           p.grn_id,
-          SUM(pid.quantity * pid.net_weight)     --CURRENT STOCK
+          SUM(pid.quantity * pid.gross_weight)     --CURRENT STOCK
             + COALESCE(SUM(                    --OFFLINE BILL SOLD
               CASE
                 WHEN sib.status = 'Invoice'
-                THEN sii.quantity * sii.net_weight
+                THEN sii.quantity * sii.gross_weight
                 ELSE 0
               END
             ),0)
-          + COALESCE(SUM(oi.quantity * pid.net_weight),0) AS total_updated_weight,   --ONLINE ORDER SOLD
+          + COALESCE(SUM(oi.quantity * pid.gross_weight),0) AS total_updated_weight,   --ONLINE ORDER SOLD
 
           SUM(pid.quantity) + COALESCE(SUM(   --QTY
               CASE
@@ -1277,7 +1277,7 @@ const getCompleteGrnDetails = async (req, res) => {
       LEFT JOIN (
         SELECT
           grn_id,
-          SUM(net_wt_in_g) AS ordered_weight,
+          SUM(gross_wt_in_g) AS ordered_weight,
           SUM(quantity) AS ordered_qty
         FROM "grnItems"
         WHERE deleted_at IS NULL
@@ -1290,13 +1290,13 @@ const getCompleteGrnDetails = async (req, res) => {
           p.grn_id,
 
           /* WEIGHT */
-          SUM(pid.quantity * pid.net_weight) + COALESCE(SUM(
+          SUM(pid.quantity * pid.gross_weight) + COALESCE(SUM(
               CASE
                 WHEN sib.status = 'Invoice'
-                THEN sii.quantity * sii.net_weight
+                THEN sii.quantity * sii.gross_weight
                 ELSE 0
               END
-            ),0) + COALESCE(SUM(oi.quantity * pid.net_weight),0) AS updated_weight,
+            ),0) + COALESCE(SUM(oi.quantity * pid.gross_weight),0) AS updated_weight,
 
           /* QTY */
           SUM(pid.quantity) + COALESCE(SUM(
