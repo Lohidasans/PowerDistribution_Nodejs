@@ -16,8 +16,8 @@ const REPORT_CONFIG = {
         itemFk: "repair_id",
         dateColumn: "t.created_at",
         codeColumn: "repair_code",
-        weightColumn: "weight",
-        quantityExpr: "COUNT(i.id)",
+        weightColumn: "(i.weight * i.quantity)",
+        quantityExpr: "COALESCE(SUM(i.quantity),0)",
         statusCondition: "AND t.status = 'Completed'"
     },
 
@@ -38,7 +38,7 @@ const REPORT_CONFIG = {
         itemFk: "invoice_bill_id",
         dateColumn: "t.created_at",
         codeColumn: "invoice_no",
-        weightColumn: "net_weight",
+        weightColumn: "(i.net_weight * i.quantity)",
         quantityExpr: "SUM(i.quantity)",
         statusCondition: "AND t.status = 'Invoice'"
     },
@@ -49,7 +49,7 @@ const REPORT_CONFIG = {
         itemFk: "sales_return_id",
         dateColumn: "t.created_at",
         codeColumn: "sales_return_no",
-        weightColumn: "CAST(i.net_weight AS NUMERIC)",
+        weightColumn: "(CAST(i.net_weight AS NUMERIC) * i.quantity)",
         quantityExpr: "SUM(i.quantity)",
         statusCondition: "AND t.status = 'Printed'"
     }
