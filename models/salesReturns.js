@@ -98,6 +98,20 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
         defaultValue: true,
       },
+      discount_type: {
+        type: DataTypes.ENUM("Amount", "Percentage"),
+        allowNull: true,
+      },
+      discount_amount: {  // amount = discount/1.03  , percentage(5)= (5% of total_amount)/1.03
+        type: DataTypes.DECIMAL(15, 2),
+        allowNull: true,
+        defaultValue: 0,
+      },
+      discount_calculated: {  // discount/1.03
+        type: DataTypes.DECIMAL(15, 2),
+        allowNull: true,
+        defaultValue: 0,
+      },
     },
     {
       timestamps: true,
