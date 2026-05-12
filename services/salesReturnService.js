@@ -32,6 +32,16 @@ const createSalesReturn = async (req, res) => {
       await t.rollback();
       return commonService.badRequest(res, "At least one item is required");
     }
+
+    // CHECK DUPLICATE
+    const employee = await validateDuplicateUniqueCode({
+      model: models.SalesReturn,
+      billField: "sales_return_no",
+      billValue: header.sales_return_no,
+      employee_id: header.employee_id,
+      transaction: t,
+      bill_name: "Sales Return",
+    });
     
     // VALIDATION OF INVOICES & ITEMS
     const isValid = await validateSalesReturnInvoices({
@@ -44,20 +54,13 @@ const createSalesReturn = async (req, res) => {
 
     if (isValid !== true) return; // response already sent
 
-    // Calculate totals
-    let subtotal = 0;
+    // USE UI VALUES DIRECTLY
     let totalQty = 0;
 
     const itemRows = items.map((it) => {
       const qty = Number(it.quantity || 0);
-      const rate = Number(it.rate || 0);
-      const amount = Number(it.amount != null ? it.amount : qty * rate);
-
-      subtotal += amount;
       totalQty += qty;
-
-      // Handle IGST vs SGST/CGST logic
-      const hasIgst = it.igst_amount && Number(it.igst_amount) > 0;
+      const hasIgst = it.igst_amount &&  Number(it.igst_amount) > 0;
 
       return {
         product_id: it.product_id,
@@ -67,36 +70,23 @@ const createSalesReturn = async (req, res) => {
         net_weight: it.net_weight || null,
         gross_weight: it.gross_weight || null,
         quantity: qty,
-        rate,
-        amount,
+        rate: Number(it.rate || 0),
+        amount: Number(it.amount || 0),
         cgst_percent: hasIgst ? null : (it.cgst_percent ?? null),
         sgst_percent: hasIgst ? null : (it.sgst_percent ?? null),
-        cgst_amount: hasIgst ? 0 : (it.cgst_amount ?? 0),
-        sgst_amount: hasIgst ? 0 : (it.sgst_amount ?? 0),
+        cgst_amount: hasIgst  ? 0 : Number(it.cgst_amount || 0),
+        sgst_amount: hasIgst  ? 0 : Number(it.sgst_amount || 0),
         igst_percent: hasIgst ? (it.igst_percent ?? null) : null,
-        igst_amount: hasIgst ? (it.igst_amount ?? 0) : 0,
+        igst_amount: hasIgst ? Number(it.igst_amount || 0) : 0,
         invoice_date: it.invoice_date || null,
         invoice_no: it.invoice_no || null,
       };
     });
 
-    // Handle IGST vs SGST/CGST logic for header totals
-    const hasHeaderIgst = header.igst_amount && Number(header.igst_amount) > 0;
-    const cgstAmt = hasHeaderIgst ? 0 : Number(header.cgst_amount || 0);
-    const sgstAmt = hasHeaderIgst ? 0 : Number(header.sgst_amount || 0);
-    const igstAmt = hasHeaderIgst ? Number(header.igst_amount || 0) : 0;
-    const total = subtotal + cgstAmt + sgstAmt + igstAmt;
+   const hasHeaderIgst =
+      header.igst_amount &&
+      Number(header.igst_amount) > 0;
 
-    // CHECK DUPLICATE
-    const employee = await validateDuplicateUniqueCode({
-      model: models.SalesReturn,
-      billField: "sales_return_no",
-      billValue: header.sales_return_no,
-      employee_id: header.employee_id,
-      transaction: t,
-      bill_name: "Sales Return",
-    });
-    // Create sales return header
     const salesReturn = await models.SalesReturn.create(
       {
         sales_return_no: header.sales_return_no,
@@ -105,14 +95,17 @@ const createSalesReturn = async (req, res) => {
         employee_id: header.employee_id,
         customer_id: header.customer_id || null,
         branch_id: header.branch_id || null,
-        subtotal_amount: subtotal,
+        subtotal_amount: Number(header.subtotal_amount || 0),
+        discount_type: header.discount_type || null,
+        discount_amount: Number(header.discount_amount || 0),
+        discount_calculated: Number(header.discount_calculated || 0),
         cgst_percent: hasHeaderIgst ? null : (header.cgst_percent || null),
         sgst_percent: hasHeaderIgst ? null : (header.sgst_percent || null),
         igst_percent: hasHeaderIgst ? (header.igst_percent || null) : null,
-        cgst_amount: cgstAmt,
-        sgst_amount: sgstAmt,
-        igst_amount: igstAmt,
-        total_amount: total,
+        cgst_amount: hasHeaderIgst ? 0 : Number(header.cgst_amount || 0),
+        sgst_amount: hasHeaderIgst ? 0 : Number(header.sgst_amount || 0),
+        igst_amount: hasHeaderIgst ? Number(header.igst_amount || 0): 0,
+        total_amount: Number(header.total_amount || 0),
         total_quantity: totalQty,
         status: header.status || "Printed",
       },
