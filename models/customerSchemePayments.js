@@ -14,6 +14,11 @@ module.exports = (sequelize, DataTypes) => {
                 unique: true,
             },
 
+            branch_id: {
+                type: DataTypes.INTEGER,
+                allowNull: true
+            },
+
             enrollment_id: {
                 type: DataTypes.INTEGER,
                 allowNull: false, // FK → customer_enrollments.id

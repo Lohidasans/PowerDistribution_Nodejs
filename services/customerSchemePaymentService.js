@@ -24,7 +24,7 @@ const createSchemePayment = async (req, res) => {
     const t = await sequelize.transaction();
 
     try {
-        const { enrollment_id, payment_date, payments } = req.body;
+        const { enrollment_id, branch_id, payment_date, payments } = req.body;
 
         if (!payments || payments.length === 0) {
             throw new Error("At least one payment required");
@@ -101,6 +101,7 @@ const createSchemePayment = async (req, res) => {
         // ================= CREATE SCHEME PAYMENT =================
         const schemePayment = await models.CustomerSchemePayment.create({
             scheme_payment_code: schemePaymentCode,
+            branch_id,
             enrollment_id,
             scheme_id,
             installment_no: nextInstallment,

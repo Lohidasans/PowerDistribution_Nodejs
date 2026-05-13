@@ -173,6 +173,7 @@ const createVoucherReceipt = async (req, res) => {
           scheme_payment_code: schemePaymentCode,
           enrollment_id,
           scheme_id,
+          branch_id,
           installment_no: nextInstallment,
           installment_amount: amount,
           paid_amount: amount,
