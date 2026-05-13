@@ -425,7 +425,12 @@ const getVendorPaymentsByPurchase = async (req, res) => {
       user_type_id: 1,
     };
 
-    let whereSql = "WHERE vp.deleted_at IS NULL AND vp.is_active = true AND vp.user_type_id = :user_type_id AND vp.purchase_id = :purchase_id";
+    let whereSql = `
+      WHERE vp.deleted_at IS NULL
+      AND vp.is_active = true
+      AND vp.user_type_id = :user_type_id
+      AND vp.purchase_id = :purchase_id
+    `;
 
     // Pagination
     let paginationSql = "";
@@ -458,6 +463,26 @@ const getVendorPaymentsByPurchase = async (req, res) => {
         'GRN' AS reference_type,
         v.vendor_name AS account_name,
         v.mobile AS account_mobile,
+        COALESCE(g.total_amount, 0) AS total_purchase,
+        (
+          SELECT COALESCE(SUM(vp2.amount), 0)
+          FROM vendor_payments vp2
+          WHERE vp2.purchase_id = vp.purchase_id
+            AND vp2.deleted_at IS NULL
+            AND vp2.is_active = true
+            AND vp2.user_type_id = 1
+        ) AS total_paid,
+        (
+          COALESCE(g.total_amount, 0) -
+          (
+            SELECT COALESCE(SUM(vp2.amount), 0)
+            FROM vendor_payments vp2
+            WHERE vp2.purchase_id = vp.purchase_id
+              AND vp2.deleted_at IS NULL
+              AND vp2.is_active = true
+              AND vp2.user_type_id = 1
+          )
+        ) AS outstanding,
         b.branch_name,
         b.address AS branch_address,
         b.gst_no AS branch_gst_no,
@@ -467,13 +492,32 @@ const getVendorPaymentsByPurchase = async (req, res) => {
         d.district_name,
         s.state_name
       FROM vendor_payments vp
-      LEFT JOIN grns g ON vp.purchase_id IS NOT NULL AND g.id = vp.purchase_id::int AND g.deleted_at IS NULL
-      LEFT JOIN vendors v ON v.id = vp.account_name_id AND vp.user_type_id = 1 AND v.deleted_at IS NULL
-      LEFT JOIN branches b ON b.id = vp.branch_id AND b.deleted_at IS NULL
-      LEFT JOIN districts d ON d.id = b.district_id AND d.deleted_at IS NULL
-      LEFT JOIN states s ON s.id = b.state_id AND s.deleted_at IS NULL
+      LEFT JOIN grns g
+        ON vp.purchase_id IS NOT NULL
+        AND g.id = vp.purchase_id::int
+        AND g.deleted_at IS NULL
+
+      LEFT JOIN vendors v
+        ON v.id = vp.account_name_id
+        AND vp.user_type_id = 1
+        AND v.deleted_at IS NULL
+
+      LEFT JOIN branches b
+        ON b.id = vp.branch_id
+        AND b.deleted_at IS NULL
+
+      LEFT JOIN districts d
+        ON d.id = b.district_id
+        AND d.deleted_at IS NULL
+
+      LEFT JOIN states s
+        ON s.id = b.state_id
+        AND s.deleted_at IS NULL
+
       ${whereSql}
+
       ORDER BY vp.created_at DESC
+
       ${paginationSql}
     `;
 
@@ -489,7 +533,10 @@ const getVendorPaymentsByPurchase = async (req, res) => {
       const countQuery = `
         SELECT COUNT(*)::int AS count
         FROM vendor_payments vp
-        WHERE vp.deleted_at IS NULL AND vp.is_active = true AND vp.user_type_id = :user_type_id AND vp.purchase_id = :purchase_id
+        WHERE vp.deleted_at IS NULL
+          AND vp.is_active = true
+          AND vp.user_type_id = :user_type_id
+          AND vp.purchase_id = :purchase_id
       `;
 
       const countResult = await sequelize.query(countQuery, {
@@ -500,8 +547,38 @@ const getVendorPaymentsByPurchase = async (req, res) => {
       total = countResult[0]?.count || 0;
     }
 
+    // Summary values (take once)
+    const total_purchase = data.length > 0
+      ? data[0].total_purchase
+      : 0;
+
+    const total_paid = data.length > 0
+      ? data[0].total_paid
+      : 0;
+
+    const outstanding = data.length > 0
+      ? data[0].outstanding
+      : 0;
+
+    // Remove repeated summary fields from each row
+    const formattedData = data.map(item => {
+      const {
+        total_purchase,
+        total_paid,
+        outstanding,
+        ...rest
+      } = item;
+
+      return rest;
+    });
+
     return commonService.okResponse(res, {
-      data,
+      total_purchase,
+      total_paid,
+      outstanding,
+
+      data: formattedData,
+
       ...(pageSize && {
         pagination: {
           total,
@@ -511,8 +588,13 @@ const getVendorPaymentsByPurchase = async (req, res) => {
         },
       }),
     });
+
   } catch (error) {
-    return commonService.handleError(res, error, 'Error fetching vendor payments by purchase');
+    return commonService.handleError(
+      res,
+      error,
+      "Error fetching vendor payments by purchase"
+    );
   }
 };
 
