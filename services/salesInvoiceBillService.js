@@ -443,7 +443,7 @@ const deleteSalesInvoice = async (req, res) => {
 // light search for  - Sales Return Search box
 const searchInvoices = async (req, res) => {
   try {
-    const { invoice_no, mobile_number, status } = req.query;
+    const { invoice_no, mobile_number, status, branch_id  } = req.query;
 
     // First, find customer IDs if mobile number is provided
     let customerIds = [];
@@ -484,6 +484,10 @@ const searchInvoices = async (req, res) => {
 
     if (status) {
       whereCondition.status = status;
+    }
+
+    if (branch_id) {
+      whereCondition.branch_id = branch_id;
     }
 
     // Find all matching invoices
