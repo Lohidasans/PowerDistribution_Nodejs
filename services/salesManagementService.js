@@ -1112,5 +1112,6 @@ module.exports = {
     getBranchWiseSalesCount,
     getBranchwiseSalesAndCustomerStats,
     getSalesByMaterialType,
-    getEstimateConversionRate
+    getEstimateConversionRate,
+    getScorecardByType
 };

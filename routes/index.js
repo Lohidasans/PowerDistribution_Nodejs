@@ -78,6 +78,7 @@ const CustomerSchemePaymentRoute = require('./customerSchemePaymentRoute');
 const AdminOnlineOrderRoute = require('./adminOnlineOrderRoute');
 const vendorDashboardRoute = require('./vendorDashboardRoute');
 const employeeDashboardRoute = require('./employeeDashboardRoute');
+const branchDashboardRoute = require('./branchDashboardRoute');
 
 module.exports = (app) => {
   app.use("/api/v1", RoleRouter);
@@ -160,5 +161,6 @@ module.exports = (app) => {
   app.use("/api/v1", AdminOnlineOrderRoute);
   app.use("/api/v1", vendorDashboardRoute);
   app.use("/api/v1", employeeDashboardRoute);
+  app.use("/api/v1", branchDashboardRoute);
 };
 
