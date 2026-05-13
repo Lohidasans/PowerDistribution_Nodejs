@@ -543,29 +543,17 @@ const updateSalesReturn = async (req, res) => {
 
     // === UPDATE ORIGINAL INVOICE ITEMS IF STATUS CHANGED TO PRINTED ===
     if (header.status === "Printed") {
-      for (const row of itemRows) {
-        const originalInvoiceNo = items.find(
-          orig => orig.product_item_detail_id === row.product_item_detail_id
-        )?.invoice_no;
-
-        if (originalInvoiceNo && row.product_item_detail_id) {
-          const originalInvoice = await models.SalesInvoiceBill.findOne({
-            where: { invoice_no: originalInvoiceNo },
+      for (const row of items) {
+      if (row.invoice_id && row.product_item_detail_id) {
+        await models.SalesInvoiceBillItem.update(
+          { is_returned: true },
+          {
+            where: {
+              invoice_bill_id: row.invoice_id,
+              product_item_detail_id: row.product_item_detail_id,
+            },
             transaction: t,
           });
-
-          if (originalInvoice) {
-            await models.SalesInvoiceBillItem.update(
-              { is_returned: true },
-              {
-                where: {
-                  invoice_bill_id: originalInvoice.id,
-                  product_item_detail_id: row.product_item_detail_id,
-                },
-                transaction: t,
-              }
-            );
-          }
         }
       }
     }
