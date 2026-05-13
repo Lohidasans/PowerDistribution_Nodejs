@@ -79,6 +79,7 @@ const createSalesReturn = async (req, res) => {
         igst_percent: hasIgst ? (it.igst_percent ?? null) : null,
         igst_amount: hasIgst ? Number(it.igst_amount || 0) : 0,
         invoice_date: it.invoice_date || null,
+        invoice_id: it.invoice_id,
         invoice_no: it.invoice_no || null,
       };
     });
@@ -126,31 +127,18 @@ const createSalesReturn = async (req, res) => {
     // === UPDATE ORIGINAL INVOICE ITEMS: is_returned = true (per item) ===
     if (header.status !== "On Hold") {
       for (const item of createdItems) {
-        const originalInvoiceNo = items.find(
-          orig => orig.product_item_detail_id === item.product_item_detail_id
-        )?.invoice_no;
-
-        if (originalInvoiceNo && item.product_item_detail_id) {
-          // Find the original invoice by invoice_no
-          const originalInvoice = await models.SalesInvoiceBill.findOne({
-            where: { invoice_no: originalInvoiceNo },
+      if (item.invoice_id && item.product_item_detail_id) {
+        await models.SalesInvoiceBillItem.update(
+          { is_returned: true },
+          {
+            where: {
+              invoice_bill_id: item.invoice_id,
+              product_item_detail_id: item.product_item_detail_id,
+            },
             transaction: t,
           });
-
-          if (originalInvoice) {
-            await models.SalesInvoiceBillItem.update(
-              { is_returned: true },
-              {
-                where: {
-                  invoice_bill_id: originalInvoice.id,
-                  product_item_detail_id: item.product_item_detail_id,
-                },
-                transaction: t,
-              }
-            );
-          }
         }
-      }
+      }   
     }
 
     // 🔺 RESTORE STOCK (ONLY IF FINALIZED)
@@ -638,6 +626,7 @@ const validateSalesReturnInvoices = async ({
 
     const invoice = await models.SalesInvoiceBill.findOne({
       where: {
+        id: it.invoice_id,
         invoice_no: it.invoice_no,
         status: "Invoice",
         deleted_at: null,
@@ -690,7 +679,6 @@ const validateSalesReturnInvoices = async ({
 
   return true;
 };
-
 
 
 // Toggle active status for sales return
