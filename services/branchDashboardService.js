@@ -233,7 +233,287 @@ const getDashboardScorecards = async (req, res) => {
     }
 };
 
+const getTopPerformanceDashboard = async (req, res) => {
+    try {
+
+        const {
+            branch_id,
+            from_date,
+            to_date,
+            date_filter,
+            limit = 8
+        } = req.query;
+
+        const replacements = { limit: Number(limit) };
+
+        let branchCondition = "";
+
+        if (branch_id) {
+            branchCondition = `AND sib.branch_id = :branch_id`;
+            replacements.branch_id = branch_id;
+        }
+
+        const dateCondition = dateFilter(
+            { from_date, to_date, date_filter },
+            "sib.invoice_date",
+            replacements
+        );
+
+        // TOP EMPLOYEE PERFORMER
+        const employeeSql = `
+            SELECT
+                e.id,
+                e.employee_no,
+                e.employee_name,
+                ROUND(COALESCE(SUM(sibi.gross_weight), 0), 3) AS total_weight,
+                sib.total_amount AS sales_amount,
+                COUNT(DISTINCT sib.id) AS total_bills
+
+            FROM sales_invoice_bills sib
+            JOIN employees e ON e.id = sib.employee_id AND e.deleted_at IS NULL
+            JOIN sales_invoice_bill_items sibi ON sibi.invoice_bill_id = sib.id AND sibi.deleted_at IS NULL
+
+            WHERE sib.deleted_at IS NULL AND sib.status ='Invoice'
+              ${branchCondition}
+              ${dateCondition}
+
+            GROUP BY
+                e.id,
+                e.employee_no,
+                e.employee_name,
+                sib.total_amount
+
+            ORDER BY sales_amount DESC
+            LIMIT :limit
+        `;
+
+        const top_employee_performer = await sequelize.query(employeeSql, {
+            replacements,
+            type: sequelize.QueryTypes.SELECT
+        });
+
+        // TOP SELLING CATEGORY
+        const categorySql = `
+            SELECT
+                c.id,
+                c.category_name,
+                c.category_image_url,
+                COUNT(sibi.id) AS total_count,
+                COALESCE(SUM(sibi.quantity), 0) AS total_quantity,
+                sib.total_amount AS total_amount
+
+            FROM sales_invoice_bills sib
+            JOIN sales_invoice_bill_items sibi ON sibi.invoice_bill_id = sib.id AND sibi.deleted_at IS NULL
+            JOIN products p ON p.id = sibi.product_id AND p.deleted_at IS NULL
+            JOIN categories c ON c.id = p.category_id AND c.deleted_at IS NULL
+
+            WHERE sib.deleted_at IS NULL AND sib.status ='Invoice'
+
+              ${branchCondition}
+              ${dateCondition}
+
+            GROUP BY
+                c.id,
+                c.category_name,
+                c.category_image_url,
+                sib.total_amount
+
+            ORDER BY total_quantity DESC
+            LIMIT :limit
+        `;
+
+        const top_selling_category = await sequelize.query(categorySql, {
+            replacements,
+            type: sequelize.QueryTypes.SELECT
+        });
+
+        return commonService.okResponse(res, {
+            top_employee_performer,
+            top_selling_category
+        });
+
+    } catch (error) {
+        console.error("Top Performance Dashboard Error:", error);
+        return commonService.handleError(res, error);
+    }
+};
+
+// // Top Selling Category
+// const getTopSellingCategories = async (req, res) => {
+//     try {
+
+//         const {
+//             branch_id,
+//             from_date,
+//             to_date,
+//             date_filter,
+//             limit = 8
+//         } = req.query;
+
+//         const replacements = {
+//             limit: Number(limit)
+//         };
+
+//         let branchCondition = "";
+
+//         if (branch_id) {
+//             branchCondition = `AND sib.branch_id = :branch_id`;
+//             replacements.branch_id = branch_id;
+//         }
+
+//         const dateCondition = dateFilter(
+//             { from_date, to_date, date_filter },
+//             "sib.invoice_date",
+//             replacements
+//         );
+
+//         const sql = `
+//             SELECT
+//                 c.id,
+//                 c.category_name,
+//                 c.category_image_url,
+
+//                 COUNT(sibi.id) AS total_count,
+
+//                 COALESCE(SUM(sibi.quantity), 0) AS total_quantity,
+
+//                 ROUND(
+//                     COALESCE(SUM(sibi.amount), 0),
+//                     2
+//                 ) AS total_amount
+
+//             FROM sales_invoice_bills sib
+
+//             JOIN sales_invoice_bill_items sibi
+//                 ON sibi.invoice_bill_id = sib.id
+//                 AND sibi.deleted_at IS NULL
+
+//             JOIN products p
+//                 ON p.id = sibi.product_id
+//                 AND p.deleted_at IS NULL
+
+//             JOIN categories c
+//                 ON c.id = p.category_id
+//                 AND c.deleted_at IS NULL
+
+//             WHERE sib.deleted_at IS NULL
+//               AND sib.status IN ('Printed', 'Invoice')
+
+//               ${branchCondition}
+//               ${dateCondition}
+
+//             GROUP BY
+//                 c.id,
+//                 c.category_name,
+//                 c.category_image_url
+
+//             ORDER BY total_quantity DESC
+
+//             LIMIT :limit
+//         `;
+
+//         const data = await sequelize.query(sql, {
+//             replacements,
+//             type: sequelize.QueryTypes.SELECT
+//         });
+
+//         return commonService.okResponse(res, data);
+
+//     } catch (error) {
+//         console.error("Top Selling Category Error:", error);
+//         return commonService.handleError(res, error);
+//     }
+// };
+
+
+// // Top Employee Performer
+// const getTopEmployeePerformers = async (req, res) => {
+//     try {
+
+//         const {
+//             branch_id,
+//             from_date,
+//             to_date,
+//             date_filter,
+//             limit = 5
+//         } = req.query;
+
+//         const replacements = {
+//             limit: Number(limit)
+//         };
+
+//         let branchCondition = "";
+
+//         if (branch_id) {
+//             branchCondition = `AND sib.branch_id = :branch_id`;
+//             replacements.branch_id = branch_id;
+//         }
+
+//         const dateCondition = dateFilter(
+//             { from_date, to_date, date_filter },
+//             "sib.invoice_date",
+//             replacements
+//         );
+
+//         const sql = `
+//             SELECT
+//                 e.id,
+//                 e.employee_no,
+//                 e.employee_name,
+
+//                 ROUND(
+//                     COALESCE(SUM(sibi.gross_weight), 0),
+//                     3
+//                 ) AS total_weight,
+
+//                 ROUND(
+//                     COALESCE(SUM(sibi.amount), 0),
+//                     2
+//                 ) AS sales_amount,
+
+//                 COUNT(DISTINCT sib.id) AS total_bills
+
+//             FROM sales_invoice_bills sib
+
+//             JOIN employees e
+//                 ON e.id = sib.employee_id
+//                 AND e.deleted_at IS NULL
+
+//             JOIN sales_invoice_bill_items sibi
+//                 ON sibi.invoice_bill_id = sib.id
+//                 AND sibi.deleted_at IS NULL
+
+//             WHERE sib.deleted_at IS NULL
+//               AND sib.status IN ('Printed', 'Invoice')
+
+//               ${branchCondition}
+//               ${dateCondition}
+
+//             GROUP BY
+//                 e.id,
+//                 e.employee_no,
+//                 e.employee_name
+
+//             ORDER BY sales_amount DESC
+
+//             LIMIT :limit
+//         `;
+
+//         const data = await sequelize.query(sql, {
+//             replacements,
+//             type: sequelize.QueryTypes.SELECT
+//         });
+
+//         return commonService.okResponse(res, data);
+
+//     } catch (error) {
+//         console.error("Top Employee Performer Error:", error);
+//         return commonService.handleError(res, error);
+//     }
+// };
+
 
 module.exports={
-    getDashboardScorecards
+    getDashboardScorecards,
+    getTopPerformanceDashboard
 }
