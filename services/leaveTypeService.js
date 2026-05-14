@@ -34,16 +34,7 @@ const createLeaveType = async (req, res) => {
 // Get all leave types
 const getAllLeaveTypes = async (req, res) => {
   try {
-    const { is_active } = req.query;
-    const whereClause = {};
-    
-    // Filter by active status if provided
-    if (is_active !== undefined) {
-      whereClause.is_active = is_active === 'true';
-    }
-
     const leaveTypes = await models.LeaveType.findAll({
-      where: whereClause,
       order: [['created_at', 'DESC']],
       paranoid: false
     });
