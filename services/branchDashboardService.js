@@ -4,6 +4,7 @@ const message = require("../constants/en.json");
 const { dateFilter } = require("../helpers/dateHelper");
 const REPORT_CONFIG = require("../helpers/configs/reportConfig");
 const salesManagementService = require("../services/salesManagementService");
+const stockManagementService = require("../services/stockManagementService");
 
 // Revenue, Revenue by group and KPI
 const getDashboardScorecards = async (req, res) => {
@@ -338,182 +339,50 @@ const getTopPerformanceDashboard = async (req, res) => {
     }
 };
 
-// // Top Selling Category
-// const getTopSellingCategories = async (req, res) => {
-//     try {
+const getBranchDashboardLowStock = async (req, res) => {
+  try {
 
-//         const {
-//             branch_id,
-//             from_date,
-//             to_date,
-//             date_filter,
-//             limit = 8
-//         } = req.query;
+    const { branch_id, from_date, to_date, date_filter, page, limit } = req.query;
 
-//         const replacements = {
-//             limit: Number(limit)
-//         };
+    const replacements = {};
+    let where = ` WHERE p.deleted_at IS NULL AND p.status = 'Active'`;
 
-//         let branchCondition = "";
+    if (branch_id) {
+      where += ` AND p.branch_id = :branch_id`;
+      replacements.branch_id = branch_id;
+    }
 
-//         if (branch_id) {
-//             branchCondition = `AND sib.branch_id = :branch_id`;
-//             replacements.branch_id = branch_id;
-//         }
+    where += dateFilter(
+      { from_date, to_date, date_filter },
+      "p.created_at",
+      replacements
+    );
 
-//         const dateCondition = dateFilter(
-//             { from_date, to_date, date_filter },
-//             "sib.invoice_date",
-//             replacements
-//         );
+    const usePagination = page || limit;
+    const pageNum = parseInt(page || 1, 10);
+    const limitNum = parseInt(limit || 10, 10);
+    const offset = (pageNum - 1) * limitNum;
 
-//         const sql = `
-//             SELECT
-//                 c.id,
-//                 c.category_name,
-//                 c.category_image_url,
+    const result = await stockManagementService.getLowStockList(
+      where,
+      replacements,
+      usePagination,
+      limitNum,
+      offset
+    );
 
-//                 COUNT(sibi.id) AS total_count,
+    return commonService.okResponse(res, {
+      rows: result.rows
+    });
 
-//                 COALESCE(SUM(sibi.quantity), 0) AS total_quantity,
-
-//                 ROUND(
-//                     COALESCE(SUM(sibi.amount), 0),
-//                     2
-//                 ) AS total_amount
-
-//             FROM sales_invoice_bills sib
-
-//             JOIN sales_invoice_bill_items sibi
-//                 ON sibi.invoice_bill_id = sib.id
-//                 AND sibi.deleted_at IS NULL
-
-//             JOIN products p
-//                 ON p.id = sibi.product_id
-//                 AND p.deleted_at IS NULL
-
-//             JOIN categories c
-//                 ON c.id = p.category_id
-//                 AND c.deleted_at IS NULL
-
-//             WHERE sib.deleted_at IS NULL
-//               AND sib.status IN ('Printed', 'Invoice')
-
-//               ${branchCondition}
-//               ${dateCondition}
-
-//             GROUP BY
-//                 c.id,
-//                 c.category_name,
-//                 c.category_image_url
-
-//             ORDER BY total_quantity DESC
-
-//             LIMIT :limit
-//         `;
-
-//         const data = await sequelize.query(sql, {
-//             replacements,
-//             type: sequelize.QueryTypes.SELECT
-//         });
-
-//         return commonService.okResponse(res, data);
-
-//     } catch (error) {
-//         console.error("Top Selling Category Error:", error);
-//         return commonService.handleError(res, error);
-//     }
-// };
-
-
-// // Top Employee Performer
-// const getTopEmployeePerformers = async (req, res) => {
-//     try {
-
-//         const {
-//             branch_id,
-//             from_date,
-//             to_date,
-//             date_filter,
-//             limit = 5
-//         } = req.query;
-
-//         const replacements = {
-//             limit: Number(limit)
-//         };
-
-//         let branchCondition = "";
-
-//         if (branch_id) {
-//             branchCondition = `AND sib.branch_id = :branch_id`;
-//             replacements.branch_id = branch_id;
-//         }
-
-//         const dateCondition = dateFilter(
-//             { from_date, to_date, date_filter },
-//             "sib.invoice_date",
-//             replacements
-//         );
-
-//         const sql = `
-//             SELECT
-//                 e.id,
-//                 e.employee_no,
-//                 e.employee_name,
-
-//                 ROUND(
-//                     COALESCE(SUM(sibi.gross_weight), 0),
-//                     3
-//                 ) AS total_weight,
-
-//                 ROUND(
-//                     COALESCE(SUM(sibi.amount), 0),
-//                     2
-//                 ) AS sales_amount,
-
-//                 COUNT(DISTINCT sib.id) AS total_bills
-
-//             FROM sales_invoice_bills sib
-
-//             JOIN employees e
-//                 ON e.id = sib.employee_id
-//                 AND e.deleted_at IS NULL
-
-//             JOIN sales_invoice_bill_items sibi
-//                 ON sibi.invoice_bill_id = sib.id
-//                 AND sibi.deleted_at IS NULL
-
-//             WHERE sib.deleted_at IS NULL
-//               AND sib.status IN ('Printed', 'Invoice')
-
-//               ${branchCondition}
-//               ${dateCondition}
-
-//             GROUP BY
-//                 e.id,
-//                 e.employee_no,
-//                 e.employee_name
-
-//             ORDER BY sales_amount DESC
-
-//             LIMIT :limit
-//         `;
-
-//         const data = await sequelize.query(sql, {
-//             replacements,
-//             type: sequelize.QueryTypes.SELECT
-//         });
-
-//         return commonService.okResponse(res, data);
-
-//     } catch (error) {
-//         console.error("Top Employee Performer Error:", error);
-//         return commonService.handleError(res, error);
-//     }
-// };
-
+  } catch (error) {
+    console.error("Branch Dashboard Low Stock Error:", error);
+    return commonService.handleError(res, error);
+  }
+};
 
 module.exports={
     getDashboardScorecards,
-    getTopPerformanceDashboard
+    getTopPerformanceDashboard,
+    getBranchDashboardLowStock
 }
