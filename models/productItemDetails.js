@@ -100,11 +100,12 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.DECIMAL(15, 3),
         allowNull: true,
       },
-      is_stock_transferred: {
+      is_stock_transferred: { // destination branch item will set to true if the stock is transferred
         type: DataTypes.BOOLEAN,
         defaultValue: false,
         allowNull: false,
       },
+      //Source branch will set to TRANSFERRED when qty becomes zero while transferring the pdt
       stock_out_reason: {
         type: DataTypes.ENUM(
           "SOLD",  // Sold to customer → SHOULD be out of stock

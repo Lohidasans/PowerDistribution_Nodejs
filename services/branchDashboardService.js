@@ -379,14 +379,54 @@ const getBranchDashboardStockDetails = async (req, res) => {
       offset
     );
 
-    const stockInHand =
-      await stockManagementService.getStockInHandSummary(
+    const stockInHand = await stockManagementService.getStockInHandSummary(
         where,
         replacements
     );
 
+    // Stock Received via stock transfer
+     const stockTransferReplacements = {};
+
+    let transferWhere = `
+      WHERE st.deleted_at IS NULL
+    `;
+
+    if (branch_id) {
+      transferWhere += ` AND st.branch_to = :branch_id `;
+      stockTransferReplacements.branch_id = branch_id;
+    }
+
+    transferWhere += dateFilter(
+      { from_date, to_date, date_filter },
+      "st.date",
+      stockTransferReplacements
+    );
+
+    const stockReceivedQuery = `
+      SELECT
+        ROUND(COALESCE(SUM(sti.weight), 0), 2) AS total_weight,
+        COALESCE(SUM(sti.transfer_quantity), 0) AS total_quantity,
+        COUNT(DISTINCT sti.transferred_product_id) AS product_count
+      FROM stock_transfers st
+      JOIN stock_transfer_items sti ON sti.stock_transfer_id = st.id AND sti.deleted_at IS NULL
+      ${transferWhere}
+    `;
+
+    const [stockReceived] = await sequelize.query(
+      stockReceivedQuery,
+      {
+        replacements: stockTransferReplacements,
+        type: sequelize.QueryTypes.SELECT
+      }
+    );
+
     return commonService.okResponse(res, {    
       stock_in_hand: stockInHand,
+       stock_received: {
+        total_weight: Number(stockReceived.total_weight || 0),
+        total_quantity: Number(stockReceived.total_quantity || 0),
+        product_count: Number(stockReceived.product_count || 0)
+      },
       rows: result.rows
     });
 
