@@ -133,7 +133,39 @@ const getEmployeeWiseSalesReport = async (req, res) => {
       ${invoiceWhere}
     `;
 
-    const [salesReport, summary] = await Promise.all([
+    // Average Customer per day - Branch Admin
+    let customerFlowWhere = `
+      WHERE sib.deleted_at IS NULL
+      AND sib.status = 'Invoice'
+      AND sib.is_active = true
+
+      -- Current Week (Monday -> Sunday)
+      AND sib.invoice_date::date >= DATE_TRUNC('week', CURRENT_DATE)::date
+      AND sib.invoice_date::date < (
+        DATE_TRUNC('week', CURRENT_DATE)::date + INTERVAL '7 day'
+      )
+    `;
+
+    if (branch_id) {
+      customerFlowWhere += ` AND sib.branch_id = :branch_id`;
+    }
+    
+    const customerFlowQuery = `
+      SELECT
+        TO_CHAR(sib.invoice_date, 'Dy') AS label,
+        COUNT(DISTINCT sib.customer_id) AS customer_count,
+        EXTRACT(ISODOW FROM sib.invoice_date) AS day_order
+
+      FROM sales_invoice_bills sib
+      
+      ${customerFlowWhere}
+      
+      GROUP BY day_order, TO_CHAR(sib.invoice_date, 'Dy')
+
+      ORDER BY day_order
+    `;
+
+    const [salesReport, summary, customerFlow] = await Promise.all([
       sequelize.query(salesReportQuery, {
         replacements,
         type: sequelize.QueryTypes.SELECT,
@@ -143,26 +175,28 @@ const getEmployeeWiseSalesReport = async (req, res) => {
         replacements,
         type: sequelize.QueryTypes.SELECT,
       }),
+
+      sequelize.query(customerFlowQuery, {
+        replacements,
+        type: sequelize.QueryTypes.SELECT,
+      }),
     ]);
 
     return commonService.okResponse(res, {
       score_card: {
         total_value: Number(summary[0]?.total_sales_value || 0),
-
         total_weight: Number(summary[0]?.total_sales_weight || 0),
-
         total_quantity: Number(summary[0]?.total_sales_quantity || 0),
-
-        total_transactions: Number(
-          summary[0]?.total_transactions || 0
-        ),
+        total_transactions: Number(summary[0]?.total_transactions || 0),
       },
-
       graph_type: view_type,
-
       sales_report: salesReport.map((row) => ({
         label: row.label,
         total_sales: Number(row.total_sales || 0),
+      })),
+      average_customer_flow: customerFlow.map((row) => ({
+        label: row.label,
+        customer_count: Number(row.customer_count || 0),
       })),
     });
 
