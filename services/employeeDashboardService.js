@@ -176,11 +176,12 @@ const getEmployeeWiseSalesReport = async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // EMPLOYEE DASHBOARD STATS
 // GET /api/v1/employee-dashboard/stats
-// Query: employee_id (required), year (optional, defaults to current year)
+// Query: employee_id (required), year (optional, defaults to current year),
+//        from_date / to_date (optional, filters attendance & leave counts)
 // ─────────────────────────────────────────────────────────────────────────────
 const getEmployeeDashboardStats = async (req, res) => {
   try {
-    const { employee_id, year } = req.query;
+    const { employee_id, year, from_date, to_date } = req.query;
 
     if (!employee_id) {
       return commonService.badRequest(res, "employee_id is required");
@@ -196,18 +197,33 @@ const getEmployeeDashboardStats = async (req, res) => {
     const selectedYear = year ? parseInt(year, 10) : currentYear;
     const currentMonthStr = `${currentYear}-${String(currentDate.getMonth() + 1).padStart(2, "0")}`;
 
-    // 1. Attendance score card (all-time, from joining date onwards)
+    // Build optional date range filter
+    const hasDateRange = from_date && to_date;
+    const attendanceDateFilter = hasDateRange
+      ? `AND DATE(ear.date) BETWEEN :from_date AND :to_date`
+      : "";
+    const leaveDateFilter = hasDateRange
+      ? `AND l.leave_date BETWEEN :from_date AND :to_date`
+      : "";
+
+    const baseReplacements = { employee_id: empId };
+    const rangeReplacements = hasDateRange
+      ? { employee_id: empId, from_date, to_date }
+      : baseReplacements;
+
+    // 1. Attendance score card
     const attendanceQuery = `
       SELECT
-        COUNT(*)                                           AS total_working_days,
-        COUNT(*) FILTER (WHERE status = 'Present')        AS present,
-        COUNT(*) FILTER (WHERE status = 'Absent')         AS absent
-      FROM employee_attendance_reports
-      WHERE employee_id = :employee_id
+        COUNT(*)                                              AS total_working_days,
+        COUNT(*) FILTER (WHERE ear.status = 'Present')       AS present,
+        COUNT(*) FILTER (WHERE ear.status = 'Absent')        AS absent
+      FROM employee_attendance_reports ear
+      WHERE ear.employee_id = :employee_id
+        ${attendanceDateFilter}
     `;
 
     // 2. Leave counts — approved (status_id = 2) leaves only
-    //    Permission    → leave_type_name = 'Permission'      (id 19)
+    //    Permission    → leave_type_name = 'Permission'       (id 19)
     //    Comp Off      → leave_type_name = 'Compensatory Off' (id 9)
     //    Leave Availed → all other approved leave types
     const leaveQuery = `
@@ -227,6 +243,7 @@ const getEmployeeDashboardStats = async (req, res) => {
       WHERE l.employee_id = :employee_id
         AND l.status_id   = 2
         AND l.deleted_at  IS NULL
+        ${leaveDateFilter}
     `;
 
     // 3. Monthly incentive chart for the selected year
@@ -253,11 +270,18 @@ const getEmployeeDashboardStats = async (req, res) => {
 
     const [attendanceResult, leaveResult, incentiveResult] = await Promise.all([
       sequelize.query(attendanceQuery, {
-        replacements: { employee_id: empId },
+        replacements: rangeReplacements,
         type: sequelize.QueryTypes.SELECT,
       }),
       sequelize.query(leaveQuery, {
-        replacements: { employee_id: empId },
+        replacements: rangeReplacements,
+        type: sequelize.QueryTypes.SELECT,
+      }),
+      sequelize.query(incentiveQuery, {
+        replacements: { employee_id: empId, year: selectedYear },
+        type: sequelize.QueryTypes.SELECT,
+      }),
+    ]);
         type: sequelize.QueryTypes.SELECT,
       }),
       sequelize.query(incentiveQuery, {
