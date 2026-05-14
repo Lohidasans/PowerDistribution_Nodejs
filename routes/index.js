@@ -79,6 +79,7 @@ const AdminOnlineOrderRoute = require('./adminOnlineOrderRoute');
 const vendorDashboardRoute = require('./vendorDashboardRoute');
 const employeeDashboardRoute = require('./employeeDashboardRoute');
 const branchDashboardRoute = require('./branchDashboardRoute');
+const AbandonedCheckoutRoute = require('./abandonedCheckoutRoute');
 
 module.exports = (app) => {
   app.use("/api/v1", RoleRouter);
@@ -162,5 +163,6 @@ module.exports = (app) => {
   app.use("/api/v1", vendorDashboardRoute);
   app.use("/api/v1", employeeDashboardRoute);
   app.use("/api/v1", branchDashboardRoute);
+  app.use("/api/v1", AbandonedCheckoutRoute);
 };
 

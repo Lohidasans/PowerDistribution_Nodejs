@@ -3,6 +3,12 @@
 /** @type {import('sequelize-cli').Migration} */
 module.exports = {
     async up(queryInterface, Sequelize) {
+        const [tables] = await queryInterface.sequelize.query(
+            `SELECT to_regclass('public.employee_attendance_reports') AS tbl;`
+        );
+        const tableExists = !!tables[0].tbl;
+
+        if (!tableExists) {
         await queryInterface.createTable('employee_attendance_reports', {
             id: {
                 allowNull: false,
@@ -74,20 +80,28 @@ module.exports = {
                 defaultValue: Sequelize.literal('NOW()'),
             },
         });
+        } // end if (!tableExists)
 
         // Unique constraint: one record per employee per date
-        await queryInterface.addIndex('employee_attendance_reports', ['employee_id', 'date'], {
-            unique: true,
-            name: 'uq_attendance_report_employee_date',
-        });
+        try {
+            await queryInterface.addIndex('employee_attendance_reports', ['employee_id', 'date'], {
+                unique: true,
+                name: 'uq_attendance_report_employee_date',
+            });
+        } catch (e) { /* already exists */ }
 
         // Performance indexes
-        await queryInterface.addIndex('employee_attendance_reports', ['date'], {
-            name: 'idx_attendance_report_date',
-        });
-        await queryInterface.addIndex('employee_attendance_reports', ['employee_id'], {
-            name: 'idx_attendance_report_employee_id',
-        });
+        try {
+            await queryInterface.addIndex('employee_attendance_reports', ['date'], {
+                name: 'idx_attendance_report_date',
+            });
+        } catch (e) { /* already exists */ }
+
+        try {
+            await queryInterface.addIndex('employee_attendance_reports', ['employee_id'], {
+                name: 'idx_attendance_report_employee_id',
+            });
+        } catch (e) { /* already exists */ }
     },
 
     async down(queryInterface, Sequelize) {
