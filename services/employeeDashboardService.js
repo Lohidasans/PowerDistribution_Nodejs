@@ -197,19 +197,20 @@ const getEmployeeDashboardStats = async (req, res) => {
     const selectedYear = year ? parseInt(year, 10) : currentYear;
     const currentMonthStr = `${currentYear}-${String(currentDate.getMonth() + 1).padStart(2, "0")}`;
 
-    // Build optional date range filter
-    const hasDateRange = from_date && to_date;
-    const attendanceDateFilter = hasDateRange
-      ? `AND DATE(ear.date) BETWEEN :from_date AND :to_date`
-      : "";
-    const leaveDateFilter = hasDateRange
-      ? `AND l.leave_date BETWEEN :from_date AND :to_date`
-      : "";
+    // Use dateFilter helper for attendance and leave date range
+    const attendanceReplacements = { employee_id: empId };
+    const attendanceDateClause = dateFilter(
+      { from_date, to_date, date_filter: req.query.date_filter },
+      "ear.date",
+      attendanceReplacements
+    );
 
-    const baseReplacements = { employee_id: empId };
-    const rangeReplacements = hasDateRange
-      ? { employee_id: empId, from_date, to_date }
-      : baseReplacements;
+    const leaveReplacements = { employee_id: empId };
+    const leaveDateClause = dateFilter(
+      { from_date, to_date, date_filter: req.query.date_filter },
+      "l.leave_date",
+      leaveReplacements
+    );
 
     // 1. Attendance score card
     const attendanceQuery = `
@@ -219,7 +220,7 @@ const getEmployeeDashboardStats = async (req, res) => {
         COUNT(*) FILTER (WHERE ear.status = 'Absent')        AS absent
       FROM employee_attendance_reports ear
       WHERE ear.employee_id = :employee_id
-        ${attendanceDateFilter}
+        ${attendanceDateClause}
     `;
 
     // 2. Leave counts — approved (status_id = 2) leaves only
@@ -243,7 +244,7 @@ const getEmployeeDashboardStats = async (req, res) => {
       WHERE l.employee_id = :employee_id
         AND l.status_id   = 2
         AND l.deleted_at  IS NULL
-        ${leaveDateFilter}
+        ${leaveDateClause}
     `;
 
     // 3. Monthly incentive chart for the selected year
@@ -270,18 +271,11 @@ const getEmployeeDashboardStats = async (req, res) => {
 
     const [attendanceResult, leaveResult, incentiveResult] = await Promise.all([
       sequelize.query(attendanceQuery, {
-        replacements: rangeReplacements,
+        replacements: attendanceReplacements,
         type: sequelize.QueryTypes.SELECT,
       }),
       sequelize.query(leaveQuery, {
-        replacements: rangeReplacements,
-        type: sequelize.QueryTypes.SELECT,
-      }),
-      sequelize.query(incentiveQuery, {
-        replacements: { employee_id: empId, year: selectedYear },
-        type: sequelize.QueryTypes.SELECT,
-      }),
-    ]);
+        replacements: leaveReplacements,
         type: sequelize.QueryTypes.SELECT,
       }),
       sequelize.query(incentiveQuery, {
@@ -360,33 +354,26 @@ const getWorkingHours = async (req, res) => {
       return commonService.badRequest(res, "employee_id must be a valid number");
     }
 
-    const replacements = { employee_id: empId };
-
-    // Default date range: current week (Mon–today) when no filter given
-    const today = new Date();
-    const yyyy = today.getFullYear();
-    const mm   = String(today.getMonth() + 1).padStart(2, "0");
-    const dd   = String(today.getDate()).padStart(2, "0");
-    const todayStr = `${yyyy}-${mm}-${dd}`;
-
+    // Default to current week Mon when no date params given
     let defaultFrom = null;
     if (!from_date && !date_filter) {
-      // Default to current week Mon
-      const day  = today.getDay();
-      const diff = today.getDate() - day + (day === 0 ? -6 : 1);
+      const today = new Date();
+      const day   = today.getDay();
+      const diff  = today.getDate() - day + (day === 0 ? -6 : 1);
       defaultFrom = new Date(today.getFullYear(), today.getMonth(), diff)
         .toISOString()
         .split("T")[0];
     }
 
-    const hoursDateFilter = dateFilter(
+    const hoursReplacements = { employee_id: empId };
+    const hoursDateClause = dateFilter(
       {
         from_date: from_date || defaultFrom,
         to_date,
         date_filter,
       },
       "ear.date",
-      replacements
+      hoursReplacements
     );
 
     let selectLabel = "";
@@ -425,21 +412,13 @@ const getWorkingHours = async (req, res) => {
         COALESCE(SUM(ear.overtime_hours), 0)   AS overtime_hours
       FROM employee_attendance_reports ear
       WHERE ear.employee_id = :employee_id
-        ${hoursDateFilter ? `AND DATE(ear.date) BETWEEN :from_date AND :to_date` : ""}
+        ${hoursDateClause}
       GROUP BY ${groupBy}
       ORDER BY ${orderBy}
     `;
 
-    // Re-build replacements properly using dateFilter helper
-    const rep2 = { employee_id: empId };
-    dateFilter(
-      { from_date: from_date || defaultFrom, to_date, date_filter },
-      "ear.date",
-      rep2
-    );
-
     const rows = await sequelize.query(query, {
-      replacements: rep2,
+      replacements: hoursReplacements,
       type: sequelize.QueryTypes.SELECT,
     });
 
