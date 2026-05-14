@@ -981,7 +981,6 @@ const getQuotationComparisonById = async (req, res) => {
         qi.subcategory_id,
         sc.subcategory_name,
         qi.purity,
-        qi.weight,
         qi.quantity,
         qi.ref_no,
         qi.material_price_per_g,
