@@ -267,7 +267,7 @@ const getTopPerformanceDashboard = async (req, res) => {
                 e.employee_no,
                 e.employee_name,
                 ROUND(COALESCE(SUM(sibi.gross_weight), 0), 3) AS total_weight,
-                sib.total_amount AS sales_amount,
+                SUM(sib.total_amount) AS sales_amount,
                 COUNT(DISTINCT sib.id) AS total_bills
 
             FROM sales_invoice_bills sib
@@ -281,8 +281,7 @@ const getTopPerformanceDashboard = async (req, res) => {
             GROUP BY
                 e.id,
                 e.employee_no,
-                e.employee_name,
-                sib.total_amount
+                e.employee_name
 
             ORDER BY sales_amount DESC
             LIMIT :limit
@@ -301,7 +300,7 @@ const getTopPerformanceDashboard = async (req, res) => {
                 c.category_image_url,
                 COUNT(sibi.id) AS total_count,
                 COALESCE(SUM(sibi.quantity), 0) AS total_quantity,
-                sib.total_amount AS total_amount
+                SUM(sib.total_amount) AS sales_amount
 
             FROM sales_invoice_bills sib
             JOIN sales_invoice_bill_items sibi ON sibi.invoice_bill_id = sib.id AND sibi.deleted_at IS NULL
@@ -316,8 +315,7 @@ const getTopPerformanceDashboard = async (req, res) => {
             GROUP BY
                 c.id,
                 c.category_name,
-                c.category_image_url,
-                sib.total_amount
+                c.category_image_url
 
             ORDER BY total_quantity DESC
             LIMIT :limit
@@ -328,9 +326,19 @@ const getTopPerformanceDashboard = async (req, res) => {
             type: sequelize.QueryTypes.SELECT
         });
 
+        const top_buying_customers =
+            await salesManagementService.getTopBuyingCustomersData({
+                branch_id,
+                from_date,
+                to_date,
+                date_filter,
+                limit
+            });
+
         return commonService.okResponse(res, {
             top_employee_performer,
-            top_selling_category
+            top_selling_category,
+            top_buying_customers
         });
 
     } catch (error) {
@@ -339,7 +347,7 @@ const getTopPerformanceDashboard = async (req, res) => {
     }
 };
 
-const getBranchDashboardLowStock = async (req, res) => {
+const getBranchDashboardStockDetails = async (req, res) => {
   try {
 
     const { branch_id, from_date, to_date, date_filter, page, limit } = req.query;
@@ -371,7 +379,14 @@ const getBranchDashboardLowStock = async (req, res) => {
       offset
     );
 
-    return commonService.okResponse(res, {
+    const stockInHand =
+      await stockManagementService.getStockInHandSummary(
+        where,
+        replacements
+    );
+
+    return commonService.okResponse(res, {    
+      stock_in_hand: stockInHand,
       rows: result.rows
     });
 
@@ -384,5 +399,5 @@ const getBranchDashboardLowStock = async (req, res) => {
 module.exports={
     getDashboardScorecards,
     getTopPerformanceDashboard,
-    getBranchDashboardLowStock
+    getBranchDashboardStockDetails
 }

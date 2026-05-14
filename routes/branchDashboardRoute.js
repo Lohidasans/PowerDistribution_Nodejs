@@ -4,7 +4,7 @@ const branchDashboardService = require("../services/branchDashboardService");
 
 router.get("/branch-dashboard/score-card", branchDashboardService.getDashboardScorecards);
 router.get("/branch-dashboard/top-metrics", branchDashboardService.getTopPerformanceDashboard);
-router.get("/branch-dashboard/low-stock", branchDashboardService.getBranchDashboardLowStock);
+router.get("/branch-dashboard/stock-details", branchDashboardService.getBranchDashboardStockDetails);
 
 
 module.exports = router;

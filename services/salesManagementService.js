@@ -542,85 +542,96 @@ const getFastMovingSoldProducts = async (req, res) => {
 
 const getTopBuyingCustomers = async (req, res) => {
     try {
-        const {
-            date_filter,
-            from_date,
-            to_date,
-            page,
-            page_size,
-        } = req.query;
 
-        const replacements = {};
+        const rows = await getTopBuyingCustomersData(req.query);
 
-        const dateCondition = dateFilter(
-            { from_date, to_date, date_filter },
-            "sib.created_at",
-            replacements
-        );
-
-        // BRANCH FILTER
-        let branchCondition = "";
-
-        if (req.query.branch_id) {
-            branchCondition = ` AND sib.branch_id = :branch_id `;
-            replacements.branch_id = Number(req.query.branch_id);
-        }
-
-        // Pagination logic (ONLY if provided)
-        let paginationSql = "";
-
-        if (page && page_size) {
-            const limit = Number(page_size);
-            const offset = (Number(page) - 1) * limit;
-
-            paginationSql = ` LIMIT :limit OFFSET :offset `;
-            replacements.limit = limit;
-            replacements.offset = offset;
-        }
-
-        const rows = await sequelize.query(
-            `
-            SELECT
-                c.id AS customer_id,
-                c.customer_code,
-                c.customer_name,
-                c.mobile_number,
-
-                COUNT(DISTINCT sib.id) AS no_of_orders,
-                SUM(sib.total_amount) AS purchase_amount
-
-                FROM sales_invoice_bills sib
-                JOIN customers c
-                ON c.id = sib.customer_id
-                AND c.deleted_at IS NULL
-
-                WHERE sib.deleted_at IS NULL
-                AND sib.is_active = true
-                AND sib.status = 'Invoice'
-                ${dateCondition}
-                ${branchCondition}
-
-                GROUP BY
-                c.id,
-                c.customer_code,
-                c.customer_name,
-                c.mobile_number
-
-                ORDER BY purchase_amount DESC
-            ${paginationSql}
-            `,
-                    {
-                        replacements,
-                        type: QueryTypes.SELECT,
-                    }
-                );
         return commonService.okResponse(res, {
             data: rows,
         });
+
     } catch (error) {
+
         console.error("Top Buying Customer Error", error);
+
         return commonService.handleError(res, error);
     }
+};
+
+const getTopBuyingCustomersData = async ({
+    branch_id,
+    from_date,
+    to_date,
+    date_filter,
+    limit
+}) => {
+
+    const replacements = {};
+
+    const dateCondition = dateFilter(
+        { from_date, to_date, date_filter },
+        "sib.created_at",
+        replacements
+    );
+
+    let branchCondition = "";
+
+    if (branch_id) {
+        branchCondition = ` AND sib.branch_id = :branch_id `;
+        replacements.branch_id = Number(branch_id);
+    }
+
+    let limitSql = "";
+
+    if (limit) {
+        limitSql = ` LIMIT :limit `;
+        replacements.limit = Number(limit);
+    }
+
+    const rows = await sequelize.query(
+        `
+        SELECT
+            c.id AS customer_id,
+            c.customer_code,
+            c.customer_name,
+            c.mobile_number,
+
+            COUNT(DISTINCT sib.id) AS no_of_orders,
+
+            ROUND(
+                COALESCE(SUM(sib.total_amount), 0),
+                2
+            ) AS purchase_amount
+
+        FROM sales_invoice_bills sib
+
+        JOIN customers c
+            ON c.id = sib.customer_id
+            AND c.deleted_at IS NULL
+
+        WHERE sib.deleted_at IS NULL
+          AND sib.is_active = true
+          AND sib.status = 'Invoice'
+
+          ${dateCondition}
+          ${branchCondition}
+
+        GROUP BY
+            c.id,
+            c.customer_code,
+            c.customer_name,
+            c.mobile_number
+
+        ORDER BY purchase_amount DESC
+
+        ${limitSql}
+        `,
+        {
+            replacements,
+            type: QueryTypes.SELECT,
+        }
+    );
+
+    return rows;
 };
 
 // Dashboard APIs
@@ -1109,6 +1120,7 @@ module.exports = {
     getFastMovingSubCategories,
     getFastMovingSoldProducts,
     getTopBuyingCustomers,
+    getTopBuyingCustomersData,
     getBranchWiseSalesCount,
     getBranchwiseSalesAndCustomerStats,
     getSalesByMaterialType,
