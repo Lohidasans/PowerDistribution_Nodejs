@@ -311,7 +311,175 @@ const getEmployeeDashboardStats = async (req, res) => {
   }
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// WORKING HOURS CHART
+// GET /api/v1/employee-dashboard/working-hours
+// Query: employee_id (required), view_type (week|month|year, default week),
+//        from_date / to_date  OR  date_filter (today|week|month|year)
+// ─────────────────────────────────────────────────────────────────────────────
+const getWorkingHours = async (req, res) => {
+  try {
+    const {
+      employee_id,
+      view_type = "week",
+      from_date,
+      to_date,
+      date_filter,
+    } = req.query;
+
+    if (!employee_id) {
+      return commonService.badRequest(res, "employee_id is required");
+    }
+
+    const empId = parseInt(employee_id, 10);
+    if (isNaN(empId)) {
+      return commonService.badRequest(res, "employee_id must be a valid number");
+    }
+
+    const replacements = { employee_id: empId };
+
+    // Default date range: current week (Mon–today) when no filter given
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm   = String(today.getMonth() + 1).padStart(2, "0");
+    const dd   = String(today.getDate()).padStart(2, "0");
+    const todayStr = `${yyyy}-${mm}-${dd}`;
+
+    let defaultFrom = null;
+    if (!from_date && !date_filter) {
+      // Default to current week Mon
+      const day  = today.getDay();
+      const diff = today.getDate() - day + (day === 0 ? -6 : 1);
+      defaultFrom = new Date(today.getFullYear(), today.getMonth(), diff)
+        .toISOString()
+        .split("T")[0];
+    }
+
+    const hoursDateFilter = dateFilter(
+      {
+        from_date: from_date || defaultFrom,
+        to_date,
+        date_filter,
+      },
+      "ear.date",
+      replacements
+    );
+
+    let selectLabel = "";
+    let groupBy     = "";
+    let orderBy     = "";
+
+    if (view_type === "week") {
+      selectLabel = `
+        TO_CHAR(ear.date, 'Dy') AS label,
+        ear.date                AS raw_date
+      `;
+      groupBy = `ear.date`;
+      orderBy = `ear.date`;
+    } else if (view_type === "month") {
+      selectLabel = `
+        TO_CHAR(ear.date, 'DD Mon') AS label,
+        ear.date                    AS raw_date
+      `;
+      groupBy = `ear.date`;
+      orderBy = `ear.date`;
+    } else {
+      // year view — group by month
+      selectLabel = `
+        TO_CHAR(DATE_TRUNC('month', ear.date), 'Mon YYYY') AS label,
+        DATE_TRUNC('month', ear.date)                       AS raw_date
+      `;
+      groupBy = `DATE_TRUNC('month', ear.date)`;
+      orderBy = `DATE_TRUNC('month', ear.date)`;
+    }
+
+    const query = `
+      SELECT
+        ${selectLabel},
+        COALESCE(SUM(ear.total_hours), 0)      AS total_hours,
+        COALESCE(SUM(ear.production_hours), 0) AS production_hours,
+        COALESCE(SUM(ear.overtime_hours), 0)   AS overtime_hours
+      FROM employee_attendance_reports ear
+      WHERE ear.employee_id = :employee_id
+        ${hoursDateFilter ? `AND DATE(ear.date) BETWEEN :from_date AND :to_date` : ""}
+      GROUP BY ${groupBy}
+      ORDER BY ${orderBy}
+    `;
+
+    // Re-build replacements properly using dateFilter helper
+    const rep2 = { employee_id: empId };
+    dateFilter(
+      { from_date: from_date || defaultFrom, to_date, date_filter },
+      "ear.date",
+      rep2
+    );
+
+    const rows = await sequelize.query(query, {
+      replacements: rep2,
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    return commonService.okResponse(res, {
+      view_type,
+      working_hours: rows.map((r) => ({
+        label:            r.label,
+        total_hours:      Number(r.total_hours      || 0),
+        production_hours: Number(r.production_hours || 0),
+        overtime_hours:   Number(r.overtime_hours   || 0),
+      })),
+    });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// OUT-OF-OFFICE ALERTS (Upcoming / current-year holidays)
+// GET /api/v1/employee-dashboard/out-of-office-alerts
+// Query: branch_id (optional), year (optional, defaults to current year)
+// ─────────────────────────────────────────────────────────────────────────────
+const getOutOfOfficeAlerts = async (req, res) => {
+  try {
+    const { branch_id, year } = req.query;
+
+    const currentYear = new Date().getFullYear();
+    const selectedYear = year ? parseInt(year, 10) : currentYear;
+
+    const replacements = { year: selectedYear };
+    let branchFilter = "";
+    if (branch_id) {
+      branchFilter = `AND (h.branch_id = :branch_id OR h.branch_id IS NULL)`;
+      replacements.branch_id = parseInt(branch_id, 10);
+    }
+
+    const query = `
+      SELECT
+        h.id,
+        h.holiday_name  AS leave_name,
+        TO_CHAR(h.holiday_date, 'DD/MM/YYYY') AS date,
+        h.holiday_date,
+        h.description
+      FROM holidays h
+      WHERE h.deleted_at IS NULL
+        AND EXTRACT(YEAR FROM h.holiday_date) = :year
+        ${branchFilter}
+      ORDER BY h.holiday_date ASC
+    `;
+
+    const holidays = await sequelize.query(query, {
+      replacements,
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    return commonService.okResponse(res, { holidays });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
 module.exports={
     getEmployeeWiseSalesReport,
     getEmployeeDashboardStats,
+    getWorkingHours,
+    getOutOfOfficeAlerts,
 }
