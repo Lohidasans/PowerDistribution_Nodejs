@@ -74,6 +74,7 @@ const createOrder = async (req, res) => {
 
         for (const item of items) {
             const {
+                branch_id,
                 product_id,
                 product_item_id,
                 quantity,
@@ -110,6 +111,7 @@ const createOrder = async (req, res) => {
             orderTaxAmount += Number(tax || 0);
 
             orderItemsPayload.push({
+                branch_id,
                 product_id,
                 product_item_id,
                 product_name,

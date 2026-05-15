@@ -11,6 +11,10 @@ module.exports = (sequelize, DataTypes) => {
                 type: DataTypes.INTEGER,
                 allowNull: false,
             },
+            branch_id: { // Pass the branch_id of the product
+                type: DataTypes.INTEGER,
+                allowNull: true
+            },
             product_id: {
                 type: DataTypes.INTEGER,
                 allowNull: false,
