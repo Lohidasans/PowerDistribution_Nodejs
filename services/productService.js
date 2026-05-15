@@ -1704,6 +1704,7 @@ const getProductsForWebsiteList = async (req, res) => {
         AND p.deleted_at IS NULL
         AND pi.is_visible = true
         AND pi.deleted_at IS NULL
+        AND pi.quantity > 0
     `;
 
     const queryParams = [];
@@ -1948,6 +1949,8 @@ const getProductsForWebsiteList = async (req, res) => {
         is_wishlisted: false,
         is_in_cart: false,
       };
+
+      console.log({product_id: product.id, item_id: item.id, sellingPrice, finalCalc,});
 
       const productEntry = {
         id: product.id,
