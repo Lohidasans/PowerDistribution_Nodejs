@@ -846,6 +846,32 @@ const getBranchRevenueDetailsNew = async (req, res) => {
                 WHERE vp.deleted_at IS NULL
                   AND vp.is_active = true
                   AND vp.status = 'Completed'
+
+                UNION ALL
+
+                /* WEBSITE ORDERS */
+                /* SELECT
+                    oi.branch_id,
+                    o.order_date AS txn_date,
+                    'Online'::text AS payment_mode,
+                    o.order_number AS description,
+
+                    SUM(oi.total_amount) AS amount,
+
+                    0 AS refund_amount
+
+                FROM orders o
+                JOIN order_items oi
+                    ON oi.order_id = o.id
+                    AND oi.deleted_at IS NULL
+
+                WHERE o.deleted_at IS NULL
+                AND o.order_status IN (1,4,5)
+
+                GROUP BY
+                    oi.branch_id,
+                    o.order_date,
+                    o.order_number */
         )
         `;
 
