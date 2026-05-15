@@ -11,6 +11,7 @@ router.get("/enrollments/:id", enrollmentService.getEnrollmentById);
 router.get("/enrollments/:enrollment_id/view", enrollmentService.getEnrolledSchemeDetailsById); 
 // Admin side and billing side - Get the receipt details of the enrolled scheme with payment breakup
 router.get("/enrollments/scheme/:scheme_payment_id", enrollmentService.getSchemeReceipt);
+router.put("/enrollments/:id", enrollmentService.updateEnrollment);
 module.exports = router;
 
 /**

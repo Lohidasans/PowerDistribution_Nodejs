@@ -712,6 +712,108 @@ const getSchemeReceipt = async (req, res) => {
   }
 };
 
+const updateEnrollment = async (req, res) => {
+  try {
+    const enrollmentId = req.params.id;
+
+    const required = [
+      "customer_no",
+      "customer_name",
+      "mobile_number",
+      "country_id",
+      "state_id",
+      "district_id",
+      "scheme_plan_id",
+      "installment_amount_id",
+      "identity_proof_id",
+      "identity_proof_no",
+    ];
+
+    if (!validateRequired(req, res, required)) return;
+
+    // Check enrollment exists
+    const enrollment = await models.Enrollment.findOne({
+      where: {
+        id: enrollmentId,
+        deleted_at: null,
+      },
+    });
+
+    if (!enrollment) {
+      return commonService.notFoundResponse(res, {
+        message: "Enrollment not found",
+      });
+    }
+
+    // ✅ Check if any installment/payment exists
+    const paidInstallment = await models.CustomerSchemePayment.findOne({
+      where: {
+        enrollment_id: enrollmentId,
+        deleted_at: null,
+      },
+    });
+
+    if (paidInstallment) {
+      return commonService.badRequest(res, {
+        message:
+          "Enrollment cannot be edited because installment payment already exists",
+      });
+    }
+
+    // Prepare payload
+    const payload = {
+      customer_id: req.body.customer_id ?? null,
+      mobile_number: String(req.body.mobile_number),
+      customer_no: String(req.body.customer_no),
+      customer_name: req.body.customer_name,
+      email: req.body.email ?? null,
+      address: req.body.address ?? null,
+      country_id: +req.body.country_id,
+      state_id: +req.body.state_id,
+      district_id: +req.body.district_id,
+      pincode: String(req.body.pincode),
+      scheme_plan_id: +req.body.scheme_plan_id,
+      installment_amount_id: +req.body.installment_amount_id,
+      identity_proof_id: +req.body.identity_proof_id,
+      identity_proof_no: String(req.body.identity_proof_no),
+      nominee: req.body.nominee ?? null,
+      nominee_relation_id:
+        req.body.nominee_relation_id !== undefined
+          ? +req.body.nominee_relation_id
+          : null,
+      status: req.body.status ?? enrollment.status,
+    };
+
+    // Update
+    await models.Enrollment.update(payload, {
+      where: { id: enrollmentId },
+    });
+
+    const updatedEnrollment = await models.Enrollment.findByPk(enrollmentId);
+
+    return commonService.okResponse(res, {
+      enrollment: updatedEnrollment,
+    });
+  } catch (err) {
+    if (
+      err.name === "SequelizeValidationError" ||
+      err.name === "SequelizeUniqueConstraintError"
+    ) {
+      const errorDetails =
+        err.errors?.map((e) => ({
+          field: e.path,
+          message: e.message,
+        })) || [];
+
+      return commonService.badRequest(res, {
+        message: "Validation failed",
+        errors: errorDetails,
+      });
+    }
+
+    return commonService.handleError(res, err);
+  }
+};
 
 module.exports = {
   createEnrollment,
@@ -719,5 +821,6 @@ module.exports = {
   getEnrollmentById,
   generateEnrollmentCode,
   getEnrolledSchemeDetailsById,
-  getSchemeReceipt
+  getSchemeReceipt,
+  updateEnrollment
 };
