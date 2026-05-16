@@ -1,6 +1,79 @@
 const commonService = require("./commonService");
 const { models, sequelize } = require("../models");
 
+const enrichAddressLocationNames = async (addresses) => {
+    if (!addresses || addresses.length === 0) {
+        return [];
+    }
+
+    const countryIds = [
+        ...new Set(
+            addresses
+                .map((address) => address.country_id)
+                .filter((id) => id !== null && id !== undefined)
+        ),
+    ];
+
+    const stateIds = [
+        ...new Set(
+            addresses
+                .map((address) => address.state_id)
+                .filter((id) => id !== null && id !== undefined)
+        ),
+    ];
+
+    const districtIds = [
+        ...new Set(
+            addresses
+                .map((address) => Number(address.district_id))
+                .filter((id) => Number.isInteger(id))
+        ),
+    ];
+
+    const [countries, states, districts] = await Promise.all([
+        countryIds.length
+            ? models.Country.findAll({
+                where: { id: countryIds },
+                attributes: ["id", "country_name"],
+                raw: true,
+            })
+            : [],
+        stateIds.length
+            ? models.State.findAll({
+                where: { id: stateIds },
+                attributes: ["id", "state_name"],
+                raw: true,
+            })
+            : [],
+        districtIds.length
+            ? models.District.findAll({
+                where: { id: districtIds },
+                attributes: ["id", "district_name"],
+                raw: true,
+            })
+            : [],
+    ]);
+
+    const countryNameMap = new Map(
+        countries.map((country) => [String(country.id), country.country_name])
+    );
+
+    const stateNameMap = new Map(
+        states.map((state) => [String(state.id), state.state_name])
+    );
+
+    const districtNameMap = new Map(
+        districts.map((district) => [String(district.id), district.district_name])
+    );
+
+    return addresses.map((address) => ({
+        ...address,
+        country_name: countryNameMap.get(String(address.country_id)) || null,
+        state_name: stateNameMap.get(String(address.state_id)) || null,
+        district_name: districtNameMap.get(String(address.district_id)) || null,
+    }));
+};
+
 // CREATE address
 const createAddress = async (req, res) => {
     const transaction = await sequelize.transaction();
@@ -64,8 +137,12 @@ const createAddress = async (req, res) => {
 
         await transaction.commit();
 
+        const enrichedAddresses = await enrichAddressLocationNames(
+            createdAddresses.map((addr) => addr.toJSON())
+        );
+
         return commonService.createdResponse(res, {
-            addresses: createdAddresses,
+            addresses: enrichedAddresses,
         });
     } catch (err) {
         await transaction.rollback();
@@ -90,7 +167,11 @@ const getAddresses = async (req, res) => {
             ],
         });
 
-        return commonService.okResponse(res, { addresses: rows });
+        const enrichedAddresses = await enrichAddressLocationNames(
+            rows.map((row) => row.toJSON())
+        );
+
+        return commonService.okResponse(res, { addresses: enrichedAddresses });
     } catch (err) {
         return commonService.handleError(res, err);
     }
@@ -103,7 +184,12 @@ const getAddressById = async (req, res) => {
         if (!address) {
             return commonService.okResponse(res, "Address not found");
         }
-        return commonService.okResponse(res, address);
+
+        const [enrichedAddress] = await enrichAddressLocationNames([
+            address.toJSON(),
+        ]);
+
+        return commonService.okResponse(res, enrichedAddress);
     } catch (err) {
         return commonService.handleError(res, err);
     }

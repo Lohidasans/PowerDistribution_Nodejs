@@ -7,7 +7,21 @@ const REPORT_CONFIG = {
         codeColumn: "old_jewel_code",
         weightColumn: "net_weight",
         quantityExpr: "COUNT(i.id)",
-        statusCondition: "AND t.status = 'Printed'"
+        statusCondition: "AND t.status = 'Printed'",
+        extraSelectSql: ", inv.invoice_no",
+        extraJoinSql: `
+        LEFT JOIN (
+            SELECT sa.reference_id AS old_jewel_id, MAX(sib.invoice_no) AS invoice_no
+            FROM sales_invoice_adjustments sa
+            JOIN sales_invoice_bills sib
+                ON sib.id = sa.sales_invoice_id
+                AND sib.deleted_at IS NULL
+                AND sib.status = 'Invoice'
+                AND sib.is_active = true
+            WHERE sa.deleted_at IS NULL
+              AND sa.adjustment_type_id = '2'
+            GROUP BY sa.reference_id
+        ) inv ON inv.old_jewel_id = t.id`
     },
 
     jewel_repair: {

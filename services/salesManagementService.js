@@ -158,6 +158,7 @@ const getSalesReport = async (req, res) => {
                     } AS total_weight,
             COALESCE(items.quantity, 0) AS quantity,
             COALESCE(t.total_amount, 0) AS total_amount
+            ${gridConfig.extraSelectSql || ""}
         FROM ${gridConfig.table} t
         LEFT JOIN (
             SELECT
@@ -174,6 +175,7 @@ const getSalesReport = async (req, res) => {
         LEFT JOIN customers c ON c.id = t.customer_id
         LEFT JOIN employees e ON e.id = t.employee_id
         LEFT JOIN branches b ON b.id = t.branch_id
+        ${gridConfig.extraJoinSql || ""}
         WHERE ${gridWhereSql}
         ORDER BY t.id DESC
     `;
