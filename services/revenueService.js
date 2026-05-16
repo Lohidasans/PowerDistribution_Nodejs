@@ -767,13 +767,15 @@ const getBranchRevenueDetailsNew = async (req, res) => {
                     COALESCE(sib.invoice_no, jr.repair_code) AS description,
                     CASE
                         WHEN sib.id IS NOT NULL AND p.payment_mode = 'Cash'
-                    THEN
-                       p.amount_received 
-                       - COALESCE(
-                       sib.refund_amount, 0)
-                    ELSE p.amount_received
-                END AS amount,
-                COALESCE(sib.refund_amount, 0) AS refund_amount
+                        THEN
+                            p.amount_received
+                            - COALESCE(
+                                MAX(sib.refund_amount) OVER (PARTITION BY sib.id),
+                                0
+                            )
+                        ELSE p.amount_received
+                    END AS amount,
+                    COALESCE(MAX(sib.refund_amount) OVER (PARTITION BY sib.id), 0) AS refund_amount
                 FROM payments p
                 LEFT JOIN sales_invoice_bills sib
                     ON sib.id = p.invoice_bill_id
