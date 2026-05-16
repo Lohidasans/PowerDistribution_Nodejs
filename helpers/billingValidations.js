@@ -196,7 +196,7 @@ const validateCashPayment = (payments, panNo) => {
     }
 }
 
-const updateBillAdjustmentFlags = async (adjustments, transaction) => {
+const lockBillAdjustmentFlags = async (adjustments, transaction) => {
     if (!Array.isArray(adjustments) || adjustments.length === 0) return;
 
     for (const adj of adjustments) {
@@ -226,6 +226,47 @@ const updateBillAdjustmentFlags = async (adjustments, transaction) => {
 
             default:
                 // Future adjustment types can be handled here
+                break;
+        }
+    }
+};
+
+const unlockBillAdjustmentFlags = async (adjustments, transaction) => {
+    if (!Array.isArray(adjustments) || adjustments.length === 0) return;
+
+    for (const adj of adjustments) {
+        if (!adj.reference_id) continue;
+
+        switch (adj.adjustment_type_id) {
+
+            case 1: // Sales Return
+                await models.SalesReturn.update(
+                    { is_bill_adjusted: false },
+                    {
+                        where: { id: adj.reference_id },
+                        transaction
+                    }
+                );
+                break;
+
+            case 2: // Old Jewel
+                await models.OldJewel.update(
+                    { is_bill_adjusted: false },
+                    {
+                        where: { id: adj.reference_id },
+                        transaction
+                    }
+                );
+                break;
+
+            case 3: // Scheme
+                await models.Enrollment.update(
+                    { is_bill_adjusted: false },
+                    {
+                        where: { id: adj.reference_id },
+                        transaction
+                    }
+                );
                 break;
         }
     }
@@ -341,7 +382,8 @@ module.exports = {
     validateProducts,
     reduceStockForInvoice,
     validateCashPayment,
-    updateBillAdjustmentFlags,
+    lockBillAdjustmentFlags,
+    unlockBillAdjustmentFlags,
     validateInvoiceItems,
     validateEstimateForInvoice,
     markEstimateAsConverted,

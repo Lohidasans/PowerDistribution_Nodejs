@@ -7,7 +7,7 @@ const { validateProductItemDetails,
   validateProducts,
   reduceStockForInvoice,
   validateCashPayment,
-  updateBillAdjustmentFlags,
+  lockBillAdjustmentFlags,
   validateInvoiceItems,
   validateEstimateForInvoice,
   restoreStockForInvoice,
@@ -675,7 +675,9 @@ const createSalesInvoice = async (req, res) => {
         )
         : [];
 
-    await updateBillAdjustmentFlags(adjustments, t);
+    if (header.status === "Invoice") {
+      await lockBillAdjustmentFlags(adjustments, t);
+    }
 
     // ITEMS (amounts already calculated by UI)
     const savedItems = await models.SalesInvoiceBillItem.bulkCreate(
@@ -930,6 +932,7 @@ const updateSalesInvoice = async (req, res) => {
       JSON.stringify(normalize(items));
 
     const hasPayment = allPayments.length > 0;
+    //const hasPayment = incomingPayments.length > 0;
     const isFullyPaid = Number(header.amount_due) === 0;
     const isInvoice = newStatus === "Invoice";
     const wasStockDeducted = invoice.stock_deducted === true;
@@ -1054,6 +1057,12 @@ const updateSalesInvoice = async (req, res) => {
     // UPSERT ADJUSTMENTS
     const payloadAdjIds = adjustments.filter(a => a.id).map(a => a.id);
 
+    const oldAdjustments = await models.SalesInvoiceAdjustment.findAll({
+      where: { sales_invoice_id: invoice.id },
+        transaction: t,
+        raw: true,
+    });
+
     await models.SalesInvoiceAdjustment.destroy({
       where: {
         sales_invoice_id: invoice.id,
@@ -1061,6 +1070,14 @@ const updateSalesInvoice = async (req, res) => {
       },
       transaction: t,
     });
+
+    const removedAdjustments = oldAdjustments.filter(
+        oldAdj => !payloadAdjIds.includes(oldAdj.id)
+    );
+
+    if (removedAdjustments.length > 0) {
+        await unlockBillAdjustmentFlags(removedAdjustments, t);
+    }
 
     for (const adj of adjustments) {
       const data = {
@@ -1091,7 +1108,9 @@ const updateSalesInvoice = async (req, res) => {
       );
     }
     // Lock adjustments
-    await updateBillAdjustmentFlags(adjustments, t);
+    if (newStatus === "Invoice") {
+        await lockBillAdjustmentFlags(adjustments, t);
+    }
 
     await t.commit();
     return commonService.okResponse(res, {
