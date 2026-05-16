@@ -415,14 +415,40 @@ const getEnrollmentById = async (req, res) => {
       return commonService.notFound(res, enMessage.failure.notFound);
     }
 
-    // Fetch min_amount from schemes table
-    const scheme = await models.Scheme.findByPk(row.scheme_plan_id, {
-      attributes: ["id", "min_amount"],
-      raw: true
-    });
+    // Fetch min_amount + duration and payment aggregates in parallel
+    const [scheme, [paymentAgg]] = await Promise.all([
+      models.Scheme.findByPk(row.scheme_plan_id, {
+        attributes: ["id", "min_amount", "duration_id"],
+        raw: true,
+      }),
+      sequelize.query(
+        `
+        SELECT
+          COALESCE(SUM(p.paid_amount), 0)  AS total_paid_amount,
+          COUNT(p.id)::int                 AS paid_installments,
+          COALESCE(d.months, 0)            AS total_installments
+        FROM customer_enrollments e
+        LEFT JOIN schemes s          ON s.id = e.scheme_plan_id AND s.deleted_at IS NULL
+        LEFT JOIN scheme_durations d ON d.id = s.duration_id
+        LEFT JOIN customer_scheme_payments p
+          ON p.enrollment_id = e.id AND p.deleted_at IS NULL
+        WHERE e.id = :id
+        GROUP BY d.months
+        `,
+        {
+          replacements: { id: row.id },
+          type: sequelize.QueryTypes.SELECT,
+        }
+      ),
+    ]);
 
-    // Add min_amount into enrollment response
-    row.min_amount = scheme?.min_amount || null;
+    const paidInstallments  = paymentAgg?.paid_installments  ?? 0;
+    const totalInstallments = paymentAgg?.total_installments ?? 0;
+    const remaining         = totalInstallments - paidInstallments;
+
+    row.min_amount        = scheme?.min_amount || null;
+    row.total_paid_amount = Number(paymentAgg?.total_paid_amount ?? 0);
+    row.remaining_dues    = `${remaining} Months`;
 
     return commonService.okResponse(res, {
       enrollment: row
