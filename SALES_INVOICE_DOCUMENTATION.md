@@ -82,3 +82,20 @@ Advance unchanged	❌ Do nothing
 Advance increased	➖ Deduct difference
 Advance reduced	    ➕ Add back difference
 Advance removed	    ➕ Add back full amount
+
+
+
+
+
+CREATE FLOW
+~~~~~~~~~~~~
+Status   Adjustment Lock
+On Hold	  ❌ No
+Invoice	  ✅ Yes
+
+UPDATE FLOW
+Old Status	  NewStatus	    Action
+On Hold   	On Hold	    ❌ No lock
+On Hold 	Invoice	    ✅ Lock adjustments
+Invoice	    Invoice	    ✅ Sync adjustments
+Invoice	    On Hold	    Usually not allowed

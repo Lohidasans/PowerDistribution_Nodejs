@@ -404,11 +404,30 @@ const listEnrollments = async (req, res) => {
 }; 
 
 // Get one by ID
+// Get one by ID
 const getEnrollmentById = async (req, res) => {
   try {
-    const row = await models.Enrollment.findByPk(req.params.id);
-    if (!row) return commonService.notFound(res, enMessage.failure.notFound);
-    return commonService.okResponse(res, { enrollment: row });
+    const row = await models.Enrollment.findByPk(req.params.id, {
+      raw: true
+    });
+
+    if (!row) {
+      return commonService.notFound(res, enMessage.failure.notFound);
+    }
+
+    // Fetch min_amount from schemes table
+    const scheme = await models.Scheme.findByPk(row.scheme_plan_id, {
+      attributes: ["id", "min_amount"],
+      raw: true
+    });
+
+    // Add min_amount into enrollment response
+    row.min_amount = scheme?.min_amount || null;
+
+    return commonService.okResponse(res, {
+      enrollment: row
+    });
+
   } catch (err) {
     return commonService.handleError(res, err);
   }
