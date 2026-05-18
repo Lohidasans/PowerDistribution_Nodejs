@@ -970,7 +970,7 @@ const getBranchRevenueDetailsNew = async (req, res) => {
 
 const getVendorGrnRevenueList = async (req, res) => {
     try {
-        const { page, limit, search, date } = req.query;
+        const { page, limit, search, date, vendor_id } = req.query;
 
         const isPaginated = page && limit;
         const pageNum = isPaginated ? Number(page) : 1;
@@ -985,6 +985,11 @@ const getVendorGrnRevenueList = async (req, res) => {
         if (date) {
             whereSql += ` AND g.grn_date = :date`;
             replacements.date = date;
+        }
+
+        if (vendor_id) {
+            whereSql += ` AND g.vendor_id = :vendor_id`;
+            replacements.vendor_id = parseInt(vendor_id);
         }
 
         if (search) {
