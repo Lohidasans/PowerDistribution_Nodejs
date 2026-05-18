@@ -11,7 +11,6 @@ const createSubcategory = async (req, res) => {
       subcategory_name,
       subcategory_image_url,
       reorder_level,
-      branch_id,
     } = req.body;
 
     if (!materialtype_id || !category_id || !subcategory_name)
@@ -26,7 +25,7 @@ const createSubcategory = async (req, res) => {
       subcategory_name,
       subcategory_image_url,
       reorder_level,
-      branch_id: branch_id || 1, // default to 1 if not provided
+      branch_id: 1, // default to 1 if not provided
     });
 
     return commonService.createdResponse(res, { subcategory: row });
