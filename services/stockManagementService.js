@@ -636,7 +636,7 @@ const getAllStockDetails = async (req, res) => {
 };
 
 /* =========================================================
-   OLD LOW STOCK / OUT OF STOCK (FUTURE REFERENCE)
+   OLD LOW STOCK(FUTURE REFERENCE)
 ========================================================= */
 const getLowStockSummary = async (req, res) => {
   try {
@@ -724,6 +724,9 @@ const getLowStockSummary = async (req, res) => {
   }
 };
 
+/* =========================================================
+   OLD OUT OF STOCK (FUTURE REFERENCE)
+========================================================= */
 const getOutOfStockSummary = async (req, res) => {
   try {
     const { branch_id, material_type_id, category_id, search } = req.query;
