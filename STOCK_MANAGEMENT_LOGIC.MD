@@ -1,4 +1,4 @@
-Subcategory -Reorder Level is 15
+Subcategory -Reorder Level is 10
 
 Product	Qty
 A	    15
@@ -52,3 +52,14 @@ subcategories with no products at all
 Example:
 E = 0 ✅ out of stock
 Empty subcategory ✅ out of stock
+
+
+
+Subcategory reorder level = 10
+
+Product	Qty	Result
+A	15	stock_in_hand
+B	15	stock_in_hand
+C	15	stock_in_hand
+D	1	stock_in_hand + low_stock
+E	0	out_of_stock
