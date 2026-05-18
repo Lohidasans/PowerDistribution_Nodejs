@@ -153,15 +153,20 @@ const getQuotationDashboard = async (req, res) => {
     const scoreCardQuery = `
       SELECT
         COUNT(*) FILTER (
-          WHERE q.status_id IN (2,3)
+          WHERE vq.status = 'pending'
         ) AS total_quotation_received,
 
         COUNT(*) FILTER (
-          WHERE q.status_id = 4
+          WHERE vq.status = 'rejected'
         ) AS rejected_quotation
 
-      FROM quotations q
-      ${quotationWhere}
+      FROM vendor_quotations vq
+
+      LEFT JOIN quotations q
+        ON q.id = vq.quotation_id
+
+      WHERE vq.deleted_at IS NULL
+        AND vq.vendor_id = :vendor_id
     `;
 
     // SALES ORDER COUNT
