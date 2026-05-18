@@ -129,7 +129,7 @@ const createSalesReturn = async (req, res) => {
       for (const item of createdItems) {
       if (item.invoice_id && item.product_item_detail_id) {
         await models.SalesInvoiceBillItem.update(
-          { is_returned: true },
+          { is_returned: true, updated_at: new Date(), },
           {
             where: {
               invoice_bill_id: item.invoice_id,

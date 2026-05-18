@@ -205,21 +205,21 @@ const lockBillAdjustmentFlags = async (adjustments, transaction) => {
         switch (adj.adjustment_type_id) {
             case 1: // Sales Return
                 await models.SalesReturn.update(
-                    { is_bill_adjusted: true },
+                    { is_bill_adjusted: true,updated_at: new Date(), },
                     { where: { id: adj.reference_id }, transaction }
                 );
                 break;
 
             case 2: // Old Jewel
                 await models.OldJewel.update(
-                    { is_bill_adjusted: true },
+                    { is_bill_adjusted: true,updated_at: new Date(), },
                     { where: { id: adj.reference_id }, transaction }
                 );
                 break;
             
             case 3: // Scheme
                 await models.Enrollment.update(
-                    { is_bill_adjusted: true },
+                    { is_bill_adjusted: true,updated_at: new Date(), },
                     { where: { id: adj.reference_id }, transaction }
                 );
                 break;
@@ -241,7 +241,7 @@ const unlockBillAdjustmentFlags = async (adjustments, transaction) => {
 
             case 1: // Sales Return
                 await models.SalesReturn.update(
-                    { is_bill_adjusted: false },
+                    { is_bill_adjusted: false, updated_at: new Date(), },
                     {
                         where: { id: adj.reference_id },
                         transaction
@@ -251,7 +251,7 @@ const unlockBillAdjustmentFlags = async (adjustments, transaction) => {
 
             case 2: // Old Jewel
                 await models.OldJewel.update(
-                    { is_bill_adjusted: false },
+                    { is_bill_adjusted: false, updated_at: new Date(), },
                     {
                         where: { id: adj.reference_id },
                         transaction
@@ -261,7 +261,7 @@ const unlockBillAdjustmentFlags = async (adjustments, transaction) => {
 
             case 3: // Scheme
                 await models.Enrollment.update(
-                    { is_bill_adjusted: false },
+                    { is_bill_adjusted: false, updated_at: new Date(), },
                     {
                         where: { id: adj.reference_id },
                         transaction
