@@ -388,6 +388,7 @@ const listCustomerNameMobileDropdown = async (req, res) => {
         c.address,
         c.pin_code,
         c.customer_code,
+        c.created_at,
         c.pan_no,
         c.gst_no,
         co.country_name,
@@ -399,7 +400,7 @@ const listCustomerNameMobileDropdown = async (req, res) => {
       LEFT JOIN districts d   ON d.id = c.district_id  AND d.deleted_at IS NULL
       WHERE c.deleted_at IS NULL
         ${whereClause}
-      ORDER BY c.customer_name ASC
+      ORDER BY c.created_at DESC
     `;
 
     const customers = await sequelize.query(query, {
@@ -421,6 +422,7 @@ const listCustomerNameMobileDropdown = async (req, res) => {
       country_name: c.country_name || "",
       state_name: c.state_name || "",
       district_name: c.district_name || "",
+      created_at: c.created_at
     }));
 
     return commonService.okResponse(res, { customers: formatted });
