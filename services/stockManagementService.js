@@ -559,45 +559,48 @@ const getLowStockSummaryInternal = async (where, replacements) => {
   const [rows] = await sequelize.query(
     `
     WITH filtered_products AS (
-      SELECT p.id, p.subcategory_id, p.branch_id, p.material_type_id, p.category_id
+      SELECT
+        p.id,
+        p.subcategory_id,
+        p.branch_id,
+        p.material_type_id,
+        p.category_id
       FROM products p
       ${where}
     ),
+
     product_stock AS (
       SELECT
         fp.subcategory_id,
         fp.branch_id,
         fp.material_type_id,
         fp.category_id,
-        SUM(pid.quantity) AS total_qty,
-        SUM(pid.quantity * pid.gross_weight) AS total_weight
+        COALESCE(SUM(pid.quantity), 0) AS total_qty,
+        COALESCE(SUM(pid.quantity * pid.gross_weight), 0) AS total_weight
       FROM filtered_products fp
-      JOIN "productItemDetails" pid
+      LEFT JOIN "productItemDetails" pid
         ON pid.product_id = fp.id
         AND pid.deleted_at IS NULL
-      GROUP BY 
+      GROUP BY
         fp.subcategory_id,
         fp.branch_id,
         fp.material_type_id,
         fp.category_id
-    ),
-
-    low_stock_rows AS (
-      SELECT
-        ps.subcategory_id,
-        ps.branch_id,
-        ps.total_weight
-      FROM product_stock ps
-      JOIN subcategories sc 
-        ON sc.id = ps.subcategory_id
-       AND sc.deleted_at IS NULL
-      WHERE ps.total_qty < sc.reorder_level
     )
-
     SELECT
       COUNT(*) AS subcategory_count,
-      COALESCE(SUM(total_weight), 0) AS total_weight
-    FROM low_stock_rows;
+      COALESCE(SUM(ps.total_weight), 0) AS total_weight
+
+    FROM product_stock ps
+    JOIN subcategories sc
+      ON sc.id = ps.subcategory_id
+      AND sc.deleted_at IS NULL AND sc.status = 'Active'
+
+    WHERE
+      -- quantity should be greater than 0
+      ps.total_qty > 0
+      -- less than reorder level
+      AND ps.total_qty < sc.reorder_level
     `,
     { replacements }
   );
@@ -609,36 +612,50 @@ const getLowStockSummaryInternal = async (where, replacements) => {
 };
 
 const getOutOfStockSummaryInternal = async (query) => {
-  // FIX + OPTIMIZATION:
-  // - Provide joins for c/mt/b aliases used in buildSubcategoryFilters
-  // - COUNT(*) directly (no rows.length)
+
   const replacements = {};
-  const where = buildSubcategoryFilters(query, replacements);
+
+  let productBranchFilter = "";
+
+  if (query.branch_id) {
+    productBranchFilter = `
+      AND p.branch_id = :branch_id
+    `;
+    replacements.branch_id = query.branch_id;
+  }
 
   const [rows] = await sequelize.query(
     `
     SELECT
-      COUNT(*)::int AS subcategory_count
+      COUNT(*) AS subcategory_count
     FROM (
       SELECT sc.id
       FROM subcategories sc
       LEFT JOIN products p
         ON p.subcategory_id = sc.id
         AND p.deleted_at IS NULL
-        AND p.status = 'Active'
-      LEFT JOIN branches b ON b.id = p.branch_id AND b.deleted_at IS NULL
-      LEFT JOIN "materialTypes" mt ON mt.id = sc.materialtype_id AND mt.deleted_at IS NULL
-      LEFT JOIN categories c ON c.id = sc.category_id AND c.deleted_at IS NULL
-      ${where}
+        ${productBranchFilter}
+      LEFT JOIN "productItemDetails" pid ON pid.product_id = p.id AND pid.deleted_at IS NULL
+      WHERE sc.deleted_at IS NULL AND sc.status = 'Active'
+        -- hardcoded HO branch
+        AND sc.branch_id = 1
+
       GROUP BY sc.id
-      HAVING COUNT(p.id) = 0
+      HAVING
+        -- no products
+        COUNT(DISTINCT p.id) = 0
+        OR
+        -- total qty becomes 0
+        COALESCE(SUM(pid.quantity), 0) = 0
     ) x
     `,
-    { replacements }
+    { replacements,
+      type: sequelize.QueryTypes.SELECT,
+    }
   );
 
   return {
-    subcategory_count: Number(rows[0]?.subcategory_count || 0),
+    subcategory_count: Number(rows?.subcategory_count || 0),
   };
 };
 
@@ -759,9 +776,15 @@ const getLowStockList = async (
   limit,
   offset
 ) => {
+
   let query = `
     WITH filtered_products AS (
-      SELECT p.id, p.subcategory_id, p.branch_id, p.material_type_id, p.category_id
+      SELECT
+        p.id,
+        p.subcategory_id,
+        p.branch_id,
+        p.material_type_id,
+        p.category_id
       FROM products p
       ${where}
     ),
@@ -771,10 +794,10 @@ const getLowStockList = async (
         fp.branch_id,
         fp.material_type_id,
         fp.category_id,
-        SUM(pid.quantity) AS total_qty,
-        SUM(pid.quantity * pid.gross_weight) AS total_weight
+        COALESCE(SUM(pid.quantity), 0) AS total_qty,
+        COALESCE(SUM(pid.quantity * pid.gross_weight), 0) AS total_weight
       FROM filtered_products fp
-      JOIN "productItemDetails" pid
+      LEFT JOIN "productItemDetails" pid
         ON pid.product_id = fp.id
         AND pid.deleted_at IS NULL
       GROUP BY fp.subcategory_id, fp.branch_id, fp.material_type_id, fp.category_id
@@ -786,20 +809,22 @@ const getLowStockList = async (
       ps.material_type_id,
       c.id AS category_id,
       c.category_name,
-      sc.subcategory_name,
+
       sc.id AS subcategory_id,
+      sc.subcategory_name,
       sc.reorder_level,
 
       ps.total_qty AS quantity,
       ROUND(ps.total_weight, 2) AS total_weight
 
     FROM product_stock ps
-    JOIN subcategories sc ON sc.id = ps.subcategory_id AND sc.deleted_at IS NULL
+    JOIN subcategories sc ON sc.id = ps.subcategory_id AND sc.deleted_at IS NULL AND sc.status = 'Active'
+
     LEFT JOIN branches b ON b.id = ps.branch_id
     LEFT JOIN "materialTypes" mt ON mt.id = ps.material_type_id
     LEFT JOIN categories c ON c.id = ps.category_id
 
-    WHERE ps.total_qty < sc.reorder_level
+    WHERE ps.total_qty > 0 AND ps.total_qty < sc.reorder_level
 
     ORDER BY b.branch_name, sc.subcategory_name
   `;
@@ -818,43 +843,74 @@ const getLowStockList = async (
   return { rows };
 };
 
-const getOutOfStockList = async (query, usePagination, limit, offset) => {
+const getOutOfStockList = async (
+  query,
+  usePagination,
+  limit,
+  offset
+) => {
+
   const replacements = {};
-  const where = buildSubcategoryFilters(query, replacements);
+
+  let productBranchFilter = "";
+
+  if (query.branch_id) {
+    productBranchFilter = `
+      AND p.branch_id = :branch_id
+    `;
+
+    replacements.branch_id = query.branch_id;
+  }
 
   let sql = `
     SELECT
-      b.id AS branch_id,
-      b.branch_name,
+      1 AS branch_id,
+      'Head Office' AS branch_name,
+
+      mt.material_type,
+      sc.materialtype_id,
+
+      c.id AS category_id,
+      c.category_name,
+
       sc.id AS subcategory_id,
       sc.subcategory_name,
-      mt.material_type,
-      sc.materialtype_id,
-      c.category_name,
-      sc.category_id,
-      0 AS quantity
+      sc.reorder_level,
+
+      COUNT(DISTINCT p.id) AS product_count,
+      COALESCE(SUM(pid.quantity), 0) AS quantity,
+      COALESCE(ROUND(SUM(pid.quantity * pid.gross_weight), 2), 0) AS total_weight
+
     FROM subcategories sc
     LEFT JOIN products p ON p.subcategory_id = sc.id AND p.deleted_at IS NULL
-    LEFT JOIN branches b ON b.id = 1  ---Fixed branch for out of stock
+      ${productBranchFilter}
+    LEFT JOIN "productItemDetails" pid ON pid.product_id = p.id AND pid.deleted_at IS NULL
     LEFT JOIN "materialTypes" mt ON mt.id = sc.materialtype_id
     LEFT JOIN categories c ON c.id = sc.category_id
-    ${where}
+    WHERE
+      sc.deleted_at IS NULL 
+      AND sc.status = 'Active'
+      -- hardcoded branch
+      AND sc.branch_id = 1
+
     GROUP BY
-      b.id,
-      b.branch_name,
       mt.material_type,
-      c.category_name,
       sc.materialtype_id,
-      sc.category_id,
+      c.id,
+      c.category_name,
       sc.id,
-      mt.material_type,
-      sc.subcategory_name
-    HAVING COUNT(p.id) = 0
+      sc.subcategory_name,
+      sc.reorder_level
+
+    HAVING COUNT(DISTINCT p.id) = 0
+      OR
+      COALESCE(SUM(pid.quantity), 0) = 0
     ORDER BY sc.subcategory_name
   `;
 
   if (usePagination) {
     sql += ` LIMIT :limit OFFSET :offset`;
+
     replacements.limit = limit;
     replacements.offset = offset;
   }
