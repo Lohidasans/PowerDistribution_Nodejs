@@ -704,15 +704,48 @@ const getVendorOverview = async (req, res) => {
         ${dateFilter.replace('DATE', 'g.grn_date')}
     `;
 
-        // Purchase Order Value (total amount)
-        const purchaseValueQuery = `
-      SELECT 
-        COALESCE(SUM(g.total_amount), 0) as total_value
-      FROM grns g
-      WHERE g.vendor_id = :vendor_id 
-        AND g.deleted_at IS NULL
-        ${dateFilter.replace('DATE', 'g.grn_date')}
-    `;
+    // Grn Total value
+       const grnTotalValueQuery = `
+        SELECT 
+            COALESCE(SUM(g.total_amount), 0) as total_value
+        FROM grns g
+        WHERE g.vendor_id = :vendor_id 
+            AND g.deleted_at IS NULL
+            ${dateFilter.replace('DATE', 'g.grn_date')}
+        `;
+
+        // Purchase Return Value (total amount)
+       const purchaseReturnValueQuery = `
+        SELECT 
+            COALESCE(SUM(pri.gross_weight), 0) as total_value
+
+        FROM purchase_returns pr
+
+        JOIN purchase_return_items pri
+            ON pri.pr_id = pr.id
+            AND pri.deleted_at IS NULL
+
+        WHERE pr.vendor_id = :vendor_id
+            AND pr.deleted_at IS NULL
+
+            ${dateFilter.replace('DATE', 'pr.pr_date')}
+        `;
+
+        const grnDiscrepancyQuery = `
+            SELECT
+                COALESCE(SUM(ga.adjustment_weight_in_g), 0) AS discrepancy_weight
+
+            FROM grns g
+
+            JOIN grn_adjustments ga
+                ON ga.grn_id = g.id
+                AND ga.deleted_at IS NULL
+
+            WHERE g.vendor_id = :vendor_id
+                AND g.deleted_at IS NULL
+
+                ${dateFilter.replace('DATE', 'g.grn_date')}
+            `;
 
         // Total Amount Paid
         const totalPaidQuery = `
@@ -781,14 +814,18 @@ const getVendorOverview = async (req, res) => {
             [vendorInfo],
             [purchaseOrderResult],
             [grnValueResult],
-            [purchaseValueResult],
+            [purchaseReturnValueResult],
+            [grnDiscrepancyResult],
+            [grnTotalValueResult],
             [totalPaidResult],
             purchaseValues,
         ] = await Promise.all([
             sequelize.query(vendorQuery, { replacements, type: sequelize.QueryTypes.SELECT }),
             sequelize.query(purchaseOrderQuery, { replacements, type: sequelize.QueryTypes.SELECT }),
             sequelize.query(grnValueQuery, { replacements, type: sequelize.QueryTypes.SELECT }),
-            sequelize.query(purchaseValueQuery, { replacements, type: sequelize.QueryTypes.SELECT }),
+            sequelize.query(purchaseReturnValueQuery, { replacements, type: sequelize.QueryTypes.SELECT }),
+            sequelize.query(grnDiscrepancyQuery, { replacements, type: sequelize.QueryTypes.SELECT }),
+            sequelize.query(grnTotalValueQuery, { replacements, type: sequelize.QueryTypes.SELECT }),
             sequelize.query(totalPaidQuery, { replacements, type: sequelize.QueryTypes.SELECT }),
             sequelize.query(purchaseValuesQuery, { replacements }),
         ]);
@@ -801,7 +838,9 @@ const getVendorOverview = async (req, res) => {
         }
 
         // Calculate outstanding
-        const totalValue = parseFloat(purchaseValueResult.total_value) || 0;
+        const purchaseReturnValue = parseFloat(purchaseReturnValueResult.total_value) || 0;
+        const grnDiscrepancy = parseFloat(grnDiscrepancyResult.discrepancy_weight) || 0;
+        const totalValue = parseFloat(grnTotalValueResult.total_value) || 0;
         const totalPaid = parseFloat(totalPaidResult.total_paid) || 0;
         const outstanding = totalValue - totalPaid;
 
@@ -851,7 +890,9 @@ const getVendorOverview = async (req, res) => {
             metrics: {
                 purchase_order: parseFloat(purchaseOrderResult.total_weight).toFixed(2) + " g",
                 grn_value: parseFloat(grnValueResult.grn_weight).toFixed(2) + " g",
-                purchase_order_value: parseFloat(purchaseValueResult.total_value).toFixed(2),
+                purchase_return_value: purchaseReturnValue.toFixed(2) + " g",
+                grn_discrepancy: grnDiscrepancy.toFixed(2) + " g",
+                purchase_order_value: parseFloat(grnTotalValueResult.total_value).toFixed(2),
                 total_amount_paid: totalPaid.toFixed(2),
                 outstanding_amount: outstanding.toFixed(2),
             },
