@@ -13,7 +13,7 @@ E	    0
 
 
 ✅ FINAL BUSINESS FLOW
-1. STOCK IN HAND
+1.STOCK IN HAND (Product-wise)
 
 Show products/items where:
 quantity > 0
@@ -28,87 +28,33 @@ Visible in: stock_in_hand
 
 
 
-✅ 2. LOW STOCK
-
-Show products/items where:
+✅ 2. LOW STOCK (Subcategory-wise)
+A subcategory is LOW STOCK when:
+products exist under that subcategory
 quantity > 0 AND quantity < reorder_level
 
 Example:
-Reorder level = 10
+subcategory reorder_level = 50
+subcategory has 3 products
+Product	Item Qty Total
+A	10
+B	5
+C	3
 
-D = 1 ✅ low stock
-E = 0 ❌ not low stock
-A = 15 ❌ not low stock
-
-So D appears:
-stock_in_hand ✅
-low_stock ✅
+18 < 50
+✅ Shows in LOW STOCK
 
 
+✅ 3. OUT OF STOCK (Subcategory-wise)
+A subcategory is OUT OF STOCK when:
 
-✅ 3. OUT OF STOCK
+CASE 1
+No products exist under that subcategory
 
-Show:
-products/items having quantity = 0
 OR
-subcategories with no products at all
 
-Example:
-E = 0 ✅ out of stock
-Empty subcategory ✅ out of stock
+CASE 2
+Products exist, but TOTAL quantity = 0
 
 
 
-Subcategory reorder level = 10
-
-Product	Qty	Result
-A	15	stock_in_hand
-B	15	stock_in_hand
-C	15	stock_in_hand
-D	1	stock_in_hand + low_stock
-E	0	out_of_stock
-
-
-
-
-Query to Check Low stock:
-SELECT
-    sc.id AS subcategory_id,
-    sc.subcategory_name,
-    sc.reorder_level,
-
-    COUNT(DISTINCT p.id) AS total_products,
-
-    COALESCE(SUM(pid.quantity), 0) AS total_quantity
-
-FROM subcategories sc
-
-LEFT JOIN products p
-    ON p.subcategory_id = sc.id
-    AND p.deleted_at IS NULL
-    AND p.branch_id = 6
-
-LEFT JOIN "productItemDetails" pid
-    ON pid.product_id = p.id
-    AND pid.deleted_at IS NULL
-
-GROUP BY
-    sc.id,
-    sc.subcategory_name,
-    sc.reorder_level
-
-HAVING
-
-    -- Empty subcategory
-    COUNT(DISTINCT p.id) = 0
-
-    OR
-
-    -- Products exist but ALL quantities are exactly 0
-    (
-        COUNT(pid.id) > 0
-        AND MAX(pid.quantity) = 0
-        AND MIN(pid.quantity) = 0
-    )
-
-ORDER BY sc.subcategory_name;
