@@ -902,7 +902,7 @@ const getCustomerTransactions = async (req, res) => {
 
           oj.branch_id,
           MAX(b.branch_name) AS branch_name,
-          NULL AS order_type,
+          'Offline' AS order_type,
           'OLD_JEWEL' AS type,
           oj.created_at,
           oj.deleted_at
@@ -937,7 +937,7 @@ const getCustomerTransactions = async (req, res) => {
 
           jr.branch_id,
           MAX(b.branch_name) AS branch_name,
-          NULL AS order_type,
+          'Offline' AS order_type,
           'JEWEL_REPAIR' AS type,
           jr.created_at,
           jr.deleted_at
@@ -973,8 +973,7 @@ const getCustomerTransactions = async (req, res) => {
             MAX(oi.branch_id) AS branch_id,
             MAX(b.branch_name) AS branch_name,
 
-            NULL AS order_type,
-
+            'Online' AS order_type,
             'ONLINE_ORDER' AS type,
 
             o.created_at,
