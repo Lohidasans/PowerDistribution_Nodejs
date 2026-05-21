@@ -2828,24 +2828,70 @@ const getVendorsForProduct = async (req, res) => {
   try {
     const branchIdInt = parseInt(branch_id, 10);
 
-    let whereClause = {
-      status: "Active",
-      deleted_at: null,
-    };
+    const query = `
+      SELECT 
+        v.id AS vendor_id,
+        v.vendor_code,
+        v.vendor_name,
+        v.visibilities,
+        v.proprietor_name AS contact_person,
+        v.mobile AS contact_number,
 
-    // If it's a Branch Admin (not super admin), apply strict visibility filter
-    if (branchIdInt !== 0 && branchIdInt !== 1) {   // Adjust according to your super admin logic
-      whereClause.visibilities = { [Op.contains]: [branchIdInt] };
-    }
-    // Super Admin: No additional filter (all vendors)
+        ARRAY_TO_STRING(
+          ARRAY(
+            SELECT mt.material_type
+            FROM "materialTypes" mt
+            WHERE mt.id = ANY(v.material_type_ids)
+              AND mt.deleted_at IS NULL
+          ),
+          ', '
+        ) AS material_type,
 
-    const vendors = await models.Vendor.findAll({
-      where: whereClause,
-      attributes: ["id", "vendor_code", "vendor_name", "visibilities"],
-      order: [["vendor_name", "ASC"]]
+        b.branch_name
+      FROM vendors v
+
+      LEFT JOIN branches b 
+        ON b.id = :branch_id
+        AND b.deleted_at IS NULL
+
+      WHERE 
+        v.deleted_at IS NULL
+        AND v.status = 'Active'
+
+        ${
+          branchIdInt !== 0 && branchIdInt !== 1
+            ? `AND :branch_id = ANY(v.visibilities)`
+            : ``
+        }
+
+      ORDER BY v.vendor_name ASC
+    `;
+
+    const vendors = await sequelize.query(query, {
+      replacements: { branch_id: branchIdInt },
+      type: sequelize.QueryTypes.SELECT,
     });
 
-    res.json(vendors);
+    const formattedData = vendors.map((item, index) => ({
+      s_no: index + 1,
+
+      // Existing fields
+      id: item.vendor_id,
+      vendor_id: item.vendor_id,
+      vendor_code: item.vendor_code,
+      vendor_name: item.vendor_name,
+      visibilities: item.visibilities,
+
+      // Added from old API
+      contact_person: item.contact_person || "",
+      contact_number: item.contact_number || "",
+      material_type: item.material_type || "",
+      branch: item.branch_name || "",
+
+    }));
+
+    return commonService.okResponse(res, formattedData);
+
   } catch (error) {
     console.error("getVendorsForProduct Error:", error);
     return commonService.handleError(res, error);
