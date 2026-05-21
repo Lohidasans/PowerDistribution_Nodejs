@@ -15,38 +15,81 @@ const calculateQuotationStatus = async (quotationId, transaction = null) => {
       transaction,
     });
 
+    // No vendors
     if (!vendorQuotations || vendorQuotations.length === 0) {
       return 1; // Pending (no vendors)
     }
 
-    const statuses = vendorQuotations.map((vq) => vq.status);
+    const statuses = vendorQuotations.map((vq) =>
+      (vq.status || "pending").toLowerCase()
+    );
+
     const totalVendors = statuses.length;
 
-    // Count different status types
-    const receivedCount = statuses.filter((s) => s === "received" || s === "accepted").length;
+    // Accepted / Received
+    const acceptedCount = statuses.filter(
+      (s) => s === "accepted" || s === "received"
+    ).length;
+    // Rejected
     const rejectedCount = statuses.filter((s) => s === "rejected").length;
+    // Pending / Did not respond
     const pendingCount = statuses.filter((s) => s === "pending").length;
 
-    // Status 1: Pending - No vendors have responded yet
-    if (receivedCount === 0 && rejectedCount === 0) {
+    /*
+      STATUS IDS
+      1 -> Pending
+      2 -> Partially Received
+      3 -> Received / Accepted
+      4 -> Rejected
+      5 -> Partially Rejected
+    */
+
+    // -----------------------------------
+    // BOTH / ALL PENDING
+    // both vendors - did not respond
+    // -----------------------------------
+    if (pendingCount === totalVendors) {
       return 1; // Pending
     }
 
-    // Status 4: Rejected - All vendors have rejected
+    // -----------------------------------
+    // BOTH / ALL REJECTED
+    // both vendors rejected
+    // -----------------------------------
     if (rejectedCount === totalVendors) {
       return 4; // Rejected
     }
 
-    // Status 3: Received - All vendors have accepted
-    if (receivedCount === totalVendors) {
-      return 3; // Received
+    // -----------------------------------
+    // BOTH / ALL ACCEPTED
+    // both vendors accepted
+    // -----------------------------------
+    if (acceptedCount === totalVendors) {
+      return 3; // Accepted / Received
     }
 
-    // Status 2: Partially Received - Some accepted, some pending/rejected (but not all)
-    return 2; // Partially Received
+    // -----------------------------------
+    // PARTIALLY REJECTED
+    // one rejected + one pending
+    // -----------------------------------
+    if (rejectedCount > 0 && acceptedCount === 0 && pendingCount > 0) {
+      return 5; // Partially Rejected
+    }
+
+    // -----------------------------------
+    // PARTIALLY RECEIVED
+    // one accepted + one pending
+    // one accepted + one rejected
+    // -----------------------------------
+    if (acceptedCount > 0) {
+      return 2; // Partially Received
+    }
+
+    // fallback
+    return 1;
   } catch (error) {
     console.error("Error calculating quotation status:", error);
-    return 1; // Default to pending on error
+    return 1; // Pending fallback
   }
 };
 
