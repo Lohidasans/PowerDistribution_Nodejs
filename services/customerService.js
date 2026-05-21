@@ -951,6 +951,51 @@ const getCustomerTransactions = async (req, res) => {
         WHERE jr.deleted_at IS NULL AND jr.status = 'Completed'
         GROUP BY jr.id
 
+        UNION ALL
+
+        -- 🛒 ONLINE ORDERS
+        SELECT
+            o.id,
+            o.customer_id,
+            o.order_number AS reference_no,
+            o.order_date AS date,
+            o.total_amount,
+
+            JSON_AGG(
+                JSON_BUILD_OBJECT(
+                    'product_name', oi.product_name,
+                    'quantity', oi.quantity
+                )
+            ) FILTER (WHERE oi.id IS NOT NULL) AS items,
+
+            SUM(oi.quantity) AS total_quantity,
+
+            MAX(oi.branch_id) AS branch_id,
+            MAX(b.branch_name) AS branch_name,
+
+            NULL AS order_type,
+
+            'ONLINE_ORDER' AS type,
+
+            o.created_at,
+            o.deleted_at
+
+        FROM orders o
+
+        LEFT JOIN order_items oi
+            ON oi.order_id = o.id
+            AND oi.deleted_at IS NULL
+
+        LEFT JOIN branches b
+            ON b.id = oi.branch_id
+            AND b.deleted_at IS NULL
+
+        WHERE
+            o.deleted_at IS NULL
+            AND o.order_status != 3
+
+        GROUP BY o.id
+
       ) t
 
       WHERE t.customer_id = :customer_id
