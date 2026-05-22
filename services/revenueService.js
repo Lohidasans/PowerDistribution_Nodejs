@@ -327,25 +327,43 @@ const getBranchRevenueDetailsNew = async (req, res) => {
                     p.payment_mode::text AS payment_mode,
                     COALESCE(sib.invoice_no, jr.repair_code) AS description,
                     CASE
-                        WHEN sib.id IS NOT NULL AND p.payment_mode = 'Cash'
+                        WHEN p.payment_mode = 'Cash'
                         THEN
                             p.amount_received
                             - COALESCE(
-                                MAX(sib.refund_amount) OVER (PARTITION BY sib.id),
+                                CASE
+                                    WHEN sib.id IS NOT NULL
+                                    THEN MAX(sib.refund_amount) OVER (PARTITION BY sib.id)
+
+                                    WHEN jr.id IS NOT NULL
+                                    THEN MAX(jr.refund_amount) OVER (PARTITION BY jr.id)
+                                    ELSE 0
+                                END,
                                 0
                             )
                         ELSE p.amount_received
                     END AS amount,
-                    COALESCE(MAX(sib.refund_amount) OVER (PARTITION BY sib.id), 0) AS refund_amount
+                    COALESCE(
+                        CASE
+                            WHEN sib.id IS NOT NULL
+                            THEN MAX(sib.refund_amount) OVER (PARTITION BY sib.id)
+
+                            WHEN jr.id IS NOT NULL
+                            THEN MAX(jr.refund_amount) OVER (PARTITION BY jr.id)
+
+                            ELSE 0
+                        END,
+                        0
+                    ) AS refund_amount
                 FROM payments p
                 LEFT JOIN sales_invoice_bills sib
                     ON sib.id = p.invoice_bill_id
                     AND sib.deleted_at IS NULL
-                    AND sib.is_active = true
+                    AND sib.is_active = true AND sib.status ='Invoice'
                 LEFT JOIN jewel_repairs jr
                     ON jr.id = p.jewel_repair_id
                     AND jr.deleted_at IS NULL
-                    AND jr.is_active = true
+                    AND jr.is_active = true AND jr.status ='Completed'
                 WHERE p.deleted_at IS NULL
                   AND p.status = 'Completed'
 
