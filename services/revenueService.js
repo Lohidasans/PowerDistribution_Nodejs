@@ -467,7 +467,6 @@ const getBranchRevenueDetailsNew = async (req, res) => {
         FROM revenue_stream rs
         WHERE rs.branch_id = :branch_id
         ${dateCondition}
-        ${paymentModeCondition}
         `;
 
         const [summary] = await sequelize.query(summaryQuery, {
