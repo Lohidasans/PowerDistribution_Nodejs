@@ -25,14 +25,14 @@ const getScorecardByType = async ({ config, whereSql, replacements }) => {
                 ON i.${config.itemFk} = t.id
                 AND i.deleted_at IS NULL
             WHERE ${whereSql}
-              AND t.deleted_at IS NULL
+              AND t.deleted_at IS NULL AND t.is_active = true
         ) weight
         CROSS JOIN (
             SELECT
                 SUM(t.total_amount) AS total_amount
             FROM ${config.table} t
             WHERE ${whereSql}
-              AND t.deleted_at IS NULL
+              AND t.deleted_at IS NULL AND t.is_active = true
         ) amount
     `;
 
@@ -85,7 +85,8 @@ const getSalesReport = async (req, res) => {
 
         /* ---------------- WHERE SQL ---------------- */
         const replacements = {};
-        let baseWhereSql = "1=1";
+        let baseWhereSql = ` 1=1 AND t.deleted_at IS NULL
+            AND t.is_active = true `;
 
         baseWhereSql += dateFilter(
             { from_date, to_date, date_filter },
@@ -127,6 +128,8 @@ const getSalesReport = async (req, res) => {
 
             const scorecardWhereSql = `
                 1=1
+                AND t.deleted_at IS NULL
+                AND t.is_active = true
                 ${dateFilter(
                 { from_date, to_date, date_filter },
                 cfg.dateColumn,
