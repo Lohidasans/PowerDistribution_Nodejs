@@ -51,109 +51,124 @@ const getBranchwiseRevenue = async (req, res) => {
         const offset = hasPagination ? (Number(page) - 1) * limitNum : null;
 
         const query = `
-      WITH revenue_stream AS (
+            WITH revenue_stream AS (
 
-  /* 1️⃣ SALES + REPAIR PAYMENTS (ENUM payment_mode, refund applied) */
-    SELECT
-        COALESCE(sib.branch_id, jr.branch_id) AS branch_id,
-        p.payment_date AS txn_date,
-        p.payment_mode::text AS payment_mode,
-        CASE
-        WHEN sib.id IS NOT NULL
-            AND p.payment_mode = 'Cash'
-        THEN
-            p.amount_received
-            - COALESCE(
-                MAX(sib.refund_amount) OVER (PARTITION BY sib.id),
-                0
+                /* SALES + REPAIR PAYMENTS */
+                SELECT
+                    COALESCE(sib.branch_id, jr.branch_id) AS branch_id,
+                    p.payment_date AS txn_date,
+                    p.payment_mode::text AS payment_mode,
+                    CASE
+                        WHEN sib.id IS NOT NULL
+                            AND p.payment_mode = 'Cash'
+                        THEN
+                            p.amount_received
+                            - COALESCE(
+                                MAX(sib.refund_amount) OVER (PARTITION BY sib.id),
+                                0
+                            )
+                        ELSE p.amount_received
+                    END AS amount,
+                    CASE
+                        WHEN sib.id IS NOT NULL
+                            AND ROW_NUMBER() OVER (PARTITION BY sib.id ORDER BY p.id) = 1
+                        THEN COALESCE(sib.refund_amount, 0)
+
+                        WHEN jr.id IS NOT NULL
+                            AND ROW_NUMBER() OVER (PARTITION BY jr.id ORDER BY p.id) = 1
+                        THEN COALESCE(jr.refund_amount, 0)
+
+                        ELSE 0
+                    END AS refund_amount
+                FROM payments p
+                LEFT JOIN sales_invoice_bills sib
+                    ON sib.id = p.invoice_bill_id
+                    AND sib.deleted_at IS NULL
+                    AND sib.is_active = true
+                LEFT JOIN jewel_repairs jr
+                    ON jr.id = p.jewel_repair_id
+                    AND jr.deleted_at IS NULL AND jr.is_active = true
+                WHERE p.deleted_at IS NULL
+                    AND p.status = 'Completed'
+
+                UNION ALL
+
+                /* VOUCHER RECEIPTS */
+                SELECT
+                    vr.branch_id,
+                    vr.receipt_date AS txn_date,
+                    pm.payment_mode,
+                    vr.amount,
+                    0 AS refund_amount
+                FROM voucher_receipts vr
+                JOIN payment_modes pm ON pm.id = vr.payment_mode_id
+                WHERE vr.deleted_at IS NULL AND vr.is_active = true
+
+                UNION ALL
+
+                /* INSTALLMENT REVENUE */
+                SELECT
+                    c.branch_id,
+                    sp.payment_date AS txn_date,
+                    p.payment_mode::text AS payment_mode,
+                    p.amount_received AS amount,
+                    0 AS refund_amount
+                FROM customer_scheme_payments sp
+
+                JOIN customer_enrollments e
+                    ON e.id = sp.enrollment_id
+                    AND e.deleted_at IS NULL
+                
+                JOIN customers c
+                    ON c.id = e.customer_id
+                    AND c.deleted_at IS NULL
+                
+                JOIN payments p
+                    ON p.scheme_payment_id = sp.id
+                    AND p.deleted_at IS NULL
+                
+                WHERE sp.deleted_at IS NULL
+                    AND sp.payment_source = 'INSTALLMENT'
+                    AND p.status = 'Completed'
+
+                UNION ALL
+
+                /* VENDOR PAYMENTS NEGATIVE */
+                SELECT
+                    vp.branch_id,
+                    vp.payment_date AS txn_date,
+                    pm.payment_mode,
+                    -vp.amount AS amount,
+                    0 AS refund_amount
+                FROM vendor_payments vp
+                JOIN payment_modes pm ON pm.id = vp.payment_mode
+                WHERE vp.deleted_at IS NULL AND vp.is_active = true
+                    AND vp.status = 'Completed'
             )
-        ELSE p.amount_received
-        END AS amount
-    FROM payments p
-    LEFT JOIN sales_invoice_bills sib
-        ON sib.id = p.invoice_bill_id
-        AND sib.deleted_at IS NULL
-        AND sib.is_active = true
-    LEFT JOIN jewel_repairs jr
-        ON jr.id = p.jewel_repair_id
-        AND jr.deleted_at IS NULL AND jr.is_active = true
-    WHERE p.deleted_at IS NULL
-        AND p.status = 'Completed'
 
-    UNION ALL
+            SELECT
+                b.id AS branch_id,
+                b.branch_name,
 
-  /* 2️⃣ VOUCHER RECEIPTS (FK → payment_modes) */
-    SELECT
-        vr.branch_id,
-        vr.receipt_date AS txn_date,
-        pm.payment_mode,
-        vr.amount
-    FROM voucher_receipts vr
-    JOIN payment_modes pm ON pm.id = vr.payment_mode_id
-    WHERE vr.deleted_at IS NULL and vr.is_active = true
+                ROUND(SUM(CASE WHEN rs.payment_mode = 'Cash' THEN rs.amount ELSE 0 END), 2) AS cash,
+                ROUND(SUM(CASE WHEN rs.payment_mode = 'UPI' THEN rs.amount ELSE 0 END), 2) AS upi,
+                ROUND(SUM(CASE WHEN rs.payment_mode = 'Card' THEN rs.amount ELSE 0 END), 2) AS card,
+                ROUND(SUM(rs.refund_amount), 2) AS refund,
 
-    UNION ALL
+                ROUND(SUM(rs.amount), 2) AS total_amount
 
-  /* INSTALLMENT REVENUE ADDED HERE */
-    SELECT
-        c.branch_id,
-        sp.payment_date AS txn_date,
-        p.payment_mode::text AS payment_mode,
-        p.amount_received AS amount
-    FROM customer_scheme_payments sp
+            FROM revenue_stream rs
+            JOIN branches b ON b.id = rs.branch_id AND b.deleted_at IS NULL
 
-    JOIN customer_enrollments e
-        ON e.id = sp.enrollment_id
-        AND e.deleted_at IS NULL
+            WHERE 1=1
+                ${dateCondition}
+                ${branchCondition}
+                ${searchCondition}
 
-    JOIN customers c
-        ON c.id = e.customer_id
-        AND c.deleted_at IS NULL
-
-    JOIN payments p
-        ON p.scheme_payment_id = sp.id
-        AND p.deleted_at IS NULL
-
-    WHERE sp.deleted_at IS NULL
-    AND sp.payment_source = 'INSTALLMENT'
-    AND p.status = 'Completed'
-
-    UNION ALL
-
-    /* VENDOR PAYMENTS (FK → payment_modes, NEGATIVE) */
-    SELECT
-        vp.branch_id,
-        vp.payment_date AS txn_date,
-        pm.payment_mode,
-        -vp.amount
-    FROM vendor_payments vp
-    JOIN payment_modes pm ON pm.id = vp.payment_mode
-    WHERE vp.deleted_at IS NULL and vp.is_active = true
-        AND vp.status = 'Completed'
-    )
-
-    SELECT
-        b.id AS branch_id,
-        b.branch_name,
-
-        ROUND(SUM(CASE WHEN rs.payment_mode = 'Cash' THEN rs.amount ELSE 0 END), 2) AS cash,
-        ROUND(SUM(CASE WHEN rs.payment_mode = 'UPI' THEN rs.amount ELSE 0 END), 2) AS upi,
-        ROUND(SUM(CASE WHEN rs.payment_mode = 'Card' THEN rs.amount ELSE 0 END), 2) AS card,
-
-        ROUND(SUM(rs.amount), 2) AS total_amount
-
-    FROM revenue_stream rs
-    JOIN branches b ON b.id = rs.branch_id AND b.deleted_at IS NULL
-
-    WHERE 1=1
-    ${dateCondition}
-    ${branchCondition}
-    ${searchCondition}
-
-        GROUP BY b.id, b.branch_name
-        ORDER BY total_amount DESC
-        ${hasPagination ? "LIMIT :limit OFFSET :offset" : ""}
-    `;
+            GROUP BY b.id, b.branch_name
+            ORDER BY total_amount DESC
+            ${hasPagination ? "LIMIT :limit OFFSET :offset" : ""}
+        `;
 
         if (hasPagination) {
             dateReplacements.limit = limitNum;
@@ -168,93 +183,109 @@ const getBranchwiseRevenue = async (req, res) => {
         const summaryQuery = `
             WITH revenue_stream AS (
 
-            /* 1️⃣ SALES + REPAIR PAYMENTS (ENUM payment_mode, refund applied) */
-            SELECT
-                COALESCE(sib.branch_id, jr.branch_id) AS branch_id,
-                p.payment_date AS txn_date,
-                p.payment_mode::text AS payment_mode,
-                CASE
-                WHEN sib.id IS NOT NULL
-                    AND p.payment_mode = 'Cash'
-                THEN
-                    p.amount_received
-                    - COALESCE(
-                        MAX(sib.refund_amount) OVER (PARTITION BY sib.id),
-                        0
-                    )
-                ELSE p.amount_received
-                END AS amount
-            FROM payments p
-            LEFT JOIN sales_invoice_bills sib
-                ON sib.id = p.invoice_bill_id
-                AND sib.deleted_at IS NULL
-                AND sib.is_active = true
-            LEFT JOIN jewel_repairs jr
-                ON jr.id = p.jewel_repair_id
-                AND jr.deleted_at IS NULL AND jr.is_active = true
-            WHERE p.deleted_at IS NULL
-                AND p.status = 'Completed'
+                /* SALES + REPAIR PAYMENTS */
+                SELECT
+                    COALESCE(sib.branch_id, jr.branch_id) AS branch_id,
+                    p.payment_date AS txn_date,
+                    p.payment_mode::text AS payment_mode,
+                    CASE
+                        WHEN sib.id IS NOT NULL
+                            AND p.payment_mode = 'Cash'
+                        THEN
+                            p.amount_received
+                            - COALESCE(
+                                MAX(sib.refund_amount) OVER (PARTITION BY sib.id),
+                                0
+                            )
+                        ELSE p.amount_received
+                    END AS amount,
+                    CASE
+                        WHEN sib.id IS NOT NULL
+                            AND ROW_NUMBER() OVER (PARTITION BY sib.id ORDER BY p.id) = 1
+                        THEN COALESCE(sib.refund_amount, 0)
 
-            UNION ALL
+                        WHEN jr.id IS NOT NULL
+                            AND ROW_NUMBER() OVER (PARTITION BY jr.id ORDER BY p.id) = 1
+                        THEN COALESCE(jr.refund_amount, 0)
 
-            /* 2️⃣ VOUCHER RECEIPTS (FK → payment_modes) */
-            SELECT
-                vr.branch_id,
-                vr.receipt_date AS txn_date,
-                pm.payment_mode,
-                vr.amount
-            FROM voucher_receipts vr
-            JOIN payment_modes pm ON pm.id = vr.payment_mode_id
-            WHERE vr.deleted_at IS NULL and vr.is_active = true
+                        ELSE 0
+                    END AS refund_amount
+                FROM payments p
+                LEFT JOIN sales_invoice_bills sib
+                    ON sib.id = p.invoice_bill_id
+                    AND sib.deleted_at IS NULL
+                    AND sib.is_active = true
+                LEFT JOIN jewel_repairs jr
+                    ON jr.id = p.jewel_repair_id
+                    AND jr.deleted_at IS NULL AND jr.is_active = true
+                WHERE p.deleted_at IS NULL
+                    AND p.status = 'Completed'
 
-            UNION ALL
+                UNION ALL
 
-            /* PAY INSTALLMENT REVENUE */
-            SELECT
-                c.branch_id,
-                sp.payment_date AS txn_date,
-                p.payment_mode::text AS payment_mode,
-                p.amount_received AS amount
-            FROM customer_scheme_payments sp
+                /* VOUCHER RECEIPTS */
+                SELECT
+                    vr.branch_id,
+                    vr.receipt_date AS txn_date,
+                    pm.payment_mode,
+                    vr.amount,
+                    0 AS refund_amount
+                FROM voucher_receipts vr
+                JOIN payment_modes pm ON pm.id = vr.payment_mode_id
+                WHERE vr.deleted_at IS NULL AND vr.is_active = true
 
-            JOIN customer_enrollments e
-                ON e.id = sp.enrollment_id
-                AND e.deleted_at IS NULL
+                UNION ALL
 
-            JOIN customers c
-                ON c.id = e.customer_id
-                AND c.deleted_at IS NULL
+                /* INSTALLMENT REVENUE */
+                SELECT
+                    c.branch_id,
+                    sp.payment_date AS txn_date,
+                    p.payment_mode::text AS payment_mode,
+                    p.amount_received AS amount,
+                    0 AS refund_amount
+                FROM customer_scheme_payments sp
+            
+                JOIN customer_enrollments e
+                    ON e.id = sp.enrollment_id
+                    AND e.deleted_at IS NULL
+                
+                JOIN customers c
+                    ON c.id = e.customer_id
+                    AND c.deleted_at IS NULL
+                
+                JOIN payments p
+                    ON p.scheme_payment_id = sp.id
+                    AND p.deleted_at IS NULL
+                
+                WHERE sp.deleted_at IS NULL
+                    AND sp.payment_source = 'INSTALLMENT'
+                    AND p.status = 'Completed'
 
-            JOIN payments p
-                ON p.scheme_payment_id = sp.id
-                AND p.deleted_at IS NULL
+                UNION ALL
 
-            WHERE sp.deleted_at IS NULL
-            AND sp.payment_source = 'INSTALLMENT'
-            AND p.status = 'Completed'
-
-            UNION ALL
-
-            /* VENDOR PAYMENTS (FK → payment_modes, NEGATIVE) */
-            SELECT
-                vp.branch_id,
-                vp.payment_date AS txn_date,
-                pm.payment_mode,
-                -vp.amount
-            FROM vendor_payments vp
-            JOIN payment_modes pm ON pm.id = vp.payment_mode
-            WHERE vp.deleted_at IS NULL AND vp.is_active = true
-                AND vp.status = 'Completed'
+                /* VENDOR PAYMENTS NEGATIVE */
+                SELECT
+                    vp.branch_id,
+                    vp.payment_date AS txn_date,
+                    pm.payment_mode,
+                    -vp.amount AS amount,
+                    0 AS refund_amount
+                FROM vendor_payments vp
+                JOIN payment_modes pm ON pm.id = vp.payment_mode
+                WHERE vp.deleted_at IS NULL AND vp.is_active = true
+                    AND vp.status = 'Completed'
             )
-        SELECT
-            ROUND(SUM(amount), 2) AS total_collection,
-            ROUND(SUM(CASE WHEN payment_mode = 'Cash' THEN amount ELSE 0 END), 2) AS cash,
-            ROUND(SUM(CASE WHEN payment_mode = 'UPI' THEN amount ELSE 0 END), 2) AS upi,
-            ROUND(SUM(CASE WHEN payment_mode = 'Card' THEN amount ELSE 0 END), 2) AS card
-        FROM revenue_stream rs
-        WHERE 1=1
-            ${dateCondition}
-            ${branchCondition}
+
+            SELECT
+                ROUND(SUM(amount), 2) AS total_collection,
+                ROUND(SUM(CASE WHEN payment_mode = 'Cash' THEN amount ELSE 0 END), 2) AS cash,
+                ROUND(SUM(CASE WHEN payment_mode = 'UPI' THEN amount ELSE 0 END), 2) AS upi,
+                ROUND(SUM(CASE WHEN payment_mode = 'Card' THEN amount ELSE 0 END), 2) AS card,
+                ROUND(SUM(refund_amount), 2) AS refund
+            FROM revenue_stream rs
+            WHERE 1=1
+                ${dateCondition}
+                ${branchCondition}
         `;
 
         const [summary] = await sequelize.query(summaryQuery, {
