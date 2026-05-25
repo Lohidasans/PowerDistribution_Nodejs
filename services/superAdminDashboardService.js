@@ -216,57 +216,103 @@ const getSuperAdminDashboard = async (req, res) => {
     `;
 
     // ============================================================
-    // 5. AMOUNT COLLECTION – UPDATED (REFUND DEDUCT like branch-wise-report)
-    //    - deduct SUM(DISTINCT sib.refund_amount) from cash + total
+    // 5. AMOUNT COLLECTION - MATCH branch-wise revenue stream
     // ============================================================
     const collRep = {};
     const collDateCond = buildDateCondition(
       dateOpts,
-      "p.payment_date",
+      "rs.txn_date",
       collRep,
       "_coll"
     );
-    const collBranch = branch_id
-      ? `AND COALESCE(sib.branch_id, jr.branch_id) = :coll_branch`
-      : "";
+    const collBranch = branch_id ? `AND rs.branch_id = :coll_branch` : "";
     if (branch_id) collRep.coll_branch = branch_id;
 
     const amountCollectionQuery = `
-      WITH refund_sum AS (
+      WITH revenue_stream AS (
         SELECT
-          COALESCE(SUM(DISTINCT sib_inner.refund_amount), 0) AS refund_amount
-        FROM payments p_inner
-        LEFT JOIN sales_invoice_bills sib_inner
-          ON sib_inner.id = p_inner.invoice_bill_id
-          AND sib_inner.deleted_at IS NULL AND sib_inner.is_active = true
-        LEFT JOIN jewel_repairs jr_inner
-          ON jr_inner.id = p_inner.jewel_repair_id
-          AND jr_inner.deleted_at IS NULL AND jr_inner.is_active = true
-        WHERE p_inner.deleted_at IS NULL
-          AND p_inner.status = 'Completed'
-          AND sib_inner.id IS NOT NULL
-          ${collDateCond.replace(/p\./g, "p_inner.")}
-          ${collBranch
-            .replace(/sib\./g, "sib_inner.")
-            .replace(/jr\./g, "jr_inner.")}
+          COALESCE(sib.branch_id, jr.branch_id) AS branch_id,
+          p.payment_date AS txn_date,
+          p.payment_mode::text AS payment_mode,
+          CASE
+            WHEN sib.id IS NOT NULL
+              AND p.payment_mode = 'Cash'
+            THEN
+              p.amount_received
+              - COALESCE(
+                  MAX(sib.refund_amount) OVER (PARTITION BY sib.id),
+                  0
+                )
+            ELSE p.amount_received
+          END AS amount
+        FROM payments p
+        LEFT JOIN sales_invoice_bills sib
+          ON sib.id = p.invoice_bill_id
+          AND sib.deleted_at IS NULL
+          AND sib.is_active = true
+        LEFT JOIN jewel_repairs jr
+          ON jr.id = p.jewel_repair_id
+          AND jr.deleted_at IS NULL
+          AND jr.is_active = true
+        WHERE p.deleted_at IS NULL
+          AND p.status = 'Completed'
+
+        UNION ALL
+
+        SELECT
+          vr.branch_id,
+          vr.receipt_date AS txn_date,
+          pm.payment_mode,
+          vr.amount
+        FROM voucher_receipts vr
+        JOIN payment_modes pm ON pm.id = vr.payment_mode_id
+        WHERE vr.deleted_at IS NULL
+          AND vr.is_active = true
+
+        UNION ALL
+
+        SELECT
+          c.branch_id,
+          sp.payment_date AS txn_date,
+          p.payment_mode::text AS payment_mode,
+          p.amount_received AS amount
+        FROM customer_scheme_payments sp
+        JOIN customer_enrollments e
+          ON e.id = sp.enrollment_id
+          AND e.deleted_at IS NULL
+        JOIN customers c
+          ON c.id = e.customer_id
+          AND c.deleted_at IS NULL
+        JOIN payments p
+          ON p.scheme_payment_id = sp.id
+          AND p.deleted_at IS NULL
+        WHERE sp.deleted_at IS NULL
+          AND sp.payment_source = 'INSTALLMENT'
+          AND p.status = 'Completed'
+
+        UNION ALL
+
+        SELECT
+          vp.branch_id,
+          vp.payment_date AS txn_date,
+          pm.payment_mode,
+          -vp.amount AS amount
+        FROM vendor_payments vp
+        JOIN payment_modes pm ON pm.id = vp.payment_mode
+        WHERE vp.deleted_at IS NULL
+          AND vp.is_active = true
+          AND vp.status = 'Completed'
       )
       SELECT
-        COALESCE(SUM(CASE WHEN p.payment_mode = 'Cash'          THEN p.amount_received ELSE 0 END), 0)
-          - (SELECT refund_amount FROM refund_sum) AS cash,
-        COALESCE(SUM(CASE WHEN p.payment_mode = 'UPI'           THEN p.amount_received ELSE 0 END), 0) AS upi,
-        COALESCE(SUM(CASE WHEN p.payment_mode = 'Card'          THEN p.amount_received ELSE 0 END), 0) AS card,
-        COALESCE(SUM(CASE WHEN p.payment_mode = 'Bank Transfer' THEN p.amount_received ELSE 0 END), 0) AS bank_transfer,
-        COALESCE(SUM(CASE WHEN p.payment_mode = 'Cheque'        THEN p.amount_received ELSE 0 END), 0) AS cheque,
-        COALESCE(SUM(CASE WHEN p.payment_mode = 'Other'         THEN p.amount_received ELSE 0 END), 0) AS other,
-        COALESCE(SUM(p.amount_received), 0)
-          - (SELECT refund_amount FROM refund_sum) AS total
-      FROM payments p
-      LEFT JOIN sales_invoice_bills sib
-        ON sib.id = p.invoice_bill_id AND sib.deleted_at IS NULL AND sib.is_active = true
-      LEFT JOIN jewel_repairs jr
-        ON jr.id = p.jewel_repair_id AND jr.deleted_at IS NULL and jr.is_active = true
-      WHERE p.deleted_at IS NULL
-        AND p.status = 'Completed'
+        ROUND(COALESCE(SUM(CASE WHEN rs.payment_mode = 'Cash'          THEN rs.amount ELSE 0 END), 0), 2) AS cash,
+        ROUND(COALESCE(SUM(CASE WHEN rs.payment_mode = 'UPI'           THEN rs.amount ELSE 0 END), 0), 2) AS upi,
+        ROUND(COALESCE(SUM(CASE WHEN rs.payment_mode = 'Card'          THEN rs.amount ELSE 0 END), 0), 2) AS card,
+        ROUND(COALESCE(SUM(CASE WHEN rs.payment_mode = 'Bank Transfer' THEN rs.amount ELSE 0 END), 0), 2) AS bank_transfer,
+        ROUND(COALESCE(SUM(CASE WHEN rs.payment_mode = 'Cheque'        THEN rs.amount ELSE 0 END), 0), 2) AS cheque,
+        ROUND(COALESCE(SUM(CASE WHEN rs.payment_mode = 'Other'         THEN rs.amount ELSE 0 END), 0), 2) AS other,
+        ROUND(COALESCE(SUM(rs.amount), 0), 2) AS total
+      FROM revenue_stream rs
+      WHERE 1=1
         ${collDateCond}
         ${collBranch}
     `;
