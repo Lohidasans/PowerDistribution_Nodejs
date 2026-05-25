@@ -648,7 +648,7 @@ const getBranchDashboard = async (req, res) => {
         ${branchFilter}
         ${dateFilter}
       LEFT JOIN
-        sales_invoice_bill_items sibi ON sibi.invoice_bill_id = sib.id
+        sales_invoice_bill_items sibi ON sibi.invoice_bill_id = sib.id AND sibi.is_returned = false
         AND sibi.deleted_at IS NULL
       WHERE
         e.deleted_at IS NULL
@@ -1529,6 +1529,7 @@ const getBranchSalesAnalytics = async (req, res) => {
       INNER JOIN sales_invoice_bills sib ON sib.id = sibi.invoice_bill_id
       WHERE sib.branch_id = :branch_id
         AND sibi.deleted_at IS NULL
+        AND sibi.is_returned = false
         AND sib.deleted_at IS NULL
         AND sib.is_active = true
         AND sib.status != 'Cancelled'
@@ -1676,7 +1677,7 @@ const getRecentSales = async (req, res) => {
       FROM 
         sales_invoice_bills sib
       INNER JOIN 
-        sales_invoice_bill_items sibi ON sibi.invoice_bill_id = sib.id AND sibi.deleted_at IS NULL
+        sales_invoice_bill_items sibi ON sibi.invoice_bill_id = sib.id AND sibi.deleted_at IS NULL AND sibi.is_returned = false
       WHERE 
         ${whereClause}
       ORDER BY 
@@ -1764,7 +1765,7 @@ const getTopSellingCategories = async (req, res) => {
       INNER JOIN 
         products p ON p.category_id = c.id AND p.deleted_at IS NULL
       INNER JOIN 
-        sales_invoice_bill_items sibi ON sibi.product_id = p.id AND sibi.deleted_at IS NULL
+        sales_invoice_bill_items sibi ON sibi.product_id = p.id AND sibi.deleted_at IS NULL AND sibi.is_returned = false
       INNER JOIN 
         sales_invoice_bills sib ON sib.id = sibi.invoice_bill_id
       WHERE 
@@ -2225,7 +2226,7 @@ const getCustomerInvoices = async (req, res) => {
       INNER JOIN 
         branches b ON b.id = sib.branch_id AND b.deleted_at IS NULL
       LEFT JOIN 
-        sales_invoice_bill_items sibi ON sibi.invoice_bill_id = sib.id AND sibi.deleted_at IS NULL
+        sales_invoice_bill_items sibi ON sibi.invoice_bill_id = sib.id AND sibi.deleted_at IS NULL AND sibi.is_returned = false
       WHERE 
         sib.customer_id = :customer_id
         AND sib.deleted_at IS NULL

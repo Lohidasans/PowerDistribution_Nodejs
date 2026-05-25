@@ -139,7 +139,7 @@ const getSalesInvoiceReport = async (req, res) => {
         FROM sales_invoice_bill_items sii
         LEFT JOIN "productItemDetails" pid ON pid.id = sii.product_item_detail_id
         LEFT JOIN products p ON p.id = pid.product_id
-        WHERE sii.deleted_at IS NULL
+        WHERE sii.deleted_at IS NULL AND sii.is_returned = false
         GROUP BY sii.invoice_bill_id
       )
 

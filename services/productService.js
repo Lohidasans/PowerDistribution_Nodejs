@@ -2624,7 +2624,7 @@ const getTopSellingSubcategories = async (req, res) => {
         AND sib.status != 'Cancelled'
         ${branchFilter}
       WHERE 
-        s.deleted_at IS NULL
+        s.deleted_at IS NULL AND sibi.is_returned = false
         AND s.status = 'Active'
       GROUP BY 
         s.id, s.subcategory_name, s.subcategory_image_url
@@ -2771,7 +2771,7 @@ const getProductGrnSummary = async (req, res) => {
       FROM products p
 
       JOIN "productItemDetails" pid ON pid.product_id = p.id AND pid.deleted_at IS NULL
-      LEFT JOIN sales_invoice_bill_items sii ON sii.product_item_detail_id = pid.id AND sii.deleted_at IS NULL
+      LEFT JOIN sales_invoice_bill_items sii ON sii.product_item_detail_id = pid.id AND sii.deleted_at IS NULL AND sii.is_returned = false
       LEFT JOIN sales_invoice_bills sib ON sib.id = sii.invoice_bill_id AND sib.deleted_at IS NULL
       LEFT JOIN order_items oi ON oi.product_item_id = pid.id AND oi.deleted_at IS NULL
       WHERE p.deleted_at IS NULL AND p.ref_no_id = :ref_no_id

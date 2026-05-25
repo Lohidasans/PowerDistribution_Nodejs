@@ -102,6 +102,7 @@ const getVendorSalesContribution = async (req, res) => {
             JOIN "sales_invoice_bill_items" sib_items
                 ON sib_items.product_id = p.id
                 AND sib_items.deleted_at IS NULL
+                AND sib_items.is_returned = false
 
             JOIN "sales_invoice_bills" sib
                 ON sib.id = sib_items.invoice_bill_id
@@ -1102,6 +1103,7 @@ const getVendorDashboard = async (req, res) => {
             JOIN products p ON p.id = sibi.product_id AND p.deleted_at IS NULL
             JOIN sales_invoice_bills sib ON sib.id = sibi.invoice_bill_id AND sib.deleted_at IS NULL
             WHERE p.vendor_id = v.id
+              AND sibi.is_returned = false
               AND sibi.deleted_at IS NULL
               AND sib.is_active = true
               AND sib.status != 'Cancelled'

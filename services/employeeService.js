@@ -868,7 +868,7 @@ const getTopEmployeePerformers = async (req, res) => {
         ${branchFilter}
       LEFT JOIN
         sales_invoice_bill_items sibi ON sibi.invoice_bill_id = sib.id
-        AND sibi.deleted_at IS NULL
+        AND sibi.deleted_at IS NULL AND sibi.is_returned = false
       WHERE 
         e.deleted_at IS NULL
       GROUP BY 

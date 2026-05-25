@@ -272,7 +272,7 @@ const getTopPerformanceDashboard = async (req, res) => {
 
             FROM sales_invoice_bills sib
             JOIN employees e ON e.id = sib.employee_id AND e.deleted_at IS NULL
-            JOIN sales_invoice_bill_items sibi ON sibi.invoice_bill_id = sib.id AND sibi.deleted_at IS NULL
+            JOIN sales_invoice_bill_items sibi ON sibi.invoice_bill_id = sib.id AND sibi.deleted_at IS NULL AND sibi.is_returned = false
 
             WHERE sib.deleted_at IS NULL AND sib.status ='Invoice'
               ${branchCondition}
@@ -303,7 +303,7 @@ const getTopPerformanceDashboard = async (req, res) => {
                 SUM(sib.total_amount) AS sales_amount
 
             FROM sales_invoice_bills sib
-            JOIN sales_invoice_bill_items sibi ON sibi.invoice_bill_id = sib.id AND sibi.deleted_at IS NULL
+            JOIN sales_invoice_bill_items sibi ON sibi.invoice_bill_id = sib.id AND sibi.deleted_at IS NULL AND sibi.is_returned = false
             JOIN products p ON p.id = sibi.product_id AND p.deleted_at IS NULL
             JOIN categories c ON c.id = p.category_id AND c.deleted_at IS NULL
 

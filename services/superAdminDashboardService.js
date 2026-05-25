@@ -134,7 +134,7 @@ const getSuperAdminDashboard = async (req, res) => {
             COALESCE(SUM(i.gross_weight), 0)  AS total_gross_weight,
             COALESCE(SUM(i.net_weight), 0)    AS total_net_weight
           FROM sales_invoice_bill_items i
-          WHERE i.deleted_at IS NULL
+          WHERE i.deleted_at IS NULL and i.is_returned = false
           GROUP BY i.invoice_bill_id
         )
         SELECT
@@ -432,7 +432,7 @@ const getSuperAdminDashboard = async (req, res) => {
           AND sib.deleted_at IS NULL AND sib.is_active = true
           AND sib.status='Invoice'
           ${pvSalesBranch}
-        WHERE sibi.deleted_at IS NULL
+        WHERE sibi.deleted_at IS NULL and sibi.is_returned = false
         GROUP BY p.vendor_id
       )
       SELECT

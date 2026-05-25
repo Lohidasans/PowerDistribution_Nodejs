@@ -291,7 +291,7 @@ const getFastMovingSubCategories = async (req, res) => {
         FROM filtered_products fp
         JOIN sales_invoice_bill_items sii
           ON sii.product_id = fp.product_id
-          AND sii.deleted_at IS NULL
+          AND sii.deleted_at IS NULL AND sii.is_returned = false
         JOIN sales_invoice_bills sib
           ON sib.id = sii.invoice_bill_id
           AND sib.deleted_at IS NULL
@@ -461,7 +461,7 @@ const getFastMovingSoldProducts = async (req, res) => {
       LEFT JOIN categories c ON c.id = p.category_id
       LEFT JOIN subcategories sc ON sc.id = p.subcategory_id
 
-      WHERE sii.deleted_at IS NULL
+      WHERE sii.deleted_at IS NULL AND sii.is_returned = false
         ${search
                 ? `
           AND (
@@ -902,7 +902,7 @@ const getSalesByMaterialType = async (req, res) => {
                 SUM(i.amount) AS material_amount
             FROM sales_invoice_bills t
             JOIN sales_invoice_bill_items i
-                ON i.invoice_bill_id = t.id
+                ON i.invoice_bill_id = t.id AND i.is_returned = false
                 AND i.deleted_at IS NULL
             JOIN products p
                 ON p.id = i.product_id
@@ -1004,7 +1004,7 @@ const getFastMovingCategoryStats = async (req, res) => {
         JOIN subcategories sc
             ON sc.id = p.subcategory_id
             AND sc.deleted_at IS NULL
-        WHERE sii.deleted_at IS NULL
+        WHERE sii.deleted_at IS NULL AND sii.is_returned = false
         ${search ? `AND sc.subcategory_name ILIKE :search` : ""}
         GROUP BY sc.id, sc.subcategory_name
         ORDER BY sold_value DESC
@@ -1040,7 +1040,7 @@ const getFastMovingCategoryStats = async (req, res) => {
             ON p.id = sii.product_id
             AND p.deleted_at IS NULL
             AND (:branch_id IS NULL OR p.branch_id = :branch_id)
-        WHERE sii.deleted_at IS NULL
+        WHERE sii.deleted_at IS NULL AND sii.is_returned = false
             `;
 
             const [{ total }] = await sequelize.query(countQuery, {
