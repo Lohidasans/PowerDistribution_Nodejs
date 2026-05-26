@@ -1269,54 +1269,84 @@ const getBranchwiseStockCount = async (req, res) => {
         ),
         sequelize.query(
           `
-          WITH product_stock AS (
+          WITH filtered_products AS (
             SELECT
-              p.id AS product_id,
+              p.id,
               p.subcategory_id,
               p.branch_id,
-              SUM(pid.quantity) AS total_qty,
-              SUM(pid.quantity * pid.gross_weight) AS total_weight
+              p.material_type_id,
+              p.category_id
             FROM products p
-            JOIN "productItemDetails" pid
-              ON pid.product_id = p.id
-              AND pid.deleted_at IS NULL
             WHERE p.deleted_at IS NULL
+              AND p.status = 'Active'
               ${branch_id ? "AND p.branch_id = :branch_id" : ""}
               ${productDateCondition}
-            GROUP BY p.id, p.subcategory_id, p.branch_id
           ),
-          low_stock_rows AS (
+          product_stock AS (
             SELECT
-              ps.branch_id,
-              ps.subcategory_id,
-              SUM(ps.total_weight) AS row_weight
-            FROM product_stock ps
-            JOIN subcategories sc ON sc.id = ps.subcategory_id
-            WHERE ps.total_qty < sc.reorder_level
-            GROUP BY ps.branch_id, ps.subcategory_id
+              fp.subcategory_id,
+              fp.branch_id,
+              fp.material_type_id,
+              fp.category_id,
+              COALESCE(SUM(pid.quantity), 0) AS total_qty,
+              COALESCE(SUM(pid.quantity * pid.gross_weight), 0) AS total_weight
+            FROM filtered_products fp
+            LEFT JOIN "productItemDetails" pid
+              ON pid.product_id = fp.id
+              AND pid.deleted_at IS NULL
+            GROUP BY
+              fp.subcategory_id,
+              fp.branch_id,
+              fp.material_type_id,
+              fp.category_id
           )
           SELECT
-            branch_id,
+            ps.branch_id,
             COUNT(*) AS subcategory_count,
-            COALESCE(SUM(row_weight),0) AS total_weight
-          FROM low_stock_rows
-          GROUP BY branch_id
+            COALESCE(SUM(ps.total_weight), 0) AS total_weight
+          FROM product_stock ps
+          JOIN subcategories sc
+            ON sc.id = ps.subcategory_id
+            AND sc.deleted_at IS NULL
+            AND sc.status = 'Active'
+          WHERE
+            ps.total_qty > 0
+            AND ps.total_qty < sc.reorder_level
+          GROUP BY ps.branch_id
           `,
           { replacements: dateReplacements, type: sequelize.QueryTypes.SELECT }
         ),
         sequelize.query(
           `
           SELECT
-            p.branch_id,
-            COUNT(DISTINCT sc.id) AS total_quantity
-          FROM subcategories sc
-          LEFT JOIN products p
-            ON p.subcategory_id = sc.id
-            AND p.deleted_at IS NULL
-            ${branch_id ? "AND p.branch_id = :branch_id" : ""}
-            ${productDateCondition}
-          GROUP BY p.branch_id
-          HAVING COUNT(p.id) = 0
+            COALESCE(x.branch_id, 1) AS branch_id,
+            COUNT(*) AS total_quantity
+          FROM (
+            SELECT
+              sc.id,
+              p.branch_id
+            FROM subcategories sc
+            LEFT JOIN products p
+              ON p.subcategory_id = sc.id
+              AND p.deleted_at IS NULL
+              ${branch_id ? "AND p.branch_id = :branch_id" : ""}
+              ${productDateCondition}
+            LEFT JOIN "productItemDetails" pid
+              ON pid.product_id = p.id
+              AND pid.deleted_at IS NULL
+            WHERE
+              sc.deleted_at IS NULL
+              AND sc.status = 'Active'
+              AND sc.branch_id = 1
+            GROUP BY
+              sc.id,
+              p.branch_id
+            HAVING
+              COUNT(DISTINCT p.id) = 0
+              OR
+              COALESCE(SUM(pid.quantity), 0) = 0
+          ) x
+          GROUP BY branch_id
           `,
           { replacements: dateReplacements, type: sequelize.QueryTypes.SELECT }
         ),
