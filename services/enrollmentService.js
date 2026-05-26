@@ -94,7 +94,6 @@ const createEnrollment = async (req, res) => {
 };
 
 // Get all enrollments
-// Get all enrollments
 const listEnrollments = async (req, res) => {
   try {
     const {
@@ -404,7 +403,6 @@ const listEnrollments = async (req, res) => {
 }; 
 
 // Get one by ID
-// Get one by ID
 const getEnrollmentById = async (req, res) => {
   try {
     const row = await models.Enrollment.findByPk(req.params.id, {
@@ -598,6 +596,7 @@ const getEnrolledSchemeDetailsById = async (req, res) => {
       },
 
       plan_details: {
+        scheme_plan_id: scheme.id,
         scheme_name: scheme?.scheme_name,
         date_of_scheme: enrollment.created_at,
 
