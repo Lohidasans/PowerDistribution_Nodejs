@@ -987,7 +987,7 @@ const getStockKpiSummary = async (req, res) => {
     const totalStockQuery = `
       SELECT
         COALESCE(SUM(pid.quantity), 0)::int AS total_quantity,
-        COALESCE(SUM(pid.quantity * pid.net_weight), 0) AS total_weight,
+        COALESCE(SUM(pid.quantity * pid.gross_weight), 0) AS total_weight,
         COALESCE(SUM(
           pid.quantity * (
             (COALESCE(pid.rate_per_gram, 0) * COALESCE(pid.net_weight, 0)) +
