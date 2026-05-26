@@ -338,7 +338,7 @@ const getStockAgeingReport = async (req, res) => {
           WHEN (CURRENT_DATE - p.created_at::date) BETWEEN 61 AND 90 THEN '61_90'
           ELSE '91_plus'
         END AS bucket,
-        SUM(pid.quantity * pid.net_weight) AS total_weight,
+        SUM(pid.quantity * pid.gross_weight) AS total_weight,
         SUM(pid.quantity) AS total_quantity
       FROM products p
       JOIN "productItemDetails" pid ON pid.product_id = p.id
