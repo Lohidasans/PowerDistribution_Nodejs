@@ -1318,34 +1318,43 @@ const getBranchwiseStockCount = async (req, res) => {
         ),
         sequelize.query(
           `
-          SELECT
-            COALESCE(x.branch_id, 1) AS branch_id,
-            COUNT(*) AS total_quantity
-          FROM (
-            SELECT
-              sc.id,
-              p.branch_id
+          WITH target_branches AS (
+            SELECT id AS branch_id
+            FROM branches
+            WHERE deleted_at IS NULL
+              ${branch_id ? "AND id = :branch_id" : ""}
+          ),
+          active_subcategories AS (
+            SELECT sc.id AS subcategory_id
             FROM subcategories sc
+            WHERE sc.deleted_at IS NULL
+              AND sc.status = 'Active'
+              AND sc.branch_id = 1
+          ),
+          subcategory_stock AS (
+            SELECT
+              tb.branch_id,
+              sc.subcategory_id,
+              COUNT(DISTINCT p.id) AS product_count,
+              COALESCE(SUM(pid.quantity), 0) AS total_qty
+            FROM target_branches tb
+            CROSS JOIN active_subcategories sc
             LEFT JOIN products p
-              ON p.subcategory_id = sc.id
+              ON p.subcategory_id = sc.subcategory_id
+              AND p.branch_id = tb.branch_id
               AND p.deleted_at IS NULL
-              ${branch_id ? "AND p.branch_id = :branch_id" : ""}
               ${productDateCondition}
             LEFT JOIN "productItemDetails" pid
               ON pid.product_id = p.id
               AND pid.deleted_at IS NULL
-            WHERE
-              sc.deleted_at IS NULL
-              AND sc.status = 'Active'
-              AND sc.branch_id = 1
-            GROUP BY
-              sc.id,
-              p.branch_id
-            HAVING
-              COUNT(DISTINCT p.id) = 0
-              OR
-              COALESCE(SUM(pid.quantity), 0) = 0
-          ) x
+            GROUP BY tb.branch_id, sc.subcategory_id
+          )
+          SELECT
+            branch_id,
+            COUNT(*) AS total_quantity
+          FROM subcategory_stock
+          WHERE product_count = 0
+            OR total_qty = 0
           GROUP BY branch_id
           `,
           { replacements: dateReplacements, type: sequelize.QueryTypes.SELECT }
