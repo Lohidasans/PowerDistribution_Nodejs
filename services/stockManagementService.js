@@ -1460,6 +1460,7 @@ const getGrnDiscrepancyList = async (req, res) => {
         g.id,
         g.grn_no,
         g.grn_date AS date,
+        g.status_id,
         v.vendor_name,
 
         COALESCE(gi.total_net_weight, 0) AS ordered_weight,
@@ -1524,10 +1525,8 @@ const getGrnDiscrepancyList = async (req, res) => {
 
       const yetToUpdateQty = orderedQty - updatedQty;
 
-      // status logic:
-      // closed only when both weight & qty are exactly matched
-      const status_id =
-        Math.abs(yetToUpdateWt) <= 0.001 && yetToUpdateQty === 0 ? 2 : 1;
+      // Completion is manual-only; do not infer status from matched qty/weight.
+      const status_id = Number(row.status_id || 1);
 
       if (status_id === 2) updatedCount++;
       else yetToUpdateCount++;
