@@ -3,7 +3,7 @@ const message = require("../constants/en.json");
 const { Op } = require("sequelize");
 const commonService = require("../services/commonService");
 const { buildSearchCondition } = require("../helpers/queryHelper");
-const { generateUniqueCode } = require("../helpers/codeGeneration");
+const { generateUniqueCode, generateFiscalSeriesCode } = require("../helpers/codeGeneration");
 const kycSvc = require("./kycDocumentService");
 const bankSvc = require("./bankAccountService");
 const userSvc = require("./userLoginService");
@@ -92,6 +92,35 @@ const createBranch = async (req, res) => {
       { pad: 2, separator: "_" }
     );
     const branch = await models.Branch.create({ ...branchInput, branch_no: generatedBranchNo }, { transaction: t });
+
+     // Generate employee_no for the employee created under this new branch
+    const employeeNo = await generateFiscalSeriesCode(
+      models.Employee,
+      "employee_no",
+      "EMP",
+      { pad: 3 }
+    );
+
+    // Create default employee for this branch
+    const employee = await models.Employee.create(
+      {
+        employee_no: employeeNo,
+        employee_name: branchInput.contact_person || branchInput.branch_name || branch_name,
+        branch_id: branch.id,
+        status: branchInput.status || "Active",
+
+        // Need to update the below fields using update employee api
+        department_id: 1,
+        role_id: 1,
+        joining_date: new Date(),
+        employment_type: "Full-Time",
+        gender: "Other",
+        date_of_birth: new Date("2000-01-01"),
+        salary: 0,
+        ref_employee_id: 0,
+      },
+      { transaction: t }
+    );
 
     // Optionally create a single bank account via reusable create helper
     let createdBankAccount = null;
