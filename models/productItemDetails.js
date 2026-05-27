@@ -80,7 +80,7 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.DECIMAL(15, 2),
         allowNull: true
       },
-      rate_per_gram: { // Piece realted Fields 
+      rate_per_gram: { // Piece related Fields 
         type: DataTypes.DECIMAL(15, 2),
         allowNull: true
       },
@@ -114,7 +114,12 @@ module.exports = (sequelize, DataTypes) => {
           "ADJUSTMENT"
         ),
         allowNull: true
-      }
+      },
+      // PR = Rate Per g(comes from GRN) × Net Weight --> Calculated from UI 
+      purchase_rate: { 
+        type: DataTypes.DECIMAL(15, 3),
+        allowNull: true,
+      },
     },
     {
       timestamps: true,
