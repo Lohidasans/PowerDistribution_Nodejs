@@ -447,6 +447,7 @@ const listCustomers = async (req, res) => {
         c.id,
         c.customer_code AS customer_no,
         c.customer_name,
+        c.is_online,
         c.mobile_number,
        (
           SELECT COUNT(*) FROM (
@@ -632,7 +633,7 @@ const listCustomers = async (req, res) => {
       customer_name: customer.customer_name,
       mobile_number: customer.mobile_number,
       no_of_orders: parseInt(customer.no_of_orders, 10),
-      mode: customer.mode || null,
+      is_online: customer.is_online || null,
       branch_id: customer.branch_id || null,
       branch: customer.branch || null,
       purchase_amount: parseFloat(customer.purchase_amount || 0).toFixed(2),
