@@ -70,6 +70,12 @@ module.exports = {
         created_at: new Date(),
         updated_at: new Date(),
       },
+      {
+        module_group_id: 1,
+        module_name: "Online Order",
+        created_at: new Date(),
+        updated_at: new Date(),
+      },
       // === moduleGroup: 2 (Master) ===
       {
         module_group_id: 2,
