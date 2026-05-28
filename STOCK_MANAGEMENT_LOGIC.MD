@@ -57,4 +57,18 @@ CASE 2
 Products exist, but TOTAL quantity = 0
 
 
+Stock Management
+~~~~~~~~~~~~~~~~~~
+Quantity reduces when:
+    invoice sale happens
+    stock transfer happens
+    online order happens
+
+Total Stock Value = Remaining Qty × Purchase Rate
+Purchase Rate = GRN rate_per_g × ProductItemDetail.net_weight
+
+Stock-in-hand = No of the qty * grs_wt
+
+
+
 

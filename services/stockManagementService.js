@@ -1590,38 +1590,53 @@ const getTotalStockValueInternal = async (query) => {
   const { branch_id, from_date, to_date, date_filter } = query;
 
   const replacements = {};
+
   let where = `
-    WHERE g.deleted_at IS NULL
+    WHERE p.deleted_at IS NULL
+    AND p.status = 'Active'
+
+    AND pid.deleted_at IS NULL
+    AND pid.quantity > 0
+
+    AND g.deleted_at IS NULL
     AND g.is_active = true
+
+    AND gi.deleted_at IS NULL
   `;
 
+  // Branch filter
   if (branch_id) {
     where += `
-      AND EXISTS (
-        SELECT 1
-        FROM products p
-        WHERE p.grn_id = g.id
-          AND p.branch_id = :branch_id
-          AND p.deleted_at IS NULL
-      )
+      AND p.branch_id = :branch_id
     `;
     replacements.branch_id = branch_id;
   }
 
-  where += dateFilter({ from_date, to_date, date_filter }, "g.grn_date", replacements);
+  // Date filter based on GRN date
+  where += dateFilter(
+    { from_date, to_date, date_filter },
+    "g.grn_date",
+    replacements
+  );
 
   const [rows] = await sequelize.query(
     `
-    SELECT COALESCE(SUM(g.total_amount), 0) AS total_stock_value
-    FROM grns g
+    SELECT
+      COALESCE(SUM((COALESCE(gi.rate_per_g, 0) * COALESCE(pid.net_weight, 0)) * COALESCE(pid.quantity, 0)), 0) AS total_stock_value
+    FROM "productItemDetails" pid
+    INNER JOIN products p ON p.id = pid.product_id
+    INNER JOIN grns g ON g.id = p.grn_id
+    INNER JOIN "grnItems" gi ON gi.grn_id = g.id
     ${where}
     `,
-    { replacements }
+    {
+      replacements,
+      type: sequelize.QueryTypes.SELECT,
+    }
   );
 
-  return Number(rows[0]?.total_stock_value || 0);
+  return Number(rows?.total_stock_value || 0);
 };
-
 /* =========================================================
    OPTIMIZED: STOCK OVERVIEW COUNT (2 QUERIES INSTEAD OF 4)
 ========================================================= */
