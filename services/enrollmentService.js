@@ -133,13 +133,12 @@ const listEnrollments = async (req, res) => {
           c.customer_name,
           c.mobile_number,
           c.customer_code,
-          c.branch_id,
           NULL AS date_of_scheme,
           '-' AS scheme_name,
           '-' AS scheme_type,
           '-' AS duration,
           0 AS installment_amount,
-          CASE WHEN c.is_online THEN 'Online' ELSE 'Offline' END AS mode,
+          CASE WHEN c.is_online = true THEN 'Online' ELSE 'Offline' END AS mode,
           c.branch_id,
           b.branch_name,
           '0/0' AS dues,
@@ -165,7 +164,6 @@ const listEnrollments = async (req, res) => {
           e.enrollment_code AS scheme_enrolled_code,
           c.id AS customer_id,
           c.customer_code,
-          c.branch_id,
           e.customer_name,
           e.mobile_number,
           e.created_at AS date_of_scheme,
@@ -191,7 +189,7 @@ const listEnrollments = async (req, res) => {
             ELSE (e.created_at + INTERVAL '28 days')
           END AS next_due,
 
-          CASE WHEN c.is_online THEN 'Online' ELSE 'Offline' END AS mode,
+          CASE WHEN c.is_online = true THEN 'Online' ELSE 'Offline' END AS mode,
 
           c.branch_id,
           b.branch_name,
