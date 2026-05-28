@@ -195,6 +195,62 @@ module.exports = {
         created_at: new Date(),
         updated_at: new Date(),
       },
+
+      // === moduleGroup: 5 (Reports) ===
+      {
+        module_group_id: 5,
+        module_name: "Abandoned Checkout",
+        created_at: new Date(),
+        updated_at: new Date(),
+      },
+      {
+        module_group_id: 5,
+        module_name: "Product Wise Report",
+        created_at: new Date(),
+        updated_at: new Date(),
+      },
+      {
+        module_group_id: 5,
+        module_name: "Sales Report",
+        created_at: new Date(),
+        updated_at: new Date(),
+      },
+      {
+        module_group_id: 5,
+        module_name: "Purchase Report",
+        created_at: new Date(),
+        updated_at: new Date(),
+      },
+      {
+        module_group_id: 5,
+        module_name: "Sales Return Report",
+        created_at: new Date(),
+        updated_at: new Date(),
+      },
+      {
+        module_group_id: 5,
+        module_name: "Jewel Repair Report",
+        created_at: new Date(),
+        updated_at: new Date(),
+      },
+      {
+        module_group_id: 5,
+        module_name: "Old Jewel Report",
+        created_at: new Date(),
+        updated_at: new Date(),
+      },
+      {
+        module_group_id: 5,
+        module_name: "Ledger Report",
+        created_at: new Date(),
+        updated_at: new Date(),
+      },
+      {
+        module_group_id: 5,
+        module_name: "Attendance Report",
+        created_at: new Date(),
+        updated_at: new Date(),
+      },
     ]);
   },
 

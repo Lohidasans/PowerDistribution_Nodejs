@@ -27,6 +27,12 @@ module.exports = {
         created_at: new Date(),
         updated_at: new Date(),
       },
+      {
+        id: 5,
+        module_group_name: "Reports",
+        created_at: new Date(),
+        updated_at: new Date(),
+      },
     ]);
   },
 
