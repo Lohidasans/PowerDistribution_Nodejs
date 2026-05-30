@@ -2319,12 +2319,21 @@ const getProductStockCounts = async (req, res) => {
       grn_id,
       ref_no_id,
       variant_type_ids,
+      from_date,
+      to_date,
+      date_filter,
       search,
     } = req.query;
 
     // Build common WHERE clause for all queries
     let whereClause = 'WHERE p.deleted_at IS NULL AND p.status = :status';
     const replacements = { status: "Active" };
+
+    whereClause += dateFilter(
+      { from_date, to_date, date_filter },
+      "p.created_at",
+      replacements
+    );
 
     if (branch_id) {
       whereClause += ' AND p.branch_id = :branch_id';
