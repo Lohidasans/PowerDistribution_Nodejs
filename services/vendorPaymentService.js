@@ -365,7 +365,7 @@ const getInvoiceDropdown = async (req, res) => {
     const rows = await models.SalesInvoiceBill.findAll({
       where: {
         is_active: true,
-        deletedAt: null,
+        deleted_at: null,
         status: "Invoice",
       },
       order: [["id", "ASC"]],
