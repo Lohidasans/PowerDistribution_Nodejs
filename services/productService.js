@@ -924,7 +924,7 @@ const getAllProductDetails = async (req, res) => {
       havingClause = `
         HAVING
           ROUND(
-            COALESCE(SUM(COALESCE(pid.quantity, 0) * COALESCE(pid.net_weight, 0)), 0),
+            COALESCE(SUM(COALESCE(pid.quantity, 0) * COALESCE(pid.gross_weight, 0)), 0),
             3
           ) = :exact_weight
       `;
@@ -983,7 +983,7 @@ const getAllProductDetails = async (req, res) => {
           '[]'::json
         ) AS variants,
         COALESCE(SUM(COALESCE(pid.quantity, 0)), 0) AS total_quantity,
-        COALESCE(SUM(COALESCE(pid.quantity, 0) * COALESCE(pid.net_weight, 0)), 0) AS total_weight,
+        COALESCE(SUM(COALESCE(pid.quantity, 0) * COALESCE(pid.gross_weight, 0)), 0) AS total_weight,
         COUNT(DISTINCT pid.id) AS variation_count,
         b.branch_name
       FROM products p
