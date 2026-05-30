@@ -29,7 +29,6 @@ const getSalesInvoiceReport = async (req, res) => {
         let baseWhere = `
       WHERE sib.deleted_at IS NULL
       AND sib.status = 'Invoice'
-      AND sib.is_active = true
     `;
 
         let extraWhere = "";
