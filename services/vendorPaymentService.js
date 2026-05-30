@@ -363,6 +363,11 @@ const getPaymentModeDropdown = async (_req, res) => {
 const getInvoiceDropdown = async (req, res) => {
   try {
     const rows = await models.SalesInvoiceBill.findAll({
+      where: {
+        is_active: true,
+        deletedAt: null,
+        status: "Invoice",
+      },
       order: [["id", "ASC"]],
     });
     const items = rows.map((r) => ({ id: r.id, number: r.invoice_no }));
