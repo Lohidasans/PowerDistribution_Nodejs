@@ -86,7 +86,7 @@ const getSalesReport = async (req, res) => {
         /* ---------------- WHERE SQL ---------------- */
         const replacements = {};
         let baseWhereSql = ` 1=1 AND t.deleted_at IS NULL
-            AND t.is_active = true `;
+             `;
 
         baseWhereSql += dateFilter(
             { from_date, to_date, date_filter },
