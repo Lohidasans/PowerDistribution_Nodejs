@@ -93,6 +93,7 @@ const getSalesInvoiceReport = async (req, res) => {
           sib.branch_id,
           sib.net_total,
           sib.subtotal_amount,
+          sib.is_active,
           sib.cgst_amount,
           sib.sgst_amount,
           sib.igst_amount,
@@ -144,6 +145,7 @@ const getSalesInvoiceReport = async (req, res) => {
 
       SELECT
         fi.id,
+        fi.is_active,
         fi.invoice_no,
         fi.invoice_date,
         c.customer_name,
