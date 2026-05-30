@@ -565,6 +565,14 @@ const listCustomers = async (req, res) => {
         ${branch_id ? 'AND sib.branch_id = :branch_id' : ''}
 
       WHERE c.deleted_at IS NULL
+      AND EXISTS (
+        SELECT 1
+        FROM sales_invoice_bills invoice
+        WHERE invoice.customer_id = c.id
+          AND invoice.deleted_at IS NULL
+          AND invoice.status = 'Invoice'
+          AND invoice.is_active = true
+      )
     `;
 
     const replacements = {};
@@ -636,7 +644,7 @@ const listCustomers = async (req, res) => {
       is_online: customer.is_online || null,
       branch_id: customer.branch_id || null,
       branch: customer.branch || null,
-      purchase_amount: parseFloat(customer.purchase_amount || 0).toFixed(2),
+      purchase_amount: customer.purchase_amount === null ? null : parseFloat(customer.purchase_amount).toFixed(2),
       scheme_details: customer.has_scheme ? 'Yes' : 'No',
       created_at: customer.created_at
     }));
