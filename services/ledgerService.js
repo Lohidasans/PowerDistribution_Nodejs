@@ -97,7 +97,7 @@ const bulkCreate = async (req, res) => {
 // List all Ledgers with optional search and filters
 const list = async (req, res) => {
   try {
-    const { page = 1, limit = 10, search, ledger_group_id, branch_id } = req.query;
+    const { page = 1, limit = 10, search, ledger_group_id, branch_id, bill_type_id } = req.query;
     const offset = (page - 1) * limit;
 
     let whereConditions = ["l.deleted_at IS NULL"];
@@ -116,6 +116,21 @@ const list = async (req, res) => {
     if (branch_id) {
       whereConditions.push("l.branch_id = :branch_id");
       replacements.branch_id = branch_id;
+    }
+
+     // ===========================
+    // ADVANCE RECEIPT RESTRICTION
+    // ===========================
+    if (Number(bill_type_id) === 3) {
+      whereConditions.push(`
+        NOT EXISTS (
+          SELECT 1
+          FROM voucher_receipts vr
+          WHERE vr.account_id = l.id
+            AND vr.bill_type_id = 3
+            AND vr.deleted_at IS NULL
+        )
+      `);
     }
 
     const whereClause = whereConditions.join(" AND ");
