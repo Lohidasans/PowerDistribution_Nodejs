@@ -1010,10 +1010,19 @@ const listStockTransfers = async (req, res) => {
       branch_to,
       from_date,
       to_date,
+      branch_id, 
     } = req.query;
 
     // BASE WHERE WITH BRANCH FILTERS (FOR SUMMARY COUNTS)
     const baseWhere = { deleted_at: null };
+
+    // Branch Admin Filter
+    if (branch_id) {
+      baseWhere[Op.or] = [
+        { branch_from: parseInt(branch_id) },
+        { branch_to: parseInt(branch_id) },
+      ];
+    }
 
     if (branch_from) baseWhere.branch_from = parseInt(branch_from);
     if (branch_to) baseWhere.branch_to = parseInt(branch_to);
