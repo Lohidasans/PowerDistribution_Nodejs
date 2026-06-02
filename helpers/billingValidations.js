@@ -189,7 +189,7 @@ const validateCashPayment = (payments, panNo) => {
         .filter(p => p.payment_mode?.toLowerCase() === 'cash')
         .reduce((sum, p) => sum + (Number(p.amount_received) || 0), 0);
 
-    if (totalCash >= 200000 && !panNo) {
+    if (totalCash >= 200000 && !panNo?.trim()) {
         throw new ValidationError(
             'PAN card is required for cash payments of ₹2,00,000 or more'
         );
