@@ -107,7 +107,7 @@ const createOrder = async (req, res) => {
             if (!productItem) throw new Error("ProductItem not Found");
             if (productItem.quantity < quantity) throw new Error("Insufficient product quantity");            
 
-            orderSubTotal += Number(total_amount || 0);
+            orderSubTotal += Number(amount || 0);
             orderTaxAmount += Number(tax || 0);
 
             orderItemsPayload.push({
@@ -163,7 +163,7 @@ const createOrder = async (req, res) => {
                 subtotal: orderSubTotal,
                 tax_amount: orderTaxAmount,
                 discount_amount,
-                total_amount: orderSubTotal - Number(discount_amount || 0),
+                total_amount: orderSubTotal + orderTaxAmount - Number(discount_amount || 0),
             },
             { transaction }
         );
