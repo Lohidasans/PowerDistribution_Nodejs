@@ -695,7 +695,7 @@ const getAllQuotationRequests = async (req, res) => {
 
     // SCORE CARDS (DYNAMIC & FILTER-AWARE)
     let sentWhereSql = `WHERE q.deleted_at IS NULL`;
-    let receivedWhereSql = `WHERE vq.deleted_at IS NULL AND vq.status = 'accepted'`;
+    let receivedWhereSql = `WHERE vq.deleted_at IS NULL AND vq.status IN ('accepted','received')`;
     const scoreReplacements = {};
     
     if (branch_id) {
@@ -754,7 +754,7 @@ const getAllQuotationRequests = async (req, res) => {
     let data, total;
     if (type === "received") {
       // ---------------- RECEIVED ----------------
-      let vqWhereSql = `WHERE vq.deleted_at IS NULL AND vq.status = 'accepted'`;
+      let vqWhereSql = `WHERE vq.deleted_at IS NULL AND vq.status IN ('accepted', 'received') `;
       const vqReplacements = {};
       
       if (branch_id) {
@@ -1379,34 +1379,31 @@ const submitVendorRates = async (req, res) => {
         quotation_id: vendorQuotation.quotation_id,
         vendor_quotation_id: id,
 
+        // READ ONLY
         material_type_id: baseItem.material_type_id,
         category_id: baseItem.category_id,
         subcategory_id: baseItem.subcategory_id,
-
-        ref_no: baseItem.ref_no,
-        material_price_per_g: baseItem.material_price_per_g,
         purity: baseItem.purity,
         type: baseItem.type,
-        quantity: baseItem.quantity,
-
-        total_wt_in_g: baseItem.total_wt_in_g,
-        bag_wt_in_g: baseItem.bag_wt_in_g,
         gross_wt_in_g: baseItem.gross_wt_in_g,
-        stone_wt_in_g: baseItem.stone_wt_in_g,
-
-        others: baseItem.others,
-        others_wt_in_g: baseItem.others_wt_in_g,
-        others_value: baseItem.others_value,
-
         net_wt_in_g: baseItem.net_wt_in_g,
 
-        purchase_rate: item.purchase_rate || null,
-        stone_rate: item.stone_rate || null,
-        making_charge: item.making_charge || null,
-        rate_per_g: item.rate_per_g || null,
-
-        amount: item.amount || null,
-        vendor_remarks: item.vendor_remarks || null,
+        // EDITABLE BY VENDOR
+        ref_no: item.ref_no ?? baseItem.ref_no,
+        material_price_per_g: item.material_price_per_g ?? baseItem.material_price_per_g,
+        quantity: item.quantity ?? baseItem.quantity,
+        total_wt_in_g: item.total_wt_in_g ?? baseItem.total_wt_in_g,
+        bag_wt_in_g: item.bag_wt_in_g ?? baseItem.bag_wt_in_g,
+        stone_wt_in_g: item.stone_wt_in_g ?? baseItem.stone_wt_in_g,
+        others: item.others ?? baseItem.others,
+        others_wt_in_g: item.others_wt_in_g ?? baseItem.others_wt_in_g,
+        others_value: item.others_value ?? baseItem.others_value,
+        purchase_rate: item.purchase_rate ?? baseItem.purchase_rate,
+        stone_rate: item.stone_rate ?? baseItem.stone_rate,
+        making_charge: item.making_charge ?? baseItem.making_charge,
+        rate_per_g: item.rate_per_g ?? baseItem.rate_per_g,
+        amount: item.amount ?? baseItem.amount,
+        vendor_remarks: item.vendor_remarks ?? null,
       };
     });
 
@@ -1509,7 +1506,7 @@ const getAllVendorQuotations = async (req, res) => {
       whereSql += ` AND vq.status = 'pending'`;
     } else if (status === "sent") {
       // Vendor accepted / submitted
-      whereSql += ` AND vq.status = 'accepted'`;
+      whereSql += ` AND vq.status IN ('accepted', 'received')`;
     } else if (status === "rejected") {
       // Vendor rejected
       whereSql += ` AND vq.status = 'rejected'`;
@@ -1541,7 +1538,7 @@ const getAllVendorQuotations = async (req, res) => {
     const scoreCardQuery = `
       SELECT
         COUNT(*) FILTER (WHERE vq.status = 'pending')  AS received_count,
-        COUNT(*) FILTER (WHERE vq.status = 'accepted') AS sent_count,
+        COUNT(*) FILTER (WHERE vq.status IN ('accepted','received')) AS sent_count,
         COUNT(*) FILTER (WHERE vq.status = 'rejected') AS rejected_count
       FROM vendor_quotations vq
       WHERE vq.deleted_at IS NULL
@@ -1594,10 +1591,16 @@ const getAllVendorQuotations = async (req, res) => {
       LEFT JOIN quotations q 
         ON q.id = vq.quotation_id
 
-      LEFT JOIN quotation_items qi 
-        ON qi.quotation_id = q.id
-        AND qi.vendor_quotation_id IS NULL
-        AND qi.deleted_at IS NULL
+      LEFT JOIN quotation_items qi
+        ON qi.deleted_at IS NULL
+        AND (
+              (vq.status IN ('accepted','received')
+                AND qi.vendor_quotation_id = vq.id)
+              OR
+              (vq.status = 'pending'
+                AND qi.quotation_id = q.id
+                AND qi.vendor_quotation_id IS NULL)
+            )
 
       LEFT JOIN subcategories sc ON sc.id = qi.subcategory_id
 
