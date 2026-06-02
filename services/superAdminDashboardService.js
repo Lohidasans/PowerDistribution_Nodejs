@@ -898,32 +898,32 @@ const getStockKpiSummary = async (req, res) => {
                UPDATED WEIGHT
                ========================================= */
 
-            -- CURRENT STOCK
-            COALESCE(SUM(pid.quantity * pid.gross_weight), 0)
+            /* CURRENT STOCK */
+              COALESCE(SUM(pid.gross_weight), 0)
 
-            -- OFFLINE SOLD
-            + COALESCE(
-                SUM(
-                  CASE
-                    WHEN sib.status = 'Invoice'
-                    THEN sii.quantity * sii.gross_weight
-                    ELSE 0
-                  END
-                ),
-              0)
+              /* OFFLINE SOLD */
+              + COALESCE(
+                  SUM(
+                    CASE
+                      WHEN sib.status = 'Invoice'
+                      THEN sii.gross_weight
+                      ELSE 0
+                    END
+                  ),
+                0)
 
-            -- ONLINE ORDER SOLD
-            + COALESCE(
-                SUM(
-                  CASE
-                    WHEN oi.item_status != 'Cancelled'
-                    THEN oi.quantity * pid.gross_weight
-                    ELSE 0
-                  END
-                ),
-              0)
+              /* ONLINE ORDER SOLD */
+              + COALESCE(
+                  SUM(
+                    CASE
+                      WHEN oi.item_status != 'Cancelled'
+                      THEN pid.gross_weight
+                      ELSE 0
+                    END
+                  ),
+                0)
 
-            AS total_updated_weight,
+              AS total_updated_weight,
 
             /* =========================================
                UPDATED QTY
