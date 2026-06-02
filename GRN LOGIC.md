@@ -54,8 +54,8 @@ Yet Update = Order - Updated
 
 
 
-
-KPI	 Meaning
+Super admin dashboard:
+KPI	 Meaning(it will calculate the transferred pdt also)
 Total Purchase --	Original GRN Purchase
 Updated    --	Created Products
 Yet To Update   ---	Remaining

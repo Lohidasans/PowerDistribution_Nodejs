@@ -1020,6 +1020,10 @@ const getStockKpiSummary = async (req, res) => {
             AND p.deleted_at IS NULL
         )
       ` : ``}
+    -- to include only the particular branch pdt not the transferred pdt
+    -- ${branch_id ? `
+    --     AND g.branch_id = :branch_id
+    --  ` : ``}
 
       ${grnDateCondition}
     `;
