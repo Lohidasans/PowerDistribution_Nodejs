@@ -410,6 +410,10 @@ const getAllGrns = async (req, res) => {
     //1. SUMMARY QUERY (NO STATUS FILTER)
     const summaryConditions = [`g.deleted_at IS NULL`];
 
+    if (!isHeadOffice) {
+      summaryConditions.push(`g.branch_id = :branch_id`);
+    }
+
     if (vendor_id) {
       summaryConditions.push(`g.vendor_id = :vendor_id`);
       replacements.vendor_id = vendor_id;
@@ -447,6 +451,10 @@ const getAllGrns = async (req, res) => {
 
     // 2. LIST QUERY (WITH STATUS FILTER)
     const whereConditions = [`g.deleted_at IS NULL`];
+
+    if (!isHeadOffice) {
+      whereConditions.push(`g.branch_id = :branch_id`);
+    }
 
     if (vendor_id) {
       whereConditions.push(`g.vendor_id = :vendor_id`);
@@ -539,23 +547,34 @@ const getAllGrns = async (req, res) => {
       LEFT JOIN (
         SELECT
           p.grn_id,
-          SUM(pid.quantity * pid.gross_weight)     --CURRENT STOCK
-            + COALESCE(SUM(                    --OFFLINE BILL SOLD
-              CASE
-                WHEN sib.status = 'Invoice'
-                THEN sii.quantity * sii.gross_weight
-                ELSE 0
-              END
-            ),0)
-          + COALESCE(SUM(oi.quantity * pid.gross_weight),0) AS total_updated_weight,   --ONLINE ORDER SOLD
 
-          SUM(pid.quantity) + COALESCE(SUM(   --QTY
-              CASE
-                WHEN sib.status = 'Invoice'
-                THEN sii.quantity
-                ELSE 0
-              END
-            ),0) + COALESCE(SUM(oi.quantity),0) AS total_updated_qty
+          /* UPDATED WEIGHT */
+          COALESCE(SUM(pid.gross_weight), 0)
+          +
+          COALESCE(SUM(
+            CASE
+              WHEN sib.status = 'Invoice'
+              THEN sii.gross_weight
+              ELSE 0
+            END
+          ), 0)
+          +
+          COALESCE(SUM(
+            oi.quantity * pid.gross_weight
+          ), 0) AS total_updated_weight,
+
+          /* UPDATED QTY */
+          COALESCE(SUM(pid.quantity), 0)
+          +
+          COALESCE(SUM(
+            CASE
+              WHEN sib.status = 'Invoice'
+              THEN sii.quantity
+              ELSE 0
+            END
+          ), 0)
+          +
+          COALESCE(SUM(oi.quantity), 0) AS total_updated_qty
 
         FROM products p
 
@@ -563,12 +582,8 @@ const getAllGrns = async (req, res) => {
         LEFT JOIN sales_invoice_bill_items sii ON sii.product_item_detail_id = pid.id AND sii.deleted_at IS NULL AND sii.is_returned = false
         LEFT JOIN sales_invoice_bills sib ON sib.id = sii.invoice_bill_id AND sib.deleted_at IS NULL
         LEFT JOIN order_items oi ON oi.product_item_id = pid.id AND oi.deleted_at IS NULL AND oi.item_status != 'Cancelled'
-
+        
         WHERE p.deleted_at IS NULL
-          AND (
-            (:isHeadOffice = true)
-            OR p.branch_id = :branch_id
-          )
 
         GROUP BY p.grn_id
       ) pi ON pi.grn_id = g.id

@@ -28,6 +28,32 @@
 GRN visibility is based on the **branch that created the GRN**, not on the current stock location after transfers.
 
 
+-------************--------
+
+
+## Business Rule:
+Super Admin
+    See ALL GRNs.
+    Can filter by branch dropdown.
+
+
+Branch Admin (Thoraipakkam = 11)
+    See ONLY GRNs created for branch 11.
+    Should NOT see HO GRNs.
+    Should NOT see HO GRNs just because products were transferred to branch 11.
+
+
+Order      = GRN quantity received
+Updated    = Products created from GRN
+Yet Update = Order - Updated
+
+
+-------************--------
+
+
+
+
+
 
 KPI	 Meaning
 Total Purchase --	Original GRN Purchase
