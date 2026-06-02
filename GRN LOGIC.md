@@ -1,9 +1,31 @@
-GRN created in HO (branch 1)
-↓
-Products transferred to branch 19
-↓
-Branch dashboard should show purchase value
+## GRN Visibility Logic
 
+### Scenario
+- Super Admin (HO Branch) creates **GRN A** with a total quantity of **20**.
+- Products created under GRN A:
+  - Product A - Qty 10
+  - Product B - Qty 10
+
+### Stock Movement
+- Product A (Qty 10) remains in the HO branch.
+- Product B (Qty 10) is transferred from the HO branch to the Anna Nagar branch.
+
+### GRN List Visibility
+
+#### Super Admin
+- When viewing the GRN list, the original GRN should still display:
+  - Product A - Qty 10
+  - Product B - Qty 10
+- Stock transfers should **not affect the product quantities shown in the original GRN**.
+- The GRN represents the original goods received, regardless of subsequent stock movements.
+
+#### Branch Admin (Anna Nagar)
+- If the Anna Nagar branch admin creates their own GRN (e.g., GRN B), they should only be able to view:
+  - GRNs created for the Anna Nagar branch.
+- They should **not see GRNs created by the HO branch**, even if stock from those GRNs was later transferred to their branch.
+
+### Key Rule
+GRN visibility is based on the **branch that created the GRN**, not on the current stock location after transfers.
 
 
 
