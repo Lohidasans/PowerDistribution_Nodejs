@@ -2,9 +2,11 @@ const { models, sequelize } = require("../models/index");
 const commonService = require("./commonService");
 const message = require("../constants/en.json");
 const { generateDeliveryChallanNoFunc } = require("../utils/commonfun");
+const { reduceDeliveryChallanStock, restoreDeliveryChallanStock }= require("../helpers/deliveryChellanHelper");
 
 const createDeliveryChellan = async (req, res) => {
   const t = await sequelize.transaction();
+
   try {
     const { items = [], ...payload } = req.body;
 
@@ -19,8 +21,7 @@ const createDeliveryChellan = async (req, res) => {
       await t.rollback();
       return commonService.badRequest(
         res,
-        message.delivery_chellan?.required ||
-          "delivery_challan_no, date, delivery_challan_type_id, vendor_id are required"
+        "delivery_challan_no, date, delivery_challan_type_id and vendor_id are required"
       );
     }
 
@@ -28,27 +29,25 @@ const createDeliveryChellan = async (req, res) => {
       await t.rollback();
       return commonService.badRequest(
         res,
-        message.delivery_chellan_item?.arrayRequired ||
-          "Items array required"
+        "Items array is required"
       );
     }
 
-    for (const it of items) {
-      if (!it.sku_id || !it.quantity || it.amount === undefined) {
+    for (const item of items) {
+      if (!item.product_id ||!item.product_item_id || !item.sku_id || !item.quantity || item.amount === undefined) {
         await t.rollback();
         return commonService.badRequest(
           res,
-          message.delivery_chellan_item?.required ||
-            "sku_id, quantity, amount are required in items"
+          "product_id, product_item_id, sku_id, quantity and amount are required"
         );
       }
     }
 
-    /* ================= CHECK DUPLICATE ================= */
+    /* ================= DUPLICATE CHECK ================= */
 
     const existing = await models.DeliveryChellan.findOne({
-      where: { delivery_challan_no: payload.delivery_challan_no },
-      paranoid: false, // include soft-deleted
+      where: { delivery_challan_no: payload.delivery_challan_no,},
+      paranoid: false,
       transaction: t,
     });
 
@@ -56,12 +55,10 @@ const createDeliveryChellan = async (req, res) => {
 
     if (existing) {
       if (existing.deleted_at) {
-        // 🔁 Restore soft-deleted record
         await existing.restore({ transaction: t });
-        await existing.update(payload, { transaction: t });
+        await existing.update(payload, { transaction: t,});
         deliveryChellan = existing;
       } else {
-        // ❌ Active duplicate
         await t.rollback();
         return commonService.badRequest(
           res,
@@ -69,33 +66,38 @@ const createDeliveryChellan = async (req, res) => {
         );
       }
     } else {
-      // ✅ Create new header
       deliveryChellan = await models.DeliveryChellan.create(payload, {
-        transaction: t,
+          transaction: t,
+        });
+    }
+
+    /* ================= STOCK VALIDATION & REDUCTION ================= */
+
+    const itemsToCreate = [];
+
+    for (const item of items) {
+      await reduceDeliveryChallanStock(item.product_item_id, item.quantity, deliveryChellan.id, t );
+
+      itemsToCreate.push({
+        delivery_chellan_id: deliveryChellan.id,
+
+        product_id: item.product_id,
+        product_item_id: item.product_item_id,
+
+        sku_id: item.sku_id,
+        product_description:
+          item.product_description || null,
+
+        quantity: item.quantity,
+        weight: item.weight || 0,
+        amount: item.amount,
       });
     }
 
-    /* ================= ITEMS ================= */
-
-    // Remove old items (if restored)
-    await models.DeliveryChellanItem.destroy({
-      where: { delivery_chellan_id: deliveryChellan.id },
-      transaction: t,
-    });
-
-    const itemsToCreate = items.map((it) => ({
-      delivery_chellan_id: deliveryChellan.id,
-      sku_id: it.sku_id,
-      product_description: it.product_description || null,
-      quantity: it.quantity,
-      weight: it.weight ?? null,
-      amount: it.amount,
-    }));
-
     const createdItems = await models.DeliveryChellanItem.bulkCreate(
-      itemsToCreate,
-      { returning: true, transaction: t }
-    );
+        itemsToCreate,
+        { returning: true, transaction: t,}
+      );
 
     await t.commit();
 
@@ -106,7 +108,8 @@ const createDeliveryChellan = async (req, res) => {
   } catch (err) {
     await t.rollback();
 
-    // ✅ Clean unique constraint message
+    console.error(err);
+     // ✅ Clean unique constraint message
     if (err?.name === "SequelizeUniqueConstraintError") {
       return commonService.badRequest(
         res,
@@ -332,65 +335,102 @@ const updateDeliveryChellan = async (req, res) => {
     req.params.id,
     res
   );
+
   if (!entity) return;
 
   const t = await sequelize.transaction();
+
   try {
     const { items, ...payload } = req.body;
 
-    // update header
-    await entity.update(payload, { transaction: t });
+    /* ================= UPDATE HEADER ================= */
+
+    await entity.update(payload, {
+      transaction: t,
+    });
 
     let updatedItems = null;
 
-    // if items provided, replace existing items
     if (items !== undefined) {
       if (!Array.isArray(items)) {
         await t.rollback();
-        return commonService.badRequest(res, "Items must be an array");
-      }
 
-      // validate items (optional)
-      for (const it of items) {
-        if (!it.sku_id || !it.quantity || it.amount === undefined) {
-          await t.rollback();
-          return commonService.badRequest(
-            res,
-            "sku_id, quantity, amount are required in items"
-          );
-        }
-      }
+        return commonService.badRequest(
+          res,
+          "Items must be an array"
+        );
+      } 
 
-      // soft delete existing items (paranoid destroy)
+      const oldItems =
+        await models.DeliveryChellanItem.findAll({
+          where: {
+            delivery_chellan_id: entity.id,
+          },
+          transaction: t,
+        });
+
+      /* ================= RESTORE OLD STOCK ================= */
+      for (const oldItem of oldItems) {
+        await restoreDeliveryChallanStock(
+          oldItem.product_item_id,
+          oldItem.quantity,
+          t
+        );
+      }
+    
+      /* ================= DELETE OLD ITEMS ================= */
+
       await models.DeliveryChellanItem.destroy({
-        where: { delivery_chellan_id: entity.id },
+        where: {
+          delivery_chellan_id: entity.id,
+        },
         transaction: t,
       });
 
-      // recreate new items
-      const itemsToCreate = items.map((it) => ({
-        delivery_chellan_id: entity.id,
-        sku_id: it.sku_id,
-        product_description: it.product_description || null,
-        quantity: it.quantity,
-        weight: it.weight ?? null,
-        amount: it.amount,
-      }));
+      /* ================= CREATE NEW ITEMS ================= */
 
-      updatedItems = await models.DeliveryChellanItem.bulkCreate(itemsToCreate, {
-        returning: true,
-        transaction: t,
-      });
+      const itemsToCreate = [];
+
+      for (const item of items) {
+        if (!item.product_id || !item.product_item_id || !item.sku_id || !item.quantity || item.amount === undefined) {
+          throw new Error("product_id, product_item_id, sku_id, quantity and amount are required");
+        }
+
+        await reduceDeliveryChallanStock(item.product_item_id, item.quantity, entity.id, t);
+
+        itemsToCreate.push({
+          delivery_chellan_id: entity.id,
+          product_id: item.product_id,
+          product_item_id: item.product_item_id,
+          sku_id: item.sku_id,
+          product_description: item.product_description || null,
+          quantity: item.quantity,
+          weight: item.weight || 0,
+          amount: item.amount,
+        });
+      }
+
+      updatedItems =
+        await models.DeliveryChellanItem.bulkCreate(
+          itemsToCreate,
+          {
+            returning: true,
+            transaction: t,
+          }
+        );
     }
 
     await t.commit();
 
     return commonService.okResponse(res, {
       delivery_chellan: entity,
-      items: updatedItems, // null if items not sent
+      items: updatedItems,
     });
   } catch (err) {
     await t.rollback();
+
+    console.error(err);
+
     return commonService.handleError(res, err);
   }
 };
@@ -422,6 +462,7 @@ const updateDeliveryChellanClose = async (req, res) => {
     return commonService.handleError(res, err);
   }
 };
+
 const deleteDeliveryChellan = async (req, res) => {
   const entity = await commonService.findById(
     models.DeliveryChellan,
@@ -455,6 +496,7 @@ const deleteDeliveryChellanItem = async (req, res) => {
     return commonService.handleError(res, err);
   }
 };
+
 const generateDeliveryChallanNo = async (req, res) => {
   try {
     const code = await generateDeliveryChallanNoFunc();
