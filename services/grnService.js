@@ -549,32 +549,23 @@ const getAllGrns = async (req, res) => {
           p.grn_id,
 
           /* UPDATED WEIGHT */
-          COALESCE(SUM(pid.gross_weight), 0)
-          +
-          COALESCE(SUM(
-            CASE
-              WHEN sib.status = 'Invoice'
-              THEN sii.gross_weight
-              ELSE 0
-            END
-          ), 0)
-          +
-          COALESCE(SUM(
-            oi.quantity * pid.gross_weight
-          ), 0) AS total_updated_weight,
+           SUM(pid.quantity * pid.gross_weight)     --CURRENT STOCK
+            + COALESCE(SUM(                    --OFFLINE BILL SOLD
+              CASE
+                WHEN sib.status = 'Invoice'
+                THEN sii.quantity * sii.gross_weight
+                ELSE 0
+              END
+            ),0)
+          + COALESCE(SUM(oi.quantity * pid.gross_weight),0) AS total_updated_weight,   --ONLINE ORDER SOLD
 
-          /* UPDATED QTY */
-          COALESCE(SUM(pid.quantity), 0)
-          +
-          COALESCE(SUM(
-            CASE
-              WHEN sib.status = 'Invoice'
-              THEN sii.quantity
-              ELSE 0
-            END
-          ), 0)
-          +
-          COALESCE(SUM(oi.quantity), 0) AS total_updated_qty
+          SUM(pid.quantity) + COALESCE(SUM(   --QTY
+              CASE
+                WHEN sib.status = 'Invoice'
+                THEN sii.quantity
+                ELSE 0
+              END
+            ),0) + COALESCE(SUM(oi.quantity),0) AS total_updated_qty
 
         FROM products p
 
