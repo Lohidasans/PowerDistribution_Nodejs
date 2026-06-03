@@ -441,21 +441,41 @@ const updateDeliveryChellanClose = async (req, res) => {
     req.params.id,
     res
   );
+
   if (!entity) return;
 
   const t = await sequelize.transaction();
+
   try {
     const { status_id } = req.body;
 
-    // update only status_id
-    await entity.update({ status_id }, { transaction: t });
+    // Only restore when moving to CLOSED
+    if (Number(status_id) === 2 && Number(entity.status_id) !== 2) {
+      const dcItems = await models.DeliveryChellanItem.findAll({
+          where: {
+            delivery_chellan_id: entity.id,
+          },
+          transaction: t,
+        });
 
-   
+      for (const item of dcItems) {
+        await restoreDeliveryChallanStock(item.product_item_id, item.quantity, t);
+      }
+    }
+
+    await entity.update(
+      {
+        status_id,
+      },
+      {
+        transaction: t,
+      }
+    );
+
     await t.commit();
 
     return commonService.okResponse(res, {
       delivery_chellan: entity,
-    
     });
   } catch (err) {
     await t.rollback();
