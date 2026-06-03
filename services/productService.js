@@ -2741,7 +2741,7 @@ const getProductGrnSummary = async (req, res) => {
       SELECT
         p.ref_no_id,      
         COALESCE(SUM(pid.quantity), 0) AS current_qty, /* CURRENT STOCK */        
-        COALESCE(SUM(pid.gross_weight), 0) AS current_weight, /* CURRENT STOCK WEIGHT */
+        COALESCE(SUM(pid.gross_weight * pid.quantity), 0) AS current_weight, /* CURRENT STOCK WEIGHT */
 
         COALESCE(SUM(
           CASE
@@ -2756,7 +2756,7 @@ const getProductGrnSummary = async (req, res) => {
           CASE
             WHEN sib.status = 'Invoice'
               AND sii.is_returned = false
-            THEN pid.gross_weight
+            THEN sii.quantity * pid.gross_weight
             ELSE 0
           END
         ), 0) AS invoice_sold_weight,  /* SOLD INVOICE WEIGHT */
@@ -2772,7 +2772,7 @@ const getProductGrnSummary = async (req, res) => {
         COALESCE(SUM(
           CASE
             WHEN oi.item_status != 'Cancelled'
-            THEN pid.gross_weight
+            THEN oi.quantity * pid.gross_weight
             ELSE 0
           END
         ), 0) AS online_order_sold_weight    /* SOLD ONLINE ORDER WEIGHT */
@@ -2810,7 +2810,7 @@ const getProductGrnSummary = async (req, res) => {
 
     return commonService.okResponse(res, {
       total_products_added_qty: totalProductsAddedQty,
-      total_products_added_gm: Number(currentWeight.toFixed(3)),
+      total_products_added_gm: Number(totalProductsAddedGm.toFixed(3)),
       breakdown: {
         current_qty: currentQty,
         invoice_sold_qty: invoiceSoldQty,
