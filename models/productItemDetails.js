@@ -105,6 +105,20 @@ module.exports = (sequelize, DataTypes) => {
         defaultValue: false,
         allowNull: false,
       },
+      delivery_challan_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+      },
+      is_delivery_challan_issued: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+      },
+      delivery_challan_qty: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 0,
+      },
       //Source branch will set to TRANSFERRED when qty becomes zero while transferring the pdt
       stock_out_reason: {
         type: DataTypes.ENUM(

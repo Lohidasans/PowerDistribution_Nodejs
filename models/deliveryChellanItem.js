@@ -1,52 +1,62 @@
-module.exports = (sequelize, DataTypes) => {
-  const DeliveryChellanItem = sequelize.define(
-    "delivery_chellan_item",
-    {
-      id: {
-        allowNull: false,
-        autoIncrement: true,
-        primaryKey: true,
-        type: DataTypes.INTEGER,
-      },
+  module.exports = (sequelize, DataTypes) => {
+    const DeliveryChellanItem = sequelize.define(
+      "delivery_chellan_item",
+      {
+        id: {
+          allowNull: false,
+          autoIncrement: true,
+          primaryKey: true,
+          type: DataTypes.INTEGER,
+        },
 
-      delivery_chellan_id: {
-        type: DataTypes.INTEGER,
-        allowNull: false,
-      },
+        delivery_chellan_id: {
+          type: DataTypes.INTEGER,
+          allowNull: false,
+        },
 
-      sku_id: {
-        type: DataTypes.STRING,
-        allowNull: false,
-      },
+        sku_id: {
+          type: DataTypes.STRING,
+          allowNull: false,
+        },
 
-      product_description: {
-        type: DataTypes.TEXT,
-        allowNull: true,
-      },
+        product_id: {
+          type: DataTypes.INTEGER,
+          allowNull: true,
+        },
 
-      quantity: {
-        type: DataTypes.INTEGER,
-        allowNull: false,
-      },
+        product_item_id: {
+          type: DataTypes.INTEGER,
+          allowNull: true,
+        },
 
-      weight: {
-        type: DataTypes.DECIMAL(10, 3), // supports kg/grams
-        allowNull: true,
-      },
+        product_description: {
+          type: DataTypes.TEXT,
+          allowNull: true,
+        },
 
-      amount: {
-        type: DataTypes.DECIMAL(15, 2),
-        allowNull: false,
-      },
-    },
-    {
-      timestamps: true,
-      createdAt: "created_at",
-      updatedAt: "updated_at",
-      paranoid: true,
-      deletedAt: "deleted_at",
-    }
-  );
+        quantity: {
+          type: DataTypes.INTEGER,
+          allowNull: false,
+        },
 
-  return DeliveryChellanItem;
-};
+        weight: {
+          type: DataTypes.DECIMAL(10, 3), // supports kg/grams
+          allowNull: true,
+        },
+
+        amount: {
+          type: DataTypes.DECIMAL(15, 2),
+          allowNull: false,
+        },
+      },
+      {
+        timestamps: true,
+        createdAt: "created_at",
+        updatedAt: "updated_at",
+        paranoid: true,
+        deletedAt: "deleted_at",
+      }
+    );
+
+    return DeliveryChellanItem;
+  };
