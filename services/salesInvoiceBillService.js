@@ -1558,30 +1558,146 @@ const exportSalesInvoicesExcel = async (req, res) => {
   }
 };
 
-// Toggle active status for sales invoice
+// // Toggle active status for sales invoice
 const toggleSalesInvoiceActive = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { is_active } = req.body;
+    const t = await sequelize.transaction();
 
-    if (typeof is_active !== 'boolean') {
-      return commonService.badRequest(res, "is_active must be a boolean value");
+    try {
+        const { id } = req.params;
+        const { is_active } = req.body;
+
+        if (typeof is_active !== "boolean") {
+            await t.rollback();
+            return commonService.badRequest(res, "is_active must be boolean");
+        }
+
+        const invoice = await models.SalesInvoiceBill.findByPk(id,
+                { transaction: t }
+            );
+
+        if (!invoice) {
+            await t.rollback();
+            return commonService.notFound(res, "Sales invoice not found");
+        }
+
+        // Prevent reactivation
+        if (is_active === true) {
+            await t.rollback();
+            return commonService.badRequest(
+                res, "Deactivated invoice cannot be activated again"
+            );
+        }
+
+        if (is_active === false) {
+            // ======================
+            // RESTORE STOCK
+            // ======================
+            if (invoice.stock_deducted) {
+                const invoiceItems =
+                    await models.SalesInvoiceBillItem.findAll({
+                        where: {
+                            invoice_bill_id:
+                                invoice.id
+                        },
+                        transaction: t
+                    });
+
+                await restoreStockForInvoice(invoiceItems, t);
+                await invoice.update(
+                    {
+                        stock_deducted: false
+                    },
+                    { transaction: t }
+                );
+            }
+
+            // ======================
+            // UNLOCK ADJUSTMENTS
+            // ======================
+            const adjustments =
+                await models.SalesInvoiceAdjustment.findAll({
+                    where: {
+                        sales_invoice_id:
+                            invoice.id
+                    },
+                    transaction: t,
+                    raw: true
+                });
+
+            await unlockBillAdjustmentFlags(adjustments, t);
+
+          // ======================
+          // Restore Advance
+          // ======================
+          const advancePayments =
+            await models.Payment.findAll({
+                where: {
+                    invoice_bill_id: invoice.id,  // Get all advance payments used in this invoice
+                    payment_mode: "Advance"
+                },
+                transaction: t
+            });
+
+          const receiptNos = advancePayments.map(x => x.transaction_id).filter(Boolean);
+          
+          // Fetch Voucher Receipts
+          const receipts = await models.VoucherReceipt.findAll({
+                where: {
+                    receipt_no: receiptNos,
+                    bill_type_id: 3
+                },
+                transaction: t
+            });
+
+          // Restore customer wallet
+          for (const receipt of receipts) {
+            const customer = await models.Customer.findOne({
+                  where: {
+                      ledger_id: receipt.account_id
+                  }, transaction: t
+              });
+
+            if (customer) {
+              await customer.update(
+                  {
+                      wallet_advance_amount:
+                          Number(customer.wallet_advance_amount || 0)
+                          + Number(receipt.amount || 0)
+                  }, { transaction: t }
+              );
+            }
+          }
+
+          // ======================
+          // MAKE RECEIPTS REUSABLE
+          // ======================
+          await models.VoucherReceipt.update(
+          {
+            is_advance_used: false
+          },
+          {
+            where: { receipt_no: receiptNos }, transaction: t
+          });
+
+          await invoice.update(
+            {
+                is_active: false,
+            },
+            { transaction: t }
+          );
+        }
+
+        await t.commit();
+
+        return commonService.okResponse(res, { message: "Invoice deactivated successfully" });
+
+    } catch (err) {
+        await t.rollback();
+        return commonService.handleError(
+            res,
+            err
+        );
     }
-
-    const invoice = await models.SalesInvoiceBill.findByPk(id);
-    if (!invoice) {
-      return commonService.notFound(res, "Sales invoice not found");
-    }
-
-    await invoice.update({ is_active });
-
-    return commonService.okResponse(res, {
-      message: "Sales invoice active status updated successfully",
-      is_active
-    });
-  } catch (err) {
-    return commonService.handleError(res, err);
-  }
 };
 
 // To fetch advance payments for a customer (for adjustment purposes in invoice creation)
