@@ -237,7 +237,7 @@ const unlockBillAdjustmentFlags = async (adjustments, transaction) => {
     for (const adj of adjustments) {
         if (!adj.reference_id) continue;
 
-        switch (adj.adjustment_type_id) {
+        switch (Number(adj.adjustment_type_id)) {
 
             case 1: // Sales Return
                 await models.SalesReturn.update(
@@ -250,7 +250,7 @@ const unlockBillAdjustmentFlags = async (adjustments, transaction) => {
                 break;
 
             case 2: // Old Jewel
-                await models.OldJewel.update(
+           await models.OldJewel.update(
                     { is_bill_adjusted: false, updated_at: new Date(), },
                     {
                         where: { id: adj.reference_id },

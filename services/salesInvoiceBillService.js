@@ -1558,7 +1558,7 @@ const exportSalesInvoicesExcel = async (req, res) => {
   }
 };
 
-// // Toggle active status for sales invoice
+// Toggle active status for sales invoice
 const toggleSalesInvoiceActive = async (req, res) => {
     const t = await sequelize.transaction();
 
@@ -1595,20 +1595,11 @@ const toggleSalesInvoiceActive = async (req, res) => {
             if (invoice.stock_deducted) {
                 const invoiceItems =
                     await models.SalesInvoiceBillItem.findAll({
-                        where: {
-                            invoice_bill_id:
-                                invoice.id
-                        },
-                        transaction: t
+                        where: { invoice_bill_id: invoice.id }, transaction: t
                     });
 
                 await restoreStockForInvoice(invoiceItems, t);
-                await invoice.update(
-                    {
-                        stock_deducted: false
-                    },
-                    { transaction: t }
-                );
+                await invoice.update({ stock_deducted: false }, { transaction: t });
             }
 
             // ======================
@@ -1616,15 +1607,13 @@ const toggleSalesInvoiceActive = async (req, res) => {
             // ======================
             const adjustments =
                 await models.SalesInvoiceAdjustment.findAll({
-                    where: {
-                        sales_invoice_id:
-                            invoice.id
-                    },
+                    where: { sales_invoice_id: invoice.id },
                     transaction: t,
                     raw: true
                 });
 
             await unlockBillAdjustmentFlags(adjustments, t);
+            console.log("ADJUSTMENTS BEFORE UNLOCK", JSON.stringify(adjustments, null, 2));
 
           // ======================
           // Restore Advance
@@ -1660,9 +1649,7 @@ const toggleSalesInvoiceActive = async (req, res) => {
             if (customer) {
               await customer.update(
                   {
-                      wallet_advance_amount:
-                          Number(customer.wallet_advance_amount || 0)
-                          + Number(receipt.amount || 0)
+                      wallet_advance_amount: Number(customer.wallet_advance_amount || 0) + Number(receipt.amount || 0)
                   }, { transaction: t }
               );
             }
@@ -1679,12 +1666,7 @@ const toggleSalesInvoiceActive = async (req, res) => {
             where: { receipt_no: receiptNos }, transaction: t
           });
 
-          await invoice.update(
-            {
-                is_active: false,
-            },
-            { transaction: t }
-          );
+          await invoice.update({is_active: false, }, { transaction: t });
         }
 
         await t.commit();
