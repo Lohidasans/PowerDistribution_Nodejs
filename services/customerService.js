@@ -853,7 +853,7 @@ const getCustomerTransactions = async (req, res) => {
         LEFT JOIN branches b
           ON b.id = i.branch_id AND b.deleted_at IS NULL
 
-        WHERE i.deleted_at IS NULL AND i.status = 'Invoice'
+        WHERE i.deleted_at IS NULL AND i.status = 'Invoice' AND i.is_active = true
         GROUP BY i.id
 
         UNION ALL
@@ -888,7 +888,7 @@ const getCustomerTransactions = async (req, res) => {
         LEFT JOIN branches b
           ON b.id = sr.branch_id AND b.deleted_at IS NULL
 
-        WHERE sr.deleted_at IS NULL AND sr.status = 'Printed'
+        WHERE sr.deleted_at IS NULL AND sr.status = 'Printed' AND sr.is_active = true
         GROUP BY sr.id
 
         UNION ALL
@@ -923,7 +923,7 @@ const getCustomerTransactions = async (req, res) => {
         LEFT JOIN branches b
           ON b.id = oj.branch_id AND b.deleted_at IS NULL
 
-        WHERE oj.deleted_at IS NULL AND oj.status = 'Printed'
+        WHERE oj.deleted_at IS NULL AND oj.status = 'Printed' AND oj.is_active = true
         GROUP BY oj.id
 
         UNION ALL
@@ -958,7 +958,7 @@ const getCustomerTransactions = async (req, res) => {
         LEFT JOIN branches b
           ON b.id = jr.branch_id AND b.deleted_at IS NULL
 
-        WHERE jr.deleted_at IS NULL AND jr.status = 'Completed'
+        WHERE jr.deleted_at IS NULL AND jr.status = 'Completed' AND jr.is_active = true
         GROUP BY jr.id
 
         UNION ALL
