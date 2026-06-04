@@ -1632,6 +1632,7 @@ const toggleSalesInvoiceActive = async (req, res) => {
           // Fetch Voucher Receipts
           const receipts = await models.VoucherReceipt.findAll({
                 where: {
+                    branch_id: invoice.branch_id, 
                     receipt_no: receiptNos,
                     bill_type_id: 3
                 },
