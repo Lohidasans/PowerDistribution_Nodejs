@@ -128,6 +128,7 @@ const list = async (req, res) => {
           FROM voucher_receipts vr
           WHERE vr.account_id = l.id
             AND vr.bill_type_id = 3
+            AND vr.is_advance_used = true
             AND vr.deleted_at IS NULL
         )
       `);
