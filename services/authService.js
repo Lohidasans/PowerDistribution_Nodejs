@@ -7,6 +7,9 @@ const enMessage = require('../constants/en.json');
 const { JWT_SECRET, JWT_EXPIRES_IN } = process.env;
 const otpCache = require('../utils/otpCache');
 const { generateOnlineCustomerCode } = require('./customerService');
+const {sendCustomerNotification,} = require("../helpers/notificationHelper");
+const notificationMessages = require("../constants/notificationMessages");
+
 const login = async (req, res) => {
     const t = await sequelize.transaction();
     try {
@@ -262,6 +265,7 @@ const resetPassword = async (req, res) => {
         return commonService.handleError(res, error);
     }
 };
+
 const customerSendOTP = async (req, res) => {
     try {
         const { mobile } = req.body;
@@ -277,6 +281,12 @@ const customerSendOTP = async (req, res) => {
         // store in memory cache
         otpCache.setOTP(mobile, otp);
 
+        // Send SMS
+        /* await sendSMS({
+            mobile,
+            message: notificationMessages.websiteLoginOtp(otp),
+        }); */
+
         return commonService.okResponse(res, {
             message: "OTP sent successfully",
             otp: process.env.NODE_ENV === "development" ? otp : undefined
@@ -287,6 +297,7 @@ const customerSendOTP = async (req, res) => {
         return commonService.handleError(res, error);
     }
 };
+
 const verifyOTP = async (req, res) => {
     const t = await sequelize.transaction();
     try {
@@ -312,6 +323,7 @@ const verifyOTP = async (req, res) => {
         });
 
         let statusCode = 200;
+        let isNewCustomer = false;
 
         if (!customer) {
 
@@ -330,9 +342,20 @@ const verifyOTP = async (req, res) => {
             }, { transaction: t });
 
             statusCode = 201;
+            isNewCustomer = true;
         }
 
         await t.commit();
+
+        /*
+        if (isNewCustomer) {
+            await sendSMS({
+                mobile,
+                message:
+                notificationMessages.websiteNewCustomerGreeting()
+            });
+        }
+        */
 
         return res.status(statusCode).json({
             status: true,
