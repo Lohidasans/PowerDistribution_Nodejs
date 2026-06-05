@@ -2,6 +2,8 @@ const { models, sequelize } = require("../models");
 const commonService = require("./commonService");
 const enMessage = require("../constants/en.json");
 const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
+const {sendCustomerNotification,} = require("../helpers/notificationHelper");
+const notificationMessages = require("../constants/notificationMessages");
 
 // Field validation helper
 const validateRequired = (req, res, fields) => {
@@ -76,7 +78,30 @@ const createEnrollment = async (req, res) => {
     }
 
     const row = await models.Enrollment.create(payload);
-    return commonService.createdResponse(res, { enrollment: row });
+    return commonService.createdResponse(res, { enrollment: row }); 
+    
+    
+    /*
+    // Send Notification to the customer
+    const scheme = await models.Scheme.findOne({
+      where: { 
+        id: row.scheme_plan_id, 
+        deleted_at: null, 
+        status: "Active",
+      }}
+    );
+
+    await sendCustomerNotification({
+      customerId: row.customer_id,
+      title: "Saving Scheme Enrollment",
+      type: "SCHEME_ENROLLMENT",
+      message:
+        notificationMessages.savingSchemeEnrollment(
+          scheme.scheme_name
+        ),
+    });
+    */
+   
   } catch (err) {
     // Handle Sequelize validation errors with specific field info
     if (err.name === "SequelizeValidationError" || err.name === "SequelizeUniqueConstraintError") {

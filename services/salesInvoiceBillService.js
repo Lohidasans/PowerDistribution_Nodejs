@@ -16,6 +16,8 @@ const { validateProductItemDetails,
 const { calculateItemsAndSubtotal, calculateInvoiceTotals, calculatePaymentSummary } = require("../helpers/billingCalculations");
 const { Op } = require("sequelize");
 const ExcelJS = require("exceljs");
+const {sendCustomerNotification,} = require("../helpers/notificationHelper");
+const notificationMessages = require("../constants/notificationMessages");
 
 // Generate invoice number (series)
 const generateSalesInvoiceNo = async (req, res) => {
@@ -758,6 +760,19 @@ const createSalesInvoice = async (req, res) => {
     }
 
     await t.commit();
+    
+    /*
+    // Notification
+    if ( header.status === "Invoice" && hasPayment && isFullyPaid) {
+      await sendCustomerNotification({
+        customerId: header.customer_id,
+        title: "Purchase Confirmation",
+        type: "PURCHASE",
+        message: notificationMessages.customerPurchase(),
+      });
+    }
+   */
+
     return commonService.createdResponse(res, {
       message: enMessage.billing.invoiceCreationSuccess,
       invoice: bill,
@@ -1114,6 +1129,19 @@ const updateSalesInvoice = async (req, res) => {
     }
 
     await t.commit();
+
+    /*
+    // Notification
+    if (previousStatus !== "Invoice" && newStatus === "Invoice" && hasPayment &&  isFullyPaid) {
+      await sendCustomerNotification({
+        customerId: header.customer_id,
+        title: "Purchase Confirmation",
+        type: "PURCHASE",
+        message: notificationMessages.customerPurchase(),
+      });
+    }
+    */
+
     return commonService.okResponse(res, {
       message: "Invoice updated successfully"
     });

@@ -99,3 +99,20 @@ On Hold   	On Hold	    ❌ No lock
 On Hold 	Invoice	    ✅ Lock adjustments
 Invoice	    Invoice	    ✅ Sync adjustments
 Invoice	    On Hold	    Usually not allowed
+
+
+
+#######
+Update Invoice
+
+Update - Send Notification Only For
+On Hold  → Invoice
+
+
+Do NOT send notification for:
+Invoice → Invoice edit
+Item change
+Quantity change
+Discount change
+Payment edit
+Adjustment edit
