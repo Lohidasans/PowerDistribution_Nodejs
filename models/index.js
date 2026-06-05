@@ -199,6 +199,8 @@ const UserNotification = require("./userNotifications")(sequelize, Sequelize.Dat
 const EmployeeAttendanceReport = require("./employeeAttendanceReports")(sequelize, Sequelize.DataTypes);
 const AbandonedCheckout = require("./abandonedCheckouts")(sequelize, Sequelize.DataTypes);
 
+const Notification = require("./notification")(sequelize, Sequelize.DataTypes);
+
 const models = {
   Permission,
   Role,
@@ -314,6 +316,7 @@ const models = {
   SalesOrder,
   SalesOrderAdditionalCharge,
   ChargesType,
+  Notification,
 };
 
 Object.values(models).forEach((model) => {
