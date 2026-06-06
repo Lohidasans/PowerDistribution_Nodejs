@@ -1093,7 +1093,8 @@ const getVendorDashboard = async (req, res) => {
 
         -- Purchase metrics
         COALESCE(SUM(gi.gross_wt_in_g), 0) AS total_weight,
-        COALESCE(SUM(g.total_amount), 0) as total_purchase,
+        COALESCE(SUM(gi.total_amount), 0) AS material_value,
+        COALESCE(gp.total_purchase, 0) as total_purchase,
 
         -- Sales metrics (from Sales Invoice Bills)
         COALESCE(
@@ -1129,16 +1130,27 @@ const getVendorDashboard = async (req, res) => {
           ), 0
         ) as total_paid
       FROM vendors v
+      LEFT JOIN (
+        SELECT
+          g.vendor_id,
+          SUM(g.total_amount) AS total_purchase
+        FROM grns g
+        WHERE g.deleted_at IS NULL
+          ${dateFilter}
+          ${grnBranchFilter}
+        GROUP BY g.vendor_id
+      ) gp ON gp.vendor_id = v.id
       LEFT JOIN grns g ON g.vendor_id = v.id 
         AND g.deleted_at IS NULL
         ${dateFilter}
+        ${grnBranchFilter}
       LEFT JOIN "grnItems" gi ON gi.grn_id = g.id AND gi.deleted_at IS NULL
       LEFT JOIN "materialTypes" mt ON mt.id = gi.material_type_id AND mt.deleted_at IS NULL
       WHERE v.deleted_at IS NULL
       ${branchFilter}
-      GROUP BY v.id, v.vendor_name, v.vendor_code, v.vendor_image_url, mt.material_type
+      GROUP BY v.id, v.vendor_name, v.vendor_code, v.vendor_image_url, mt.material_type, gp.total_purchase
 
-      HAVING COALESCE(SUM(gi.total_amount), 0) > 0
+      HAVING COALESCE(gp.total_purchase, 0) > 0
       ORDER BY total_purchase DESC
     `;
 
@@ -1207,7 +1219,7 @@ const getVendorDashboard = async (req, res) => {
                     vendor_code: row.vendor_code,
                     vendor_image_url: row.vendor_image_url,
                     materials: {},
-                    total_purchase: 0,
+                    total_purchase: parseFloat(row.total_purchase || 0),
                     total_sales: 0,
                     total_paid: 0
                 };
@@ -1215,11 +1227,8 @@ const getVendorDashboard = async (req, res) => {
 
             vendorMap[row.id].materials[material] = {
                 weight: parseFloat(row.total_weight || 0).toFixed(2) + " g",
-                value: parseFloat(row.total_purchase || 0)
+                value: parseFloat(row.material_value || 0)
             };
-
-            // ✅ accumulate purchase
-            vendorMap[row.id].total_purchase += parseFloat(row.total_purchase || 0);
 
             // these are same per vendor so overwrite is fine
             vendorMap[row.id].total_sales = parseFloat(row.total_sales || 0);
