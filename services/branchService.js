@@ -1146,18 +1146,41 @@ const getBranchOverview = async (req, res) => {
           AND jr.deleted_at IS NULL AND jr.is_active = true
           AND jr.status != 'Cancelled'
         ), 0) AS repair_revenue,
-        -- Total Stock Value (purchase value of products)
+        -- Total Stock Value (GRN rate * available item net weight)
         COALESCE((
-          SELECT SUM(p.total_grn_value)
+          SELECT SUM(
+            COALESCE(gi.rate_per_g, 0)
+            * COALESCE(pid.net_weight, 0)
+            * COALESCE(pid.quantity, 0)
+          )
           FROM products p
+          INNER JOIN "productItemDetails" pid
+            ON pid.product_id = p.id
+            AND pid.deleted_at IS NULL
+            AND pid.quantity > 0
+          INNER JOIN grns g
+            ON g.id = p.grn_id
+            AND g.deleted_at IS NULL
+            AND g.is_active = true
+          INNER JOIN "grnItems" gi
+            ON gi.grn_id = g.id
+            AND gi.id = p.ref_no_id
+            AND gi.deleted_at IS NULL
           WHERE p.branch_id = b.id
           AND p.deleted_at IS NULL
           AND p.status = 'Active'
         ), 0) AS total_stock_value,
-        -- Total Stock Weight (remaining weight of products)
+        -- Total Stock Weight (available item gross weight)
         COALESCE((
-          SELECT SUM(p.remaining_weight)
+          SELECT SUM(
+            COALESCE(pid.gross_weight, 0)
+            * COALESCE(pid.quantity, 0)
+          )
           FROM products p
+          INNER JOIN "productItemDetails" pid
+            ON pid.product_id = p.id
+            AND pid.deleted_at IS NULL
+            AND pid.quantity > 0
           WHERE p.branch_id = b.id
           AND p.deleted_at IS NULL
           AND p.status = 'Active'
