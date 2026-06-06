@@ -44,6 +44,7 @@ const getAllCategories = async (req, res) => {
         c.category_image_url,
         c.material_type_id,
         c.branch_id,
+        c.short_name,
         c.status,
         mt.material_type,
         mt.material_image_url
