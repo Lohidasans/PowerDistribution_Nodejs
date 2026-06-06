@@ -1,0 +1,769 @@
+const { sequelize } = require("../models");
+const commonService = require("./commonService");
+
+// Shared CTE: aggregates all transaction sources by ledger_id for a date range
+const ALL_TXNS_CTE = `
+  WITH all_txns AS (
+    -- GRN: Purchase A/c Dr
+    SELECT lp.id AS ledger_id, COALESCE(g.subtotal_amount, 0) AS debit, 0 AS credit
+    FROM grns g
+    JOIN ledger lp ON lp.ledger_name ILIKE 'PURCHASE ACCOUNTS'
+    WHERE g.deleted_at IS NULL
+      AND (:branch_id IS NULL OR g.branch_id = :branch_id)
+      AND g.grn_date BETWEEN :from_date AND :to_date
+
+    UNION ALL
+
+    -- GRN: Vendor Cr
+    SELECT lv.id, 0, COALESCE(g.subtotal_amount, 0)
+    FROM grns g
+    JOIN vendors v ON v.id = g.vendor_id
+    JOIN ledger lv ON lv.id = v.ledger_id
+    WHERE g.deleted_at IS NULL
+      AND (:branch_id IS NULL OR g.branch_id = :branch_id)
+      AND g.grn_date BETWEEN :from_date AND :to_date
+
+    UNION ALL
+
+    -- Sales Invoice: Customer Dr
+    SELECT lc.id, COALESCE(s.subtotal_amount, 0), 0
+    FROM sales_invoice_bills s
+    JOIN customers c ON c.id = s.customer_id
+    JOIN ledger lc ON lc.id = c.ledger_id
+    WHERE s.deleted_at IS NULL AND s.status = 'Invoice'
+      AND (:branch_id IS NULL OR s.branch_id = :branch_id)
+      AND s.invoice_date BETWEEN :from_date AND :to_date
+
+    UNION ALL
+
+    -- Sales Invoice: Sales A/c Cr
+    SELECT ls.id, 0, COALESCE(s.subtotal_amount, 0)
+    FROM sales_invoice_bills s
+    JOIN ledger ls ON ls.ledger_name ILIKE 'SALES ACCOUNTS'
+    WHERE s.deleted_at IS NULL AND s.status = 'Invoice'
+      AND (:branch_id IS NULL OR s.branch_id = :branch_id)
+      AND s.invoice_date BETWEEN :from_date AND :to_date
+
+    UNION ALL
+
+    -- Sales Return: Sales A/c Dr (reversal)
+    SELECT ls.id, COALESCE(sr.subtotal_amount, 0), 0
+    FROM sales_returns sr
+    JOIN ledger ls ON ls.ledger_name ILIKE 'SALES ACCOUNTS'
+    WHERE sr.deleted_at IS NULL
+      AND sr.return_date BETWEEN :from_date AND :to_date
+
+    UNION ALL
+
+    -- Sales Return: Customer Cr (reversal)
+    SELECT lc.id, 0, COALESCE(sr.subtotal_amount, 0)
+    FROM sales_returns sr
+    JOIN customers c ON c.id = sr.customer_id
+    JOIN ledger lc ON lc.id = c.ledger_id
+    WHERE sr.deleted_at IS NULL
+      AND sr.return_date BETWEEN :from_date AND :to_date
+
+    UNION ALL
+
+    -- Vendor Payments: Vendor Dr
+    SELECT lv.id, COALESCE(vp.amount, 0), 0
+    FROM vendor_payments vp
+    JOIN vendors v ON v.id = vp.account_name_id
+    JOIN ledger lv ON lv.id = v.ledger_id
+    WHERE vp.deleted_at IS NULL AND vp.user_type_id = 1
+      AND vp.payment_date BETWEEN :from_date AND :to_date
+
+    UNION ALL
+
+    -- Vendor Payments: Cash/Bank Cr
+    SELECT l.id, 0, COALESCE(vp.amount, 0)
+    FROM vendor_payments vp
+    JOIN ledger l ON l.ledger_name ILIKE 'Cash%'
+    WHERE vp.deleted_at IS NULL AND vp.user_type_id = 1
+      AND vp.payment_date BETWEEN :from_date AND :to_date
+
+    UNION ALL
+
+    -- Invoice Payments: Cash Dr
+    SELECT l.id, COALESCE(p.amount_received, 0), 0
+    FROM payments p
+    JOIN ledger l ON l.ledger_name ILIKE 'Cash%'
+    WHERE p.deleted_at IS NULL AND p.payment_mode = 'Cash'
+      AND p.invoice_bill_id IS NOT NULL
+      AND p.payment_date::date BETWEEN :from_date AND :to_date
+
+    UNION ALL
+
+    -- Invoice Payments: UPI Dr
+    SELECT l.id, COALESCE(p.amount_received, 0), 0
+    FROM payments p
+    JOIN ledger l ON l.ledger_name ILIKE '%UPI%'
+    WHERE p.deleted_at IS NULL AND p.payment_mode = 'UPI'
+      AND p.invoice_bill_id IS NOT NULL
+      AND p.payment_date::date BETWEEN :from_date AND :to_date
+
+    UNION ALL
+
+    -- Invoice Payments: Card Dr
+    SELECT l.id, COALESCE(p.amount_received, 0), 0
+    FROM payments p
+    JOIN ledger l ON l.ledger_name ILIKE '%Card%'
+    WHERE p.deleted_at IS NULL AND p.payment_mode = 'Card'
+      AND p.invoice_bill_id IS NOT NULL
+      AND p.payment_date::date BETWEEN :from_date AND :to_date
+
+    UNION ALL
+
+    -- Invoice Payments: Bank Transfer / Cheque Dr
+    SELECT l.id, COALESCE(p.amount_received, 0), 0
+    FROM payments p
+    JOIN ledger l ON l.ledger_name ILIKE 'Bank%'
+      AND l.ledger_name NOT ILIKE '%UPI%'
+      AND l.ledger_name NOT ILIKE '%Card%'
+    WHERE p.deleted_at IS NULL
+      AND p.payment_mode IN ('Bank Transfer', 'Cheque')
+      AND p.invoice_bill_id IS NOT NULL
+      AND p.payment_date::date BETWEEN :from_date AND :to_date
+
+    UNION ALL
+
+    -- Invoice Payments: Customer A/c Cr
+    SELECT lc.id, 0, COALESCE(p.amount_received, 0)
+    FROM payments p
+    JOIN sales_invoice_bills s ON s.id = p.invoice_bill_id
+    JOIN customers c ON c.id = s.customer_id
+    JOIN ledger lc ON lc.id = c.ledger_id
+    WHERE p.deleted_at IS NULL AND s.deleted_at IS NULL
+      AND p.invoice_bill_id IS NOT NULL
+      AND (:branch_id IS NULL OR s.branch_id = :branch_id)
+      AND p.payment_date::date BETWEEN :from_date AND :to_date
+
+    UNION ALL
+
+    -- Voucher Receipts: Cash Dr (manual receipt vouchers only)
+    SELECT l.id, COALESCE(r.amount, 0), 0
+    FROM voucher_receipts r
+    JOIN ledger l ON l.ledger_name ILIKE 'Cash%'
+    WHERE r.deleted_at IS NULL
+      AND r.receipt_date BETWEEN :from_date AND :to_date
+
+    UNION ALL
+
+    -- Voucher Receipts: Customer/Vendor Cr (manual receipt vouchers only)
+    SELECT lc.id, 0, COALESCE(r.amount, 0)
+    FROM voucher_receipts r
+    JOIN ledger lc ON lc.id = r.account_id
+    WHERE r.deleted_at IS NULL
+      AND r.receipt_date BETWEEN :from_date AND :to_date
+
+    UNION ALL
+
+    -- Scheme Payments: Customer Dr
+    SELECT lc.id, COALESCE(csp.paid_amount, 0), 0
+    FROM customer_scheme_payments csp
+    JOIN customer_enrollments ce ON ce.id = csp.enrollment_id
+    JOIN customers c ON c.id = ce.customer_id
+    JOIN ledger lc ON lc.id = c.ledger_id
+    WHERE csp.deleted_at IS NULL
+      AND csp.payment_date BETWEEN :from_date AND :to_date
+
+    UNION ALL
+
+    -- Journal Entries: direct debit/credit entries
+    SELECT jei.account_id, COALESCE(jei.debit, 0), COALESCE(jei.credit, 0)
+    FROM journal_entry_items jei
+    JOIN journal_entries je ON je.id = jei.journal_entry_id
+    WHERE jei.deleted_at IS NULL AND je.deleted_at IS NULL
+      AND (:branch_id IS NULL OR je.branch_id = :branch_id)
+      AND je.date BETWEEN :from_date AND :to_date
+  )
+`;
+
+// Aggregation query that uses all_txns CTE and joins to ledger hierarchy
+const LEDGER_AGG_SELECT = `
+  SELECT
+    lg.id          AS group_id,
+    lg.ledger_group_name AS group_name,
+    la.account_name AS account_type,
+    la.normal_balance,
+    l.id           AS ledger_id,
+    l.ledger_name,
+    COALESCE(SUM(t.debit), 0)  AS total_debit,
+    COALESCE(SUM(t.credit), 0) AS total_credit
+  FROM ledger l
+  JOIN ledger_group lg ON lg.id = l.ledger_group_id
+  JOIN ledger_accounts la ON la.id = lg.ledger_account_id
+  LEFT JOIN all_txns t ON t.ledger_id = l.id
+  WHERE l.deleted_at IS NULL
+    AND lg.deleted_at IS NULL
+`;
+
+// Executes the shared aggregation and returns raw rows grouped by ledger_group
+async function fetchLedgerAggregates(branchId, fromDate, toDate, searchFilter) {
+  const whereSearch = searchFilter
+    ? `AND (l.ledger_name ILIKE '%' || :search || '%' OR lg.ledger_group_name ILIKE '%' || :search || '%')`
+    : "";
+
+  const sql = `
+    ${ALL_TXNS_CTE}
+    ${LEDGER_AGG_SELECT}
+    ${whereSearch}
+    GROUP BY lg.id, lg.ledger_group_name, la.account_name, la.normal_balance, l.id, l.ledger_name
+    ORDER BY lg.ledger_group_name, l.ledger_name
+  `;
+
+  return sequelize.query(sql, {
+    replacements: {
+      branch_id: branchId,
+      from_date: fromDate,
+      to_date: toDate,
+      ...(searchFilter && { search: searchFilter }),
+    },
+    type: sequelize.QueryTypes.SELECT,
+  });
+}
+
+// Collapses flat rows into a map of groups with their ledger children
+function buildGroupMap(rows) {
+  const groupMap = new Map();
+  for (const row of rows) {
+    const debit = parseFloat(row.total_debit || 0);
+    const credit = parseFloat(row.total_credit || 0);
+
+    if (!groupMap.has(row.group_id)) {
+      groupMap.set(row.group_id, {
+        group_id: row.group_id,
+        group_name: row.group_name,
+        account_type: row.account_type,
+        normal_balance: row.normal_balance,
+        group_debit: 0,
+        group_credit: 0,
+        ledgers: [],
+      });
+    }
+
+    const g = groupMap.get(row.group_id);
+    g.group_debit += debit;
+    g.group_credit += credit;
+    g.ledgers.push({
+      ledger_id: row.ledger_id,
+      ledger_name: row.ledger_name,
+      debit: debit.toFixed(2),
+      credit: credit.toFixed(2),
+    });
+  }
+  return groupMap;
+}
+
+// ─────────────────────────────────────────
+// TRIAL BALANCE
+// ─────────────────────────────────────────
+const getTrialBalance = async (req, res) => {
+  try {
+    const { branch_id, from_date, to_date, search } = req.query;
+    const fromDate = from_date || "2000-01-01";
+    const toDate = to_date || new Date().toISOString().split("T")[0];
+    const branchId = branch_id ? parseInt(branch_id) : null;
+
+    const rows = await fetchLedgerAggregates(branchId, fromDate, toDate, search || null);
+    const groupMap = buildGroupMap(rows);
+
+    let grandDebit = 0;
+    let grandCredit = 0;
+
+    const data = Array.from(groupMap.values()).map((g) => {
+      grandDebit += g.group_debit;
+      grandCredit += g.group_credit;
+      return {
+        group_id: g.group_id,
+        group_name: g.group_name,
+        account_type: g.account_type,
+        normal_balance: g.normal_balance,
+        group_debit: g.group_debit.toFixed(2),
+        group_credit: g.group_credit.toFixed(2),
+        ledgers: g.ledgers,
+      };
+    });
+
+    return commonService.okResponse(res, {
+      data,
+      total_debit: grandDebit.toFixed(2),
+      total_credit: grandCredit.toFixed(2),
+      difference: Math.abs(grandDebit - grandCredit).toFixed(2),
+    });
+  } catch (err) {
+    console.error(err);
+    return commonService.handleError(res, err);
+  }
+};
+
+// ─────────────────────────────────────────
+// PROFIT & LOSS
+// ─────────────────────────────────────────
+const getProfitLoss = async (req, res) => {
+  try {
+    const { branch_id, from_date, to_date } = req.query;
+    const fromDate = from_date || "2000-01-01";
+    const toDate = to_date || new Date().toISOString().split("T")[0];
+    const branchId = branch_id ? parseInt(branch_id) : null;
+
+    const rows = await fetchLedgerAggregates(branchId, fromDate, toDate, null);
+    const groupMap = buildGroupMap(rows);
+
+    const tradingDebit = [];   // Opening Stock, Purchase, Direct Expenses
+    const tradingCredit = [];  // Sales, Direct Incomes, Closing Stock
+    const pnlDebit = [];       // Indirect Expenses
+    const pnlCredit = [];      // Indirect Income
+
+    for (const g of groupMap.values()) {
+      const name = (g.group_name || "").toLowerCase();
+      const net = g.group_debit - g.group_credit;
+      const entry = {
+        particulars: g.group_name,
+        amount: Math.abs(net).toFixed(2),
+        children: g.ledgers.map((l) => ({
+          particulars: l.ledger_name,
+          debit: l.debit,
+          credit: l.credit,
+        })),
+      };
+
+      if (g.account_type === "Expense") {
+        if (name.includes("indirect")) {
+          pnlDebit.push(entry);
+        } else {
+          tradingDebit.push(entry);
+        }
+      } else if (g.account_type === "Income") {
+        if (name.includes("indirect")) {
+          pnlCredit.push(entry);
+        } else {
+          tradingCredit.push(entry);
+        }
+      }
+    }
+
+    const tradingDebitTotal = tradingDebit.reduce((s, e) => s + parseFloat(e.amount), 0);
+    const tradingCreditTotal = tradingCredit.reduce((s, e) => s + parseFloat(e.amount), 0);
+    const pnlDebitTotal = pnlDebit.reduce((s, e) => s + parseFloat(e.amount), 0);
+    const pnlCreditTotal = pnlCredit.reduce((s, e) => s + parseFloat(e.amount), 0);
+
+    // Gross Profit / Loss plugged into the second section
+    const grossProfit = tradingCreditTotal - tradingDebitTotal;
+    const netProfit = grossProfit + pnlCreditTotal - pnlDebitTotal;
+
+    return commonService.okResponse(res, {
+      trading_account: {
+        debit: tradingDebit,
+        debit_total: tradingDebitTotal.toFixed(2),
+        credit: tradingCredit,
+        credit_total: tradingCreditTotal.toFixed(2),
+        gross_profit: grossProfit.toFixed(2),
+      },
+      pnl_account: {
+        debit: pnlDebit,
+        debit_total: pnlDebitTotal.toFixed(2),
+        credit: pnlCredit,
+        credit_total: pnlCreditTotal.toFixed(2),
+        net_profit: netProfit.toFixed(2),
+      },
+    });
+  } catch (err) {
+    console.error(err);
+    return commonService.handleError(res, err);
+  }
+};
+
+// ─────────────────────────────────────────
+// BALANCE SHEET
+// ─────────────────────────────────────────
+const getBalanceSheet = async (req, res) => {
+  try {
+    const { branch_id, from_date, to_date } = req.query;
+    const fromDate = from_date || "2000-01-01";
+    const toDate = to_date || new Date().toISOString().split("T")[0];
+    const branchId = branch_id ? parseInt(branch_id) : null;
+
+    const rows = await fetchLedgerAggregates(branchId, fromDate, toDate, null);
+    const groupMap = buildGroupMap(rows);
+
+    const liabilities = [];
+    const assets = [];
+    let totalLiabilities = 0;
+    let totalAssets = 0;
+
+    for (const g of groupMap.values()) {
+      if (g.account_type === "Liability") {
+        // Net credit balance for liabilities
+        const amount = g.group_credit - g.group_debit;
+        const entry = {
+          group_id: g.group_id,
+          group_name: g.group_name,
+          amount: amount.toFixed(2),
+          children: g.ledgers.map((l) => ({
+            ledger_id: l.ledger_id,
+            ledger_name: l.ledger_name,
+            amount: (parseFloat(l.credit) - parseFloat(l.debit)).toFixed(2),
+          })),
+        };
+        liabilities.push(entry);
+        totalLiabilities += amount;
+      } else if (g.account_type === "Asset") {
+        // Net debit balance for assets
+        const amount = g.group_debit - g.group_credit;
+        const entry = {
+          group_id: g.group_id,
+          group_name: g.group_name,
+          amount: amount.toFixed(2),
+          children: g.ledgers.map((l) => ({
+            ledger_id: l.ledger_id,
+            ledger_name: l.ledger_name,
+            amount: (parseFloat(l.debit) - parseFloat(l.credit)).toFixed(2),
+          })),
+        };
+        assets.push(entry);
+        totalAssets += amount;
+      }
+    }
+
+    return commonService.okResponse(res, {
+      liabilities,
+      assets,
+      total_liabilities: totalLiabilities.toFixed(2),
+      total_assets: totalAssets.toFixed(2),
+      grand_total: Math.max(totalLiabilities, totalAssets).toFixed(2),
+    });
+  } catch (err) {
+    console.error(err);
+    return commonService.handleError(res, err);
+  }
+};
+
+// ─────────────────────────────────────────
+// GSTR1 — INVOICE VIEW
+// ─────────────────────────────────────────
+const getGstr1 = async (req, res) => {
+  try {
+    const { branch_id, from_date, to_date } = req.query;
+    const fromDate = from_date || "2000-01-01";
+    const toDate = to_date || new Date().toISOString().split("T")[0];
+    const branchId = branch_id ? parseInt(branch_id) : null;
+
+    // Fetch branch GSTIN and company name
+    let gstin = null;
+    let legalName = null;
+    if (branchId) {
+      const branchResult = await sequelize.query(
+        `SELECT gst_no, branch_name FROM branches WHERE id = :branch_id AND deleted_at IS NULL LIMIT 1`,
+        { replacements: { branch_id: branchId }, type: sequelize.QueryTypes.SELECT }
+      );
+      if (branchResult.length > 0) {
+        gstin = branchResult[0].gst_no;
+        legalName = branchResult[0].branch_name;
+      }
+    }
+
+    const sql = `
+      SELECT
+        c.gst_no            AS gstin_uin,
+        c.customer_name     AS party_name,
+        'Sales'             AS transaction_type,
+        s.invoice_no,
+        TO_CHAR(s.invoice_date, 'DD/MM/YYYY') AS invoice_date,
+        COALESCE(s.total_amount, 0)            AS invoice_value,
+        COALESCE(s.cgst_amount, 0) + COALESCE(s.sgst_amount, 0) + COALESCE(s.igst_amount, 0) AS tax_amount,
+        COALESCE(s.subtotal_amount, 0)         AS taxable_value,
+        COALESCE(s.cgst_percent, 0) + COALESCE(s.sgst_percent, 0) + COALESCE(s.igst_percent, 0) AS rate,
+        s.cgst_percent,
+        s.sgst_percent,
+        s.igst_percent,
+        s.cgst_amount,
+        s.sgst_amount,
+        s.igst_amount
+      FROM sales_invoice_bills s
+      JOIN customers c ON c.id = s.customer_id
+      WHERE s.deleted_at IS NULL
+        AND s.status = 'Invoice'
+        AND (:branch_id IS NULL OR s.branch_id = :branch_id)
+        AND s.invoice_date BETWEEN :from_date AND :to_date
+      ORDER BY s.invoice_date ASC, s.invoice_no ASC
+    `;
+
+    const data = await sequelize.query(sql, {
+      replacements: { branch_id: branchId, from_date: fromDate, to_date: toDate },
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    const formatted = data.map((row) => ({
+      gstin_uin: row.gstin_uin || null,
+      party_name: row.party_name,
+      transaction_type: row.transaction_type,
+      invoice_no: row.invoice_no,
+      invoice_date: row.invoice_date,
+      invoice_value: parseFloat(row.invoice_value || 0).toFixed(2),
+      rate: parseFloat(row.rate || 0).toFixed(2),
+      taxable_value: parseFloat(row.taxable_value || 0).toFixed(2),
+      tax_amount: parseFloat(row.tax_amount || 0).toFixed(2),
+      cgst_percent: parseFloat(row.cgst_percent || 0),
+      sgst_percent: parseFloat(row.sgst_percent || 0),
+      igst_percent: parseFloat(row.igst_percent || 0),
+      cgst_amount: parseFloat(row.cgst_amount || 0).toFixed(2),
+      sgst_amount: parseFloat(row.sgst_amount || 0).toFixed(2),
+      igst_amount: parseFloat(row.igst_amount || 0).toFixed(2),
+      cess_rate: null,
+      reverse_charge: null,
+    }));
+
+    return commonService.okResponse(res, {
+      gstin,
+      legal_name: legalName,
+      trade_name: legalName,
+      aggregate_turnover_prev_fy: null,
+      aggregate_turnover_apr_jun: null,
+      data: formatted,
+    });
+  } catch (err) {
+    console.error(err);
+    return commonService.handleError(res, err);
+  }
+};
+
+// ─────────────────────────────────────────
+// GSTR1 — PORTAL VIEW (B2B / B2CS / B2CL / HSN)
+// ─────────────────────────────────────────
+const getGstr1Portal = async (req, res) => {
+  try {
+    const { branch_id, from_date, to_date, section = "b2b" } = req.query;
+    const fromDate = from_date || "2000-01-01";
+    const toDate = to_date || new Date().toISOString().split("T")[0];
+    const branchId = branch_id ? parseInt(branch_id) : null;
+
+    const BASE_WHERE = `
+      s.deleted_at IS NULL
+      AND s.status = 'Invoice'
+      AND (:branch_id IS NULL OR s.branch_id = :branch_id)
+      AND s.invoice_date BETWEEN :from_date AND :to_date
+    `;
+
+    const replacements = { branch_id: branchId, from_date: fromDate, to_date: toDate };
+
+    if (section === "b2b") {
+      // B2B: customers with valid GSTIN
+      const summarySql = `
+        SELECT
+          COUNT(DISTINCT c.gst_no) AS no_of_receipt,
+          COUNT(*)                 AS no_of_invoice,
+          SUM(COALESCE(s.total_amount, 0))    AS total_invoice_value,
+          SUM(COALESCE(s.subtotal_amount, 0)) AS total_taxable_value,
+          0                                   AS total_cess
+        FROM sales_invoice_bills s
+        JOIN customers c ON c.id = s.customer_id
+          AND c.gst_no IS NOT NULL AND c.gst_no != ''
+        WHERE ${BASE_WHERE}
+      `;
+
+      const dataSql = `
+        SELECT
+          c.gst_no                AS gstin_uin,
+          c.customer_name         AS receiver_name,
+          s.invoice_no,
+          TO_CHAR(s.invoice_date, 'DD/MM/YYYY') AS invoice_date,
+          COALESCE(s.total_amount, 0)            AS invoice_value,
+          st.state_name                          AS place_of_supply,
+          COALESCE(s.subtotal_amount, 0)         AS taxable_value,
+          'Invoice'               AS transaction_type
+        FROM sales_invoice_bills s
+        JOIN customers c ON c.id = s.customer_id
+          AND c.gst_no IS NOT NULL AND c.gst_no != ''
+        JOIN branches b ON b.id = s.branch_id
+        LEFT JOIN states st ON st.id = b.state_id
+        WHERE ${BASE_WHERE}
+        ORDER BY s.invoice_date ASC, s.invoice_no ASC
+      `;
+
+      const [summaryRows, data] = await Promise.all([
+        sequelize.query(summarySql, { replacements, type: sequelize.QueryTypes.SELECT }),
+        sequelize.query(dataSql, { replacements, type: sequelize.QueryTypes.SELECT }),
+      ]);
+
+      const summary = summaryRows[0] || {};
+
+      return commonService.okResponse(res, {
+        section: "b2b",
+        summary: {
+          no_of_receipt: parseInt(summary.no_of_receipt || 0),
+          no_of_invoice: parseInt(summary.no_of_invoice || 0),
+          total_invoice_value: parseFloat(summary.total_invoice_value || 0).toFixed(2),
+          total_taxable_value: parseFloat(summary.total_taxable_value || 0).toFixed(2),
+          total_cess: parseFloat(summary.total_cess || 0).toFixed(2),
+        },
+        data: data.map((row) => ({
+          gstin_uin: row.gstin_uin,
+          receiver_name: row.receiver_name,
+          invoice_no: row.invoice_no,
+          invoice_date: row.invoice_date,
+          invoice_value: parseFloat(row.invoice_value || 0).toFixed(2),
+          place_of_supply: row.place_of_supply || null,
+          taxable_value: parseFloat(row.taxable_value || 0).toFixed(2),
+          reverse_charge: null,
+          applicable_tax_rate: null,
+          transaction_type: row.transaction_type,
+          ecommerce_gstin: null,
+        })),
+      });
+    }
+
+    if (section === "b2cs") {
+      // B2CS: Unregistered customers, invoice value < 2,50,000
+      const dataSql = `
+        SELECT
+          c.customer_name         AS receiver_name,
+          s.invoice_no,
+          TO_CHAR(s.invoice_date, 'DD/MM/YYYY') AS invoice_date,
+          COALESCE(s.total_amount, 0)            AS invoice_value,
+          st.state_name                          AS place_of_supply,
+          COALESCE(s.subtotal_amount, 0)         AS taxable_value,
+          COALESCE(s.cgst_percent, 0) + COALESCE(s.sgst_percent, 0) + COALESCE(s.igst_percent, 0) AS tax_rate
+        FROM sales_invoice_bills s
+        JOIN customers c ON c.id = s.customer_id
+          AND (c.gst_no IS NULL OR c.gst_no = '')
+        JOIN branches b ON b.id = s.branch_id
+        LEFT JOIN states st ON st.id = b.state_id
+        WHERE ${BASE_WHERE}
+          AND COALESCE(s.total_amount, 0) < 250000
+        ORDER BY s.invoice_date ASC
+      `;
+
+      const data = await sequelize.query(dataSql, { replacements, type: sequelize.QueryTypes.SELECT });
+
+      const totalTaxable = data.reduce((s, r) => s + parseFloat(r.taxable_value || 0), 0);
+      const totalInvoice = data.reduce((s, r) => s + parseFloat(r.invoice_value || 0), 0);
+
+      return commonService.okResponse(res, {
+        section: "b2cs",
+        summary: {
+          no_of_invoice: data.length,
+          total_invoice_value: totalInvoice.toFixed(2),
+          total_taxable_value: totalTaxable.toFixed(2),
+        },
+        data: data.map((row) => ({
+          receiver_name: row.receiver_name,
+          invoice_no: row.invoice_no,
+          invoice_date: row.invoice_date,
+          invoice_value: parseFloat(row.invoice_value || 0).toFixed(2),
+          place_of_supply: row.place_of_supply || null,
+          taxable_value: parseFloat(row.taxable_value || 0).toFixed(2),
+          tax_rate: parseFloat(row.tax_rate || 0).toFixed(3),
+        })),
+      });
+    }
+
+    if (section === "b2cl") {
+      // B2CL: Unregistered customers, invoice value >= 2,50,000 (inter-state)
+      const dataSql = `
+        SELECT
+          c.customer_name         AS receiver_name,
+          s.invoice_no,
+          TO_CHAR(s.invoice_date, 'DD/MM/YYYY') AS invoice_date,
+          COALESCE(s.total_amount, 0)            AS invoice_value,
+          st.state_name                          AS place_of_supply,
+          COALESCE(s.subtotal_amount, 0)         AS taxable_value,
+          COALESCE(s.igst_percent, 0)            AS tax_rate,
+          COALESCE(s.igst_amount, 0)             AS igst_amount
+        FROM sales_invoice_bills s
+        JOIN customers c ON c.id = s.customer_id
+          AND (c.gst_no IS NULL OR c.gst_no = '')
+        JOIN branches b ON b.id = s.branch_id
+        LEFT JOIN states st ON st.id = b.state_id
+        WHERE ${BASE_WHERE}
+          AND COALESCE(s.total_amount, 0) >= 250000
+        ORDER BY s.invoice_date ASC
+      `;
+
+      const data = await sequelize.query(dataSql, { replacements, type: sequelize.QueryTypes.SELECT });
+
+      return commonService.okResponse(res, {
+        section: "b2cl",
+        summary: {
+          no_of_invoice: data.length,
+          total_invoice_value: data.reduce((s, r) => s + parseFloat(r.invoice_value || 0), 0).toFixed(2),
+          total_taxable_value: data.reduce((s, r) => s + parseFloat(r.taxable_value || 0), 0).toFixed(2),
+        },
+        data: data.map((row) => ({
+          receiver_name: row.receiver_name,
+          invoice_no: row.invoice_no,
+          invoice_date: row.invoice_date,
+          invoice_value: parseFloat(row.invoice_value || 0).toFixed(2),
+          place_of_supply: row.place_of_supply || null,
+          taxable_value: parseFloat(row.taxable_value || 0).toFixed(2),
+          tax_rate: parseFloat(row.tax_rate || 0).toFixed(3),
+          igst_amount: parseFloat(row.igst_amount || 0).toFixed(2),
+        })),
+      });
+    }
+
+    if (section === "hsn") {
+      // HSN Summary: group by HSN code
+      // Tax amounts are on the bill header; we prorate by item share within each bill
+      const dataSql = `
+        SELECT
+          si.hsn_code,
+          SUM(COALESCE(si.quantity, 0))   AS total_qty,
+          SUM(COALESCE(si.amount, 0))     AS taxable_value,
+          SUM(
+            CASE WHEN COALESCE(s.subtotal_amount, 0) > 0
+              THEN COALESCE(si.amount, 0) / s.subtotal_amount * COALESCE(s.cgst_amount, 0)
+              ELSE 0 END
+          ) AS cgst_amount,
+          SUM(
+            CASE WHEN COALESCE(s.subtotal_amount, 0) > 0
+              THEN COALESCE(si.amount, 0) / s.subtotal_amount * COALESCE(s.sgst_amount, 0)
+              ELSE 0 END
+          ) AS sgst_amount,
+          SUM(
+            CASE WHEN COALESCE(s.subtotal_amount, 0) > 0
+              THEN COALESCE(si.amount, 0) / s.subtotal_amount * COALESCE(s.igst_amount, 0)
+              ELSE 0 END
+          ) AS igst_amount
+        FROM sales_invoice_bill_items si
+        JOIN sales_invoice_bills s ON s.id = si.invoice_bill_id
+        WHERE s.deleted_at IS NULL AND si.deleted_at IS NULL
+          AND s.status = 'Invoice'
+          AND (:branch_id IS NULL OR s.branch_id = :branch_id)
+          AND s.invoice_date BETWEEN :from_date AND :to_date
+          AND si.hsn_code IS NOT NULL AND si.hsn_code != ''
+        GROUP BY si.hsn_code
+        ORDER BY si.hsn_code
+      `;
+
+      const data = await sequelize.query(dataSql, { replacements, type: sequelize.QueryTypes.SELECT });
+
+      return commonService.okResponse(res, {
+        section: "hsn",
+        data: data.map((row) => ({
+          hsn_code: row.hsn_code,
+          total_qty: parseFloat(row.total_qty || 0).toFixed(3),
+          taxable_value: parseFloat(row.taxable_value || 0).toFixed(2),
+          cgst_amount: parseFloat(row.cgst_amount || 0).toFixed(2),
+          sgst_amount: parseFloat(row.sgst_amount || 0).toFixed(2),
+          igst_amount: parseFloat(row.igst_amount || 0).toFixed(2),
+          total_tax: (parseFloat(row.cgst_amount || 0) + parseFloat(row.sgst_amount || 0) + parseFloat(row.igst_amount || 0)).toFixed(2),
+        })),
+      });
+    }
+
+    // Unknown section fallback
+    return commonService.okResponse(res, { section, data: [] });
+  } catch (err) {
+    console.error(err);
+    return commonService.handleError(res, err);
+  }
+};
+
+module.exports = {
+  getTrialBalance,
+  getProfitLoss,
+  getBalanceSheet,
+  getGstr1,
+  getGstr1Portal,
+};

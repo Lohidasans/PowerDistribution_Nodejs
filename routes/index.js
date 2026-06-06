@@ -73,6 +73,7 @@ const AttendanceReportRoute = require('./attendanceReportRoute');
 const SalesOrderRoute = require('./vendorSalesOrderRoute');
 const SuperAdminDashboardRoute = require('./superAdminDashboardRoute');
 const ReportRoute = require('./reportRoute');
+const FinancialReportRoute = require('./financialReportRoute');
 const CodeGeneratorRoute = require('./codeGeneratorRoute');
 const CustomerSchemePaymentRoute = require('./customerSchemePaymentRoute');
 const AdminOnlineOrderRoute = require('./adminOnlineOrderRoute');
@@ -157,6 +158,7 @@ module.exports = (app) => {
   app.use("/api/v1", SalesOrderRoute);
   app.use("/api/v1", SuperAdminDashboardRoute);
   app.use("/api/v1", ReportRoute);
+  app.use("/api/v1", FinancialReportRoute);
   app.use("/api/v1", CodeGeneratorRoute);
   app.use("/api/v1", CustomerSchemePaymentRoute);
   app.use("/api/v1", AdminOnlineOrderRoute);

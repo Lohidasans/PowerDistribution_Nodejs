@@ -9,8 +9,26 @@
       "name": "Delivery Chellan",
       "item": [
         {
-          "name": "Create Delivery Chellan (Header + Items)",
-          "id": "6868a333-f1ed-48ca-8e93-6bd5e4fa2868",
+          "name": "Generate Delivery Challan No",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/delivery-chellan/code",
+              "host": ["{{baseUrl}}"],
+              "path": ["delivery-chellan", "code"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Delivery Challan",
           "request": {
             "method": "POST",
             "header": [
@@ -26,23 +44,23 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n    \"delivery_challan_no\": \"DC-0001\",\n    \"date\": \"2026-01-26\",\n    \"delivery_challan_type_id\": 1, //1.Job work 2.others\n    \"vendor_id\": 10,\n    \"ref_no\": \"REF-123\",\n    \"amount_in_words\": \"One thousand only\",\n    \"sub_total\": 1000.00,\n    \"sgst\": 0.00,\n    \"cgst\": 0.00,\n    \"igst\": 0.00,\n    \"discount\": 0.00,\n    \"total_amount\": 1000.00,\n    \"remarks\": \"Test delivery chellan\",\n    \"discount_type_id\": 1, // 1.Percentage 2.Amount\n    \"status_id\": 1, //1.issued 2.closed\n    \"items\": [\n        {\n            \"sku_id\": \"SKU-001\",\n            \"product_description\": \"Product A\",\n            \"quantity\": 2,\n            \"weight\": 1.250,\n            \"amount\": 500.00\n        },\n        {\n            \"sku_id\": \"SKU-002\",\n            \"product_description\": \"Product B\",\n            \"quantity\": 1,\n            \"weight\": 0.750,\n            \"amount\": 500.00\n        }\n    ]\n}"
+              "raw": "{\n    \"delivery_challan_no\": \"DC-0001\",\n    \"date\": \"2026-01-26\",\n    \"delivery_challan_type_id\": 1,\n    \"vendor_id\": 10,\n    \"ref_no\": \"REF-123\",\n    \"amount_in_words\": \"One thousand only\",\n    \"sub_total\": 1000.00,\n    \"sgst\": 0.00,\n    \"cgst\": 0.00,\n    \"igst\": 0.00,\n    \"discount\": 0.00,\n    \"discount_type_id\": 1,\n    \"total_amount\": 1000.00,\n    \"remarks\": \"Test delivery challan\",\n    \"status_id\": 1,\n    \"items\": [\n        {\n            \"sku_id\": \"SKU-001\",\n            \"product_description\": \"Product A\",\n            \"quantity\": 2,\n            \"weight\": 1.250,\n            \"amount\": 500.00\n        },\n        {\n            \"sku_id\": \"SKU-002\",\n            \"product_description\": \"Product B\",\n            \"quantity\": 1,\n            \"weight\": 0.750,\n            \"amount\": 500.00\n        }\n    ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{baseUrl}}/delivery-chellan",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "delivery-chellan"
-              ]
+              "host": ["{{baseUrl}}"],
+              "path": ["delivery-chellan"]
             }
           },
           "response": []
         },
         {
-          "name": "Get All Delivery Chellans (with filters)",
-          "id": "22c7aeda-f2b8-4af6-9f24-afc340dd01f0",
+          "name": "Get All Delivery Challans",
           "request": {
             "method": "GET",
             "header": [
@@ -54,41 +72,21 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/delivery-chellan?search=&vendor_id=&delivery_challan_type_id=&date_from=&date_to=",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "delivery-chellan"
-              ],
+              "host": ["{{baseUrl}}"],
+              "path": ["delivery-chellan"],
               "query": [
-                {
-                  "key": "search",
-                  "value": ""
-                },
-                {
-                  "key": "vendor_id",
-                  "value": ""
-                },
-                {
-                  "key": "delivery_challan_type_id",
-                  "value": ""
-                },
-                {
-                  "key": "date_from",
-                  "value": ""
-                },
-                {
-                  "key": "date_to",
-                  "value": ""
-                }
+                { "key": "search", "value": "" },
+                { "key": "vendor_id", "value": "" },
+                { "key": "delivery_challan_type_id", "value": "" },
+                { "key": "date_from", "value": "" },
+                { "key": "date_to", "value": "" }
               ]
             }
           },
           "response": []
         },
         {
-          "name": "Get Delivery Chellan By ID",
-          "id": "ccdfe56e-4dfd-44e6-9a77-a92e6ecae296",
+          "name": "Get Delivery Challan By ID",
           "request": {
             "method": "GET",
             "header": [
@@ -100,20 +98,14 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/delivery-chellan/{{id}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "delivery-chellan",
-                "{{id}}"
-              ]
+              "host": ["{{baseUrl}}"],
+              "path": ["delivery-chellan", "{{id}}"]
             }
           },
           "response": []
         },
         {
-          "name": "Update Delivery Chellan (Header + Replace Items)",
-          "id": "b99a21bd-21c5-4571-8172-23364a62be2b",
+          "name": "Update Delivery Challan",
           "request": {
             "method": "PUT",
             "header": [
@@ -129,24 +121,55 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"ref_no\": \"REF-UPDATED\",\n  \"remarks\": \"Updated delivery chellan\",\n  \"sub_total\": 1200.00,\n  \"discount\": 50.00,\n  \"total_amount\": 1150.00,\n  \"status_id\":2,\n  \"items\": [\n    {\n      \"sku_id\": \"SKU-001\",\n      \"product_description\": \"Product A (updated)\",\n      \"quantity\": 3,\n      \"weight\": 1.500,\n      \"amount\": 900.00\n    },\n    {\n      \"sku_id\": \"SKU-003\",\n      \"product_description\": \"Product C\",\n      \"quantity\": 1,\n      \"weight\": 0.500,\n      \"amount\": 250.00\n    }\n  ]\n}"
+              "raw": "{\n    \"ref_no\": \"REF-UPDATED\",\n    \"remarks\": \"Updated delivery challan\",\n    \"sub_total\": 1200.00,\n    \"sgst\": 0.00,\n    \"cgst\": 0.00,\n    \"igst\": 0.00,\n    \"discount\": 50.00,\n    \"discount_type_id\": 1,\n    \"total_amount\": 1150.00,\n    \"status_id\": 1,\n    \"items\": [\n        {\n            \"sku_id\": \"SKU-001\",\n            \"product_description\": \"Product A (updated)\",\n            \"quantity\": 3,\n            \"weight\": 1.500,\n            \"amount\": 900.00\n        },\n        {\n            \"sku_id\": \"SKU-003\",\n            \"product_description\": \"Product C\",\n            \"quantity\": 1,\n            \"weight\": 0.500,\n            \"amount\": 250.00\n        }\n    ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
             "url": {
               "raw": "{{baseUrl}}/delivery-chellan/{{id}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "delivery-chellan",
-                "{{id}}"
-              ]
+              "host": ["{{baseUrl}}"],
+              "path": ["delivery-chellan", "{{id}}"]
             }
           },
           "response": []
         },
         {
-          "name": "Delete Delivery Chellan",
-          "id": "19b23563-4993-494b-8e93-3f471a466a02",
+          "name": "Update Delivery Challan Status (Close)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"status_id\": 2\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/delivery-chellan/{{id}}/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["delivery-chellan", "{{id}}", "status"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Delivery Challan",
           "request": {
             "method": "DELETE",
             "header": [
@@ -158,261 +181,53 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/delivery-chellan/{{id}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "delivery-chellan",
-                "{{id}}"
-              ]
+              "host": ["{{baseUrl}}"],
+              "path": ["delivery-chellan", "{{id}}"]
             }
           },
           "response": []
         },
         {
-          "name": "Delete Item",
-          "id": "83000da2-57dc-4f96-b507-eb51f327f783",
+          "name": "Delete Delivery Challan Item",
           "request": {
-            "method": "POST",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/delivery-chellan/:delivery_chellan_id/item/:id",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "delivery-chellan",
-                ":delivery_chellan_id",
-                "item",
-                ":id"
-              ],
-              "variable": [
-                {
-                  "key": "delivery_chellan_id",
-                  "value": "1"
-                },
-                {
-                  "key": "id",
-                  "value": "1"
-                }
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "New Request",
-          "id": "dfb09236-d7b9-4009-bd29-d1b0ac01a53c",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/delivery-chellan/code",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "delivery-chellan",
-                "code"
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "close status",
-          "id": "61e16021-21e8-45e7-97a4-7a7208153e7e",
-          "request": {
-            "method": "PUT",
-            "header": [],
-            "body": {
-              "mode": "raw",
-              "raw": "{\r\n    \"status_id\":2\r\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
               }
-            },
+            ],
             "url": {
-              "raw": "{{baseUrl}}/delivery-chellan/8/status",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "delivery-chellan",
-                "8",
-                "status"
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "https://apiuat.ramvell.in:8448/api/v1/products/search/sku",
-          "id": "1a4934b0-f2e8-4a11-95d9-94bba41b2000",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "https://apiuat.ramvell.in:8448/api/v1/products/search/sku?sku=CJ_BRC_0005&branch_id=22",
-              "protocol": "https",
-              "host": [
-                "apiuat",
-                "ramvell",
-                "in"
-              ],
-              "port": "8448",
-              "path": [
-                "api",
-                "v1",
-                "products",
-                "search",
-                "sku"
-              ],
-              "query": [
-                {
-                  "key": "sku",
-                  "value": "CJ_BRC_0005"
-                },
-                {
-                  "key": "branch_id",
-                  "value": "22"
-                }
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "http://localhost:5000/api/v1/products/search/sku",
-          "id": "9067535b-3502-4e38-bd98-f4a4bba04ff0",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "http://localhost:5000/api/v1/products/search/sku?sku=CJ_CHN_0005&branch_id=1",
-              "protocol": "http",
-              "host": [
-                "localhost"
-              ],
-              "port": "5000",
-              "path": [
-                "api",
-                "v1",
-                "products",
-                "search",
-                "sku"
-              ],
-              "query": [
-                {
-                  "key": "sku",
-                  "value": "CJ_CHN_0005",
-                  "uuid": "668aff69-4e90-4193-80aa-097c8b12c233"
-                },
-                {
-                  "key": "branch_id",
-                  "value": "1",
-                  "uuid": "02990cd7-0b33-430f-bcbf-cf15620c8c2e"
-                }
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "New Request",
-          "id": "16422b20-7a67-46e4-84a8-2a9f6d411354",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": ""
+              "raw": "{{baseUrl}}/delivery-chellan/{{delivery_challan_id}}/item/{{item_id}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["delivery-chellan", "{{delivery_challan_id}}", "item", "{{item_id}}"]
             }
           },
           "response": []
         }
-      ],
-      "id": "aa9fad4b-a772-43cc-b0cc-e25a075f194b"
-    },
-    {
-      "name": "Ledger",
-      "item": [
-        {
-          "name": "Auto generate Ledger code",
-          "id": "cd206009-537e-4498-9bdc-d9f5c622698f",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/ledgers/generate-number",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "ledgers",
-                "generate-number"
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "Auto generate Ledger  group",
-          "id": "8822201c-da78-4ff5-9c4a-5a998de2cf67",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/ledger-groups/generate-number",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "api",
-                "v1",
-                "ledger-groups",
-                "generate-number"
-              ]
-            }
-          },
-          "response": []
-        }
-      ],
-      "id": "08263ff1-1e4d-4841-8f4b-ab7ff9738daf"
-    }
-  ],
-  "event": [
-    {
-      "listen": "prerequest",
-      "script": {
-        "type": "text/javascript",
-        "exec": [
-          "// Set default id if not provided",
-          "if (!pm.environment.get('id')) {",
-          "  pm.environment.set('id', '1');",
-          "}"
-        ],
-        "id": "a3a06586-a836-491f-82a3-f4cb4115c2cd"
-      }
+      ]
     }
   ],
   "variable": [
     {
-      "id": "c6b790c8-f7dd-4358-be19-548c02a1cff0",
       "key": "baseUrl",
-      "value": "http://localhost:3000/api"
+      "value": "http://localhost:3000/api/v1"
     },
     {
-      "id": "5f1a86c3-6edc-4038-b513-03c67b2be306",
       "key": "token",
       "value": ""
     },
     {
-      "id": "52c32177-6ae2-433f-870f-a9a4d458f656",
       "key": "id",
+      "value": "1"
+    },
+    {
+      "key": "delivery_challan_id",
+      "value": "1"
+    },
+    {
+      "key": "item_id",
       "value": "1"
     }
   ]
