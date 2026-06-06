@@ -1115,6 +1115,86 @@ const getBranchOverview = async (req, res) => {
     }
 
     const query = `
+      WITH revenue_stream AS (
+        /* SALES + REPAIR */
+        SELECT
+          COALESCE(sib.branch_id, jr.branch_id) AS branch_id,
+          CASE
+            WHEN p.payment_mode = 'Cash'
+            THEN
+              p.amount_received
+              - COALESCE(
+                  CASE
+                    WHEN sib.id IS NOT NULL
+                    THEN MAX(sib.refund_amount) OVER (PARTITION BY sib.id)
+
+                    WHEN jr.id IS NOT NULL
+                    THEN MAX(jr.refund_amount) OVER (PARTITION BY jr.id)
+                    ELSE 0
+                  END,
+                  0
+                )
+            ELSE p.amount_received
+          END AS amount
+        FROM payments p
+        LEFT JOIN sales_invoice_bills sib
+          ON sib.id = p.invoice_bill_id
+          AND sib.deleted_at IS NULL
+          AND sib.is_active = true
+          AND sib.status = 'Invoice'
+        LEFT JOIN jewel_repairs jr
+          ON jr.id = p.jewel_repair_id
+          AND jr.deleted_at IS NULL
+          AND jr.is_active = true
+          AND jr.status = 'Completed'
+        WHERE p.deleted_at IS NULL
+          AND p.status = 'Completed'
+
+        UNION ALL
+
+        /* RECEIPTS */
+        SELECT
+          vr.branch_id,
+          vr.amount
+        FROM voucher_receipts vr
+        JOIN payment_modes pm
+          ON pm.id = vr.payment_mode_id
+        WHERE vr.deleted_at IS NULL
+          AND vr.is_active = true
+
+        UNION ALL
+
+        /* SCHEME PAY INSTALLMENT */
+        SELECT
+          c.branch_id,
+          p.amount_received
+        FROM customer_scheme_payments sp
+        JOIN customer_enrollments e
+          ON e.id = sp.enrollment_id
+          AND e.deleted_at IS NULL
+        JOIN customers c
+          ON c.id = e.customer_id
+          AND c.deleted_at IS NULL
+        JOIN payments p
+          ON p.scheme_payment_id = sp.id
+          AND p.deleted_at IS NULL
+        WHERE sp.deleted_at IS NULL
+          AND sp.payment_source = 'INSTALLMENT'
+          AND p.status = 'Completed'
+
+        UNION ALL
+
+        /* VENDOR PAYMENT NEGATIVE */
+        SELECT
+          vp.branch_id,
+          -vp.amount
+        FROM vendor_payments vp
+        JOIN payment_modes pm
+          ON pm.id = vp.payment_mode
+        WHERE vp.deleted_at IS NULL
+          AND vp.is_active = true
+          AND vp.status = 'Completed'
+      )
       SELECT 
         b.id AS branch_id,
         b.branch_no,
@@ -1129,6 +1209,12 @@ const getBranchOverview = async (req, res) => {
           AND sib.deleted_at IS NULL
           AND sib.customer_id IS NOT NULL
         ), 0) AS total_customers,
+        -- Total Revenue using the revenue page collection stream
+        COALESCE((
+          SELECT ROUND(SUM(rs.amount), 2)
+          FROM revenue_stream rs
+          WHERE rs.branch_id = b.id
+        ), 0) AS total_revenue,
         -- Total Revenue from Sales Invoices
         COALESCE((
           SELECT SUM(sib.total_amount)
@@ -1203,7 +1289,7 @@ const getBranchOverview = async (req, res) => {
     const formattedOverview = branchOverview.map((branch, index) => {
       const salesRevenue = parseFloat(branch.sales_revenue || 0);
       const repairRevenue = parseFloat(branch.repair_revenue || 0);
-      const totalRevenue = salesRevenue + repairRevenue;
+      const totalRevenue = parseFloat(branch.total_revenue || 0);
 
       return {
         s_no: index + 1,
