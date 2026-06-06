@@ -4,6 +4,8 @@ const commonService = require("../services/commonService");
 const enMessage = require("../constants/en.json");
 const { buildSearchCondition } = require("../helpers/queryHelper");
 const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
+const {sendCustomerNotification,} = require("../helpers/notificationHelper");
+const notificationMessages = require("../constants/notificationMessages");
 
 const createOffer = async (req, res) => {
   const transaction = await sequelize.transaction();
@@ -76,6 +78,70 @@ const createOffer = async (req, res) => {
     }
 
     await transaction.commit();
+    /*
+    // ==================================================
+    // SEND OFFER NOTIFICATION TO ALL CUSTOMERS
+    // ==================================================
+    try {
+
+      let materialName = null;
+
+      if (applicables?.length > 0) {
+        const firstApplicable = applicables[0];
+
+        if (firstApplicable.material_type_id) {
+          const material =
+            await models.MaterialType.findByPk(
+              firstApplicable.material_type_id
+            );
+
+          materialName =
+            material?.material_type || null;
+        }
+      }
+
+      const customers =
+        await models.Customer.findAll({
+          where: {
+            deleted_at: null
+          },
+          attributes: [
+            "id",
+            "customer_name",
+            "mobile_number"
+          ]
+        });
+
+      const message = materialName
+        ? notificationMessages.offerCreatedForMaterial({
+            offerValue: offer_value,
+            materialName,
+            validFrom: valid_from,
+            validTo: valid_to
+          })
+        : notificationMessages.offerCreated({
+            offerValue: offer_value,
+            validFrom: valid_from,
+            validTo: valid_to
+          });
+
+      await Promise.allSettled(
+        customers
+          .filter(c => c.mobile_number)
+          .map(customer =>
+            sendSMS({
+              mobile: customer.mobile_number,
+              message
+            })
+          )
+      );
+
+      } catch (notificationError) {
+      console.error(
+        "Offer notification failed:",
+        notificationError
+      );
+    } */
 
     return commonService.createdResponse(res, { offer });
 
