@@ -1,6 +1,9 @@
 const commonService = require("./commonService");
 const { models, sequelize } = require("../models");
 const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
+const { sendCustomerNotification } = require("../helpers/notificationHelper");
+const { sendPushToSubscribers } = require("./pushNotificationService");
+const notificationMessages = require("../constants/notificationMessages");
 
 // Generate auto code: SS001
 const generateSchemePaymentCode = async (req, res) => {
@@ -147,6 +150,51 @@ const createSchemePayment = async (req, res) => {
         }
 
         await t.commit();
+
+        // ── Notifications (non-blocking — never crash the payment flow) ──────
+        const isSchemeCompleted = nextInstallment === duration.months;
+        const schemeName = scheme.scheme_name;
+        const customerId = enrollment.customer_id;
+
+        if (customerId) {
+            if (isSchemeCompleted) {
+                // 1. Save to notification history + send SMS
+                sendCustomerNotification({
+                    customerId,
+                    title: "Scheme Completed",
+                    message: notificationMessages.schemeCompleted(schemeName),
+                    type: "SCHEME",
+                }).catch(() => {});
+
+                // 2. Push notification to browser
+                sendPushToSubscribers({
+                    ...notificationMessages.push_schemeCompleted(schemeName),
+                    user_type: "customer",
+                    user_id: customerId,
+                }).catch(() => {});
+            } else {
+                // Installment paid — send due reminder for next month
+                sendCustomerNotification({
+                    customerId,
+                    title: "Installment Paid",
+                    message: notificationMessages.schemeDueAmountReminder(
+                        enrollment.installment_amount_id,
+                        schemeName
+                    ),
+                    type: "SCHEME",
+                }).catch(() => {});
+
+                sendPushToSubscribers({
+                    ...notificationMessages.push_schemeDueAmountReminder(
+                        enrollment.installment_amount_id,
+                        schemeName
+                    ),
+                    user_type: "customer",
+                    user_id: customerId,
+                }).catch(() => {});
+            }
+        }
+        // ─────────────────────────────────────────────────────────────────────
 
         return commonService.createdResponse(res, {
             message: "Installment amount paid successfully",
