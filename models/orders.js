@@ -54,7 +54,15 @@ module.exports = (sequelize, DataTypes) => {
             cancelled_at: {
                 type: DataTypes.DATE,
                 allowNull: true,
-            }
+            },
+            shipping_address_id: {
+                type: DataTypes.INTEGER,
+                allowNull: true
+            },
+            billing_address_id: {
+                type: DataTypes.INTEGER,
+                allowNull: true
+            },
         },
         {
             timestamps: true,

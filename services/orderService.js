@@ -54,14 +54,49 @@ const createOrder = async (req, res) => {
             customer_id,
             discount_amount = 0,
             order_date,
+            shipping_address_id,
+            billing_address_id,
             items = [],
         } = req.body;
 
-        if (!customer_id || items.length === 0) {
+        if (!customer_id ||  !shipping_address_id || !billing_address_id || items.length === 0) {
             return commonService.badRequest(
                 res,
-                "customer_id and items are required"
+                "customer_id, shipping_address_id , billing_address_id and items are required"
             );
+        }
+
+        const shippingAddress = await models.CustomerAddress.findOne({
+          where: {
+              id: shipping_address_id,
+              customer_id,
+          },
+          transaction,
+        });
+
+        if (!shippingAddress) {
+          return commonService.badRequest(
+              res,
+              "Invalid shipping address"
+          );
+        }
+
+        // Billing address validation
+        if (billing_address_id) {
+        const billingAddress = await models.CustomerAddress.findOne({
+          where: {
+              id: billing_address_id,
+              customer_id,
+          },
+          transaction,
+        });
+
+        if (!billingAddress) {
+          return commonService.badRequest(
+              res,
+              "Invalid billing address"
+            );
+          }
         }
 
         // 1️. Generate Order Number
@@ -159,6 +194,8 @@ const createOrder = async (req, res) => {
                 order_number: orderNumber,
                 order_date,
                 customer_id,
+                shipping_address_id,
+                billing_address_id,
                 order_status: 1,
                 subtotal: orderSubTotal,
                 tax_amount: orderTaxAmount,
