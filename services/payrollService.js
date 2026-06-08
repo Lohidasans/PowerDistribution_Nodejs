@@ -353,6 +353,8 @@ const getPayrollById = async (req, res) => {
                 total_earnings,
                 total_deductions,
                 net_salary: parseFloat(p.net_salary || 0),
+                payment_mode: p.payment_mode || null,
+                payment_no: p.payment_no || null,
                 created_at: p.created_at,
                 updated_at: p.updated_at,
             },
@@ -932,11 +934,46 @@ const getEmployeePayrolls = async (req, res) => {
     }
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// UPDATE PAYROLL PAYMENT (called when payment receipt is created)
+// PATCH /api/v1/payrolls/:id/payment
+// Body: { payment_mode: "Cash|Bank Transfer|...", payment_no: "TXN123..." }
+// ─────────────────────────────────────────────────────────────────────────────
+const updatePayrollPayment = async (req, res) => {
+    try {
+        const payroll = await models.Payroll.findByPk(req.params.id);
+        if (!payroll) return commonService.notFound(res, "Payroll not found");
+
+        const { payment_mode, payment_no } = req.body;
+
+        if (!payment_mode && !payment_no) {
+            return commonService.badRequest(res, "At least payment_mode or payment_no is required");
+        }
+
+        await payroll.update({
+            ...(payment_mode !== undefined && { payment_mode }),
+            ...(payment_no !== undefined && { payment_no }),
+        });
+
+        return commonService.okResponse(res, {
+            message: "Payment details updated successfully",
+            data: {
+                id: payroll.id,
+                payment_mode: payroll.payment_mode,
+                payment_no: payroll.payment_no,
+            },
+        });
+    } catch (error) {
+        return commonService.handleError(res, error);
+    }
+};
+
 module.exports = {
     createPayroll,
     getPayrolls,
     getPayrollById,
     updatePayroll,
+    updatePayrollPayment,
     deletePayroll,
     getPayrollAttendancePreview,
     getPayrollTimingDetails,

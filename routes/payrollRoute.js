@@ -35,6 +35,7 @@ router.get("/payrolls/attendance-preview", svc.getPayrollAttendancePreview);
 router.get("/payrolls/timing", svc.getPayrollTimingDetails);
 router.get("/payrolls/:id", svc.getPayrollById);
 router.put("/payrolls/:id", svc.updatePayroll);
+router.patch("/payrolls/:id/payment", svc.updatePayrollPayment);
 router.delete("/payrolls/:id", svc.deletePayroll);
 
 // ── Employee-specific payroll list ───────────────────────────────────────────
