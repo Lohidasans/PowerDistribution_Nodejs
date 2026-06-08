@@ -148,6 +148,28 @@ const getOldJewelReport = async (req, res) => {
       replacements.material_type_id = material_type_id;
     }
 
+    const invoiceJoin =
+      type === "old_jewel"
+        ? `
+          LEFT JOIN (
+            SELECT
+              sa.reference_id AS old_jewel_id,
+              MAX(sib.invoice_no) AS invoice_no
+            FROM sales_invoice_adjustments sa
+            JOIN sales_invoice_bills sib
+              ON sib.id = sa.sales_invoice_id
+              AND sib.deleted_at IS NULL
+              AND sib.status = 'Invoice'
+              AND sib.is_active = true
+            WHERE sa.deleted_at IS NULL
+              AND sa.adjustment_type_id = '2'
+            GROUP BY sa.reference_id
+          ) inv ON inv.old_jewel_id = t.id
+        `
+        : "";
+
+    const invoiceSelect = type === "old_jewel" ? ", inv.invoice_no" : "";
+
     let gridSql = `
       SELECT
         t.*,
@@ -158,6 +180,7 @@ const getOldJewelReport = async (req, res) => {
         COALESCE(items.qty,0) AS quantity,
         items.material_type_id,
         items.material_type
+        ${invoiceSelect}
       FROM ${config.table} t
       LEFT JOIN (
         SELECT
@@ -171,8 +194,12 @@ const getOldJewelReport = async (req, res) => {
         WHERE i.deleted_at IS NULL
         GROUP BY i.${config.itemFk}
       ) items ON items.parent_id = t.id
+
+      ${invoiceJoin}
+
       LEFT JOIN customers c ON c.id = t.customer_id
       LEFT JOIN branches b ON b.id = t.branch_id
+
       WHERE ${whereSql}
       ${
         search
