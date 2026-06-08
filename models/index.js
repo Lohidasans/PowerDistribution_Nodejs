@@ -202,6 +202,7 @@ const AbandonedCheckout = require("./abandonedCheckouts")(sequelize, Sequelize.D
 const Notification = require("./notification")(sequelize, Sequelize.DataTypes);
 
 const TagPrintSetting = require("./tagPrintSettings")(sequelize, Sequelize.DataTypes);
+const PushSubscription = require("./pushSubscriptions")(sequelize, Sequelize.DataTypes);
 
 const models = {
   Permission,
@@ -320,6 +321,7 @@ const models = {
   ChargesType,
   Notification,
   TagPrintSetting,
+  PushSubscription,
 };
 
 Object.values(models).forEach((model) => {

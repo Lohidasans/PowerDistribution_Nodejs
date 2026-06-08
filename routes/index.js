@@ -82,6 +82,7 @@ const employeeDashboardRoute = require('./employeeDashboardRoute');
 const branchDashboardRoute = require('./branchDashboardRoute');
 const AbandonedCheckoutRoute = require('./abandonedCheckoutRoute');
 const TagPrintSettingRoute = require('./tagPrintSettingRoute');
+const PushNotificationRoute = require('./pushNotificationRoute');
 
 module.exports = (app) => {
   app.use("/api/v1", RoleRouter);
@@ -168,5 +169,6 @@ module.exports = (app) => {
   app.use("/api/v1", branchDashboardRoute);
   app.use("/api/v1", AbandonedCheckoutRoute);
   app.use("/api/v1", TagPrintSettingRoute);
+  app.use("/api/v1", PushNotificationRoute);
 };
 

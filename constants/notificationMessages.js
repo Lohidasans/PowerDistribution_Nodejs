@@ -4,6 +4,10 @@ const websiteLoginOtp = (otp) =>
 Thank You,
 Team Chaneira Jewels`;
 
+// ─── PUSH NOTIFICATION TEMPLATES ────────────────────────────────────────────
+// Each push template returns { title, body } used by sendPushToSubscribers()
+// ─────────────────────────────────────────────────────────────────────────────
+
 
 
 const websiteNewCustomerGreeting = () =>
@@ -134,6 +138,111 @@ Team Chaneira Jewels`;
 
 
 
+// Customer login success
+const push_customerLogin = () => ({
+  title: 'Welcome back! 👋',
+  body: 'You have successfully logged in to Chaneira Jewels.',
+  url: '/dashboard',
+});
+
+// New customer registered
+const push_newCustomerGreeting = () => ({
+  title: 'Welcome to Chaneira Jewels! 🎉',
+  body: 'Your account has been created. Explore our finest collections.',
+  url: '/home',
+});
+
+// Admin/Staff login success
+const push_adminLogin = (name) => ({
+  title: `Welcome, ${name}! 🔐`,
+  body: 'You have successfully logged in to the admin panel.',
+  url: '/admin/dashboard',
+});
+
+// Discount approval required
+const push_discountApproval = (branchName, invoiceNo) => ({
+  title: 'Discount Approval Required ⚠️',
+  body: `Discount limit exceeded at ${branchName} for invoice ${invoiceNo}. Approve now.`,
+  url: '/admin/approvals',
+});
+
+// Offer created - collection
+const push_offerCreatedCollection = (discountPercentage, fromDate, toDate) => ({
+  title: `🎁 ${discountPercentage}% OFF Offer Live!`,
+  body: `Enjoy ${discountPercentage}% off on selective collections. Valid from ${fromDate} to ${toDate}.`,
+  url: '/offers',
+});
+
+// Offer created - category
+const push_offerCreatedCategory = (discountPercentage, categoryName, fromDate, toDate) => ({
+  title: `🎁 ${discountPercentage}% OFF on ${categoryName}!`,
+  body: `Offer valid from ${fromDate} to ${toDate}. Visit our store to avail.`,
+  url: '/offers',
+});
+
+// Customer purchase confirmation
+const push_customerPurchase = () => ({
+  title: 'Purchase Successful! 🛍️',
+  body: 'Thank you for your purchase at Chaneira Jewels. We look forward to serving you again.',
+  url: '/my-orders',
+});
+
+// Scheme enrollment
+const push_savingSchemeEnrollment = (schemeName) => ({
+  title: 'Scheme Enrolled ✅',
+  body: `You have been enrolled in the saving scheme "${schemeName}". Your scheme is now active.`,
+  url: '/my-schemes',
+});
+
+// Scheme due reminder
+const push_schemeDueAmountReminder = (amount, schemeName) => ({
+  title: 'Scheme Payment Reminder 🔔',
+  body: `Rs.${amount} is due for your saving scheme "${schemeName}". Pay now to continue.`,
+  url: '/my-schemes',
+});
+
+// Scheme completed
+const push_schemeCompleted = (schemeName) => ({
+  title: 'Scheme Completed 🎊',
+  body: `Congratulations! Your saving scheme "${schemeName}" has been completed successfully.`,
+  url: '/my-schemes',
+});
+
+// Online order placed
+const push_onlineOrderPlaced = (billAmount) => ({
+  title: 'Order Placed Successfully! 📦',
+  body: `Your online order of Rs.${billAmount} has been placed. We will notify you once processed.`,
+  url: '/my-orders',
+});
+
+// Order dispatched
+const push_orderDispatched = (deliveryDays = '5 to 7') => ({
+  title: 'Order Dispatched! 🚚',
+  body: `Your order is on its way. Expected delivery in ${deliveryDays} days.`,
+  url: '/my-orders',
+});
+
+// Order delivered
+const push_orderDelivered = (orderNo) => ({
+  title: 'Order Delivered! ✅',
+  body: `Your order ${orderNo} has been delivered. Thank you for shopping with Chaneira Jewels!`,
+  url: '/my-orders',
+});
+
+// New branch opening
+const push_newBranchOpening = (city) => ({
+  title: `Now in ${city}! 🏪`,
+  body: `We have opened a new branch in ${city}. Visit us and explore our finest collections.`,
+  url: '/branches',
+});
+
+// Festive season offer
+const push_festiveSeason = () => ({
+  title: 'Festive Season is Here! ✨',
+  body: 'Discover our latest collections and exclusive festive deals. Hurry — limited stock!',
+  url: '/offers',
+});
+
 module.exports = {
   websiteLoginOtp,
   websiteNewCustomerGreeting,
@@ -150,4 +259,20 @@ module.exports = {
   orderDelivered,
   newBranchOpening,
   festiveSeason,
+  // Push notification templates
+  push_customerLogin,
+  push_newCustomerGreeting,
+  push_adminLogin,
+  push_discountApproval,
+  push_offerCreatedCollection,
+  push_offerCreatedCategory,
+  push_customerPurchase,
+  push_savingSchemeEnrollment,
+  push_schemeDueAmountReminder,
+  push_schemeCompleted,
+  push_onlineOrderPlaced,
+  push_orderDispatched,
+  push_orderDelivered,
+  push_newBranchOpening,
+  push_festiveSeason,
 };

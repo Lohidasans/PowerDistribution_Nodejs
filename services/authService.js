@@ -9,6 +9,7 @@ const otpCache = require('../utils/otpCache');
 const { generateOnlineCustomerCode } = require('./customerService');
 const {sendCustomerNotification,} = require("../helpers/notificationHelper");
 const notificationMessages = require("../constants/notificationMessages");
+const { sendPushToSubscribers } = require("./pushNotificationService");
 
 const login = async (req, res) => {
     const t = await sequelize.transaction();
@@ -119,6 +120,16 @@ const login = async (req, res) => {
         await user.update({ last_login_at: new Date() }, { transaction: t });
 
         await t.commit();
+
+        // Send push notification to this user's browser (non-blocking)
+        const entityName = entityDetails
+          ? (entityDetails.name || entityDetails.branch_name || entityDetails.first_name || entityType)
+          : entityType;
+        sendPushToSubscribers({
+          ...notificationMessages.push_adminLogin(entityName),
+          user_type: entityType,
+          user_id: entityId,
+        }).catch(() => {});
 
         // Return user data without password
         const { password: _, ...userData } = user.get({ plain: true });
@@ -356,6 +367,16 @@ const verifyOTP = async (req, res) => {
             });
         }
         */
+
+        // Send push notification to this customer's browser (non-blocking)
+        const pushMsg = isNewCustomer
+          ? notificationMessages.push_newCustomerGreeting()
+          : notificationMessages.push_customerLogin();
+        sendPushToSubscribers({
+          ...pushMsg,
+          user_type: 'customer',
+          user_id: customer.id,
+        }).catch(() => {});
 
         return res.status(statusCode).json({
             status: true,
