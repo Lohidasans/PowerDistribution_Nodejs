@@ -8,36 +8,36 @@ const districts = require("../models/districts");
 
 // List Online Orders with optional filters
 const getOnlineOrders = async (req, res) => {
-    try {
-        const {
-            page = 1,
-            limit,
-            search,
-            branch_id,
-            from_date,
-            to_date,
-            date_filter,
-            status // optional clicked score card status
-        } = req.query;
+  try {
+    const {
+      page = 1,
+      limit,
+      search,
+      branch_id,
+      from_date,
+      to_date,
+      date_filter,
+      status // optional clicked score card status
+    } = req.query;
 
-        const replacements = {};
+    const replacements = {};
 
-        const pageNum = Number(page) || 1;
-        const hasPagination = !!limit;
-        const limitNum = hasPagination ? Number(limit) : null;
-        const offset = hasPagination ? (pageNum - 1) * limitNum : 0;
+    const pageNum = Number(page) || 1;
+    const hasPagination = !!limit;
+    const limitNum = hasPagination ? Number(limit) : null;
+    const offset = hasPagination ? (pageNum - 1) * limitNum : 0;
 
-        const dateCondition = dateFilter(
-            { from_date, to_date, date_filter },
-            "o.order_date",
-            replacements
-        );
+    const dateCondition = dateFilter(
+      { from_date, to_date, date_filter },
+      "o.order_date",
+      replacements
+    );
 
-        let searchCondition = "";
-        if (search) {
-            replacements.search = `%${search}%`;
+    let searchCondition = "";
+    if (search) {
+      replacements.search = `%${search}%`;
 
-            searchCondition = `
+      searchCondition = `
         AND (
           o.order_number ILIKE :search
           OR c.customer_name ILIKE :search
@@ -47,15 +47,15 @@ const getOnlineOrders = async (req, res) => {
           OR b.branch_name ILIKE :search
         )
       `;
-        }
-        
-        let branchCondition = "";
-        if (branch_id) {
-            replacements.branch_id = branch_id;
-            branchCondition = `AND p.branch_id = :branch_id`;
-        }
-        
-        const baseCTE = `
+    }
+
+    let branchCondition = "";
+    if (branch_id) {
+      replacements.branch_id = branch_id;
+      branchCondition = `AND p.branch_id = :branch_id`;
+    }
+
+    const baseCTE = `
       WITH item_status AS (
 
         SELECT
@@ -138,42 +138,42 @@ const getOnlineOrders = async (req, res) => {
 
     `;
 
-        // STATUS FILTER        
-        let statusCondition = "";
+    // STATUS FILTER        
+    let statusCondition = "";
 
-        if (status === "new") {
-            statusCondition = `WHERE new_cnt = total_items`;
-        }
+    if (status === "new") {
+      statusCondition = `WHERE new_cnt = total_items`;
+    }
 
-        if (status === "partially_shipped") {
-            statusCondition = `
+    if (status === "partially_shipped") {
+      statusCondition = `
         WHERE shipped_cnt > 0
         AND delivered_cnt = 0
         AND shipped_cnt < total_items
       `;
-        }
+    }
 
-        if (status === "shipped") {
-            statusCondition = `WHERE shipped_cnt = total_items`;
-        }
+    if (status === "shipped") {
+      statusCondition = `WHERE shipped_cnt = total_items`;
+    }
 
-        if (status === "partially_delivered") {
-            statusCondition = `
+    if (status === "partially_delivered") {
+      statusCondition = `
         WHERE delivered_cnt > 0
         AND delivered_cnt < total_items
       `;
-        }
+    }
 
-        if (status === "delivered") {
-            statusCondition = `WHERE delivered_cnt = total_items`;
-        }
+    if (status === "delivered") {
+      statusCondition = `WHERE delivered_cnt = total_items`;
+    }
 
-        if (status === "cancelled") {
-            statusCondition = `WHERE cancelled_cnt = total_items`;
-        }
+    if (status === "cancelled") {
+      statusCondition = `WHERE cancelled_cnt = total_items`;
+    }
 
-        // LIST QUERY        
-        const rowsQuery = `
+    // LIST QUERY        
+    const rowsQuery = `
       ${baseCTE}
 
       SELECT
@@ -203,23 +203,23 @@ const getOnlineOrders = async (req, res) => {
       ORDER BY created_at DESC
 
       ${hasPagination
-                ? "LIMIT :limit OFFSET :offset"
-                : ""
-            }
+        ? "LIMIT :limit OFFSET :offset"
+        : ""
+      }
     `;
 
-        if (hasPagination) {
-            replacements.limit = limitNum;
-            replacements.offset = offset;
-        }
+    if (hasPagination) {
+      replacements.limit = limitNum;
+      replacements.offset = offset;
+    }
 
-        const rows = await sequelize.query(rowsQuery, {
-            replacements,
-            type: sequelize.QueryTypes.SELECT
-        });
+    const rows = await sequelize.query(rowsQuery, {
+      replacements,
+      type: sequelize.QueryTypes.SELECT
+    });
 
-        // SCORE CARD COUNTS      
-        const summaryQuery = `
+    // SCORE CARD COUNTS      
+    const summaryQuery = `
       ${baseCTE}
 
       SELECT
@@ -267,125 +267,125 @@ const getOnlineOrders = async (req, res) => {
       FROM order_summary
     `;
 
-        const [summary] = await sequelize.query(summaryQuery, {
-            replacements,
-            type: sequelize.QueryTypes.SELECT
-        });
+    const [summary] = await sequelize.query(summaryQuery, {
+      replacements,
+      type: sequelize.QueryTypes.SELECT
+    });
 
-        const countQuery = `
+    const countQuery = `
       ${baseCTE}
       SELECT COUNT(*)::int AS count
       FROM order_summary
       ${statusCondition}
     `;
 
-        const [{ count }] = await sequelize.query(countQuery, {
-            replacements,
-            type: sequelize.QueryTypes.SELECT
-        });
+    const [{ count }] = await sequelize.query(countQuery, {
+      replacements,
+      type: sequelize.QueryTypes.SELECT
+    });
 
-        return commonService.okResponse(res, {
-            summary,
-            totalItems: Number(count),
-            currentPage: pageNum,
-            rows
-        });
+    return commonService.okResponse(res, {
+      summary,
+      totalItems: Number(count),
+      currentPage: pageNum,
+      rows
+    });
 
-    } catch (error) {
-        console.error("getOnlineOrders Error:", error);
-        return commonService.handleError(res, error);
-    }
+  } catch (error) {
+    console.error("getOnlineOrders Error:", error);
+    return commonService.handleError(res, error);
+  }
 };
 
 const updateShipmentDetails = async (req, res) => {
-    try {
-        const { order_item_id } = req.params;
+  try {
+    const { order_item_id } = req.params;
 
-        const {
-            shipment_partner,
-            tracking_id,
-            processed_by
-        } = req.body;
+    const {
+      shipment_partner,
+      tracking_id,
+      processed_by
+    } = req.body;
 
-        await models.OrderItem.update(
-            {
-                shipment_partner,
-                tracking_id,
-                processed_by,
-                shipped_at: new Date(),
-                item_status: "Shipped"
-            },
-            {
-                where: { id: order_item_id }
-            }
-        );
+    await models.OrderItem.update(
+      {
+        shipment_partner,
+        tracking_id,
+        processed_by,
+        shipped_at: new Date(),
+        item_status: "Shipped"
+      },
+      {
+        where: { id: order_item_id }
+      }
+    );
 
-        return commonService.okResponse(res, {
-            message: "Shipment updated successfully"
-        });
+    return commonService.okResponse(res, {
+      message: "Shipment updated successfully"
+    });
 
-    } catch (error) {
-        return commonService.handleError(res, error);
-    }
+  } catch (error) {
+    return commonService.handleError(res, error);
+  }
 };
 
 const updateDeliveredDetails = async (req, res) => {
-    try {
-        const { order_item_id } = req.params;
+  try {
+    const { order_item_id } = req.params;
 
-        const {
-            delivered_date,
-            delivered_time,
-            delivered_by
-        } = req.body;
+    const {
+      delivered_date,
+      delivered_time,
+      delivered_by
+    } = req.body;
 
-        const orderItem = await models.OrderItem.findOne({
-            where: {
-                id: order_item_id,
-                deleted_at: null
-            }
-        });
+    const orderItem = await models.OrderItem.findOne({
+      where: {
+        id: order_item_id,
+        deleted_at: null
+      }
+    });
 
-        if (!orderItem) {
-            return commonService.badRequest(
-                res,
-                "Order item not found"
-            );
-        }
-
-        // ONLY SHIPPED ITEMS CAN BE DELIVERED
-        if (orderItem.item_status !== "Shipped") {
-            return commonService.badRequest(
-                res,
-                "Only shipped items can be moved to delivered status"
-            );
-        }
-
-        await models.OrderItem.update(
-            {
-                delivered_date,
-                delivered_time,
-                delivered_by,
-                item_status: "Delivered"
-            },
-            {
-                where: { id: order_item_id }
-            }
-        );
-
-        return commonService.okResponse(res, {
-            message: "Delivered updated successfully"
-        });
-
-    } catch (error) {
-        return commonService.handleError(res, error);
+    if (!orderItem) {
+      return commonService.badRequest(
+        res,
+        "Order item not found"
+      );
     }
+
+    // ONLY SHIPPED ITEMS CAN BE DELIVERED
+    if (orderItem.item_status !== "Shipped") {
+      return commonService.badRequest(
+        res,
+        "Only shipped items can be moved to delivered status"
+      );
+    }
+
+    await models.OrderItem.update(
+      {
+        delivered_date,
+        delivered_time,
+        delivered_by,
+        item_status: "Delivered"
+      },
+      {
+        where: { id: order_item_id }
+      }
+    );
+
+    return commonService.okResponse(res, {
+      message: "Delivered updated successfully"
+    });
+
+  } catch (error) {
+    return commonService.handleError(res, error);
+  }
 };
 
 const getOnlineOrderDetails = async (req, res) => {
   try {
     const { order_id } = req.params;
-   
+
     // ORDER + CUSTOMER + ADDRESS   
     const orderQuery = `
       SELECT
@@ -447,7 +447,7 @@ const getOnlineOrderDetails = async (req, res) => {
     if (!orderInfo) {
       return commonService.badRequest(res, "Order not found");
     }
-    
+
     // ORDER ITEMS (RAW DATA ONLY)  
     const itemsQuery = `
       SELECT
@@ -507,7 +507,7 @@ const getOnlineOrderDetails = async (req, res) => {
     } else if (shippedCount > 0) {
       overall_status = "Partially Shipped";
     }
-   
+
     // FINAL RESPONSE   
     return commonService.okResponse(res, {
       order: {
@@ -969,13 +969,311 @@ const getOnlineOrderInvoice = async (req, res) => {
   }
 };
 
+const generateOnlineOrderInvoice = async (req, res) => {
+  const transaction = await sequelize.transaction();
+
+  try {
+    const { order_id } = req.params;
+
+    const orderQuery = `
+      SELECT
+        o.id,
+        o.order_number,
+        o.order_date,
+        o.customer_id
+      FROM orders o
+      WHERE o.id = :order_id
+      AND o.deleted_at IS NULL
+      LIMIT 1
+    `;
+
+    const [orderInfo] = await sequelize.query(orderQuery, {
+      replacements: { order_id },
+      type: sequelize.QueryTypes.SELECT,
+      transaction,
+    });
+
+    if (!orderInfo) {
+      await transaction.rollback();
+      return commonService.badRequest(
+        res,
+        "Order not found"
+      );
+    }
+
+    // PREVENT DUPLICATE GENERATION
+    const existingInvoices =
+      await models.OnlineOrderInvoice.findAll({
+        where: {
+          order_id,
+        },
+        raw: true,
+        transaction,
+      });
+
+    if (existingInvoices.length) {
+      await transaction.rollback();
+
+      return commonService.badRequest(
+        res,
+        "Invoice already generated for this order"
+      );
+    }
+
+    // ===============================
+    // GET ITEMS
+    // ===============================
+
+    const itemsQuery = `
+      SELECT
+        oi.id AS order_item_id,
+        oi.product_id,
+        oi.product_name,
+        oi.quantity,
+        oi.rate,
+        oi.amount,
+
+        COALESCE(oi.tax,0) AS tax_amount,
+        COALESCE(oi.discount,0) AS discount_amount,
+
+        oi.total_amount,
+
+        COALESCE(
+          oi.branch_id,
+          p.branch_id
+        ) AS branch_id,
+
+        b.branch_name
+
+      FROM order_items oi
+
+      JOIN products p
+        ON p.id = oi.product_id
+        AND p.deleted_at IS NULL
+
+      LEFT JOIN branches b
+        ON b.id = COALESCE(
+          oi.branch_id,
+          p.branch_id
+        )
+
+      WHERE oi.order_id = :order_id
+      AND oi.deleted_at IS NULL
+
+      ORDER BY oi.id
+    `;
+
+    const items = await sequelize.query(itemsQuery, {
+      replacements: { order_id },
+      type: sequelize.QueryTypes.SELECT,
+      transaction,
+    });
+
+    if (!items.length) {
+      await transaction.rollback();
+
+      return commonService.badRequest(
+        res,
+        "No items found"
+      );
+    }
+
+    // SALES INVOICE TYPE
+    const salesInvoiceType =
+      await models.InvoiceSettingEnum.findOne({
+        where: {
+          invoice_setting_enum: "Sales Invoice",
+          status: "Active",
+        },
+        raw: true,
+        transaction,
+      });
+
+    if (!salesInvoiceType) {
+      await transaction.rollback();
+
+      return commonService.badRequest(
+        res,
+        "Sales Invoice type not found"
+      );
+    }
+
+    // GROUP BRANCHWISE
+    const groupedByBranch =
+      items.reduce((acc, item) => {
+        const key = String(item.branch_id);
+
+        if (!acc[key]) {
+          acc[key] = {
+            branch_id: item.branch_id,
+            branch_name: item.branch_name,
+            items: [],
+          };
+        }
+        acc[key].items.push(item);
+        return acc;
+      }, {});
+
+    const generatedInvoices = [];
+
+    // LOOP BRANCHES
+    for (const branchData of Object.values(
+      groupedByBranch
+    )) {
+      // GET BRANCH INVOICE SETTING
+      const setting =
+        await models.InvoiceSetting.findOne({
+          where: {
+            branch_id:
+              branchData.branch_id,
+
+            invoice_sequence_name_id:
+              salesInvoiceType.id,
+          },
+          transaction,
+        });
+
+      if (!setting) {
+        throw new Error(
+          `Invoice setting not found for branch ${branchData.branch_name}`
+        );
+      }
+
+      const prefix = (setting.invoice_prefix || "").trim().toUpperCase();
+      const suffix = (setting.invoice_suffix || "").trim();
+
+      if (!prefix) {
+        throw new Error(
+          `Invoice prefix missing for ${branchData.branch_name}`
+        );
+      }
+
+      if (!suffix) {
+        throw new Error(
+          `Invoice suffix missing for ${branchData.branch_name}`
+        );
+      }
+
+      // GENERATE NUMBER
+      const invoiceNo = await generateBranchSeriesCode(
+          models.OnlineOrderInvoice,
+          "invoice_no",
+          prefix,
+          `${suffix}/ONL`,
+          setting.invoice_start_no ||
+          "001",
+          branchData.branch_id
+        );
+
+      const summary =
+        buildBranchSummary(
+          branchData.items
+        );
+
+      const savedInvoice =
+        await models.OnlineOrderInvoice.create(
+          {
+            invoice_no: invoiceNo,
+            order_id: orderInfo.id,
+            customer_id: orderInfo.customer_id,
+            branch_id: branchData.branch_id,
+            subtotal: summary.subtotal,
+            tax_amount: summary.tax_amount,
+            discount_amount: summary.discount_amount,
+            shipping_charge: 0,
+            total_amount: summary.total_amount,
+            invoice_date: new Date(),
+          },
+          { transaction }
+        );
+
+      // SAVE ITEMS
+      await models.OnlineOrderInvoiceItem.bulkCreate(
+        branchData.items.map(
+          (item) => ({
+            online_order_invoice_id: savedInvoice.id,
+            order_item_id: item.order_item_id,
+            product_id: item.product_id,
+            product_name: item.product_name,
+            quantity: item.quantity,
+            rate: item.rate, 
+            amount:item.amount,
+            tax_amount: item.tax_amount,
+            total_amount: item.total_amount,
+          })
+        ),
+        { transaction }
+      );
+
+      generatedInvoices.push({
+        invoice_id: savedInvoice.id,
+        invoice_no: savedInvoice.invoice_no,
+        branch_id: branchData.branch_id,
+        branch_name: branchData.branch_name,
+        subtotal: summary.subtotal,
+        tax_amount: summary.tax_amount,
+        total_amount: summary.total_amount,
+      });
+    }
+
+    await transaction.commit();
+
+    return commonService.okResponse(res, {
+      order_id: orderInfo.id,
+      order_number: orderInfo.order_number,
+      invoice_count: generatedInvoices.length,
+      invoices: generatedInvoices,
+    });
+  } catch (error) {
+    await transaction.rollback();
+
+    console.error(
+      "generateOnlineOrderInvoice Error:",
+      error
+    );
+
+    return commonService.handleError(
+      res,
+      error
+    );
+  }
+};
+
+const buildBranchSummary = (items) => {
+  const subtotal = items.reduce(
+    (sum, item) => sum + Number(item.amount || 0),
+    0
+  );
+
+  const taxAmount = items.reduce(
+    (sum, item) => sum + Number(item.tax_amount || 0),
+    0
+  );
+
+  const discountAmount = items.reduce(
+    (sum, item) => sum + Number(item.discount_amount || 0),
+    0
+  );
+
+  const totalAmount =
+    subtotal +
+    taxAmount -
+    discountAmount;
+
+  return {
+    subtotal,
+    tax_amount: taxAmount,
+    discount_amount: discountAmount,
+    total_amount: totalAmount,
+  };
+};
 
 module.exports = {
-    getOnlineOrders,
-    updateShipmentDetails,
-    updateDeliveredDetails,
-    getOnlineOrderDetails,
-    cancelOrder,
-    getOnlineOrderInvoice,
-    
+  getOnlineOrders,
+  updateShipmentDetails,
+  updateDeliveredDetails,
+  getOnlineOrderDetails,
+  cancelOrder,
+  getOnlineOrderInvoice,
+  generateOnlineOrderInvoice
 };
