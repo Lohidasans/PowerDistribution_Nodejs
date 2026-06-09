@@ -639,10 +639,98 @@ const cancelOrder = async (req, res) => {
   }
 };
 
+const getOnlineOrderInvoice = async (req, res) => {
+  try {
+    const { order_id } = req.params;
+
+    const orderQuery = `
+      SELECT
+        o.id,
+        o.order_number,
+        TO_CHAR(o.order_date,'DD/MM/YYYY') as order_date,
+        o.subtotal,
+        o.tax_amount,
+        o.discount_amount,
+        o.shipping_charge,
+        o.total_amount,
+
+        c.customer_name,
+        c.mobile_number,
+        ca.address_line || ', ' || ca.pin_code AS customer_address
+
+      FROM orders o
+
+      JOIN customers c
+        ON c.id = o.customer_id
+
+      LEFT JOIN customer_addresses ca
+        ON ca.customer_id = c.id
+        AND ca.is_default = true
+
+      WHERE o.id = :order_id
+      LIMIT 1
+    `;
+
+    const [orderInfo] = await sequelize.query(orderQuery, {
+      replacements: { order_id },
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    if (!orderInfo) {
+      return commonService.badRequest(res, "Order not found");
+    }
+
+    const itemsQuery = `
+      SELECT
+        ROW_NUMBER() OVER (ORDER BY oi.id) AS s_no,
+        oi.product_name,
+        oi.quantity,
+        oi.amount AS rate,
+        oi.amount
+
+      FROM order_items oi
+      WHERE oi.order_id = :order_id
+      AND oi.deleted_at IS NULL
+    `;
+
+    const items = await sequelize.query(itemsQuery, {
+      replacements: { order_id },
+      type: sequelize.QueryTypes.SELECT,
+    });
+
+    return commonService.okResponse(res, {
+      order_no: orderInfo.order_number,
+      order_date: orderInfo.order_date,
+      customer_details: {
+        customer_name: orderInfo.customer_name,
+        address: orderInfo.customer_address,
+        mobile_number: orderInfo.mobile_number
+      },
+
+      items,
+
+      summary: {
+        subtotal: orderInfo.subtotal,
+        cgst: Number(orderInfo.tax_amount || 0) / 2,
+        sgst: Number(orderInfo.tax_amount || 0) / 2,
+        discount: orderInfo.discount_amount,
+        shipping_charge: orderInfo.shipping_charge,
+        total_amount: orderInfo.total_amount
+      },
+
+      payment_details: {}
+    });
+  } catch (error) {
+    console.error("getOnlineOrderInvoice Error:", error);
+    return commonService.handleError(res, error);
+  }
+};
+
 module.exports = {
     getOnlineOrders,
     updateShipmentDetails,
     updateDeliveredDetails,
     getOnlineOrderDetails,
-    cancelOrder
+    cancelOrder,
+    getOnlineOrderInvoice
 };
