@@ -403,7 +403,8 @@ const createStockTransfer = async (req, res) => {
           
           const createdItem = await models.ProductItemDetail.create({
             ...itemData,
-            product_id: existingProdId
+            product_id: existingProdId,
+            initial_quantity: itemData.quantity
           }, { transaction });
           
           console.log(`[createStockTransfer] Created item ${createdItem.id} in existing product`);
@@ -864,6 +865,7 @@ const updateStockTransfer = async (req, res) => {
                     sku_id: sourceItem.sku_id,
                     variation: sourceItem.variation,
                     quantity: transfer_quantity,
+                    initial_quantity: transfer_quantity,
                     net_weight: sourceItem.net_weight,
                     gross_weight: sourceItem.gross_weight,
                     actual_stone_weight:

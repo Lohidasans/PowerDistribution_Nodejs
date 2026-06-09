@@ -2523,7 +2523,7 @@ const createProductInternal = async (payload, transaction) => {
     });
 
     const item = await models.ProductItemDetail.create(
-      { ...fields, product_id: product.id },
+      { ...fields, product_id: product.id, initial_quantity: fields.quantity },
       { transaction }
     );
     console.log('[createProductInternal] Item detail created with ID:', item.id);
