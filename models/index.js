@@ -204,6 +204,9 @@ const Notification = require("./notification")(sequelize, Sequelize.DataTypes);
 const TagPrintSetting = require("./tagPrintSettings")(sequelize, Sequelize.DataTypes);
 const PushSubscription = require("./pushSubscriptions")(sequelize, Sequelize.DataTypes);
 
+const OnlineOrderInvoice = require("./onlineOrderInvoices")(sequelize, Sequelize.DataTypes);
+const OnlineOrderInvoiceItem = require("./onlineOrderInvoiceItems")(sequelize, Sequelize.DataTypes);
+
 const models = {
   Permission,
   Role,
