@@ -2,6 +2,9 @@ const { models, sequelize } = require("../models");
 const { QueryTypes } = require("sequelize");
 const commonService = require("./commonService");
 const { dateFilter } = require("../helpers/dateHelper");
+const { generateBranchSeriesCode } = require("../helpers/codeGeneration");
+const country = require("../models/country");
+const districts = require("../models/districts");
 
 // List Online Orders with optional filters
 const getOnlineOrders = async (req, res) => {
@@ -403,28 +406,32 @@ const getOnlineOrderDetails = async (req, res) => {
         -- Billing Address
         ca_bill.name AS billing_name,
         ca_bill.mobile_number AS billing_mobile,
-        ca_bill.address_line || ', ' || ca_bill.pin_code AS billing_address,
+        ca_bill.address_line AS billing_address_line,
+        ca_bill.pin_code AS billing_pin_code,
+        bill_country.country_name AS billing_country,
+        bill_state.state_name AS billing_state,
+        bill_district.district_name AS billing_district,
 
         -- Shipping Address
         ca_ship.name AS shipping_name,
         ca_ship.mobile_number AS shipping_mobile,
-        ca_ship.address_line || ', ' || ca_ship.pin_code AS shipping_address
+        ca_ship.address_line AS shipping_address_line,
+        ca_ship.pin_code AS shipping_pin_code,
+        ship_country.country_name AS shipping_country,
+        ship_state.state_name AS shipping_state,
+        ship_district.district_name AS shipping_district
 
       FROM orders o
 
-      JOIN customers c 
-        ON c.id = o.customer_id 
-        AND c.deleted_at IS NULL
-
-      LEFT JOIN customer_addresses ca_bill
-        ON ca_bill.customer_id = c.id
-        AND ca_bill.is_default = true
-        AND ca_bill.deleted_at IS NULL
-
-      LEFT JOIN customer_addresses ca_ship
-        ON ca_ship.customer_id = c.id
-        AND ca_ship.is_default = true
-        AND ca_ship.deleted_at IS NULL
+      JOIN customers c ON c.id = o.customer_id AND c.deleted_at IS NULL
+      LEFT JOIN customer_addresses ca_bill ON ca_bill.id = o.billing_address_id AND ca_bill.deleted_at IS NULL
+      LEFT JOIN countries bill_country ON bill_country.id = ca_bill.country_id
+      LEFT JOIN states bill_state ON bill_state.id = ca_bill.state_id
+      LEFT JOIN districts bill_district ON bill_district.id = ca_bill.district_id::INTEGER
+      LEFT JOIN customer_addresses ca_ship ON ca_ship.id = o.shipping_address_id AND ca_ship.deleted_at IS NULL
+      LEFT JOIN countries ship_country ON ship_country.id = ca_ship.country_id
+      LEFT JOIN states ship_state ON ship_state.id = ca_ship.state_id
+      LEFT JOIN districts ship_district ON ship_district.id = ca_ship.district_id::INTEGER
 
       WHERE o.id = :order_id 
       AND o.deleted_at IS NULL
@@ -520,12 +527,20 @@ const getOnlineOrderDetails = async (req, res) => {
           name: orderInfo.billing_name,
           mobile: orderInfo.billing_mobile,
           address: orderInfo.billing_address,
+          pincode: orderInfo.billing_pin_code,
+          country: orderInfo.billing_country,
+          state: orderInfo.billing_state,
+          district: orderInfo.billing_district,
         },
 
         shipping_address: {
           name: orderInfo.shipping_name,
           mobile: orderInfo.shipping_mobile,
           address: orderInfo.shipping_address,
+          pincode: orderInfo.shipping_pin_code,
+          country: orderInfo.shipping_country,
+          state: orderInfo.shipping_state,
+          district: orderInfo.shipping_district,
         },
       },
 
@@ -639,6 +654,28 @@ const cancelOrder = async (req, res) => {
   }
 };
 
+const toAmount = (value) => Number(value || 0);
+const formatAmount = (value) => toAmount(value).toFixed(2);
+
+const buildBranchSummary1 = (items) => {
+  const subtotal = items.reduce((sum, item) => sum + toAmount(item.amount), 0);
+  const taxAmount = items.reduce((sum, item) => sum + toAmount(item.tax_amount), 0);
+  const discountAmount = items.reduce((sum, item) => sum + toAmount(item.discount_amount), 0);
+  const itemTotal = items.reduce((sum, item) => sum + toAmount(item.total_amount), 0);
+  const totalAmount = itemTotal || (subtotal + taxAmount - discountAmount);
+
+  return {
+    subtotal: formatAmount(subtotal),
+    cgst: formatAmount(taxAmount / 2),
+    sgst: formatAmount(taxAmount / 2),
+    tax_amount: formatAmount(taxAmount),
+    discount: formatAmount(discountAmount),
+    shipping_charge: "0.00",
+    total_amount: formatAmount(totalAmount),
+    total_quantity: items.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
+  };
+};
+
 const getOnlineOrderInvoice = async (req, res) => {
   try {
     const { order_id } = req.params;
@@ -647,27 +684,46 @@ const getOnlineOrderInvoice = async (req, res) => {
       SELECT
         o.id,
         o.order_number,
-        TO_CHAR(o.order_date,'DD/MM/YYYY') as order_date,
+        TO_CHAR(o.order_date,'DD/MM/YYYY') AS order_date,
+        TO_CHAR(CURRENT_DATE,'DD/MM/YYYY') AS invoice_date,
         o.subtotal,
         o.tax_amount,
         o.discount_amount,
         o.shipping_charge,
         o.total_amount,
 
+        c.id AS customer_id,
         c.customer_name,
         c.mobile_number,
-        ca.address_line || ', ' || ca.pin_code AS customer_address
+        c.email_id,
+
+        ca_bill.name AS billing_name,
+        ca_bill.mobile_number AS billing_mobile,
+        CONCAT_WS(', ', ca_bill.address_line, ca_bill.pin_code) AS billing_address,
+
+        ca_ship.name AS shipping_name,
+        ca_ship.mobile_number AS shipping_mobile,
+        CONCAT_WS(', ', ca_ship.address_line, ca_ship.pin_code) AS shipping_address
 
       FROM orders o
 
       JOIN customers c
         ON c.id = o.customer_id
+        AND c.deleted_at IS NULL
 
-      LEFT JOIN customer_addresses ca
-        ON ca.customer_id = c.id
-        AND ca.is_default = true
+      LEFT JOIN customer_addresses ca_bill
+        ON ca_bill.customer_id = c.id
+        AND ca_bill.is_default = true
+        AND ca_bill.deleted_at IS NULL
+
+      LEFT JOIN customer_addresses ca_ship
+        ON ca_ship.customer_id = c.id
+        AND ca_ship.is_default = true
+        AND ca_ship.deleted_at IS NULL
 
       WHERE o.id = :order_id
+      AND o.deleted_at IS NULL
+
       LIMIT 1
     `;
 
@@ -682,15 +738,48 @@ const getOnlineOrderInvoice = async (req, res) => {
 
     const itemsQuery = `
       SELECT
-        ROW_NUMBER() OVER (ORDER BY oi.id) AS s_no,
+        oi.id AS order_item_id,
+        ROW_NUMBER() OVER (
+          PARTITION BY COALESCE(oi.branch_id, pr.branch_id)
+          ORDER BY oi.id
+        ) AS s_no,
+        oi.product_id,
+        oi.product_item_id AS product_item_detail_id,
         oi.product_name,
+        oi.sku_id,
+        oi.image_url,
         oi.quantity,
-        oi.amount AS rate,
-        oi.amount
+        oi.rate,
+        oi.amount,
+        COALESCE(oi.discount, 0) AS discount_amount,
+        COALESCE(oi.tax, 0) AS tax_amount,
+        oi.total_amount,
+        oi.gross_weight,
+        oi.net_weight,
+        oi.wastage,
+        pr.hsn_code,
+
+        COALESCE(oi.branch_id, pr.branch_id) AS branch_id,
+        b.branch_name,
+        b.address AS branch_address,
+        b.mobile AS branch_mobile,
+        b.pin_code AS branch_pin_code,
+        b.gst_no AS branch_gst_no
 
       FROM order_items oi
+
+      JOIN products pr
+        ON pr.id = oi.product_id
+        AND pr.deleted_at IS NULL
+
+      LEFT JOIN branches b
+        ON b.id = COALESCE(oi.branch_id, pr.branch_id)
+        AND b.deleted_at IS NULL
+
       WHERE oi.order_id = :order_id
       AND oi.deleted_at IS NULL
+
+      ORDER BY b.branch_name ASC NULLS LAST, oi.id ASC
     `;
 
     const items = await sequelize.query(itemsQuery, {
@@ -698,27 +787,181 @@ const getOnlineOrderInvoice = async (req, res) => {
       type: sequelize.QueryTypes.SELECT,
     });
 
+    if (!items.length) {
+      return commonService.badRequest(res, "No items found for this order");
+    }
+
+    const missingBranchItem = items.find((item) => !item.branch_id);
+    if (missingBranchItem) {
+      return commonService.badRequest(
+        res,
+        `Branch is not mapped for order item ${missingBranchItem.order_item_id}`
+      );
+    }
+
+    const salesInvoiceType = await models.InvoiceSettingEnum.findOne({
+      where: {
+        invoice_setting_enum: "Sales Invoice",
+        status: "Active",
+      },
+      attributes: ["id", "invoice_setting_enum"],
+      raw: true,
+    });
+
+    if (!salesInvoiceType) {
+      return commonService.badRequest(res, "Active Sales Invoice type not found");
+    }
+
+    const branchIds = [...new Set(items.map((item) => item.branch_id))];
+    const settings = await models.InvoiceSetting.findAll({
+      where: {
+        branch_id: branchIds,
+        invoice_sequence_name_id: salesInvoiceType.id,
+      },
+      include: [
+        {
+          model: models.InvoiceSettingEnum,
+          as: "invoiceSequenceName",
+          where: { status: "Active" },
+          required: true,
+        },
+      ],
+    });
+
+    const settingByBranch = new Map(
+      settings.map((setting) => [String(setting.branch_id), setting])
+    );
+
+    const groupedByBranch = items.reduce((groups, item) => {
+      const key = String(item.branch_id);
+
+      if (!groups.has(key)) {
+        groups.set(key, {
+          branch_id: item.branch_id,
+          branch_name: item.branch_name,
+          branch_details: {
+            branch_name: item.branch_name,
+            address: item.branch_address,
+            mobile: item.branch_mobile,
+            pin_code: item.branch_pin_code,
+            gst_no: item.branch_gst_no,
+          },
+          items: [],
+        });
+      }
+
+      groups.get(key).items.push({
+        s_no: item.s_no,
+        order_item_id: item.order_item_id,
+        product_id: item.product_id,
+        product_item_detail_id: item.product_item_detail_id,
+        product_name: item.product_name,
+        sku_id: item.sku_id,
+        image_url: item.image_url,
+        hsn_code: item.hsn_code,
+        gross_weight: item.gross_weight,
+        net_weight: item.net_weight,
+        wastage: item.wastage,
+        quantity: item.quantity,
+        rate: item.rate || item.amount,
+        amount: item.amount,
+        discount_amount: item.discount_amount,
+        tax_amount: item.tax_amount,
+        total_amount: item.total_amount,
+      });
+
+      return groups;
+    }, new Map());
+
+    const invoices = [];
+
+    for (const branchInvoice of groupedByBranch.values()) {
+      const setting = settingByBranch.get(String(branchInvoice.branch_id));
+
+      if (!setting) {
+        return commonService.badRequest(
+          res,
+          `No invoice setting found for branch ${branchInvoice.branch_name || branchInvoice.branch_id} and Sales Invoice`
+        );
+      }
+
+      const prefix = (setting.invoice_prefix || "").trim().toUpperCase();
+      const suffix = (setting.invoice_suffix || "").trim();
+
+      if (!prefix) {
+        return commonService.badRequest(
+          res,
+          `Invoice prefix is not configured for branch ${branchInvoice.branch_name || branchInvoice.branch_id}`
+        );
+      }
+
+      if (!suffix) {
+        return commonService.badRequest(
+          res,
+          `Invoice suffix is not configured for branch ${branchInvoice.branch_name || branchInvoice.branch_id}`
+        );
+      }
+
+      const invoiceNo = await generateBranchSeriesCode(
+        models.SalesInvoiceBill,
+        "invoice_no",
+        prefix,
+        `${suffix}/ONL`,
+        setting.invoice_start_no || "001",
+        branchInvoice.branch_id
+      );
+
+      invoices.push({
+        invoice_no: invoiceNo,
+        invoice_type: {
+          id: salesInvoiceType.id,
+          name: salesInvoiceType.invoice_setting_enum,
+        },
+        order_no: orderInfo.order_number,
+        order_date: orderInfo.order_date,
+        invoice_date: orderInfo.invoice_date,
+        customer_details: {
+          customer_id: orderInfo.customer_id,
+          customer_name: orderInfo.customer_name,
+          mobile_number: orderInfo.mobile_number,
+          email_id: orderInfo.email_id,
+          billing_address: {
+            name: orderInfo.billing_name,
+            mobile: orderInfo.billing_mobile,
+            address: orderInfo.billing_address,
+          },
+          shipping_address: {
+            name: orderInfo.shipping_name,
+            mobile: orderInfo.shipping_mobile,
+            address: orderInfo.shipping_address,
+          },
+        },
+        branch_id: branchInvoice.branch_id,
+        branch_name: branchInvoice.branch_name,
+        branch_details: branchInvoice.branch_details,
+        items: branchInvoice.items,
+        summary: buildBranchSummary1(branchInvoice.items),
+        payment_details: {},
+      });
+    }
+
     return commonService.okResponse(res, {
       order_no: orderInfo.order_number,
       order_date: orderInfo.order_date,
-      customer_details: {
-        customer_name: orderInfo.customer_name,
-        address: orderInfo.customer_address,
-        mobile_number: orderInfo.mobile_number
-      },
-
-      items,
-
-      summary: {
+      invoice_count: invoices.length,
+      invoice_codes: invoices.map((invoice) => ({
+        invoice_no: invoice.invoice_no,
+        branch_id: invoice.branch_id,
+        branch_name: invoice.branch_name,
+      })),
+      order_summary: {
         subtotal: orderInfo.subtotal,
-        cgst: Number(orderInfo.tax_amount || 0) / 2,
-        sgst: Number(orderInfo.tax_amount || 0) / 2,
-        discount: orderInfo.discount_amount,
+        tax_amount: orderInfo.tax_amount,
         shipping_charge: orderInfo.shipping_charge,
-        total_amount: orderInfo.total_amount
+        discount_amount: orderInfo.discount_amount,
+        total_amount: orderInfo.total_amount,
       },
-
-      payment_details: {}
+      invoices,
     });
   } catch (error) {
     console.error("getOnlineOrderInvoice Error:", error);
@@ -726,11 +969,13 @@ const getOnlineOrderInvoice = async (req, res) => {
   }
 };
 
+
 module.exports = {
     getOnlineOrders,
     updateShipmentDetails,
     updateDeliveredDetails,
     getOnlineOrderDetails,
     cancelOrder,
-    getOnlineOrderInvoice
+    getOnlineOrderInvoice,
+    
 };
