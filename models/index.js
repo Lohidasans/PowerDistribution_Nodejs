@@ -325,6 +325,8 @@ const models = {
   Notification,
   TagPrintSetting,
   PushSubscription,
+  OnlineOrderInvoice, 
+  OnlineOrderInvoiceItem
 };
 
 Object.values(models).forEach((model) => {
