@@ -12,7 +12,6 @@ module.exports = (sequelize, DataTypes) => {
       invoice_no: {
         type: DataTypes.STRING(100),
         allowNull: false,
-        unique: true,
       },
 
       order_id: {
