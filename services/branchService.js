@@ -1829,17 +1829,33 @@ const getRecentSales = async (req, res) => {
     });
 
     // Format the response
-    const formattedData = recentSales.map((item, index) => ({
+    const groupedInvoices = {};
+
+    recentSales.forEach((row) => {
+      const invoiceId = row.invoice_id;
+
+      if (!groupedInvoices[invoiceId]) {
+        groupedInvoices[invoiceId] = {
+          date: row.date,
+          id: row.invoice_id,
+          invoice_no: row.invoice_no,
+          invoice_id: row.invoice_id,
+          total_amount: parseFloat(row.total_amount || 0).toFixed(2),
+          items: [],
+        };
+      }
+
+      groupedInvoices[invoiceId].items.push({
+        product_name: row.product_name,
+        grs_weight: parseFloat(row.grs_weight || 0).toFixed(2),
+        net_weight: parseFloat(row.net_weight || 0).toFixed(2),
+        quantity: parseInt(row.quantity, 10),
+      });
+    });
+
+    const formattedData = Object.values(groupedInvoices).map((invoice, index) => ({
       s_no: index + 1,
-      date: item.date,
-      id: item.invoice_id,
-      invoice_no: item.invoice_no,
-      invoice_id: item.invoice_id,
-      product_name: item.product_name,
-      grs_weight: parseFloat(item.grs_weight || 0).toFixed(2),
-      net_weight: parseFloat(item.net_weight || 0).toFixed(2),
-      quantity: parseInt(item.quantity, 10),
-      total_amount: parseFloat(item.total_amount || 0).toFixed(2),
+      ...invoice,
     }));
 
     return commonService.okResponse(res, {
