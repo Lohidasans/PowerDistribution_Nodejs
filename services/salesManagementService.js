@@ -616,6 +616,13 @@ const getTopBuyingCustomersData = async ({
         WHERE sib.deleted_at IS NULL
           AND sib.is_active = true
           AND sib.status = 'Invoice'
+        AND EXISTS (
+            SELECT 1
+            FROM sales_invoice_bill_items sibi
+            WHERE sibi.invoice_bill_id = sib.id
+                AND sibi.deleted_at IS NULL
+                AND sibi.is_returned = false
+        )       
 
           ${dateCondition}
           ${branchCondition}
