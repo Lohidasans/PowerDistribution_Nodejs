@@ -407,6 +407,13 @@ const listSchemeNumbers = async (req, res) => {
           AND ce.deleted_at IS NULL
           AND s.deleted_at IS NULL
           AND s.status = 'Active'
+          AND EXISTS (
+          SELECT 1
+          FROM customer_scheme_payments csp
+          WHERE csp.enrollment_id = ce.id
+            AND csp.deleted_at IS NULL
+            AND csp.status IN ('PAID', 'PARTIAL')
+      )
         ORDER BY s.scheme_name ASC
       `,
       {
