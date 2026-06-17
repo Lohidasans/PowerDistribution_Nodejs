@@ -1,6 +1,7 @@
 const { models, sequelize } = require("../models");
 const commonService = require("./commonService");
 const enMessage = require("../constants/en.json");
+const { ValidationError } = require("../utils/errors");
 const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
 const { validateProductItemDetails,
   validateDuplicateUniqueCode,
@@ -862,7 +863,7 @@ const updateSalesInvoice = async (req, res) => {
       })),
     ];
 
-    validateCashPayment(allPayments, req.body.customer?.pan_no);
+    validateCashPayment(incomingPayments, req.body.customer?.pan_no);
 
     // Determine IGST vs CGST/SGST
     const hasIgst = Number(header.igst_amount || 0) > 0;
