@@ -370,11 +370,15 @@ const deleteSalesReturn = async (req, res) => {
 // Dropdown: listSalesReturnDropdown -> [{ id, sales_return_no }]
 const listSalesReturnDropdown = async (req, res) => {
   try {
-    const { customer_id } = req.query;
+    const { customer_id, branch_id } = req.query;
     const where = { is_bill_adjusted: false, status: "Printed", };
 
     if (customer_id) {
-      where.customer_id = customer_id; // apply filter only if passed
+      where.customer_id = customer_id;
+    }
+
+    if (branch_id) {
+      where.branch_id = branch_id;
     }
 
     const rows = await models.SalesReturn.findAll({
@@ -382,7 +386,7 @@ const listSalesReturnDropdown = async (req, res) => {
       where,
       order: [["sales_return_no", "ASC"]],
     });
-    return commonService.okResponse(res, { sales_return_no: rows });
+    return commonService.okResponse(res, { sales_return_no: rows,});
   } catch (err) {
     return commonService.handleError(res, err);
   }

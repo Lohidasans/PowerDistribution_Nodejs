@@ -447,20 +447,24 @@ const generateOldJewelCode = async (req, res) => {
 
 const listOldJewelDropdown = async (req, res) => {
   try {
-    const { customer_id } = req.query;
+    const { customer_id, branch_id } = req.query;
     const where = { is_bill_adjusted: false, status: "Printed",};
 
     if (customer_id) {
-      where.customer_id = customer_id; // apply filter only if passed
+      where.customer_id = customer_id;
+    }
+
+    if (branch_id) {
+      where.branch_id = branch_id;
     }
 
     const rows = await models.OldJewel.findAll({
       attributes: ["id", "old_jewel_code", "customer_id"],
-      where, // <-- applied here
+      where,
       order: [["old_jewel_code", "ASC"]],
     });
 
-    return commonService.okResponse(res, { old_jewel_code: rows });
+    return commonService.okResponse(res, { old_jewel_code: rows, });
   } catch (err) {
     return commonService.handleError(res, err);
   }
