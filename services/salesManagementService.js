@@ -817,13 +817,23 @@ const getBranchwiseSalesAndCustomerStats = async (req, res) => {
         b.id AS branch_id,
         b.branch_name,
         COUNT(DISTINCT t.id) AS invoice_count,
-        COALESCE(SUM(t.total_amount), 0) AS total_amount
+        COALESCE(SUM(t.total_amount), 0) AS total_amount,
+        COALESCE(SUM(sibi.quantity), 0) AS total_quantity,
+        COALESCE(
+            SUM(
+                COALESCE(sibi.quantity, 0) *
+                COALESCE(sibi.gross_weight, 0)
+            ),
+            0
+        ) AS total_weight
       FROM sales_invoice_bills t
       JOIN branches b ON b.id = t.branch_id
+      LEFT JOIN sales_invoice_bill_items sibi ON sibi.invoice_bill_id = t.id AND sibi.deleted_at IS NULL
       WHERE t.status = 'Invoice'
         AND t.is_active = true
         AND t.deleted_at IS NULL
       GROUP BY b.id, b.branch_name
+      ORDER BY b.id
     `;
 
         const branchWiseSales = await sequelize.query(branchWiseSalesSql, {
