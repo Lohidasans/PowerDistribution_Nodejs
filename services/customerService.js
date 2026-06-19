@@ -107,7 +107,7 @@ const createCustomer = async (req, res) => {
     const ledger = await models.Ledger.create(
       {
         ledger_no,
-        ledger_group_id: 26, // Sundry Debtors  - For live also its 26
+        ledger_group_id: 26, // Sundry Debtors  - For live also its 26, For May2026 db its 20
         ledger_name: payload.customer_name,
         branch_id: payload.branch_id,
       },
@@ -837,6 +837,7 @@ const getCustomerTransactions = async (req, res) => {
           i.invoice_no AS reference_no,
           i.invoice_date AS date,
           i.total_amount,
+          i.amount_due,
 
           JSON_AGG(
             JSON_BUILD_OBJECT(
@@ -872,6 +873,7 @@ const getCustomerTransactions = async (req, res) => {
           sr.sales_return_no AS reference_no,
           sr.return_date AS date,
           sr.total_amount,
+          NULL AS amount_due,
 
           JSON_AGG(
             JSON_BUILD_OBJECT(
@@ -907,6 +909,7 @@ const getCustomerTransactions = async (req, res) => {
           oj.old_jewel_code AS reference_no,
           oj.date,
           oj.total_amount,
+          NULL AS amount_due,
 
           JSON_AGG(
             JSON_BUILD_OBJECT(
@@ -942,6 +945,7 @@ const getCustomerTransactions = async (req, res) => {
           jr.repair_code AS reference_no,
           jr.date,
           jr.total_amount,
+          jr.amount_due,
 
           JSON_AGG(
             JSON_BUILD_OBJECT(
@@ -977,6 +981,7 @@ const getCustomerTransactions = async (req, res) => {
             o.order_number AS reference_no,
             o.order_date AS date,
             o.total_amount,
+            NULL AS amount_due,
 
             JSON_AGG(
                 JSON_BUILD_OBJECT(
@@ -1051,6 +1056,7 @@ const getCustomerTransactions = async (req, res) => {
       quantity: Number(item.total_quantity || 0),
 
       total_amount: Number(item.total_amount),
+      amount_due: Number(item.amount_due),
       branch_id: item.branch_id,
       order_type: item.order_type || "-",
       type: item.type,

@@ -42,7 +42,7 @@ const createVendor = async (req, res) => {
     const ledger = await models.Ledger.create(
       {
         ledger_no,
-        ledger_group_id:33, // 33, // Sundry Creditors -33 for demo db - For live its 9
+        ledger_group_id: 33, // 33, // Sundry Creditors -33 for demo db - For live its 9, For UAT(May2026db) its 7
         ledger_name: vendor.vendor_name,
         branch_id: vendor.branch_id || 1
       },
