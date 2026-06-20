@@ -10,6 +10,7 @@ router.put('/jewel-repairs/:repair_id', svc.updateJewelRepair);
 router.delete('/jewel-repairs/:id', svc.deleteJewelRepair);
 router.post('/jewel-repairs/code', svc.generateRepairCode);
 router.patch('/jewel-repairs/:id/toggle-active', svc.toggleJewelRepairActive);
+router.post('/jewel-repairs/:repair_id/pay-due', svc.payJewelRepairDue);
 
 module.exports = router;
 

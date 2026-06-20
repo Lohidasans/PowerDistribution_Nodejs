@@ -713,6 +713,110 @@ const toggleJewelRepairActive = async (req, res) => {
   }
 };
 
+const payJewelRepairDue = async (req, res) => {
+  const transaction = await sequelize.transaction();
+
+  try {
+    const { repair_id } = req.params;
+    const {
+      payment_mode,
+      amount_received,
+      transaction_id
+    } = req.body;
+
+    const repair = await models.JewelRepair.findOne({
+      where: {
+        id: repair_id,
+        is_active: true
+      },
+      transaction
+    });
+
+    if (!repair) {
+      await transaction.rollback();
+      return commonService.notFoundResponse(
+        res,
+        "Jewel Repair not found"
+      );
+    }
+
+    // Total paid till now
+    const totalPaid = await models.Payment.sum(
+      "amount_received",
+      {
+        where: {
+          jewel_repair_id: repair_id,
+          status: "Completed"
+        },
+        transaction
+      }
+    );
+
+    const currentPaid = Number(totalPaid || 0);
+    const dueAmount =
+      Number(repair.total_amount) - currentPaid;
+
+    if (Number(amount_received) <= 0) {
+      await transaction.rollback();
+      return commonService.badRequest(
+        res,
+        "Amount must be greater than 0"
+      );
+    }
+
+    if (Number(amount_received) > dueAmount) {
+      await transaction.rollback();
+      return commonService.badRequest(
+        res,
+        `Amount exceeds due amount ₹${dueAmount}`
+      );
+    }
+
+    // Create new payment record
+    const payment = await models.Payment.create(
+      {
+        jewel_repair_id: repair.id,
+        payment_mode,
+        amount_received,
+        transaction_id,
+        payment_date: new Date(),
+        status: "Completed"
+      },
+      { transaction }
+    );
+
+    // Recalculate paid and due
+    const updatedPaid =
+      currentPaid + Number(amount_received);
+
+    const updatedDue =
+      Number(repair.total_amount) - updatedPaid;
+
+    await repair.update(
+      {
+        amount_due: updatedDue
+      },
+      { transaction }
+    );
+
+    await transaction.commit();
+
+    return commonService.okResponse(res, {
+      repair_id: repair.id,
+      repair_code: repair.repair_code,
+      total_amount: Number(repair.total_amount),
+      paid_amount: updatedPaid,
+      amount_due: updatedDue,
+      payment
+    });
+
+  } catch (error) {
+    await transaction.rollback();
+    console.error(error);
+    return commonService.handleError(res, error);
+  }
+};
+
 module.exports = {
   createJewelRepair,
   getAllJewelRepairs,
@@ -720,5 +824,6 @@ module.exports = {
   updateJewelRepair,
   deleteJewelRepair,
   generateRepairCode,
-  toggleJewelRepairActive
+  toggleJewelRepairActive,
+  payJewelRepairDue
 };
