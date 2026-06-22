@@ -718,11 +718,15 @@ const payJewelRepairDue = async (req, res) => {
 
   try {
     const { repair_id } = req.params;
-    const {
-      payment_mode,
-      amount_received,
-      transaction_id
-    } = req.body;
+    const { payment = [] } = req.body;
+
+    if (!Array.isArray(payment) || payment.length === 0) {
+      await transaction.rollback();
+      return commonService.badRequest(
+        res,
+        "At least one payment is required"
+      );
+    }
 
     const repair = await models.JewelRepair.findOne({
       where: {
@@ -753,10 +757,17 @@ const payJewelRepairDue = async (req, res) => {
     );
 
     const currentPaid = Number(totalPaid || 0);
-    const dueAmount =
+
+    const currentDue =
       Number(repair.total_amount) - currentPaid;
 
-    if (Number(amount_received) <= 0) {
+    // Total amount received in current request
+    const currentPaymentAmount = payment.reduce(
+      (sum, p) => sum + Number(p.amount_received || 0),
+      0
+    );
+
+    if (currentPaymentAmount <= 0) {
       await transaction.rollback();
       return commonService.badRequest(
         res,
@@ -764,30 +775,34 @@ const payJewelRepairDue = async (req, res) => {
       );
     }
 
-    if (Number(amount_received) > dueAmount) {
+    if (currentPaymentAmount > currentDue) {
       await transaction.rollback();
       return commonService.badRequest(
         res,
-        `Amount exceeds due amount ₹${dueAmount}`
+        `Amount exceeds due amount ₹${currentDue}`
       );
     }
 
-    // Create new payment record
-    const payment = await models.Payment.create(
-      {
-        jewel_repair_id: repair.id,
-        payment_mode,
-        amount_received,
-        transaction_id,
-        payment_date: new Date(),
-        status: "Completed"
-      },
-      { transaction }
-    );
+    const paymentPayload = payment.map(p => ({
+      jewel_repair_id: repair.id,
+      payment_mode: p.payment_mode,
+      amount_received: Number(p.amount_received || 0),
+      transaction_id: p.transaction_id || null,
+      payment_date: new Date(),
+      status: "Completed"
+    }));
 
-    // Recalculate paid and due
+    const createdPayments =
+      await models.Payment.bulkCreate(
+        paymentPayload,
+        {
+          transaction,
+          returning: true
+        }
+      );
+
     const updatedPaid =
-      currentPaid + Number(amount_received);
+      currentPaid + currentPaymentAmount;
 
     const updatedDue =
       Number(repair.total_amount) - updatedPaid;
@@ -807,7 +822,7 @@ const payJewelRepairDue = async (req, res) => {
       total_amount: Number(repair.total_amount),
       paid_amount: updatedPaid,
       amount_due: updatedDue,
-      payment
+      payments: createdPayments
     });
 
   } catch (error) {
