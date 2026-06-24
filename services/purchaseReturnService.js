@@ -326,7 +326,7 @@ const getAllPurchaseReturns = async (req, res) => {
       LEFT JOIN superadmin_profiles u ON u.id = pr.order_by_user_id
       ${whereSql}
       GROUP BY pr.id, b.branch_name, v.vendor_name, v.id, v.vendor_image_url, u.email_id
-      ORDER BY pr.pr_date DESC, pr.id DESC
+      ORDER BY pr.pr_no DESC
       LIMIT :limit OFFSET :offset;
     `;
 
