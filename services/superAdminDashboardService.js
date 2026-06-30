@@ -1051,7 +1051,7 @@ const getStockKpiSummary = async (req, res) => {
       FROM "productItemDetails" pid
       INNER JOIN products p ON p.id = pid.product_id
       INNER JOIN grns g ON g.id = p.grn_id AND g.deleted_at IS NULL
-      INNER JOIN "grnItems" gi ON gi.grn_id = g.id AND gi.deleted_at IS NULL
+      LEFT JOIN "grnItems" gi ON gi.grn_id = g.id AND gi.id = p.ref_no_id AND gi.deleted_at IS NULL
       WHERE pid.deleted_at IS NULL AND pid.quantity > 0
         AND p.deleted_at IS NULL AND p.status = 'Active'
       ${branch_id ? `AND p.branch_id = :branch_id` : ``}
