@@ -31,7 +31,15 @@ const calculateSellingPriceSync = (
     }
 
     const netWeight = Number(item.net_weight || 0);
-    const materialContribution = materialRate * netWeight;
+
+    // "Fixed Price" items carry a flat amount in rate_per_gram (not a per-gram rate).
+    // The per-gram contribution is still used as the base for percentage
+    // making/wastage, matching the product create/edit page calculation.
+    const isFixedPrice = item.rate_per_gram_type === "Fixed Price";
+    const materialRateContribution = materialRate * netWeight;
+    const materialContribution = isFixedPrice
+      ? Number(item.rate_per_gram || 0)
+      : materialRateContribution;
 
     const stoneValue = Number(item.stone_value || 0);
 
@@ -46,7 +54,7 @@ const calculateSellingPriceSync = (
         makingCharge = makingChargeValue * netWeight;
         break;
       case "Percentage":
-        makingCharge = (makingChargeValue / 100) * materialContribution;
+        makingCharge = (makingChargeValue / 100) * materialRateContribution;
         break;
       case "Amount":
         makingCharge = makingChargeValue;
@@ -62,7 +70,7 @@ const calculateSellingPriceSync = (
         wastage = wastageValue * netWeight;
         break;
       case "Percentage":
-        wastage = (wastageValue / 100) * materialContribution;
+        wastage = (wastageValue / 100) * materialRateContribution;
         break;
       case "Amount":
         wastage = wastageValue;

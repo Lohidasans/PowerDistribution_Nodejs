@@ -1169,6 +1169,7 @@ const getProductWiseReport = async (req, res) => {
           v.vendor_name,
 
           gi.ref_no,
+          gi.rate_per_g,
 
           mt.material_type,
           mt.material_price,
@@ -1206,6 +1207,8 @@ const getProductWiseReport = async (req, res) => {
             'making_charge_type', pid.making_charge_type,
             'wastage', pid.wastage,
             'wastage_type', pid.wastage_type,
+            'rate_per_gram', pid.rate_per_gram,
+            'rate_per_gram_type', pid.rate_per_gram_type,
             'website_price', pid.website_price,
             'measurement_details', pid.measurement_details
           )
@@ -1230,6 +1233,7 @@ const getProductWiseReport = async (req, res) => {
           g.branch_id,
           v.vendor_name,
           gi.ref_no,
+          gi.rate_per_g,
           mt.material_type,
           mt.material_price,
           c.category_name,
@@ -1250,11 +1254,30 @@ const getProductWiseReport = async (req, res) => {
       type: sequelize.QueryTypes.SELECT,
     });
 
+    // Batch additional details for every item so the selling price matches
+    // the product create/edit calculation (which includes "others" value).
+    const allItemIds = rows.flatMap((row) =>
+      (row.items || []).map((item) => item.item_id).filter(Boolean)
+    );
+
+    const allAdds = allItemIds.length
+      ? await models.ProductAdditionalDetail.findAll({
+          where: { item_detail_id: allItemIds },
+          raw: true,
+        })
+      : [];
+
+    const addsByItem = {};
+    allAdds.forEach((a) => ((addsByItem[a.item_detail_id] ??= []).push(a)));
+
     // SELLING PRICE CALCULATION
     const finalRows = rows.map((row) => {
       let totalSellingPrice = 0;
 
       const items = row.items || [];
+
+      // GRN purchase rate (per gram) for this product
+      const purchaseRatePerG = Number(row.rate_per_g || 0);
 
       const calculatedItems = items.map((item) => {
         const calc = calculateSellingPriceSync(
@@ -1266,17 +1289,24 @@ const getProductWiseReport = async (req, res) => {
             making_charge_type: item.making_charge_type,
             wastage: item.wastage,
             wastage_type: item.wastage_type,
-            rate_per_gram: row.rate_per_g, 
+            // per-item rate from productItemDetails (not the undefined row.rate_per_g)
+            rate_per_gram: item.rate_per_gram,
+            rate_per_gram_type: item.rate_per_gram_type,
           },
-          [],
+          addsByItem[item.item_id] || [],
           row.material_price
         );
 
-        totalSellingPrice += Number(calc.selling_price || 0);
+        const itemSellingPrice = Number(calc.selling_price || 0);
+        const itemPurchasePrice = purchaseRatePerG * Number(item.net_weight || 0);
+
+        totalSellingPrice += itemSellingPrice;
 
         return {
           ...item,
-          selling_price: Number(calc.selling_price || 0),
+          purchase_price: Number(itemPurchasePrice.toFixed(2)),
+          selling_price: Number(itemSellingPrice.toFixed(2)),
+          profit: Number((itemSellingPrice - itemPurchasePrice).toFixed(2)),
         };
       });
 
