@@ -1652,8 +1652,8 @@ const getTotalStockValueInternal = async (query) => {
       COALESCE(SUM((COALESCE(gi.rate_per_g, 0) * COALESCE(pid.net_weight, 0)) * COALESCE(pid.quantity, 0)), 0) AS total_stock_value
     FROM "productItemDetails" pid
     INNER JOIN products p ON p.id = pid.product_id
-    INNER JOIN grns g ON g.id = p.grn_id
-    INNER JOIN "grnItems" gi ON gi.grn_id = g.id
+    INNER JOIN grns g ON g.id = p.grn_id AND g.deleted_at IS NULL
+    INNER JOIN "grnItems" gi ON gi.grn_id = g.id AND gi.id = p.ref_no_id
     ${where}
     `,
     {
