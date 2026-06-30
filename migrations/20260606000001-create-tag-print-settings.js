@@ -41,12 +41,12 @@ module.exports = {
             });
         }
 
-        try {
-            await queryInterface.addIndex('tag_print_settings', ['entity_id', 'entity_type'], {
-                unique: true,
-                name: 'uq_tag_print_settings_entity',
-            });
-        } catch (e) { /* already exists */ }
+        // Idempotent: skips if the index already exists, but still surfaces
+        // real failures (e.g. duplicate rows) instead of swallowing them.
+        await queryInterface.sequelize.query(
+            `CREATE UNIQUE INDEX IF NOT EXISTS uq_tag_print_settings_entity
+             ON tag_print_settings (entity_id, entity_type);`
+        );
     },
 
     async down(queryInterface) {

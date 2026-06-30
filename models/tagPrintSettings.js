@@ -24,6 +24,13 @@ module.exports = (sequelize, DataTypes) => {
             timestamps: true,
             createdAt: 'created_at',
             updatedAt: 'updated_at',
+            indexes: [
+                {
+                    unique: true,
+                    fields: ['entity_id', 'entity_type'],
+                    name: 'uq_tag_print_settings_entity',
+                },
+            ],
         }
     );
 

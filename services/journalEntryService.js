@@ -3,6 +3,42 @@ const commonService = require("./commonService");
 const message = require("../constants/en.json");
 const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
 
+// Validates double-entry items. Returns an error message string if invalid,
+// or null when the items are valid. A journal entry must:
+//   1. give every line an account_id, and
+//   2. be balanced — total debit === total credit (the core rule that keeps
+//      the Trial Balance balanced).
+const validateJournalItems = (items) => {
+  for (const it of items) {
+    if (!it.account_id) {
+      return (
+        message.journal_entry_item?.required ||
+        "account_id is required in items"
+      );
+    }
+  }
+
+  const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+  const totalDebit = round2(
+    items.reduce((s, it) => s + (Number(it.debit) || 0), 0)
+  );
+  const totalCredit = round2(
+    items.reduce((s, it) => s + (Number(it.credit) || 0), 0)
+  );
+
+  if (totalDebit !== totalCredit) {
+    return `Journal entry is not balanced: total debit (${totalDebit.toFixed(
+      2
+    )}) must equal total credit (${totalCredit.toFixed(2)})`;
+  }
+
+  if (totalDebit === 0) {
+    return "Journal entry must have a non-zero balanced amount";
+  }
+
+  return null;
+};
+
 const createJournalEntry = async (req, res) => {
   const t = await sequelize.transaction();
   try {
@@ -33,15 +69,10 @@ const createJournalEntry = async (req, res) => {
       );
     }
 
-    for (const it of items) {
-      if (!it.account_id) {
-        await t.rollback();
-        return commonService.badRequest(
-          res,
-          message.journal_entry_item?.required ||
-            "account_id is required in items"
-        );
-      }
+    const itemError = validateJournalItems(items);
+    if (itemError) {
+      await t.rollback();
+      return commonService.badRequest(res, itemError);
     }
 
     /* ================= CHECK DUPLICATE ================= */
@@ -233,6 +264,12 @@ const updateJournalEntry = async (req, res) => {
 
     // If items are provided, update them
     if (items.length > 0) {
+      const itemError = validateJournalItems(items);
+      if (itemError) {
+        await t.rollback();
+        return commonService.badRequest(res, itemError);
+      }
+
       // Remove old items
       await models.JournalEntryItem.destroy({
         where: { journal_entry_id: id },

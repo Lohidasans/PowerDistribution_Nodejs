@@ -223,6 +223,13 @@ async function fetchLedgerAggregates(branchId, fromDate, toDate, searchFilter) {
   });
 }
 
+// Rounds to 2 decimals and returns a Number. The trial-balance report table
+// renders values with `.toLocaleString()`, so debit/credit must stay numeric.
+const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+
+// Conventional ordering of account natures for a trial balance.
+const NATURE_ORDER = { Liability: 1, Asset: 2, Income: 3, Expense: 4 };
+
 // Collapses flat rows into a map of groups with their ledger children
 function buildGroupMap(rows) {
   const groupMap = new Map();
@@ -257,39 +264,104 @@ function buildGroupMap(rows) {
 
 // ─────────────────────────────────────────
 // TRIAL BALANCE
+//
+// Aggregates every transaction source (GRN, sales, returns, payments,
+// vouchers, scheme payments, journal entries) by ledger, then presents each
+// ledger and its parent group as a single NET balance placed on its natural
+// side (debit or credit) — the standard grouped trial-balance view.
+//
+// Response shape (consumed directly by the Trial Balance report table):
+//   {
+//     rows: [
+//       { id, particulars, account_type, normal_balance,
+//         debit: number|null, credit: number|null,
+//         children: [ { id, particulars, debit, credit } ] }
+//     ],
+//     summary: { totalDebit, totalCredit, difference },
+//     filters: { ... }
+//   }
+//
+// Query params: branch_id, from_date, to_date, search, include_zero
+//   - Zero-balance ledgers/groups are hidden unless include_zero=true.
 // ─────────────────────────────────────────
 const getTrialBalance = async (req, res) => {
   try {
-    const { branch_id, from_date, to_date, search } = req.query;
+    const { branch_id, from_date, to_date, search, include_zero } = req.query;
     const fromDate = from_date || "2000-01-01";
     const toDate = to_date || new Date().toISOString().split("T")[0];
     const branchId = branch_id ? parseInt(branch_id) : null;
+    const includeZero = include_zero === "true" || include_zero === "1";
 
     const rows = await fetchLedgerAggregates(branchId, fromDate, toDate, search || null);
-    const groupMap = buildGroupMap(rows);
 
-    let grandDebit = 0;
-    let grandCredit = 0;
+    // Collapse flat ledger rows into groups, computing each ledger's net balance.
+    const groupMap = new Map();
+    for (const row of rows) {
+      const net = parseFloat(row.total_debit || 0) - parseFloat(row.total_credit || 0);
+      if (!includeZero && net === 0) continue;
 
-    const data = Array.from(groupMap.values()).map((g) => {
-      grandDebit += g.group_debit;
-      grandCredit += g.group_credit;
-      return {
-        group_id: g.group_id,
-        group_name: g.group_name,
-        account_type: g.account_type,
-        normal_balance: g.normal_balance,
-        group_debit: g.group_debit.toFixed(2),
-        group_credit: g.group_credit.toFixed(2),
-        ledgers: g.ledgers,
-      };
-    });
+      if (!groupMap.has(row.group_id)) {
+        groupMap.set(row.group_id, {
+          id: row.group_id,
+          particulars: row.group_name,
+          account_type: row.account_type,
+          normal_balance: row.normal_balance,
+          net: 0,
+          children: [],
+        });
+      }
+
+      const g = groupMap.get(row.group_id);
+      g.net += net;
+      g.children.push({
+        id: row.ledger_id,
+        particulars: row.ledger_name,
+        debit: net > 0 ? round2(net) : null,
+        credit: net < 0 ? round2(-net) : null,
+      });
+    }
+
+    let totalDebit = 0;
+    let totalCredit = 0;
+
+    const data = Array.from(groupMap.values())
+      .filter((g) => includeZero || g.children.length > 0)
+      .sort(
+        (a, b) =>
+          (NATURE_ORDER[a.account_type] || 9) - (NATURE_ORDER[b.account_type] || 9) ||
+          a.particulars.localeCompare(b.particulars)
+      )
+      .map((g) => {
+        // Group balance = net of its ledgers, placed on the resulting side.
+        const debit = g.net > 0 ? round2(g.net) : null;
+        const credit = g.net < 0 ? round2(-g.net) : null;
+        totalDebit += debit || 0;
+        totalCredit += credit || 0;
+        return {
+          id: g.id,
+          particulars: g.particulars,
+          account_type: g.account_type,
+          normal_balance: g.normal_balance,
+          debit,
+          credit,
+          children: g.children,
+        };
+      });
 
     return commonService.okResponse(res, {
-      data,
-      total_debit: grandDebit.toFixed(2),
-      total_credit: grandCredit.toFixed(2),
-      difference: Math.abs(grandDebit - grandCredit).toFixed(2),
+      rows: data,
+      summary: {
+        totalDebit: round2(totalDebit),
+        totalCredit: round2(totalCredit),
+        difference: round2(Math.abs(totalDebit - totalCredit)),
+      },
+      filters: {
+        from_date: fromDate,
+        to_date: toDate,
+        branch_id: branchId,
+        search: search || null,
+        include_zero: includeZero,
+      },
     });
   } catch (err) {
     console.error(err);
