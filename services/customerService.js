@@ -7,13 +7,13 @@ const { Op } = require("sequelize");
 // Create customer
 const createCustomer = async (req, res) => {
   let transaction;
-
+ 
   try {
     console.log("CreateCustomer API called");
     console.log("Request Body:", req.body);
-
+ 
     const required = ["customer_name", "mobile_number"];
-
+ 
     for (const f of required) {
       if (
         req.body?.[f] === undefined ||
@@ -24,7 +24,7 @@ const createCustomer = async (req, res) => {
         return commonService.badRequest(res, enMessage.failure.requiredFields);
       }
     }
-
+ 
     const payload = {
       customer_code: req.body.customer_code?.trim() || null,
       customer_name: req.body.customer_name?.trim() || null,
@@ -40,9 +40,9 @@ const createCustomer = async (req, res) => {
       pan_no: req.body.pan_no?.trim() || null,
       is_online: Boolean(req.body.is_online),
     };
-
+ 
     console.log("Payload Prepared:", payload);
-
+ 
     // Run duplicate checks before transaction
     const checks = [
       models.Customer.findOne({
@@ -53,10 +53,10 @@ const createCustomer = async (req, res) => {
         attributes: ["id"],
       }),
     ];
-
+ 
     if (payload.customer_code) {
       console.log("Checking duplicate customer_code:", payload.customer_code);
-
+ 
       checks.push(
         models.Customer.findOne({
           where: {
@@ -67,75 +67,90 @@ const createCustomer = async (req, res) => {
         })
       );
     }
-
+ 
     const [existingMobile, existingCode] = await Promise.all(checks);
-
+ 
     console.log("Duplicate Mobile Check:", existingMobile);
     console.log("Duplicate Code Check:", existingCode);
-
+ 
     if (existingMobile) {
       console.log("Mobile number already exists");
       return commonService.badRequest(res, {
         message: "Mobile number already exists",
       });
     }
-
+ 
     if (existingCode) {
       console.log("Customer code already exists");
       return commonService.badRequest(res, {
         message: "Customer code already exists",
       });
     }
-
+ 
     // Start transaction only when write begins
     console.log("Starting DB Transaction...");
     transaction = await sequelize.transaction();
-
+ 
     const customer = await models.Customer.create(payload, { transaction });
-
+ 
     console.log("Customer created:", customer.id);
-
+ 
     const ledger_no = await generateFiscalSeriesCode(
       models.Ledger,
       "ledger_no",
       "LAID",
       { pad: 3, transaction }
     );
-
+ 
     console.log("Generated Ledger No:", ledger_no);
-
+ 
+    // Resolve the "Sundry Debtors" group by name so we never depend on a
+    // hardcoded, per-environment ledger_group_id. Each customer gets one
+    // ledger created under this group.
+    const sundryDebtors = await models.LedgerGroup.findOne({
+      where: { ledger_group_name: "Sundry Debtors" },
+      attributes: ["id"],
+      order: [["id", "ASC"]],
+      transaction,
+    });
+    if (!sundryDebtors) {
+      throw new Error(
+        "Ledger group 'Sundry Debtors' not found. Seed the chart of accounts first."
+      );
+    }
+ 
     const ledger = await models.Ledger.create(
       {
         ledger_no,
-        ledger_group_id: 26, // Sundry Debtors  - For live also its 26, For May2026 db its 20
+        ledger_group_id: sundryDebtors.id, // Sundry Debtors group (resolved by name)
         ledger_name: payload.customer_name,
         branch_id: payload.branch_id,
       },
       { transaction }
     );
-
+ 
     console.log("Ledger created:", ledger.id);
-
+ 
     await customer.update(
       { ledger_id: ledger.id },
       { transaction }
     );
-
+ 
     console.log("Customer updated with ledger_id:", ledger.id);
-
+ 
     await transaction.commit();
     console.log("Transaction committed successfully");
-
+ 
     return commonService.createdResponse(res, { customer });
-
+ 
   } catch (err) {
     console.error("CreateCustomer Error:", err);
-
+ 
     if (transaction) {
       console.log("Rolling back transaction...");
       await transaction.rollback();
     }
-
+ 
     return commonService.handleError(res, err);
   }
 };

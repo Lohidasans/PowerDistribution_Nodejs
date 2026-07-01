@@ -12,7 +12,7 @@ const createVendor = async (req, res) => {
   try {
     const { bank_account, kyc_documents, login, spoc_details, ...payload } =
       req.body || {};
-
+ 
     const { vendor_code, vendor_name } = payload;
     if (!vendor_code || !vendor_name) {
       await t.rollback();
@@ -27,36 +27,51 @@ const createVendor = async (req, res) => {
       await t.rollback();
       return commonService.badRequest(res, "Vendor Code already exists.");
     }
-
+ 
     const vendor = await models.Vendor.create(payload, { transaction: t });
-
+ 
     /* ----------- CREATE LEDGER FOR VENDOR ----------- */
-
+ 
     const ledger_no = await generateFiscalSeriesCode(
       models.Ledger,
       "ledger_no",
       "LAID",
       { pad: 3 }
     );
-
+ 
+    // Resolve the "Sundry Creditors" group by name so we never depend on a
+    // hardcoded, per-environment ledger_group_id. Each vendor gets one ledger
+    // created under this group.
+    const sundryCreditors = await models.LedgerGroup.findOne({
+      where: { ledger_group_name: "Sundry Creditors" },
+      attributes: ["id"],
+      order: [["id", "ASC"]],
+      transaction: t,
+    });
+    if (!sundryCreditors) {
+      throw new Error(
+        "Ledger group 'Sundry Creditors' not found. Seed the chart of accounts first."
+      );
+    }
+ 
     const ledger = await models.Ledger.create(
       {
         ledger_no,
-        ledger_group_id: 33, // 33, // Sundry Creditors -33 for demo db - For live its 9, For UAT(May2026db) its 7
+        ledger_group_id: sundryCreditors.id, // Sundry Creditors group (resolved by name)
         ledger_name: vendor.vendor_name,
         branch_id: vendor.branch_id || 1
       },
       { transaction: t }
     );
-
+ 
     // 4️⃣ Update vendor with ledger_id
     await vendor.update(
       { ledger_id: ledger.id },
       { transaction: t }
     );
-
+ 
     /* ----------------------------------------------- */
-
+ 
     // Bank account (optional) via helper
     let createdBankAccount = [];
     if (
@@ -76,7 +91,7 @@ const createVendor = async (req, res) => {
         return commonService.badRequest(res, "Bank Account already exists");
       }
     }
-
+ 
     // KYC docs (optional) via reusable create helper
     let createdKycDocs = [];
     if (Array.isArray(kyc_documents) && kyc_documents.length > 0) {
@@ -87,19 +102,19 @@ const createVendor = async (req, res) => {
         kyc_documents
       );
     }
-
+ 
     // Login (optional) via reusable create helper
     let createdUser = null;
     if (login && typeof login === "object" && Object.keys(login).length > 0) {
       const result = await userSvc.createUserByEntity(t, "vendor", vendor.id, login);
-
+ 
       if (result.error) {
         await t.rollback();
         return commonService.badRequest(res, result.error);
       }
       createdUser = result.user;
     }
-
+ 
     let createdSpocs = [];
     if (Array.isArray(spoc_details) && spoc_details.length) {
       createdSpocs = await spocSvc.createVendorSpocsByVendor(
@@ -108,7 +123,7 @@ const createVendor = async (req, res) => {
         spoc_details
       );
     }
-
+ 
     await t.commit();
     return commonService.createdResponse(res, {
       vendor,
