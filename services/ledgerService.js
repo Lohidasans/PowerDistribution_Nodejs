@@ -384,6 +384,51 @@ const getLedgerDropdown = async (req, res) => {
   }
 };
 
+// Ledgers selectable as the account for "On Account" voucher RECEIPTS
+// (bill_type_id = 2): the GL/chart accounts such as "Capital A/c", "Bank
+// Accounts", "Cash in Hand", PLUS customer party ledgers (Sundry Debtors) so a
+// customer can pay "on account" (not tied to a specific bill). Vendor party
+// ledgers (Sundry Creditors) are excluded — a receipt is money IN, which does
+// not come from a vendor.
+const getVoucherAccountLedgers = async (req, res) => {
+  try {
+    const { search, limit } = req.query;
+    // Server-side search: return only a small matching page, never all ~1150.
+    const max = Math.min(parseInt(limit, 10) || 50, 500);
+
+    let where = `
+      WHERE l.deleted_at IS NULL
+        AND lg.deleted_at IS NULL
+        AND lg.ledger_group_name <> 'Sundry Creditors'
+    `;
+    const replacements = { limit: max };
+
+    if (search) {
+      where += ` AND l.ledger_name ILIKE :search`;
+      replacements.search = `%${search}%`;
+    }
+
+    const rows = await sequelize.query(
+      `SELECT l.id,
+              l.ledger_no,
+              l.ledger_name,
+              lg.id   AS ledger_group_id,
+              lg.ledger_group_name
+         FROM ledger l
+         JOIN ledger_group lg ON lg.id = l.ledger_group_id
+         ${where}
+        ORDER BY lg.ledger_group_name ASC, l.ledger_name ASC
+        LIMIT :limit`,
+      { replacements, type: sequelize.QueryTypes.SELECT }
+    );
+
+    // key is `ledgers` to match the existing dropdown consumers on the frontend
+    return commonService.okResponse(res, { ledgers: rows });
+  } catch (err) {
+    return commonService.handleError(res, err);
+  }
+};
+
 module.exports = {
   create,
   bulkCreate,
@@ -393,5 +438,6 @@ module.exports = {
   update,
   remove,
   generateLedgerNo,
-  getLedgerDropdown
+  getLedgerDropdown,
+  getVoucherAccountLedgers
 };

@@ -6,6 +6,9 @@ ledgerRouter.post("/ledgers", ledgerService.create);
 ledgerRouter.post("/ledgers/bulk", ledgerService.bulkCreate);
 ledgerRouter.get("/ledgers", ledgerService.list);
 ledgerRouter.get("/ledgers/dropdown", ledgerService.getLedgerDropdown);
+// Accounts for "On Account" voucher receipts (bill_type_id = 2): GL/chart
+// accounts (e.g. Capital A/c) + customer ledgers; excludes vendor ledgers.
+ledgerRouter.get("/ledgers/voucher-accounts", ledgerService.getVoucherAccountLedgers);
 ledgerRouter.get("/ledgers/generate-number", ledgerService.generateLedgerNo);
 ledgerRouter.get(
   "/ledgers/group/:ledgerGroupId",
