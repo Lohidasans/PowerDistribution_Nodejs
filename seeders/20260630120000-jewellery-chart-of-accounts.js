@@ -100,6 +100,7 @@ const CHART = {
 
   Income: [
     ['Sales Accounts', [
+      'Sales Accounts', // catch-all posting ledger the financial reports match via ILIKE 'SALES ACCOUNTS'
       'Gold Sales',
       'Silver Sales',
       'Diamond Sales',
@@ -124,6 +125,7 @@ const CHART = {
 
   Expense: [
     ['Purchase Accounts', [
+      'Purchase Accounts', // catch-all posting ledger the financial reports match via ILIKE 'PURCHASE ACCOUNTS'
       'Gold Purchase',
       'Silver Purchase',
       'Diamond Purchase',
