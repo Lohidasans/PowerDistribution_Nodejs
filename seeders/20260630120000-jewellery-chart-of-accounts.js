@@ -29,12 +29,15 @@ const CHART = {
       'Bank Accounts',
       'UPI Collections',
       'Card Collections',
-      'Sundry Debtors',
       'Customer Receivables',
       'GST Input CGST',
       'GST Input SGST',
       'GST Input IGST',
     ]],
+    // Sundry Debtors is kept as a GROUP (not a leaf ledger): customerService
+    // creates one ledger per customer under this group at runtime. Leaving the
+    // ledger list empty is intentional.
+    ['Sundry Debtors', []],
     ['Stock in Hand', [
       'Gold Stock',
       'Silver Stock',
@@ -69,13 +72,16 @@ const CHART = {
       'Reserve & Surplus',
     ]],
     ['Current Liabilities', [
-      'Sundry Creditors',
       'Outstanding Expenses',
       'Salary Payable',
       'Rent Payable',
       'Customer Advance',
       'Scheme Collection Liability',
     ]],
+    // Sundry Creditors is kept as a GROUP (not a leaf ledger): vendorService
+    // creates one ledger per vendor under this group at runtime. Leaving the
+    // ledger list empty is intentional.
+    ['Sundry Creditors', []],
     ['Duties & Taxes', [
       'Output CGST',
       'Output SGST',
