@@ -893,8 +893,90 @@ const getBalanceSheet = async (req, res) => {
   }
 };
 
+// ═════════════════════════════════════════════════════════════════════════
+// GSTR-1
+//
+// Reads the invoice-time snapshot columns on sales_invoice_bills
+// (customer_gstin, place_of_supply, gstr1_category, …) populated at save time,
+// and falls back to the live customer/branch/state masters (COALESCE) for any
+// row created before those columns existed. Credit notes come from
+// sales_returns; advances from voucher_receipts (bill_type_id = 3).
+// ═════════════════════════════════════════════════════════════════════════
+
+// Effective values: prefer the snapshot, fall back to the live master.
+const EFF_GSTIN = `NULLIF(TRIM(COALESCE(s.customer_gstin, c.gst_no, '')), '')`;
+const EFF_POS = `COALESCE(s.place_of_supply, cst.state_name, bst.state_name)`;
+const GST_RATE = `(COALESCE(s.cgst_percent,0) + COALESCE(s.sgst_percent,0) + COALESCE(s.igst_percent,0))`;
+
+// Gross document value = taxable value + tax. This is the GSTR-1 "invoice value"
+// and the basis for the B2CL >= 250000 threshold. NOTE: it is deliberately NOT
+// s.total_amount, which is stored NET of old-gold / scheme / sales-return
+// adjustments (common & large in jewellery) — using that would understate the
+// invoice value and mis-bucket large inter-state B2C invoices out of B2CL.
+const INV_VALUE = `(COALESCE(s.subtotal_amount,0) + COALESCE(s.cgst_amount,0) + COALESCE(s.sgst_amount,0) + COALESCE(s.igst_amount,0))`;
+
+// Resolve the GSTR-1 bucket, falling back to a live derivation if the snapshot
+// is null (rows created before the snapshot columns / backfill).
+const EFF_CATEGORY = `
+  COALESCE(s.gstr1_category, CASE
+    WHEN s.is_export = true THEN 'EXP'
+    WHEN COALESCE(s.supply_type,'Taxable') <> 'Taxable' THEN 'EXEMP'
+    WHEN ${EFF_GSTIN} IS NOT NULL THEN 'B2B'
+    WHEN COALESCE(s.igst_amount,0) > 0 AND ${INV_VALUE} >= 250000 THEN 'B2CL'
+    ELSE 'B2CS'
+  END)`;
+
+// Invoice source (posted invoices only) with all masters joined.
+const INVOICE_BASE = `
+  FROM sales_invoice_bills s
+  LEFT JOIN customers c   ON c.id = s.customer_id
+  LEFT JOIN branches  b   ON b.id = s.branch_id
+  LEFT JOIN states    cst ON cst.id = c.state_id
+  LEFT JOIN states    bst ON bst.id = b.state_id
+  WHERE s.deleted_at IS NULL
+    AND s.status = 'Invoice'
+    AND (:branch_id IS NULL OR s.branch_id = :branch_id)
+    AND s.invoice_date BETWEEN :from_date AND :to_date`;
+
+// Credit-note source (sales returns) with masters + original invoice ref.
+const RET_GSTIN = `NULLIF(TRIM(COALESCE(c.gst_no, '')), '')`;
+const RET_POS = `COALESCE(cst.state_name, bst.state_name)`;
+const RET_RATE = `(COALESCE(r.cgst_percent,0) + COALESCE(r.sgst_percent,0) + COALESCE(r.igst_percent,0))`;
+const RETURN_BASE = `
+  FROM sales_returns r
+  LEFT JOIN customers c   ON c.id = r.customer_id
+  LEFT JOIN branches  b   ON b.id = r.branch_id
+  LEFT JOIN states    cst ON cst.id = c.state_id
+  LEFT JOIN states    bst ON bst.id = b.state_id
+  LEFT JOIN (
+    SELECT sales_return_id, MIN(invoice_no) AS orig_invoice_no
+    FROM sales_return_items WHERE deleted_at IS NULL
+    GROUP BY sales_return_id
+  ) ri ON ri.sales_return_id = r.id
+  WHERE r.deleted_at IS NULL AND r.is_active = true
+    AND r.status NOT IN ('Draft','Cancelled','On Hold')
+    AND (:branch_id IS NULL OR r.branch_id = :branch_id)
+    AND r.return_date BETWEEN :from_date AND :to_date`;
+
+// Advance-receipt source — CUSTOMER advances only (user_type_id = 2 excludes
+// vendor advances, which are inward, not outward supplies).
+const ADV_POS = `COALESCE(cst.state_name, bst.state_name)`;
+const ADV_BASE = `
+  FROM voucher_receipts vr
+  LEFT JOIN customers c   ON c.ledger_id = vr.account_id AND c.deleted_at IS NULL
+  LEFT JOIN branches  b   ON b.id = vr.branch_id
+  LEFT JOIN states    cst ON cst.id = c.state_id
+  LEFT JOIN states    bst ON bst.id = b.state_id
+  WHERE vr.deleted_at IS NULL AND vr.is_active = true
+    AND vr.bill_type_id = 3
+    AND COALESCE(vr.user_type_id, 2) = 2
+    AND (:branch_id IS NULL OR vr.branch_id = :branch_id)
+    AND vr.receipt_date BETWEEN :from_date AND :to_date`;
+
+const yn = (v) => (v === true ? "Y" : "N");
+
 // ─────────────────────────────────────────
-// GSTR1 — INVOICE VIEW
+// GSTR1 — INVOICE VIEW (flat list of every posted invoice in the period)
 // ─────────────────────────────────────────
 const getGstr1 = async (req, res) => {
   try {
@@ -902,71 +984,44 @@ const getGstr1 = async (req, res) => {
     const fromDate = from_date || "2000-01-01";
     const toDate = to_date || new Date().toISOString().split("T")[0];
     const branchId = branch_id ? parseInt(branch_id) : null;
+    const replacements = { branch_id: branchId, from_date: fromDate, to_date: toDate };
 
-    // Fetch branch GSTIN and company name
+    // Company header (branch GSTIN + name) — only when a single branch is chosen.
     let gstin = null;
     let legalName = null;
     if (branchId) {
-      const branchResult = await sequelize.query(
+      const rows = await sequelize.query(
         `SELECT gst_no, branch_name FROM branches WHERE id = :branch_id AND deleted_at IS NULL LIMIT 1`,
         { replacements: { branch_id: branchId }, type: sequelize.QueryTypes.SELECT }
       );
-      if (branchResult.length > 0) {
-        gstin = branchResult[0].gst_no;
-        legalName = branchResult[0].branch_name;
+      if (rows.length) {
+        gstin = rows[0].gst_no;
+        legalName = rows[0].branch_name;
       }
     }
 
     const sql = `
       SELECT
-        c.gst_no            AS gstin_uin,
-        c.customer_name     AS party_name,
-        'Sales'             AS transaction_type,
+        ${EFF_GSTIN}                          AS gstin_uin,
+        c.customer_name                       AS party_name,
+        'Sales'                               AS transaction_type,
         s.invoice_no,
         TO_CHAR(s.invoice_date, 'DD/MM/YYYY') AS invoice_date,
-        COALESCE(s.total_amount, 0)            AS invoice_value,
-        COALESCE(s.cgst_amount, 0) + COALESCE(s.sgst_amount, 0) + COALESCE(s.igst_amount, 0) AS tax_amount,
-        COALESCE(s.subtotal_amount, 0)         AS taxable_value,
-        COALESCE(s.cgst_percent, 0) + COALESCE(s.sgst_percent, 0) + COALESCE(s.igst_percent, 0) AS rate,
-        s.cgst_percent,
-        s.sgst_percent,
-        s.igst_percent,
-        s.cgst_amount,
-        s.sgst_amount,
-        s.igst_amount
-      FROM sales_invoice_bills s
-      JOIN customers c ON c.id = s.customer_id
-      WHERE s.deleted_at IS NULL
-        AND s.status = 'Invoice'
-        AND (:branch_id IS NULL OR s.branch_id = :branch_id)
-        AND s.invoice_date BETWEEN :from_date AND :to_date
+        ${INV_VALUE}                          AS invoice_value,
+        ${GST_RATE}                           AS rate,
+        COALESCE(s.subtotal_amount, 0)        AS taxable_value,
+        s.reverse_charge,
+        COALESCE(s.cgst_amount, 0)            AS cgst_amount,
+        COALESCE(s.sgst_amount, 0)            AS sgst_amount,
+        COALESCE(s.igst_amount, 0)            AS igst_amount,
+        ${EFF_POS}                            AS place_of_supply,
+        s.place_of_supply_code                AS place_of_supply_code,
+        b.branch_name                         AS branch
+      ${INVOICE_BASE}
       ORDER BY s.invoice_date ASC, s.invoice_no ASC
     `;
 
-    const data = await sequelize.query(sql, {
-      replacements: { branch_id: branchId, from_date: fromDate, to_date: toDate },
-      type: sequelize.QueryTypes.SELECT,
-    });
-
-    const formatted = data.map((row) => ({
-      gstin_uin: row.gstin_uin || null,
-      party_name: row.party_name,
-      transaction_type: row.transaction_type,
-      invoice_no: row.invoice_no,
-      invoice_date: row.invoice_date,
-      invoice_value: parseFloat(row.invoice_value || 0).toFixed(2),
-      rate: parseFloat(row.rate || 0).toFixed(2),
-      taxable_value: parseFloat(row.taxable_value || 0).toFixed(2),
-      tax_amount: parseFloat(row.tax_amount || 0).toFixed(2),
-      cgst_percent: parseFloat(row.cgst_percent || 0),
-      sgst_percent: parseFloat(row.sgst_percent || 0),
-      igst_percent: parseFloat(row.igst_percent || 0),
-      cgst_amount: parseFloat(row.cgst_amount || 0).toFixed(2),
-      sgst_amount: parseFloat(row.sgst_amount || 0).toFixed(2),
-      igst_amount: parseFloat(row.igst_amount || 0).toFixed(2),
-      cess_rate: null,
-      reverse_charge: null,
-    }));
+    const data = await sequelize.query(sql, { replacements, type: sequelize.QueryTypes.SELECT });
 
     return commonService.okResponse(res, {
       gstin,
@@ -974,7 +1029,25 @@ const getGstr1 = async (req, res) => {
       trade_name: legalName,
       aggregate_turnover_prev_fy: null,
       aggregate_turnover_apr_jun: null,
-      data: formatted,
+      data: data.map((row) => ({
+        gstin_uin: row.gstin_uin || null,
+        party_name: row.party_name,
+        transaction_type: row.transaction_type,
+        invoice_no: row.invoice_no,
+        invoice_date: row.invoice_date,
+        invoice_value: round2(row.invoice_value),
+        rate: round2(row.rate),
+        cess_rate: 0,
+        taxable_value: round2(row.taxable_value),
+        reverse_charge: yn(row.reverse_charge),
+        igst: round2(row.igst_amount),
+        cgst: round2(row.cgst_amount),
+        sgst: round2(row.sgst_amount),
+        cess_amount: 0,
+        place_of_supply: row.place_of_supply || null,
+        place_of_supply_code: row.place_of_supply_code || null,
+        branch: row.branch || null,
+      })),
     });
   } catch (err) {
     console.error(err);
@@ -983,231 +1056,493 @@ const getGstr1 = async (req, res) => {
 };
 
 // ─────────────────────────────────────────
-// GSTR1 — PORTAL VIEW (B2B / B2CS / B2CL / HSN)
+// GSTR1 — PORTAL VIEW (all 13 sections)
+//   sections: b2b, b2cl, b2cs, cdnr, cdnur, exp, at, atadj, exemp,
+//             hsn_b2b, hsn_b2c, item_summary, docs
 // ─────────────────────────────────────────
 const getGstr1Portal = async (req, res) => {
   try {
-    const { branch_id, from_date, to_date, section = "b2b" } = req.query;
+    const { branch_id, from_date, to_date } = req.query;
+    const section = String(req.query.section || "b2b").toLowerCase();
     const fromDate = from_date || "2000-01-01";
     const toDate = to_date || new Date().toISOString().split("T")[0];
     const branchId = branch_id ? parseInt(branch_id) : null;
-
-    const BASE_WHERE = `
-      s.deleted_at IS NULL
-      AND s.status = 'Invoice'
-      AND (:branch_id IS NULL OR s.branch_id = :branch_id)
-      AND s.invoice_date BETWEEN :from_date AND :to_date
-    `;
-
     const replacements = { branch_id: branchId, from_date: fromDate, to_date: toDate };
 
+    const q = (sql) => sequelize.query(sql, { replacements, type: sequelize.QueryTypes.SELECT });
+    const sum = (rows, key) => rows.reduce((a, r) => a + parseFloat(r[key] || 0), 0);
+
+    // ── B2B, SEZ, DE (4A, 4B, 6B, 6C) ──────────────────────────────────────
     if (section === "b2b") {
-      // B2B: customers with valid GSTIN
-      const summarySql = `
+      const rows = await q(`
         SELECT
-          COUNT(DISTINCT c.gst_no) AS no_of_receipt,
-          COUNT(*)                 AS no_of_invoice,
-          SUM(COALESCE(s.total_amount, 0))    AS total_invoice_value,
-          SUM(COALESCE(s.subtotal_amount, 0)) AS total_taxable_value,
-          0                                   AS total_cess
-        FROM sales_invoice_bills s
-        JOIN customers c ON c.id = s.customer_id
-          AND c.gst_no IS NOT NULL AND c.gst_no != ''
-        WHERE ${BASE_WHERE}
-      `;
-
-      const dataSql = `
-        SELECT
-          c.gst_no                AS gstin_uin,
-          c.customer_name         AS receiver_name,
-          s.invoice_no,
-          TO_CHAR(s.invoice_date, 'DD/MM/YYYY') AS invoice_date,
-          COALESCE(s.total_amount, 0)            AS invoice_value,
-          st.state_name                          AS place_of_supply,
-          COALESCE(s.subtotal_amount, 0)         AS taxable_value,
-          'Invoice'               AS transaction_type
-        FROM sales_invoice_bills s
-        JOIN customers c ON c.id = s.customer_id
-          AND c.gst_no IS NOT NULL AND c.gst_no != ''
-        JOIN branches b ON b.id = s.branch_id
-        LEFT JOIN states st ON st.id = b.state_id
-        WHERE ${BASE_WHERE}
+          ${EFF_GSTIN} AS gstin, c.customer_name AS receiver_name, s.invoice_no,
+          TO_CHAR(s.invoice_date,'DD/MM/YYYY') AS invoice_date,
+          ${INV_VALUE} AS invoice_value, ${EFF_POS} AS place_of_supply,
+          s.reverse_charge, ${GST_RATE} AS rate, COALESCE(s.subtotal_amount,0) AS taxable_value,
+          b.branch_name AS branch
+        ${INVOICE_BASE} AND ${EFF_CATEGORY} = 'B2B'
         ORDER BY s.invoice_date ASC, s.invoice_no ASC
-      `;
-
-      const [summaryRows, data] = await Promise.all([
-        sequelize.query(summarySql, { replacements, type: sequelize.QueryTypes.SELECT }),
-        sequelize.query(dataSql, { replacements, type: sequelize.QueryTypes.SELECT }),
-      ]);
-
-      const summary = summaryRows[0] || {};
-
+      `);
+      const gstins = new Set(rows.map((r) => r.gstin).filter(Boolean));
       return commonService.okResponse(res, {
         section: "b2b",
         summary: {
-          no_of_receipt: parseInt(summary.no_of_receipt || 0),
-          no_of_invoice: parseInt(summary.no_of_invoice || 0),
-          total_invoice_value: parseFloat(summary.total_invoice_value || 0).toFixed(2),
-          total_taxable_value: parseFloat(summary.total_taxable_value || 0).toFixed(2),
-          total_cess: parseFloat(summary.total_cess || 0).toFixed(2),
+          no_of_receipt: gstins.size,
+          no_of_invoice: rows.length,
+          total_invoice_value: round2(sum(rows, "invoice_value")),
+          total_taxable_value: round2(sum(rows, "taxable_value")),
+          total_cess: 0,
         },
-        data: data.map((row) => ({
-          gstin_uin: row.gstin_uin,
-          receiver_name: row.receiver_name,
-          invoice_no: row.invoice_no,
-          invoice_date: row.invoice_date,
-          invoice_value: parseFloat(row.invoice_value || 0).toFixed(2),
-          place_of_supply: row.place_of_supply || null,
-          taxable_value: parseFloat(row.taxable_value || 0).toFixed(2),
-          reverse_charge: null,
+        data: rows.map((r) => ({
+          gstin: r.gstin || null,
+          receiver_name: r.receiver_name,
+          invoice_no: r.invoice_no,
+          invoice_date: r.invoice_date,
+          invoice_value: round2(r.invoice_value),
+          place_of_supply: r.place_of_supply || null,
+          reverse_charge: yn(r.reverse_charge),
           applicable_tax_rate: null,
-          transaction_type: row.transaction_type,
+          transaction_type: "Invoice",
+          ecommerce_gstin: null,
+          rate: round2(r.rate),
+          taxable_value: round2(r.taxable_value),
+          cess_amount: 0,
+          branch: r.branch || null,
+        })),
+      });
+    }
+
+    // ── B2CL (5A, large inter-state B2C invoices) ──────────────────────────
+    if (section === "b2cl") {
+      const rows = await q(`
+        SELECT
+          b.branch_name AS branch, s.invoice_no,
+          TO_CHAR(s.invoice_date,'DD/MM/YYYY') AS invoice_date,
+          ${INV_VALUE} AS invoice_value, ${EFF_POS} AS place_of_supply,
+          COALESCE(s.igst_percent,0) AS rate, COALESCE(s.subtotal_amount,0) AS taxable_value
+        ${INVOICE_BASE} AND ${EFF_CATEGORY} = 'B2CL'
+        ORDER BY s.invoice_date ASC, s.invoice_no ASC
+      `);
+      return commonService.okResponse(res, {
+        section: "b2cl",
+        summary: {
+          no_of_invoice: rows.length,
+          total_invoice_value: round2(sum(rows, "invoice_value")),
+          total_taxable_value: round2(sum(rows, "taxable_value")),
+          total_cess: 0,
+        },
+        data: rows.map((r) => ({
+          branch: r.branch || null,
+          invoice_no: r.invoice_no,
+          invoice_date: r.invoice_date,
+          invoice_value: round2(r.invoice_value),
+          place_of_supply: r.place_of_supply || null,
+          applicable_tax_rate: null,
+          rate: round2(r.rate),
+          taxable_value: round2(r.taxable_value),
+          cess_amount: 0,
           ecommerce_gstin: null,
         })),
       });
     }
 
+    // ── B2CS (7, small/intra-state B2C, rate-wise summary) ─────────────────
     if (section === "b2cs") {
-      // B2CS: Unregistered customers, invoice value < 2,50,000
-      const dataSql = `
+      const rows = await q(`
         SELECT
-          c.customer_name         AS receiver_name,
-          s.invoice_no,
-          TO_CHAR(s.invoice_date, 'DD/MM/YYYY') AS invoice_date,
-          COALESCE(s.total_amount, 0)            AS invoice_value,
-          st.state_name                          AS place_of_supply,
-          COALESCE(s.subtotal_amount, 0)         AS taxable_value,
-          COALESCE(s.cgst_percent, 0) + COALESCE(s.sgst_percent, 0) + COALESCE(s.igst_percent, 0) AS tax_rate
-        FROM sales_invoice_bills s
-        JOIN customers c ON c.id = s.customer_id
-          AND (c.gst_no IS NULL OR c.gst_no = '')
-        JOIN branches b ON b.id = s.branch_id
-        LEFT JOIN states st ON st.id = b.state_id
-        WHERE ${BASE_WHERE}
-          AND COALESCE(s.total_amount, 0) < 250000
-        ORDER BY s.invoice_date ASC
-      `;
-
-      const data = await sequelize.query(dataSql, { replacements, type: sequelize.QueryTypes.SELECT });
-
-      const totalTaxable = data.reduce((s, r) => s + parseFloat(r.taxable_value || 0), 0);
-      const totalInvoice = data.reduce((s, r) => s + parseFloat(r.invoice_value || 0), 0);
-
+          b.branch_name AS branch, ${EFF_POS} AS place_of_supply, ${GST_RATE} AS rate,
+          COALESCE(SUM(s.subtotal_amount),0) AS taxable_value
+        ${INVOICE_BASE} AND ${EFF_CATEGORY} = 'B2CS'
+        GROUP BY b.branch_name, ${EFF_POS}, ${GST_RATE}
+        ORDER BY ${EFF_POS}
+      `);
       return commonService.okResponse(res, {
         section: "b2cs",
         summary: {
-          no_of_invoice: data.length,
-          total_invoice_value: totalInvoice.toFixed(2),
-          total_taxable_value: totalTaxable.toFixed(2),
+          total_taxable_value: round2(sum(rows, "taxable_value")),
+          total_cess: 0,
         },
-        data: data.map((row) => ({
-          receiver_name: row.receiver_name,
-          invoice_no: row.invoice_no,
-          invoice_date: row.invoice_date,
-          invoice_value: parseFloat(row.invoice_value || 0).toFixed(2),
-          place_of_supply: row.place_of_supply || null,
-          taxable_value: parseFloat(row.taxable_value || 0).toFixed(2),
-          tax_rate: parseFloat(row.tax_rate || 0).toFixed(3),
+        data: rows.map((r) => ({
+          branch: r.branch || null,
+          type: "OE",
+          place_of_supply: r.place_of_supply || null,
+          applicable_tax_rate: null,
+          rate: round2(r.rate),
+          taxable_value: round2(r.taxable_value),
+          cess_amount: 0,
+          ecommerce_gstin: null,
         })),
       });
     }
 
-    if (section === "b2cl") {
-      // B2CL: Unregistered customers, invoice value >= 2,50,000 (inter-state)
-      const dataSql = `
+    // ── CDNR (9B, credit notes to registered) ──────────────────────────────
+    if (section === "cdnr") {
+      const rows = await q(`
         SELECT
-          c.customer_name         AS receiver_name,
-          s.invoice_no,
-          TO_CHAR(s.invoice_date, 'DD/MM/YYYY') AS invoice_date,
-          COALESCE(s.total_amount, 0)            AS invoice_value,
-          st.state_name                          AS place_of_supply,
-          COALESCE(s.subtotal_amount, 0)         AS taxable_value,
-          COALESCE(s.igst_percent, 0)            AS tax_rate,
-          COALESCE(s.igst_amount, 0)             AS igst_amount
-        FROM sales_invoice_bills s
-        JOIN customers c ON c.id = s.customer_id
-          AND (c.gst_no IS NULL OR c.gst_no = '')
-        JOIN branches b ON b.id = s.branch_id
-        LEFT JOIN states st ON st.id = b.state_id
-        WHERE ${BASE_WHERE}
-          AND COALESCE(s.total_amount, 0) >= 250000
-        ORDER BY s.invoice_date ASC
-      `;
-
-      const data = await sequelize.query(dataSql, { replacements, type: sequelize.QueryTypes.SELECT });
-
+          ${RET_GSTIN} AS gstin, c.customer_name AS receiver_name,
+          r.sales_return_no AS note_number,
+          TO_CHAR(r.return_date,'DD/MM/YYYY') AS note_date,
+          ${RET_POS} AS place_of_supply, ${RET_RATE} AS rate,
+          COALESCE(r.subtotal_amount,0) AS taxable_value,
+          COALESCE(r.total_amount,0) AS note_value,
+          ri.orig_invoice_no AS original_invoice_no, b.branch_name AS branch
+        ${RETURN_BASE} AND ${RET_GSTIN} IS NOT NULL
+        ORDER BY r.return_date ASC, r.sales_return_no ASC
+      `);
+      const gstins = new Set(rows.map((r) => r.gstin).filter(Boolean));
       return commonService.okResponse(res, {
-        section: "b2cl",
+        section: "cdnr",
         summary: {
-          no_of_invoice: data.length,
-          total_invoice_value: data.reduce((s, r) => s + parseFloat(r.invoice_value || 0), 0).toFixed(2),
-          total_taxable_value: data.reduce((s, r) => s + parseFloat(r.taxable_value || 0), 0).toFixed(2),
+          no_of_receipts: gstins.size,
+          no_of_notes: rows.length,
+          total_taxable_amount: round2(sum(rows, "taxable_value")),
+          total_cess: 0,
         },
-        data: data.map((row) => ({
-          receiver_name: row.receiver_name,
-          invoice_no: row.invoice_no,
-          invoice_date: row.invoice_date,
-          invoice_value: parseFloat(row.invoice_value || 0).toFixed(2),
-          place_of_supply: row.place_of_supply || null,
-          taxable_value: parseFloat(row.taxable_value || 0).toFixed(2),
-          tax_rate: parseFloat(row.tax_rate || 0).toFixed(3),
-          igst_amount: parseFloat(row.igst_amount || 0).toFixed(2),
+        data: rows.map((r) => ({
+          gstin: r.gstin || null,
+          receiver_name: r.receiver_name,
+          note_number: r.note_number,
+          note_date: r.note_date,
+          note_type: "C",
+          place_of_supply: r.place_of_supply || null,
+          reverse_charge: "N",
+          note_supply_type: "Regular",
+          applicable_tax_rate: null,
+          rate: round2(r.rate),
+          taxable_value: round2(r.taxable_value),
+          cess_amount: 0,
+          note_value: round2(r.note_value),
+          original_invoice_no: r.original_invoice_no || null,
+          branch: r.branch || null,
         })),
       });
     }
 
-    if (section === "hsn") {
-      // HSN Summary: group by HSN code
-      // Tax amounts are on the bill header; we prorate by item share within each bill
-      const dataSql = `
+    // ── CDNUR (9B, credit notes to unregistered) ───────────────────────────
+    if (section === "cdnur") {
+      const rows = await q(`
         SELECT
-          si.hsn_code,
-          SUM(COALESCE(si.quantity, 0))   AS total_qty,
-          SUM(COALESCE(si.amount, 0))     AS taxable_value,
-          SUM(
-            CASE WHEN COALESCE(s.subtotal_amount, 0) > 0
-              THEN COALESCE(si.amount, 0) / s.subtotal_amount * COALESCE(s.cgst_amount, 0)
-              ELSE 0 END
-          ) AS cgst_amount,
-          SUM(
-            CASE WHEN COALESCE(s.subtotal_amount, 0) > 0
-              THEN COALESCE(si.amount, 0) / s.subtotal_amount * COALESCE(s.sgst_amount, 0)
-              ELSE 0 END
-          ) AS sgst_amount,
-          SUM(
-            CASE WHEN COALESCE(s.subtotal_amount, 0) > 0
-              THEN COALESCE(si.amount, 0) / s.subtotal_amount * COALESCE(s.igst_amount, 0)
-              ELSE 0 END
-          ) AS igst_amount
+          r.sales_return_no AS note_number,
+          TO_CHAR(r.return_date,'DD/MM/YYYY') AS note_date,
+          ${RET_POS} AS place_of_supply, ${RET_RATE} AS rate,
+          COALESCE(r.subtotal_amount,0) AS taxable_value,
+          COALESCE(r.total_amount,0) AS note_value,
+          'B2CL' AS ur_type,
+          ri.orig_invoice_no AS original_invoice_no, b.branch_name AS branch
+        -- CDNUR only carries inter-state (B2CL) & export credit notes; the GSTR-1
+        -- schema has no 'B2CS' UR type. Intra-state B2C credit notes are netted
+        -- into B2CS at filing time and are intentionally not listed here.
+        ${RETURN_BASE} AND ${RET_GSTIN} IS NULL AND COALESCE(r.igst_amount,0) > 0
+        ORDER BY r.return_date ASC, r.sales_return_no ASC
+      `);
+      return commonService.okResponse(res, {
+        section: "cdnur",
+        summary: {
+          no_of_notes: rows.length,
+          total_note_value: round2(sum(rows, "note_value")),
+          total_taxable_amount: round2(sum(rows, "taxable_value")),
+          total_cess: 0,
+        },
+        data: rows.map((r) => ({
+          ur_type: r.ur_type,
+          note_number: r.note_number,
+          note_date: r.note_date,
+          note_type: "C",
+          place_of_supply: r.place_of_supply || null,
+          note_value: round2(r.note_value),
+          applicable_tax_rate: null,
+          rate: round2(r.rate),
+          taxable_value: round2(r.taxable_value),
+          cess_amount: 0,
+          original_invoice_no: r.original_invoice_no || null,
+          branch: r.branch || null,
+        })),
+      });
+    }
+
+    // ── EXP (6A, exports) ──────────────────────────────────────────────────
+    if (section === "exp") {
+      const rows = await q(`
+        SELECT
+          b.branch_name AS branch, s.export_type, s.invoice_no AS invoice_number,
+          TO_CHAR(s.invoice_date,'DD/MM/YYYY') AS invoice_date,
+          ${INV_VALUE} AS invoice_value,
+          ${GST_RATE} AS rate, COALESCE(s.subtotal_amount,0) AS taxable_value
+        ${INVOICE_BASE} AND ${EFF_CATEGORY} = 'EXP'
+        ORDER BY s.invoice_date ASC, s.invoice_no ASC
+      `);
+      return commonService.okResponse(res, {
+        section: "exp",
+        summary: {
+          no_of_invoices: rows.length,
+          total_invoice_value: round2(sum(rows, "invoice_value")),
+          total_taxable_value: round2(sum(rows, "taxable_value")),
+          no_of_shipping_bill: 0,
+        },
+        data: rows.map((r) => ({
+          branch: r.branch || null,
+          export_type: r.export_type || null,
+          invoice_number: r.invoice_number,
+          invoice_date: r.invoice_date,
+          invoice_value: round2(r.invoice_value),
+          port_code: null,
+          shipping_bill_number: null,
+          shipping_bill_date: null,
+          rate: round2(r.rate),
+          taxable_value: round2(r.taxable_value),
+        })),
+      });
+    }
+
+    // ── AT (11A, advances received in the period, by place of supply) ──────
+    if (section === "at") {
+      const rows = await q(`
+        SELECT b.branch_name AS branch, ${ADV_POS} AS place_of_supply,
+               COALESCE(SUM(vr.amount),0) AS gross_advance_received
+        ${ADV_BASE}
+        GROUP BY b.branch_name, ${ADV_POS}
+        ORDER BY ${ADV_POS}
+      `);
+      return commonService.okResponse(res, {
+        section: "at",
+        summary: {
+          total_advance_received: round2(sum(rows, "gross_advance_received")),
+          total_cess: 0,
+        },
+        data: rows.map((r) => ({
+          branch: r.branch || null,
+          place_of_supply: r.place_of_supply || null,
+          applicable_tax_rate: null,
+          rate: null,
+          gross_advance_received: round2(r.gross_advance_received),
+          cess_amount: 0,
+        })),
+      });
+    }
+
+    // ── ATADJ (11B, advances adjusted against invoices IN this period) ─────
+    // Attributed by the CONSUMING invoice's date (period-correct), derived from
+    // the Advance-mode payment rows the invoice booked against a prior advance —
+    // not by the advance's own receipt_date, which would report it in the wrong
+    // period and shift retroactively as the mutable is_advance_used flag flips.
+    if (section === "atadj") {
+      const rows = await q(`
+        SELECT b.branch_name AS branch, ${EFF_POS} AS place_of_supply,
+               COALESCE(SUM(p.amount_received),0) AS gross_advance_adjusted
+        FROM payments p
+        JOIN sales_invoice_bills s ON s.id = p.invoice_bill_id
+          AND s.deleted_at IS NULL AND s.status = 'Invoice'
+        LEFT JOIN customers c   ON c.id = s.customer_id
+        LEFT JOIN branches  b   ON b.id = s.branch_id
+        LEFT JOIN states    cst ON cst.id = c.state_id
+        LEFT JOIN states    bst ON bst.id = b.state_id
+        WHERE p.deleted_at IS NULL AND p.status = 'Completed'
+          AND p.payment_mode = 'Advance'
+          AND (:branch_id IS NULL OR s.branch_id = :branch_id)
+          AND s.invoice_date BETWEEN :from_date AND :to_date
+        GROUP BY b.branch_name, ${EFF_POS}
+        ORDER BY ${EFF_POS}
+      `);
+      return commonService.okResponse(res, {
+        section: "atadj",
+        summary: {
+          total_advance_adjusted: round2(sum(rows, "gross_advance_adjusted")),
+          total_cess: 0,
+        },
+        data: rows.map((r) => ({
+          branch: r.branch || null,
+          place_of_supply: r.place_of_supply || null,
+          applicable_tax_rate: null,
+          rate: null,
+          gross_advance_adjusted: round2(r.gross_advance_adjusted),
+          cess_amount: 0,
+        })),
+      });
+    }
+
+    // ── EXEMP (8, nil rated / exempt / non-GST outward supplies) ───────────
+    if (section === "exemp") {
+      // Exempt/nil/non-GST supplies carry NO tax, so igst_amount is always 0 and
+      // cannot signal inter-state. Compare place-of-supply state vs branch state.
+      const SCOPE = `CASE WHEN COALESCE(s.place_of_supply_code, cst.state_code) IS DISTINCT FROM bst.state_code THEN 'inter' ELSE 'intra' END`;
+      const rows = await q(`
+        SELECT
+          CASE WHEN ${EFF_GSTIN} IS NOT NULL THEN 'registered' ELSE 'unregistered' END AS reg,
+          ${SCOPE} AS scope,
+          COALESCE(s.supply_type,'Taxable') AS supply_type,
+          COALESCE(SUM(s.subtotal_amount),0) AS taxable_value
+        ${INVOICE_BASE} AND COALESCE(s.supply_type,'Taxable') <> 'Taxable'
+        GROUP BY
+          CASE WHEN ${EFF_GSTIN} IS NOT NULL THEN 'registered' ELSE 'unregistered' END,
+          ${SCOPE},
+          COALESCE(s.supply_type,'Taxable')
+      `);
+
+      const buckets = [
+        { key: "inter|registered", description: "Inter-State supplies to registered persons" },
+        { key: "intra|registered", description: "Intra-State supplies to registered persons" },
+        { key: "inter|unregistered", description: "Inter-State supplies to unregistered persons" },
+        { key: "intra|unregistered", description: "Intra-State supplies to unregistered persons" },
+      ];
+      const acc = {};
+      for (const bkt of buckets) acc[bkt.key] = { nil: 0, exempt: 0, non_gst: 0 };
+      for (const r of rows) {
+        const k = `${r.scope}|${r.reg}`;
+        if (!acc[k]) continue;
+        const v = parseFloat(r.taxable_value || 0);
+        if (r.supply_type === "Nil Rated") acc[k].nil += v;
+        else if (r.supply_type === "Exempt") acc[k].exempt += v;
+        else if (r.supply_type === "Non GST") acc[k].non_gst += v;
+      }
+      const data = buckets.map((bkt) => ({
+        description: bkt.description,
+        nil_rated_supplies: round2(acc[bkt.key].nil),
+        exempted_supplies: round2(acc[bkt.key].exempt),
+        non_gst_supplies: round2(acc[bkt.key].non_gst),
+      }));
+      return commonService.okResponse(res, {
+        section: "exemp",
+        summary: {
+          total_nil_rated_supplies: round2(data.reduce((a, d) => a + d.nil_rated_supplies, 0)),
+          total_exempted_supplies: round2(data.reduce((a, d) => a + d.exempted_supplies, 0)),
+          total_non_gst_supplies: round2(data.reduce((a, d) => a + d.non_gst_supplies, 0)),
+        },
+        data,
+      });
+    }
+
+    // ── HSN summaries (12) & Item Summary — shared builder ──────────────────
+    // hsn_b2b: B2B invoices; hsn_b2c: B2C (B2CS/B2CL); item_summary: all.
+    if (section === "hsn_b2b" || section === "hsn_b2c" || section === "item_summary") {
+      const categoryFilter =
+        section === "hsn_b2b"
+          ? `AND ${EFF_CATEGORY} = 'B2B'`
+          : section === "hsn_b2c"
+          ? `AND ${EFF_CATEGORY} <> 'B2B'`
+          : "";
+
+      // Prorate header-level tax/subtotal across items by each item's share of
+      // the invoice line total (net_total = Σ item amounts).
+      const rows = await q(`
+        SELECT
+          b.branch_name AS branch, si.hsn_code AS hsn, ${GST_RATE} AS rate,
+          SUM(COALESCE(si.quantity,0)) AS total_quantity,
+          SUM(CASE WHEN COALESCE(s.net_total,0) > 0
+                THEN si.amount / s.net_total * COALESCE(s.subtotal_amount,0)
+                ELSE si.amount END) AS taxable_value,
+          SUM(CASE WHEN COALESCE(s.net_total,0) > 0
+                THEN si.amount / s.net_total * COALESCE(s.igst_amount,0) ELSE 0 END) AS integrated_tax_amount,
+          SUM(CASE WHEN COALESCE(s.net_total,0) > 0
+                THEN si.amount / s.net_total * COALESCE(s.cgst_amount,0) ELSE 0 END) AS central_tax_amount,
+          SUM(CASE WHEN COALESCE(s.net_total,0) > 0
+                THEN si.amount / s.net_total * COALESCE(s.sgst_amount,0) ELSE 0 END) AS state_ut_tax_amount
         FROM sales_invoice_bill_items si
         JOIN sales_invoice_bills s ON s.id = si.invoice_bill_id
+        LEFT JOIN customers c ON c.id = s.customer_id
+        LEFT JOIN branches  b ON b.id = s.branch_id
         WHERE s.deleted_at IS NULL AND si.deleted_at IS NULL
           AND s.status = 'Invoice'
           AND (:branch_id IS NULL OR s.branch_id = :branch_id)
           AND s.invoice_date BETWEEN :from_date AND :to_date
-          AND si.hsn_code IS NOT NULL AND si.hsn_code != ''
-        GROUP BY si.hsn_code
+          AND si.hsn_code IS NOT NULL AND si.hsn_code <> ''
+          ${categoryFilter}
+        GROUP BY b.branch_name, si.hsn_code, ${GST_RATE}
         ORDER BY si.hsn_code
-      `;
+      `);
 
-      const data = await sequelize.query(dataSql, { replacements, type: sequelize.QueryTypes.SELECT });
-
+      const data = rows.map((r) => {
+        const taxable = parseFloat(r.taxable_value || 0);
+        const igst = parseFloat(r.integrated_tax_amount || 0);
+        const cgst = parseFloat(r.central_tax_amount || 0);
+        const sgst = parseFloat(r.state_ut_tax_amount || 0);
+        return {
+          branch: r.branch || null,
+          hsn: r.hsn,
+          description: null,
+          uqc: "OTH-OTHERS",
+          total_quantity: parseFloat(parseFloat(r.total_quantity || 0).toFixed(3)),
+          total_value: round2(taxable + igst + cgst + sgst),
+          rate: round2(r.rate),
+          taxable_value: round2(taxable),
+          integrated_tax_amount: round2(igst),
+          central_tax_amount: round2(cgst),
+          state_ut_tax_amount: round2(sgst),
+          cess_amount: 0,
+        };
+      });
+      const hsnSet = new Set(data.map((d) => d.hsn));
       return commonService.okResponse(res, {
-        section: "hsn",
-        data: data.map((row) => ({
-          hsn_code: row.hsn_code,
-          total_qty: parseFloat(row.total_qty || 0).toFixed(3),
-          taxable_value: parseFloat(row.taxable_value || 0).toFixed(2),
-          cgst_amount: parseFloat(row.cgst_amount || 0).toFixed(2),
-          sgst_amount: parseFloat(row.sgst_amount || 0).toFixed(2),
-          igst_amount: parseFloat(row.igst_amount || 0).toFixed(2),
-          total_tax: (parseFloat(row.cgst_amount || 0) + parseFloat(row.sgst_amount || 0) + parseFloat(row.igst_amount || 0)).toFixed(2),
+        section,
+        summary: {
+          no_of_hsn: hsnSet.size,
+          total_values: round2(data.reduce((a, d) => a + d.total_value, 0)),
+          total_taxable_value: round2(data.reduce((a, d) => a + d.taxable_value, 0)),
+          total_integrated_tax: round2(data.reduce((a, d) => a + d.integrated_tax_amount, 0)),
+          total_central_tax: round2(data.reduce((a, d) => a + d.central_tax_amount, 0)),
+          total_state_ut_tax: round2(data.reduce((a, d) => a + d.state_ut_tax_amount, 0)),
+          total_cess: 0,
+        },
+        data,
+      });
+    }
+
+    // ── Docs (13, summary of documents issued in the period) ───────────────
+    if (section === "docs") {
+      const [invoiceDocs, creditDocs] = await Promise.all([
+        q(`
+          SELECT
+            b.branch_name AS branch,
+            'Invoices for outward supply' AS nature_of_document,
+            MIN(s.invoice_no) AS sr_no_from, MAX(s.invoice_no) AS sr_no_to,
+            COUNT(*) AS total_number,
+            COUNT(*) FILTER (WHERE s.status = 'Cancelled') AS cancelled
+          FROM sales_invoice_bills s
+          LEFT JOIN branches b ON b.id = s.branch_id
+          WHERE s.deleted_at IS NULL
+            AND s.status IN ('Invoice','Printed','Cancelled')
+            AND (:branch_id IS NULL OR s.branch_id = :branch_id)
+            AND s.invoice_date BETWEEN :from_date AND :to_date
+          GROUP BY b.branch_name
+        `),
+        q(`
+          SELECT
+            b.branch_name AS branch,
+            'Credit Note' AS nature_of_document,
+            MIN(r.sales_return_no) AS sr_no_from, MAX(r.sales_return_no) AS sr_no_to,
+            COUNT(*) AS total_number,
+            COUNT(*) FILTER (WHERE r.status = 'Cancelled') AS cancelled
+          FROM sales_returns r
+          LEFT JOIN branches b ON b.id = r.branch_id
+          WHERE r.deleted_at IS NULL
+            AND r.is_active = true
+            AND r.status IN ('Printed','Cancelled')
+            AND (:branch_id IS NULL OR r.branch_id = :branch_id)
+            AND r.return_date BETWEEN :from_date AND :to_date
+          GROUP BY b.branch_name
+        `),
+      ]);
+
+      const allDocs = [...invoiceDocs, ...creditDocs];
+      return commonService.okResponse(res, {
+        section: "docs",
+        summary: {
+          total_number: allDocs.reduce((a, r) => a + parseInt(r.total_number || 0), 0),
+          total_cancelled: allDocs.reduce((a, r) => a + parseInt(r.cancelled || 0), 0),
+        },
+        data: allDocs.map((r) => ({
+          branch: r.branch || null,
+          nature_of_document: r.nature_of_document,
+          sr_no_from: r.sr_no_from || null,
+          sr_no_to: r.sr_no_to || null,
+          total_number: parseInt(r.total_number || 0),
+          cancelled: parseInt(r.cancelled || 0),
         })),
       });
     }
 
     // Unknown section fallback
-    return commonService.okResponse(res, { section, data: [] });
+    return commonService.okResponse(res, { section, summary: {}, data: [] });
   } catch (err) {
     console.error(err);
     return commonService.handleError(res, err);

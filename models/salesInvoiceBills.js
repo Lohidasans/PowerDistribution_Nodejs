@@ -114,6 +114,44 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.TEXT,
         allowNull: true,
       },
+
+      // ── GSTR-1 classification snapshot (populated at invoice save time) ──
+      customer_gstin: { // invoice-time GSTIN; null/blank => unregistered (B2C)
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+      place_of_supply: { // state name snapshot, e.g. "Tamil Nadu"
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+      place_of_supply_code: { // state code snapshot, e.g. "TN"
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+      is_export: { // drives the EXP tab
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+      },
+      export_type: { // export with/without payment of tax
+        type: DataTypes.ENUM("With Payment", "Without Payment"),
+        allowNull: true,
+      },
+      reverse_charge: { // drives reverse-charge flag on B2B
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+      },
+      supply_type: { // drives the EXEMP tab
+        type: DataTypes.ENUM("Taxable", "Exempt", "Nil Rated", "Non GST"),
+        allowNull: false,
+        defaultValue: "Taxable",
+      },
+      gstr1_category: { // resolved bucket, computed from the fields above
+        type: DataTypes.ENUM("B2B", "B2CL", "B2CS", "EXP", "EXEMP"),
+        allowNull: true,
+      },
+
       status: {
         type: DataTypes.ENUM("Draft", "Printed", "Invoice", "Cancelled", "On Hold"),
         allowNull: false,

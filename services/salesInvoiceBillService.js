@@ -15,6 +15,7 @@ const { validateProductItemDetails,
   restoreStockForInvoice,
   markEstimateAsConverted } = require('../helpers/billingValidations');
 const { calculateItemsAndSubtotal, calculateInvoiceTotals, calculatePaymentSummary } = require("../helpers/billingCalculations");
+const { buildInvoiceGstSnapshot } = require("../helpers/gstClassification");
 const { Op } = require("sequelize");
 const ExcelJS = require("exceljs");
 const {sendCustomerNotification,} = require("../helpers/notificationHelper");
@@ -100,43 +101,64 @@ const getSalesInvoiceById = async (req, res) => {
 // List invoices - bill page/ customer - order details page
 const listSalesInvoices = async (req, res) => {
   try {
-    const { from, to, invoice_no, date, employee_id, customer_id, branch_id, order_type, search, status } = req.query || {};
+    const {
+      from, to, invoice_no, date, employee_id, customer_id,
+      branch_id, order_type, search, status,
+      page, limit = 20
+    } = req.query || {};
 
-    let sql = `
-      WITH invoice_items AS (
-        SELECT
-          invoice_bill_id,
-          JSON_AGG(
-            JSON_BUILD_OBJECT(
-              'id', id,
-              'invoice_bill_id', invoice_bill_id,
-              'product_id', product_id,
-              'product_item_detail_id', product_item_detail_id,
-              'hsn_code', hsn_code,
-              'product_name_snapshot', product_name_snapshot,
-              'gross_weight', gross_weight,
-              'net_weight', net_weight,
-              'wastage', wastage,
-              'quantity', quantity,
-              'rate', rate,
-              'discount_amount', discount_amount,
-              'amount', amount,
-              'is_returned', is_returned,
-              'created_at', created_at,
-              'updated_at', updated_at
-            )
-            ORDER BY id ASC
-          ) AS items,
-          SUM(quantity) AS total_quantity,
-          SUM(amount) AS total_amount
-        FROM sales_invoice_bill_items
-        WHERE deleted_at IS NULL
-        GROUP BY invoice_bill_id
-      )
+    // Pagination is optional (send ?page=1&limit=20). Without it, all rows are
+    // returned – but via cheap batched joins instead of per-row subqueries.
+    const hasPagination = page !== undefined;
+    const offset = hasPagination
+      ? (parseInt(page) - 1) * parseInt(limit)
+      : null;
+
+    // ---------- Shared WHERE (used by both count + data queries) ----------
+    let where = `WHERE i.deleted_at IS NULL`;
+    const replacements = {};
+
+    if (from) { where += ` AND i.invoice_date >= :from`; replacements.from = from; }
+    if (to) { where += ` AND i.invoice_date <= :to`; replacements.to = to; }
+    if (date) { where += ` AND DATE(i.invoice_date) = :date`; replacements.date = date; }
+    if (employee_id) { where += ` AND i.employee_id = :employee_id`; replacements.employee_id = employee_id; }
+    if (invoice_no) { where += ` AND i.invoice_no = :invoice_no`; replacements.invoice_no = invoice_no; }
+    if (customer_id) { where += ` AND i.customer_id = :customer_id`; replacements.customer_id = customer_id; }
+    if (branch_id) { where += ` AND i.branch_id = :branch_id`; replacements.branch_id = branch_id; }
+    if (order_type) { where += ` AND i.order_type = :order_type`; replacements.order_type = order_type; }
+    if (status) { where += ` AND i.status = :status`; replacements.status = status; }
+
+    if (search) {
+      where += ` AND (
+        i.invoice_no ILIKE :search OR
+        c.customer_name ILIKE :search OR
+        b.branch_name ILIKE :search OR
+        EXISTS (
+          SELECT 1
+          FROM sales_invoice_bill_items sii
+          WHERE sii.invoice_bill_id = i.id
+            AND sii.product_name_snapshot ILIKE :search
+            AND sii.deleted_at IS NULL
+        )
+      )`;
+      replacements.search = `%${search}%`;
+    }
+
+    // ---------- Total count (lightweight – no child aggregation) ----------
+    const [{ total }] = await sequelize.query(`
+      SELECT COUNT(*)::int AS total
+      FROM sales_invoice_bills i
+      LEFT JOIN customers c ON c.id = i.customer_id
+      LEFT JOIN branches b ON b.id = i.branch_id
+      ${where}
+    `, { replacements, type: sequelize.QueryTypes.SELECT });
+
+    // ---------- Header rows only (no correlated subqueries / no giant CTE) ----------
+    let dataQuery = `
       SELECT
         i.*,
-        e.employee_name as sales_person_name,
-        e.employee_no as sales_person_code,
+        e.employee_name AS sales_person_name,
+        e.employee_no AS sales_person_code,
 
         -- Customer details
         c.customer_name,
@@ -156,69 +178,7 @@ const listSalesInvoices = async (req, res) => {
         b.pin_code AS branch_pincode,
         b.gst_no AS branch_gst_no,
         bd.district_name AS branch_district_name,
-        bs.state_name AS branch_state_name,
-
-        -- Items
-        COALESCE(ii.items, '[]'::json) AS invoice_items,
-        COALESCE(ii.total_quantity, 0) AS total_items_quantity,
-        COALESCE(ii.total_amount, 0) AS total_items_amount,
-
-        -- Get adjustments as a JSON array
-        (
-          SELECT COALESCE(JSON_AGG(
-            JSON_BUILD_OBJECT(
-              'id', a.id,
-              'adjustment_type_id', a.adjustment_type_id,
-              'adjustment_type_name', bat.type_name,
-              'reference_id', a.reference_id,
-              'reference_no', a.reference_no,
-              'adjustment_amount', a.adjustment_amount,
-              'created_at', a.created_at,
-              'updated_at', a.updated_at
-            )
-            ORDER BY a.created_at DESC
-          ), '[]'::json)
-          FROM sales_invoice_adjustments a
-          LEFT JOIN bill_adjustment_types bat ON bat.id = a.adjustment_type_id::integer
-          WHERE a.sales_invoice_id = i.id
-          AND a.deleted_at IS NULL
-        ) AS bill_adjustments,
-
-        -- Total adjustment amount
-        (
-          SELECT COALESCE(SUM(a.adjustment_amount), 0)
-          FROM sales_invoice_adjustments a
-          WHERE a.sales_invoice_id = i.id
-          AND a.deleted_at IS NULL
-        ) AS total_adjustment_amount,
-
-        -- Payment details
-        (
-          SELECT COALESCE(JSON_AGG(
-            JSON_BUILD_OBJECT(
-              'id', p.id,
-              'payment_mode', p.payment_mode,
-              'amount_received', p.amount_received,
-              'payment_date', p.payment_date,
-              'transaction_id', p.transaction_id,
-              'status', p.status,
-              'created_at', p.created_at,
-              'updated_at', p.updated_at
-            )
-            ORDER BY p.created_at DESC
-          ), '[]'::json)
-          FROM payments p
-          WHERE p.invoice_bill_id = i.id
-          AND p.deleted_at IS NULL
-        ) AS payment_details,
-
-        -- Calculate total paid amount
-        (
-          SELECT COALESCE(SUM(p.amount_received), 0)
-          FROM payments p
-          WHERE p.invoice_bill_id = i.id
-          AND p.deleted_at IS NULL
-        ) AS total_paid_amount
+        bs.state_name AS branch_state_name
 
       FROM sales_invoice_bills i
       LEFT JOIN employees e ON e.id = i.employee_id
@@ -234,191 +194,135 @@ const listSalesInvoices = async (req, res) => {
       LEFT JOIN districts bd ON bd.id = b.district_id
       LEFT JOIN states bs ON bs.id = b.state_id
 
-      -- Items join
-      LEFT JOIN invoice_items ii ON ii.invoice_bill_id = i.id
-
-      WHERE i.deleted_at IS NULL
+      ${where}
+      ORDER BY i.created_at DESC
     `;
 
-    const replacements = {};
-
-    if (from) {
-      sql += ` AND i.invoice_date >= :from`;
-      replacements.from = from;
+    if (hasPagination) {
+      dataQuery += ` LIMIT :limit OFFSET :offset`;
+      replacements.limit = parseInt(limit);
+      replacements.offset = offset;
     }
 
-    if (to) {
-      sql += ` AND i.invoice_date <= :to`;
-      replacements.to = to;
-    }
-
-    if (date) {
-      sql += ` AND DATE(i.invoice_date) = :date`;
-      replacements.date = date; // '2026-02-16'
-    }
-
-    if (employee_id) {
-      sql += ` AND i.employee_id = :employee_id`;
-      replacements.employee_id = employee_id;
-    }
-
-    if (invoice_no) {
-      sql += ` AND i.invoice_no = :invoice_no`;
-      replacements.invoice_no = invoice_no;
-    }
-
-    if (customer_id) {
-      sql += ` AND i.customer_id = :customer_id`;
-      replacements.customer_id = customer_id;
-    }
-
-    if (branch_id) {
-      sql += ` AND i.branch_id = :branch_id`;
-      replacements.branch_id = branch_id;
-    }
-
-    if (order_type) {
-      sql += ` AND i.order_type = :order_type`;
-      replacements.order_type = order_type;
-    }
-
-    if (status) {
-      sql += ` AND i.status = :status`;
-      replacements.status = status;
-    }
-
-    if (search) {
-      sql += ` AND (
-        i.invoice_no ILIKE :search OR
-        c.customer_name ILIKE :search OR
-        b.branch_name ILIKE :search OR
-        EXISTS (
-          SELECT 1
-          FROM sales_invoice_bill_items sii
-          WHERE sii.invoice_bill_id = i.id
-            AND sii.product_name_snapshot ILIKE :search
-            AND sii.deleted_at IS NULL
-        )
-      )`;
-      replacements.search = `%${search}%`;
-    }
-
-    sql += ` ORDER BY i.created_at DESC`;
-
-    // Execute the query
-    const invoices = await sequelize.query(sql, {
+    const invoices = await sequelize.query(dataQuery, {
       replacements,
       type: sequelize.QueryTypes.SELECT
     });
 
-    // Remaining quantity logic - Extract all product_item_detail_ids
-    const productItemDetailIds = invoices
-      .flatMap(inv =>
-        (typeof inv.invoice_items === "string"
-          ? JSON.parse(inv.invoice_items)
-          : inv.invoice_items || [])
-          .map(item => item.product_item_detail_id)
-      )
-      .filter(Boolean);
+    const invoiceIds = invoices.map(inv => inv.id);
 
-    // Fetch current stock from ProductItemDetails
-    const productItems = productItemDetailIds.length ? await sequelize.query(`
-        SELECT 
-          pid.id,
-          pid.sku_id AS product_item_sku_id,
-          pid.quantity,
-          p.sku_id AS product_sku_id
-        FROM "productItemDetails" pid
-        LEFT JOIN products p ON p.id = pid.product_id
-        WHERE pid.id IN (:ids)`,
-      {
-        replacements: { ids: productItemDetailIds },
-        type: sequelize.QueryTypes.SELECT
-      }) : [];
+    // ---------- Fetch children only for this page (batched IN queries) ----------
+    let itemsMap = {}, adjustmentsMap = {}, paymentsMap = {};
 
-    // Create lookup map
-    const productItemMap = productItems.reduce((acc, row) => {
-      acc[row.id] = {
-        product_item_sku_id: row.product_item_sku_id,
-        product_sku_id: row.product_sku_id,
-        quantity: row.quantity
-      };
-      return acc;
-    }, {});
+    if (invoiceIds.length) {
+      const [items, adjustments, payments] = await Promise.all([
+        // Line items + live stock (remaining_quantity) + SKUs
+        sequelize.query(`
+          SELECT
+            sii.*,
+            pid.sku_id AS product_item_sku_id,
+            pid.quantity AS remaining_quantity,
+            p.sku_id AS product_sku_id
+          FROM sales_invoice_bill_items sii
+          LEFT JOIN "productItemDetails" pid ON pid.id = sii.product_item_detail_id
+          LEFT JOIN products p ON p.id = pid.product_id
+          WHERE sii.invoice_bill_id IN (:ids)
+            AND sii.deleted_at IS NULL
+          ORDER BY sii.invoice_bill_id, sii.id ASC
+        `, { replacements: { ids: invoiceIds }, type: sequelize.QueryTypes.SELECT }),
 
-    // Format the response
+        // Adjustments
+        sequelize.query(`
+          SELECT
+            a.id, a.sales_invoice_id, a.adjustment_type_id,
+            bat.type_name AS adjustment_type_name,
+            a.reference_id, a.reference_no, a.adjustment_amount,
+            a.created_at, a.updated_at
+          FROM sales_invoice_adjustments a
+          LEFT JOIN bill_adjustment_types bat ON bat.id = a.adjustment_type_id::integer
+          WHERE a.sales_invoice_id IN (:ids)
+            AND a.deleted_at IS NULL
+          ORDER BY a.sales_invoice_id, a.created_at DESC
+        `, { replacements: { ids: invoiceIds }, type: sequelize.QueryTypes.SELECT }),
+
+        // Payments
+        sequelize.query(`
+          SELECT
+            p.id, p.invoice_bill_id, p.payment_mode, p.amount_received,
+            p.payment_date, p.transaction_id, p.status,
+            p.created_at, p.updated_at
+          FROM payments p
+          WHERE p.invoice_bill_id IN (:ids)
+            AND p.deleted_at IS NULL
+          ORDER BY p.invoice_bill_id, p.created_at DESC
+        `, { replacements: { ids: invoiceIds }, type: sequelize.QueryTypes.SELECT })
+      ]);
+
+      items.forEach(it => { (itemsMap[it.invoice_bill_id] ??= []).push(it); });
+      adjustments.forEach(a => { (adjustmentsMap[a.sales_invoice_id] ??= []).push(a); });
+      payments.forEach(p => { (paymentsMap[p.invoice_bill_id] ??= []).push(p); });
+    }
+
+    // ---------- Format the response (same shape as before) ----------
     const formattedInvoices = invoices.map(invoice => {
+      const invoiceItems = itemsMap[invoice.id] || [];
+      const billAdjustments = adjustmentsMap[invoice.id] || [];
+      const paymentDetails = paymentsMap[invoice.id] || [];
+
       // Parse numeric fields safely
       const subtotal = parseFloat(invoice.subtotal_amount || 0);
       const cgst = parseFloat(invoice.cgst_amount || 0);
       const sgst = parseFloat(invoice.sgst_amount || 0);
       const igst = parseFloat(invoice.igst_amount || 0);
 
-      const discountAmount = parseFloat(invoice.discount_amount || 0);
       const totalAfterAdjustment = parseFloat(invoice.total_amount || 0);
-      const totalAdjustment = parseFloat(invoice.total_adjustment_amount || 0);
-      const totalPaid = parseFloat(invoice.total_paid_amount || 0);
+      const totalAdjustment = billAdjustments.reduce(
+        (sum, a) => sum + parseFloat(a.adjustment_amount || 0), 0);
+      const totalPaid = paymentDetails.reduce(
+        (sum, p) => sum + parseFloat(p.amount_received || 0), 0);
 
       // ✅ Correct total before discount (matches CREATE logic)
       const totalBeforeAdjustment = subtotal + cgst + sgst + igst;
 
-      // const rawDifference = totalAfterAdjustment - totalPaid; // To Prevent Negative Due Amounts
-      // const amountDue = rawDifference > 0 ? rawDifference : 0;
-      // const refundAmount = rawDifference < 0 ? Math.abs(rawDifference) : 0;
-
       // Amount due (can be negative → refund)
       const amountDue = totalAfterAdjustment - totalPaid;
 
-      // Parse JSON safely
-      const invoiceItems =
-        typeof invoice.invoice_items === "string"
-          ? JSON.parse(invoice.invoice_items)
-          : invoice.invoice_items || [];
-
-      const billAdjustments =
-        typeof invoice.bill_adjustments === "string"
-          ? JSON.parse(invoice.bill_adjustments)
-          : invoice.bill_adjustments || [];
-
-      const paymentDetails =
-        typeof invoice.payment_details === "string"
-          ? JSON.parse(invoice.payment_details)
-          : invoice.payment_details || [];
+      const totalItemsQuantity = invoiceItems.reduce(
+        (sum, it) => sum + (parseInt(it.quantity) || 0), 0);
+      const totalItemsAmount = invoiceItems.reduce(
+        (sum, it) => sum + (parseFloat(it.amount) || 0), 0);
 
       return {
         ...invoice,
 
-        // ✅ Totals (FIXED)
-        total_amount_before_adjustment: totalBeforeAdjustment.toFixed(2), // eg: 1520.00
-        total_amount_after_adjustment: totalAfterAdjustment.toFixed(2),   // eg: 1444.00
+        // ✅ Totals
+        total_amount_before_adjustment: totalBeforeAdjustment.toFixed(2),
+        total_amount_after_adjustment: totalAfterAdjustment.toFixed(2),
+        total_adjustment_amount: totalAdjustment,
         total_paid_amount: totalPaid.toFixed(2),
         amount_due: amountDue.toFixed(2),
-//        refund_amount: refundAmount.toFixed(2),
 
         // Line items with remaining stock & SKU
         invoice_items: invoiceItems.map(item => ({
           ...item,
-          remaining_quantity:
-            productItemMap[item.product_item_detail_id]?.quantity ?? 0,
-
-          product_item_sku_id:
-            productItemMap[item.product_item_detail_id]?.product_item_sku_id ?? null,
-
-          product_sku_id:
-            productItemMap[item.product_item_detail_id]?.product_sku_id ?? null
+          remaining_quantity: item.remaining_quantity ?? 0,
+          product_item_sku_id: item.product_item_sku_id ?? null,
+          product_sku_id: item.product_sku_id ?? null
         })),
 
         bill_adjustments: billAdjustments,
         payment_details: paymentDetails,
 
-        total_items_quantity: parseInt(invoice.total_items_quantity) || 0,
-        total_items_amount: parseFloat(invoice.total_items_amount) || 0
+        total_items_quantity: totalItemsQuantity,
+        total_items_amount: totalItemsAmount
       };
     });
 
-
     return commonService.okResponse(res, {
-      invoices: formattedInvoices
+      invoices: formattedInvoices,
+      total,
+      page: hasPagination ? parseInt(page) : null,
+      total_pages: hasPagination ? Math.ceil(total / parseInt(limit)) : 1
     });
 
   } catch (err) {
@@ -620,6 +524,18 @@ const createSalesInvoice = async (req, res) => {
     const sgstAmt = hasHeaderIgst ? 0 : Number(header.sgst_amount || 0);
     const igstAmt = hasHeaderIgst ? Number(header.igst_amount || 0) : 0;
 
+    // ================= GSTR-1 CLASSIFICATION SNAPSHOT =================
+    // Snapshot the recipient GSTIN, place of supply and resolved GSTR-1 bucket
+    // at save time so financial reports never re-derive from a mutable master.
+    const gstSnapshot = await buildInvoiceGstSnapshot({
+      header,
+      cgstAmt,
+      sgstAmt,
+      igstAmt,
+      models,
+      transaction: t,
+    });
+
     // CREATE INVOICE (NO CALCULATION)
     const bill = await models.SalesInvoiceBill.create(
       {
@@ -653,6 +569,9 @@ const createSalesInvoice = async (req, res) => {
         total_quantity: header.total_quantity,
         hasBillAdjustment: header.hasBillAdjustment || false,
         status: header.status,
+
+        // GSTR-1 snapshot
+        ...gstSnapshot,
       },
       { transaction: t }
     );
@@ -871,6 +790,19 @@ const updateSalesInvoice = async (req, res) => {
     const sgstAmt = hasIgst ? 0 : Number(header.sgst_amount || 0);
     const igstAmt = hasIgst ? Number(header.igst_amount || 0) : 0;
 
+    // ================= GSTR-1 CLASSIFICATION SNAPSHOT =================
+    // Recompute on edit so a changed customer / place of supply / totals keep
+    // the invoice in the correct GSTR-1 bucket.
+    const gstSnapshot = await buildInvoiceGstSnapshot({
+      header,
+      cgstAmt,
+      sgstAmt,
+      igstAmt,
+      models,
+      transaction: t,
+      existing: invoice,
+    });
+
     // ================= FETCH OLD ITEMS =================
     const oldItems = await models.SalesInvoiceBillItem.findAll({
       where: { invoice_bill_id: invoice.id },
@@ -907,6 +839,9 @@ const updateSalesInvoice = async (req, res) => {
         total_quantity: header.total_quantity,
         hasBillAdjustment: header.hasBillAdjustment || false,
         status: newStatus,
+
+        // GSTR-1 snapshot
+        ...gstSnapshot,
       },
       { transaction: t }
     );
