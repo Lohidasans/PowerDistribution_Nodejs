@@ -256,16 +256,26 @@ const ALL_TXNS_CTE = `
 
     UNION ALL
 
-    -- B.Dr1  Silver Purchase = SUM(net_wt_in_g * purchase_rate)
+    -- B.Dr1  Silver Purchase = metal cost, taken as the RESIDUAL of the GRN
+    -- subtotal after stone/other value and making charges — NOT net_wt*rate.
+    -- Some GRNs store the line value without a weight/rate breakup, which made
+    -- net_wt*rate collapse to 0 and dumped the whole metal cost into the B.Dr6
+    -- round-off plug (Discount Received). Residual == net_wt*rate whenever the
+    -- weight/rate columns ARE populated, so this is unchanged for those GRNs.
+    -- non_metal below is exactly (B.Dr2 stone leg + B.Dr3 karigar leg), so
+    -- B.Dr1 + B.Dr2 + B.Dr3 always sum to subtotal_amount.
     SELECT
       (SELECT l.id FROM ledger l JOIN ledger_group grp ON grp.id = l.ledger_group_id
         WHERE l.deleted_at IS NULL AND grp.deleted_at IS NULL
           AND l.ledger_name = 'Silver Purchase' AND grp.ledger_group_name = 'Purchase Accounts'
         ORDER BY l.id LIMIT 1),
-      COALESCE(gi.silver, 0), 0
+      COALESCE(g.subtotal_amount, 0) - COALESCE(gi.non_metal, 0), 0
     FROM grns g
-    JOIN (
-      SELECT grn_id, SUM(COALESCE(net_wt_in_g,0) * COALESCE(purchase_rate,0)) AS silver
+    LEFT JOIN (
+      SELECT grn_id,
+             SUM(COALESCE(stone_wt_in_g,0) * COALESCE(stone_rate,0)
+                 + COALESCE(others_value,0)
+                 + COALESCE(making_charge,0)) AS non_metal
       FROM "grnItems" WHERE deleted_at IS NULL GROUP BY grn_id
     ) gi ON gi.grn_id = g.id
     WHERE g.deleted_at IS NULL
@@ -354,21 +364,16 @@ const ALL_TXNS_CTE = `
         WHERE l.deleted_at IS NULL AND grp.deleted_at IS NULL
           AND l.ledger_name = 'Discount Received' AND grp.ledger_group_name = 'Indirect Income'
         ORDER BY l.id LIMIT 1),
+      --  Now a TRUE round-off only: B.Dr1..3 already sum to subtotal_amount, so
+      --  plug = total_amount - subtotal_amount - CGST - SGST (a few paise), no
+      --  longer the whole metal cost.
       (   COALESCE(g.total_amount,0)
-        - COALESCE(comp.components, 0)
+        - COALESCE(g.subtotal_amount, 0)
         - ROUND(COALESCE(g.subtotal_amount,0) * COALESCE(g.cgst_percent,0) / 100.0, 2)
         - ROUND(COALESCE(g.subtotal_amount,0) * COALESCE(g.sgst_percent,0) / 100.0, 2)
       ) AS debit,
       0
     FROM grns g
-    LEFT JOIN (
-      SELECT grn_id,
-             SUM(COALESCE(net_wt_in_g,0)*COALESCE(purchase_rate,0)
-                 + COALESCE(stone_wt_in_g,0)*COALESCE(stone_rate,0)
-                 + COALESCE(making_charge,0)
-                 + COALESCE(others_value,0)) AS components
-      FROM "grnItems" WHERE deleted_at IS NULL GROUP BY grn_id
-    ) comp ON comp.grn_id = g.id
     WHERE g.deleted_at IS NULL
       AND (:branch_id IS NULL OR g.branch_id = :branch_id)
       AND g.grn_date BETWEEN :from_date AND :to_date
