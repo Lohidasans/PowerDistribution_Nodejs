@@ -1055,25 +1055,81 @@ const getGstr1 = async (req, res) => {
       }
     }
 
+    // Register view = three Transaction Types: posted sales invoices, credit
+    // notes (sales returns) and old-gold (old jewels) intake. Credit notes / old
+    // gold have no snapshot place_of_supply_code, and old gold carries no GST.
     const sql = `
-      SELECT
-        ${EFF_GSTIN}                          AS gstin_uin,
-        c.customer_name                       AS party_name,
-        'Sales'                               AS transaction_type,
-        s.invoice_no,
-        TO_CHAR(s.invoice_date, 'DD/MM/YYYY') AS invoice_date,
-        ${INV_VALUE}                          AS invoice_value,
-        ${GST_RATE}                           AS rate,
-        COALESCE(s.subtotal_amount, 0)        AS taxable_value,
-        s.reverse_charge,
-        COALESCE(s.cgst_amount, 0)            AS cgst_amount,
-        COALESCE(s.sgst_amount, 0)            AS sgst_amount,
-        COALESCE(s.igst_amount, 0)            AS igst_amount,
-        ${EFF_POS}                            AS place_of_supply,
-        s.place_of_supply_code                AS place_of_supply_code,
-        b.branch_name                         AS branch
-      ${INVOICE_BASE}
-      ORDER BY s.invoice_date ASC, s.invoice_no ASC
+      SELECT * FROM (
+        -- Sales invoices
+        SELECT
+          s.invoice_date                        AS sort_date,
+          ${EFF_GSTIN}                          AS gstin_uin,
+          c.customer_name                       AS party_name,
+          'Sales'                               AS transaction_type,
+          s.invoice_no                          AS invoice_no,
+          TO_CHAR(s.invoice_date, 'DD/MM/YYYY') AS invoice_date,
+          ${INV_VALUE}                          AS invoice_value,
+          ${GST_RATE}                           AS rate,
+          COALESCE(s.subtotal_amount, 0)        AS taxable_value,
+          s.reverse_charge                      AS reverse_charge,
+          COALESCE(s.cgst_amount, 0)            AS cgst_amount,
+          COALESCE(s.sgst_amount, 0)            AS sgst_amount,
+          COALESCE(s.igst_amount, 0)            AS igst_amount,
+          ${EFF_POS}                            AS place_of_supply,
+          s.place_of_supply_code                AS place_of_supply_code,
+          b.branch_name                         AS branch
+        ${INVOICE_BASE}
+
+        UNION ALL
+
+        -- Credit notes (sales returns)
+        SELECT
+          r.return_date,
+          ${RET_GSTIN},
+          c.customer_name,
+          'Credit Note',
+          r.sales_return_no,
+          TO_CHAR(r.return_date, 'DD/MM/YYYY'),
+          COALESCE(r.total_amount, 0),
+          ${RET_RATE},
+          COALESCE(r.subtotal_amount, 0),
+          false,
+          COALESCE(r.cgst_amount, 0),
+          COALESCE(r.sgst_amount, 0),
+          COALESCE(r.igst_amount, 0),
+          ${RET_POS},
+          NULL,
+          b.branch_name
+        ${RETURN_BASE}
+
+        UNION ALL
+
+        -- Old gold (old jewels) intake — no GST on purchase from individuals
+        SELECT
+          oj.date,
+          NULL,
+          c.customer_name,
+          'Old Gold',
+          oj.old_jewel_code,
+          TO_CHAR(oj.date, 'DD/MM/YYYY'),
+          COALESCE(oj.total_amount, 0),
+          0,
+          COALESCE(oj.total_amount, 0),
+          false,
+          0, 0, 0,
+          COALESCE(cst.state_name, bst.state_name),
+          NULL,
+          b.branch_name
+        FROM old_jewels oj
+        LEFT JOIN customers c   ON c.id = oj.customer_id
+        LEFT JOIN branches  b   ON b.id = oj.branch_id
+        LEFT JOIN states    cst ON cst.id = c.state_id
+        LEFT JOIN states    bst ON bst.id = b.state_id
+        WHERE oj.deleted_at IS NULL
+          AND (:branch_id IS NULL OR oj.branch_id = :branch_id)
+          AND oj.date BETWEEN :from_date AND :to_date
+      ) u
+      ORDER BY u.sort_date ASC NULLS LAST, u.invoice_no ASC
     `;
 
     const data = await sequelize.query(sql, { replacements, type: sequelize.QueryTypes.SELECT });
@@ -1251,6 +1307,7 @@ const getGstr1Portal = async (req, res) => {
         summary: {
           no_of_receipts: gstins.size,
           no_of_notes: rows.length,
+          total_note_value: round2(sum(rows, "note_value")),
           total_taxable_amount: round2(sum(rows, "taxable_value")),
           total_cess: 0,
         },
@@ -1262,7 +1319,8 @@ const getGstr1Portal = async (req, res) => {
           note_type: "C",
           place_of_supply: r.place_of_supply || null,
           reverse_charge: "N",
-          note_supply_type: "Regular",
+          // Registered GSTIN -> the note reduces a B2B supply, else a B2CS supply.
+          note_supply_type: r.gstin ? "B2B" : "B2CS",
           applicable_tax_rate: null,
           rate: round2(r.rate),
           taxable_value: round2(r.taxable_value),
@@ -1337,10 +1395,17 @@ const getGstr1Portal = async (req, res) => {
         },
         data: rows.map((r) => ({
           branch: r.branch || null,
-          export_type: r.export_type || null,
+          // GST export-type codes: WPAY (with payment of IGST) / WOPAY (under LUT).
+          export_type:
+            r.export_type === "With Payment"
+              ? "WPAY"
+              : r.export_type === "Without Payment"
+              ? "WOPAY"
+              : r.export_type || null,
           invoice_number: r.invoice_number,
           invoice_date: r.invoice_date,
           invoice_value: round2(r.invoice_value),
+          // No port/shipping-bill columns captured at billing yet — left null.
           port_code: null,
           shipping_bill_number: null,
           shipping_bill_date: null,
@@ -1482,7 +1547,9 @@ const getGstr1Portal = async (req, res) => {
       const rows = await q(`
         SELECT
           b.branch_name AS branch, si.hsn_code AS hsn, ${GST_RATE} AS rate,
-          SUM(COALESCE(si.quantity,0)) AS total_quantity,
+          MAX(si.product_name_snapshot) AS description,
+          -- Jewellery is reported in grams (UQC = GMS); quantity is total weight.
+          SUM(COALESCE(si.gross_weight,0)) AS total_quantity,
           SUM(CASE WHEN COALESCE(s.net_total,0) > 0
                 THEN si.amount / s.net_total * COALESCE(s.subtotal_amount,0)
                 ELSE si.amount END) AS taxable_value,
@@ -1514,8 +1581,8 @@ const getGstr1Portal = async (req, res) => {
         return {
           branch: r.branch || null,
           hsn: r.hsn,
-          description: null,
-          uqc: "OTH-OTHERS",
+          description: r.description || null,
+          uqc: "GMS",
           total_quantity: parseFloat(parseFloat(r.total_quantity || 0).toFixed(3)),
           total_value: round2(taxable + igst + cgst + sgst),
           rate: round2(r.rate),
