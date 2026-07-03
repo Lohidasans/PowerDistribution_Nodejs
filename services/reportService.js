@@ -1622,7 +1622,8 @@ const getLedgerReportByLedgerName = async (req, res) => {
 
       UNION ALL
 
-      SELECT 
+      -- Cr: money-out leg mapped from the ACTUAL payment mode (was hard-coded 'Cash').
+      SELECT
         vp.payment_date,
         l.id,
         l.ledger_name,
@@ -1630,14 +1631,25 @@ const getLedgerReportByLedgerName = async (req, res) => {
         0,
         vp.amount
       FROM vendor_payments vp
-      JOIN ledger l ON l.ledger_name = 'Cash'
+      JOIN payment_modes pm ON pm.id = vp.payment_mode
+      JOIN ledger l ON l.ledger_name = (
+        CASE pm.payment_mode
+          WHEN 'Cash' THEN 'Cash in Hand'
+          WHEN 'UPI' THEN 'UPI Collections'
+          WHEN 'Card' THEN 'Card Collections'
+          WHEN 'Bank Transfer' THEN 'Bank Accounts'
+          WHEN 'Cheque' THEN 'Bank Accounts'
+          ELSE 'Cash in Hand'
+        END)
       WHERE vp.deleted_at IS NULL
         AND vp.payment_date BETWEEN :from_date AND :to_date
 
       -- ===================== RECEIPTS =====================
       UNION ALL
 
-      SELECT 
+      -- Dr: money-in leg mapped from the ACTUAL payment mode (was hard-coded to a
+      -- non-existent 'Cash' ledger, so a Card receipt showed under Cash in Hand).
+      SELECT
         r.receipt_date,
         lc.id,
         lc.ledger_name,
@@ -1645,13 +1657,24 @@ const getLedgerReportByLedgerName = async (req, res) => {
         r.amount,
         0
       FROM voucher_receipts r
-      JOIN ledger lc ON lc.ledger_name = 'Cash'
+      JOIN ledger lc ON lc.ledger_name = (
+        CASE r.payment_mode_id
+          WHEN 1 THEN 'Cash in Hand'
+          WHEN 2 THEN 'Card Collections'
+          WHEN 3 THEN 'Bank Accounts'
+          WHEN 4 THEN 'Bank Accounts'
+          WHEN 5 THEN 'UPI Collections'
+          ELSE 'Cash in Hand'
+        END)
       WHERE r.deleted_at IS NULL
         AND r.receipt_date BETWEEN :from_date AND :to_date
 
       UNION ALL
 
-      SELECT 
+      -- Cr: for bill-type 2/3 account_id IS a ledger; restrict to those so a
+      -- Scheme receipt (bill_type 5, where account_id is a CUSTOMER id) does not
+      -- mis-join to an unrelated ledger.
+      SELECT
         r.receipt_date,
         lp.id,
         lp.ledger_name,
@@ -1661,6 +1684,23 @@ const getLedgerReportByLedgerName = async (req, res) => {
       FROM voucher_receipts r
       JOIN ledger lp ON lp.id = r.account_id
       WHERE r.deleted_at IS NULL
+        AND r.bill_type_id IN (2, 3)
+        AND r.receipt_date BETWEEN :from_date AND :to_date
+
+      UNION ALL
+
+      -- Cr: Scheme receipts (bill_type 5) credit the Scheme Collection Liability.
+      SELECT
+        r.receipt_date,
+        lsc.id,
+        lsc.ledger_name,
+        r.receipt_no,
+        0,
+        r.amount
+      FROM voucher_receipts r
+      JOIN ledger lsc ON lsc.ledger_name = 'Scheme Collection Liability'
+      WHERE r.deleted_at IS NULL
+        AND r.bill_type_id = 5
         AND r.receipt_date BETWEEN :from_date AND :to_date
 
       -- ===================== SCHEME =====================

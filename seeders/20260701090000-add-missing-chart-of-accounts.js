@@ -120,6 +120,7 @@ const CHART = {
       'Discount Received',
       'Commission Received',
       'Rental Income',
+      'Round Off', // rounding GAIN (sale collected more / purchase paid less)
     ]],
   ],
 
@@ -155,6 +156,7 @@ const CHART = {
       'Bank Charges',
       'Courier Charges',
       'Travelling Expenses',
+      'Round Off', // rounding LOSS (sale collected less / purchase paid more)
     ]],
   ],
 };

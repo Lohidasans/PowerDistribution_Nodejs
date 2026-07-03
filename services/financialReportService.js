@@ -1,6 +1,48 @@
 const { sequelize } = require("../models");
 const commonService = require("./commonService");
 
+// Resolve a chart leaf id by (ledger_name, ledger_group_name) — the by-NAME
+// convention used throughout this report.
+const LEAF = (name, group) =>
+  `(SELECT l.id FROM ledger l JOIN ledger_group grp ON grp.id = l.ledger_group_id
+      WHERE l.deleted_at IS NULL AND grp.deleted_at IS NULL
+        AND l.ledger_name = '${name}' AND grp.ledger_group_name = '${group}'
+      ORDER BY l.id LIMIT 1)`;
+
+// Round-off targets. A rounding that leaves us WORSE off (sales collect less /
+// purchase pay more) is an Indirect EXPENSE; BETTER off (collect more / pay
+// less) is Indirect INCOME. COALESCE falls back to the pre-existing 'Discount
+// Received' income leaf when the dedicated 'Round Off' ledgers are not seeded
+// yet, so the report ALWAYS balances regardless of deploy order — run the
+// add-round-off-ledgers seeder to move them onto the proper 'Round Off' leaves.
+const ROUNDOFF_INCOME = `COALESCE(${LEAF("Round Off", "Indirect Income")}, ${LEAF("Discount Received", "Indirect Income")})`;
+const ROUNDOFF_EXPENSE = `COALESCE(${LEAF("Round Off", "Indirect Expenses")}, ${LEAF("Round Off", "Indirect Income")}, ${LEAF("Discount Received", "Indirect Income")})`;
+
+// ANY active leaf in a group (lowest id) — the guaranteed-resolvable fallback.
+const ANY_LEAF = (group) => `
+  (SELECT l.id FROM ledger l JOIN ledger_group grp ON grp.id = l.ledger_group_id
+     WHERE l.deleted_at IS NULL AND grp.deleted_at IS NULL
+       AND grp.ledger_group_name = '${group}'
+     ORDER BY l.id LIMIT 1)`;
+
+// Resilient posting ledgers for the single-purpose Sales/Purchase groups. The
+// report USED to hard-code specific leaf names ('Silver Sales', 'Silver
+// Purchase', 'Karigar Charges'); when the owner renamed/deleted those in the
+// chart the by-name lookup returned NULL and the leg was silently DROPPED,
+// unbalancing the entire report. These COALESCE chains try the current name,
+// then the legacy name, then ANY active leaf in the group — so a posting can
+// never vanish. (Safe here only because Sales/Purchase Accounts are
+// single-purpose groups; do NOT group-fallback a mixed group like Current
+// Assets, where a stray posting could land on the wrong leaf.)
+const SALES_LEDGER = `COALESCE(${LEAF("Sales", "Sales Accounts")}, ${LEAF("Silver Sales", "Sales Accounts")}, ${ANY_LEAF("Sales Accounts")})`;
+const PURCHASE_LEDGER = `COALESCE(${LEAF("Purchase", "Purchase Accounts")}, ${LEAF("Silver Purchase", "Purchase Accounts")}, ${ANY_LEAF("Purchase Accounts")})`;
+const SALES_RETURN_LEDGER = `COALESCE(${LEAF("Sales Return", "Sales Accounts")}, ${ANY_LEAF("Sales Accounts")})`;
+const OLD_GOLD_LEDGER = `COALESCE(${LEAF("Old Gold Purchase", "Purchase Accounts")}, ${ANY_LEAF("Purchase Accounts")})`;
+// GRN stone cost: its own Direct-Expenses leaf, else fold into Purchase so it is
+// never dropped. (Making/Karigar charges are folded into PURCHASE_LEDGER because
+// the owner deleted the 'Karigar Charges' ledger — see B.Dr1.)
+const STONE_LEDGER = `COALESCE(${LEAF("Stone Purchase Cost", "Direct Expenses")}, ${PURCHASE_LEDGER})`;
+
 // Shared CTE: aggregates all transaction sources by ledger_id for a date range
 const ALL_TXNS_CTE = `
   WITH all_txns AS (
@@ -14,12 +56,9 @@ const ALL_TXNS_CTE = `
        invoice's Dr and Cr always enter/leave the report window together.
        ========================================================= */
 
-    -- A.Cr1  Silver Sales = subtotal_amount
+    -- A.Cr1  Sales (was 'Silver Sales') = subtotal_amount
     SELECT
-      (SELECT l.id FROM ledger l JOIN ledger_group g ON g.id = l.ledger_group_id
-        WHERE l.deleted_at IS NULL AND g.deleted_at IS NULL
-          AND l.ledger_name = 'Silver Sales' AND g.ledger_group_name = 'Sales Accounts'
-        ORDER BY l.id LIMIT 1)                                   AS ledger_id,
+      ${SALES_LEDGER}                                           AS ledger_id,
       0 AS debit,
       COALESCE(s.subtotal_amount, 0) AS credit
     FROM sales_invoice_bills s
@@ -140,14 +179,10 @@ const ALL_TXNS_CTE = `
 
     UNION ALL
 
-    -- A.Dr5  Old Gold Purchase (adjustment_type_id '2' Old Jewel)
-    --  FIX: 'Old Gold Purchase' lives under group 'Purchase Accounts'
-    --  (the Sales-side leaf is 'Old Gold Sales'), verified in chart seeders.
+    -- A.Dr5  Old Gold Purchase (adjustment_type_id '2' Old Jewel) — under
+    --  'Purchase Accounts' (the Sales-side leaf is 'Old Gold Sales').
     SELECT
-      (SELECT l.id FROM ledger l JOIN ledger_group g ON g.id = l.ledger_group_id
-        WHERE l.deleted_at IS NULL AND g.deleted_at IS NULL
-          AND l.ledger_name = 'Old Gold Purchase' AND g.ledger_group_name = 'Purchase Accounts'
-        ORDER BY l.id LIMIT 1),
+      ${OLD_GOLD_LEDGER},
       COALESCE(a.adjustment_amount, 0), 0
     FROM sales_invoice_adjustments a
     JOIN sales_invoice_bills s ON s.id = a.sales_invoice_id
@@ -176,10 +211,7 @@ const ALL_TXNS_CTE = `
 
     -- A.Dr7  Sales Return (adjustment_type_id '1')
     SELECT
-      (SELECT l.id FROM ledger l JOIN ledger_group g ON g.id = l.ledger_group_id
-        WHERE l.deleted_at IS NULL AND g.deleted_at IS NULL
-          AND l.ledger_name = 'Sales Return' AND g.ledger_group_name = 'Sales Accounts'
-        ORDER BY l.id LIMIT 1),
+      ${SALES_RETURN_LEDGER},
       COALESCE(a.adjustment_amount, 0), 0
     FROM sales_invoice_adjustments a
     JOIN sales_invoice_bills s ON s.id = a.sales_invoice_id
@@ -190,23 +222,17 @@ const ALL_TXNS_CTE = `
 
     UNION ALL
 
-    -- A.Dr8  Customer receivable (Sundry Debtors leaf) = UNPAID remainder
-    --  = (subtotal+cgst+sgst+igst) - Σ(cash-like payments) - Σ(type 1/2/3 adjustments)
-    --  FIX 1: pay.paid restricted to the SAME 5 cash-like modes booked in A.Dr1..4
-    --         so Advance/Other payments do NOT silently reduce the receivable and
-    --         unbalance the entry (their offsetting Dr belongs to the advance receipt,
-    --         out of scope here). Result: Dr(A) = subtotal+gst exactly.
-    --  FIX 2: adj.adjusted restricted to types ('1','2','3') so it can never diverge
-    --         from the booked adjustment debit legs (A.Dr5/6/7).
-    --  Computed live from payments/adjustments (NOT stored amount_due) so it stays
-    --  correct if a payment is added after invoice creation.
+    -- A.Dr8a  Customer receivable (Sundry Debtors leaf) = UNPAID remainder
+    --  = total_amount (rounded net payable, already net of type 1/2/3 adjustments)
+    --    minus the cash-like payments collected.
+    --  Round-off is NO LONGER absorbed here (moved to A.Dr8b/8c below), so a
+    --  fully-paid invoice leaves exactly ZERO in Sundry Debtors instead of a few
+    --  stray paise. pay.paid is restricted to the same 5 cash-like modes booked in
+    --  A.Dr1..4 (Advance/Other settle elsewhere). Computed live from payments so
+    --  it stays correct if a payment is added after invoice creation.
     SELECT
       lc.id,
-      (   COALESCE(s.subtotal_amount,0)
-        + COALESCE(s.cgst_amount,0) + COALESCE(s.sgst_amount,0) + COALESCE(s.igst_amount,0)
-        - COALESCE(pay.paid, 0)
-        - COALESCE(adj.adjusted, 0)
-      ) AS debit,
+      ( COALESCE(s.total_amount,0) - COALESCE(pay.paid, 0) ) AS debit,
       0
     FROM sales_invoice_bills s
     JOIN customers c ON c.id = s.customer_id AND c.deleted_at IS NULL
@@ -219,11 +245,55 @@ const ALL_TXNS_CTE = `
         AND p.payment_mode IN ('Cash','UPI','Card','Bank Transfer','Cheque')
       GROUP BY p.invoice_bill_id
     ) pay ON pay.invoice_bill_id = s.id
+    WHERE s.deleted_at IS NULL AND s.status = 'Invoice'
+      AND (:branch_id IS NULL OR s.branch_id = :branch_id)
+      AND s.invoice_date BETWEEN :from_date AND :to_date
+
+    UNION ALL
+
+    -- A.Dr8b  Sales round-off LOSS (bill rounded DOWN -> collected LESS -> worse off)
+    --  Booked to Round Off under Indirect EXPENSES.
+    --  loss = (subtotal+cgst+sgst+igst - adjustments) - total_amount, when > 0.
+    --  The customer JOIN gates this leg to exactly the same rows as A.Dr8a.
+    SELECT
+      ${ROUNDOFF_EXPENSE},
+      GREATEST(
+        ( COALESCE(s.subtotal_amount,0) + COALESCE(s.cgst_amount,0)
+          + COALESCE(s.sgst_amount,0) + COALESCE(s.igst_amount,0)
+          - COALESCE(adj.adjusted,0) ) - COALESCE(s.total_amount,0), 0) AS debit,
+      0
+    FROM sales_invoice_bills s
+    JOIN customers c ON c.id = s.customer_id AND c.deleted_at IS NULL
+    JOIN ledger lc ON lc.id = c.ledger_id AND lc.deleted_at IS NULL
     LEFT JOIN (
       SELECT a.sales_invoice_id, SUM(COALESCE(a.adjustment_amount,0)) AS adjusted
       FROM sales_invoice_adjustments a
-      WHERE a.deleted_at IS NULL
-        AND a.adjustment_type_id IN ('1','2','3')
+      WHERE a.deleted_at IS NULL AND a.adjustment_type_id IN ('1','2','3')
+      GROUP BY a.sales_invoice_id
+    ) adj ON adj.sales_invoice_id = s.id
+    WHERE s.deleted_at IS NULL AND s.status = 'Invoice'
+      AND (:branch_id IS NULL OR s.branch_id = :branch_id)
+      AND s.invoice_date BETWEEN :from_date AND :to_date
+
+    UNION ALL
+
+    -- A.Dr8c  Sales round-off GAIN (bill rounded UP -> collected MORE -> better off)
+    --  Booked to Round Off under Indirect INCOME (credit).
+    --  gain = total_amount - (subtotal+cgst+sgst+igst - adjustments), when > 0.
+    SELECT
+      ${ROUNDOFF_INCOME},
+      0,
+      GREATEST( COALESCE(s.total_amount,0) -
+        ( COALESCE(s.subtotal_amount,0) + COALESCE(s.cgst_amount,0)
+          + COALESCE(s.sgst_amount,0) + COALESCE(s.igst_amount,0)
+          - COALESCE(adj.adjusted,0) ), 0) AS credit
+    FROM sales_invoice_bills s
+    JOIN customers c ON c.id = s.customer_id AND c.deleted_at IS NULL
+    JOIN ledger lc ON lc.id = c.ledger_id AND lc.deleted_at IS NULL
+    LEFT JOIN (
+      SELECT a.sales_invoice_id, SUM(COALESCE(a.adjustment_amount,0)) AS adjusted
+      FROM sales_invoice_adjustments a
+      WHERE a.deleted_at IS NULL AND a.adjustment_type_id IN ('1','2','3')
       GROUP BY a.sales_invoice_id
     ) adj ON adj.sales_invoice_id = s.id
     WHERE s.deleted_at IS NULL AND s.status = 'Invoice'
@@ -235,7 +305,7 @@ const ALL_TXNS_CTE = `
     /* =========================================================
        B) GRN  (purchase)
        Cr: Vendor (Sundry Creditors) = grns.total_amount
-       Dr: Silver Purchase + Stone(+others) + Karigar + GST Input CGST/SGST + plug
+       Dr: Purchase (metal + making) + Stone(+others) + GST Input CGST/SGST + plug
        total_amount = subtotal + subtotal*cgst_percent/100 + subtotal*sgst_percent/100
                       + discount_percent(signed round-off, ADDED)
        subtotal     = SUM(grnItems.total_amount) = SUM(net*rate + stone_wt*stone_rate
@@ -256,43 +326,17 @@ const ALL_TXNS_CTE = `
 
     UNION ALL
 
-    -- B.Dr1  Silver Purchase = metal cost, taken as the RESIDUAL of the GRN
-    -- subtotal after stone/other value and making charges — NOT net_wt*rate.
-    -- Some GRNs store the line value without a weight/rate breakup, which made
-    -- net_wt*rate collapse to 0 and dumped the whole metal cost into the B.Dr6
-    -- round-off plug (Discount Received). Residual == net_wt*rate whenever the
-    -- weight/rate columns ARE populated, so this is unchanged for those GRNs.
-    -- non_metal below is exactly (B.Dr2 stone leg + B.Dr3 karigar leg), so
-    -- B.Dr1 + B.Dr2 + B.Dr3 always sum to subtotal_amount.
+    -- B.Dr1  Purchase (was 'Silver Purchase') = metal cost + making/Karigar charge.
+    -- Taken as the RESIDUAL of the GRN subtotal after the stone/other component
+    -- (NOT net_wt*rate, which some GRNs leave 0). The making charge is folded IN
+    -- HERE — the owner DELETED the 'Karigar Charges' ledger, so it is shown along
+    -- with the purchase value rather than as a separate Direct Expense.
+    -- B.Dr1 + B.Dr2(stone) always sum to subtotal_amount, so the GRN stays balanced.
     SELECT
-      (SELECT l.id FROM ledger l JOIN ledger_group grp ON grp.id = l.ledger_group_id
-        WHERE l.deleted_at IS NULL AND grp.deleted_at IS NULL
-          AND l.ledger_name = 'Silver Purchase' AND grp.ledger_group_name = 'Purchase Accounts'
-        ORDER BY l.id LIMIT 1),
-      COALESCE(g.subtotal_amount, 0) - COALESCE(gi.non_metal, 0), 0
+      ${PURCHASE_LEDGER},
+      COALESCE(g.subtotal_amount, 0) - COALESCE(gi.stone, 0), 0
     FROM grns g
     LEFT JOIN (
-      SELECT grn_id,
-             SUM(COALESCE(stone_wt_in_g,0) * COALESCE(stone_rate,0)
-                 + COALESCE(others_value,0)
-                 + COALESCE(making_charge,0)) AS non_metal
-      FROM "grnItems" WHERE deleted_at IS NULL GROUP BY grn_id
-    ) gi ON gi.grn_id = g.id
-    WHERE g.deleted_at IS NULL
-      AND (:branch_id IS NULL OR g.branch_id = :branch_id)
-      AND g.grn_date BETWEEN :from_date AND :to_date
-
-    UNION ALL
-
-    -- B.Dr2  Stone Purchase Cost = SUM(stone_wt_in_g*stone_rate) + SUM(others_value)
-    SELECT
-      (SELECT l.id FROM ledger l JOIN ledger_group grp ON grp.id = l.ledger_group_id
-        WHERE l.deleted_at IS NULL AND grp.deleted_at IS NULL
-          AND l.ledger_name = 'Stone Purchase Cost' AND grp.ledger_group_name = 'Direct Expenses'
-        ORDER BY l.id LIMIT 1),
-      COALESCE(gi.stone, 0), 0
-    FROM grns g
-    JOIN (
       SELECT grn_id,
              SUM(COALESCE(stone_wt_in_g,0) * COALESCE(stone_rate,0)
                  + COALESCE(others_value,0)) AS stone
@@ -304,16 +348,17 @@ const ALL_TXNS_CTE = `
 
     UNION ALL
 
-    -- B.Dr3  Karigar Charges = SUM(making_charge)
+    -- B.Dr2  Stone Purchase Cost = SUM(stone_wt_in_g*stone_rate) + SUM(others_value)
+    --  Falls back to the Purchase ledger if 'Stone Purchase Cost' is missing, so
+    --  the stone cost is never dropped (STONE_LEDGER).
     SELECT
-      (SELECT l.id FROM ledger l JOIN ledger_group grp ON grp.id = l.ledger_group_id
-        WHERE l.deleted_at IS NULL AND grp.deleted_at IS NULL
-          AND l.ledger_name = 'Karigar Charges' AND grp.ledger_group_name = 'Direct Expenses'
-        ORDER BY l.id LIMIT 1),
-      COALESCE(gi.karigar, 0), 0
+      ${STONE_LEDGER},
+      COALESCE(gi.stone, 0), 0
     FROM grns g
     JOIN (
-      SELECT grn_id, SUM(COALESCE(making_charge,0)) AS karigar
+      SELECT grn_id,
+             SUM(COALESCE(stone_wt_in_g,0) * COALESCE(stone_rate,0)
+                 + COALESCE(others_value,0)) AS stone
       FROM "grnItems" WHERE deleted_at IS NULL GROUP BY grn_id
     ) gi ON gi.grn_id = g.id
     WHERE g.deleted_at IS NULL
@@ -350,29 +395,34 @@ const ALL_TXNS_CTE = `
 
     UNION ALL
 
-    -- B.Dr6  GRN round-off / reconcile plug
-    --  FIX: routed to an EXISTING leaf 'Discount Received' under 'Indirect Income'
-    --  (there is NO 'Round Off' leaf in the chart — the old target resolved NULL and
-    --  was silently dropped, unbalancing every rounded GRN). A GRN round-off that
-    --  reduces the payable is a purchase discount (income); the signed value also
-    --  absorbs subtotal-vs-component 2dp drift, guaranteeing Dr = Cr per GRN.
-    --  NOTE: this is a DEBIT to an income leaf, so it typically carries a small
-    --  (often negative) balance — acceptable as the reconciling plug. Owner may
-    --  instead create a dedicated 'Round Off' leaf (see DECISIONS) and repoint here.
+    -- B.Dr6a  GRN round-off LOSS (payable rounded UP -> we pay MORE -> worse off)
+    --  Booked to Round Off under Indirect EXPENSES.
+    --  plug = total_amount - subtotal - CGST - SGST, when > 0. B.Dr1..2 already sum
+    --  to subtotal, so this is a TRUE round-off (a few paise), not the metal cost.
     SELECT
-      (SELECT l.id FROM ledger l JOIN ledger_group grp ON grp.id = l.ledger_group_id
-        WHERE l.deleted_at IS NULL AND grp.deleted_at IS NULL
-          AND l.ledger_name = 'Discount Received' AND grp.ledger_group_name = 'Indirect Income'
-        ORDER BY l.id LIMIT 1),
-      --  Now a TRUE round-off only: B.Dr1..3 already sum to subtotal_amount, so
-      --  plug = total_amount - subtotal_amount - CGST - SGST (a few paise), no
-      --  longer the whole metal cost.
-      (   COALESCE(g.total_amount,0)
-        - COALESCE(g.subtotal_amount, 0)
+      ${ROUNDOFF_EXPENSE},
+      GREATEST(
+          COALESCE(g.total_amount,0) - COALESCE(g.subtotal_amount, 0)
         - ROUND(COALESCE(g.subtotal_amount,0) * COALESCE(g.cgst_percent,0) / 100.0, 2)
-        - ROUND(COALESCE(g.subtotal_amount,0) * COALESCE(g.sgst_percent,0) / 100.0, 2)
-      ) AS debit,
+        - ROUND(COALESCE(g.subtotal_amount,0) * COALESCE(g.sgst_percent,0) / 100.0, 2), 0) AS debit,
       0
+    FROM grns g
+    WHERE g.deleted_at IS NULL
+      AND (:branch_id IS NULL OR g.branch_id = :branch_id)
+      AND g.grn_date BETWEEN :from_date AND :to_date
+
+    UNION ALL
+
+    -- B.Dr6b  GRN round-off GAIN (payable rounded DOWN -> we pay LESS -> better off)
+    --  Booked to Round Off under Indirect INCOME (credit) = -(plug), when plug < 0.
+    SELECT
+      ${ROUNDOFF_INCOME},
+      0,
+      GREATEST(
+          COALESCE(g.subtotal_amount, 0)
+        + ROUND(COALESCE(g.subtotal_amount,0) * COALESCE(g.cgst_percent,0) / 100.0, 2)
+        + ROUND(COALESCE(g.subtotal_amount,0) * COALESCE(g.sgst_percent,0) / 100.0, 2)
+        - COALESCE(g.total_amount,0), 0) AS credit
     FROM grns g
     WHERE g.deleted_at IS NULL
       AND (:branch_id IS NULL OR g.branch_id = :branch_id)
