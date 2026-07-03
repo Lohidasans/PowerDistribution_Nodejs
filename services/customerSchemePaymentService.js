@@ -279,7 +279,7 @@ try {
     e.status,
     s.scheme_name,
     s.id as scheme_id,
-    s.monthly_installments[1] AS monthly_installment_amount,
+    e.installment_amount_id AS monthly_installment_amount,
     inv.invoice_no,
     CASE
         WHEN e.completed_date IS NOT NULL
