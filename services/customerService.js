@@ -766,7 +766,9 @@ const getCustomerSchemes = async (req, res) => {
         ce.customer_id,
         ce.scheme_plan_id,
         ce.enrollment_code,
-        s.scheme_name
+        ce.installment_amount_id as installment_amount,
+        s.scheme_name,
+        s.min_amount
       FROM customer_enrollments ce
       JOIN schemes s 
         ON s.id = ce.scheme_plan_id
