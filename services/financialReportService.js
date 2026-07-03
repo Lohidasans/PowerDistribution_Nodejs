@@ -973,7 +973,7 @@ const INV_VALUE = `(COALESCE(s.subtotal_amount,0) + COALESCE(s.cgst_amount,0) + 
 // Resolve the GSTR-1 bucket, falling back to a live derivation if the snapshot
 // is null (rows created before the snapshot columns / backfill).
 const EFF_CATEGORY = `
-  COALESCE(s.gstr1_category, CASE
+  COALESCE(s.gstr1_category::text, CASE
     WHEN s.is_export = true THEN 'EXP'
     WHEN COALESCE(s.supply_type,'Taxable') <> 'Taxable' THEN 'EXEMP'
     WHEN ${EFF_GSTIN} IS NOT NULL THEN 'B2B'
