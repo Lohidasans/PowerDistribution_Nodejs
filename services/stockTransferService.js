@@ -31,7 +31,6 @@ const validateRequiredFields = async (req, transaction) => {
     "date",
     "branch_from",
     "branch_to",
-    "reference_no",
     "created_by",
   ];
 
