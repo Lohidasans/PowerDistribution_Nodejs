@@ -43,6 +43,57 @@ const OLD_GOLD_LEDGER = `COALESCE(${LEAF("Old Gold Purchase", "Purchase Accounts
 // the owner deleted the 'Karigar Charges' ledger — see B.Dr1.)
 const STONE_LEDGER = `COALESCE(${LEAF("Stone Purchase Cost", "Direct Expenses")}, ${PURCHASE_LEDGER})`;
 
+// 'Bank Accounts' may be a single ledger under Current Assets OR — once the owner
+// nests banks — a GROUP holding HDFC/IOB leaves. Resolve the ledger, else the
+// first bank leaf under a 'Bank Accounts' group, so the AUTO-posted bank legs
+// (e.g. a sales invoice paid by Bank Transfer) never drop when the chart is
+// restructured. Manual receipts/vendor payments already post to the exact bank
+// ledger the user picks, so they are unaffected.
+const BANK_LEDGER = `COALESCE(
+        ${LEAF("Bank Accounts", "Current Assets")},
+        (SELECT l.id FROM ledger l JOIN ledger_group grp ON grp.id = l.ledger_group_id
+           WHERE l.deleted_at IS NULL AND grp.deleted_at IS NULL
+             AND grp.ledger_group_name = 'Bank Accounts'
+           ORDER BY l.id LIMIT 1))`;
+
+// Resilient posting ledgers for the standalone old-gold / return flows (flow F).
+const OLD_GOLD_SALES_LEDGER = `COALESCE(${LEAF("Old Gold Sales", "Sales Accounts")}, ${ANY_LEAF("Sales Accounts")})`;
+const PURCHASE_RETURN_LEDGER = `COALESCE(${LEAF("Purchase Return", "Purchase Accounts")}, ${ANY_LEAF("Purchase Accounts")})`;
+
+// Jewel-repair income (flow G) -> 'Repair Charges Income' under Direct Income.
+// If the Direct Income leaves are not seeded yet, fall back to any Direct Income
+// leaf, then to the Sales ledger, so the leg never drops (run the
+// add-direct-income-ledgers seeder to land it on the proper leaf).
+const REPAIR_INCOME_LEDGER = `COALESCE(${LEAF("Repair Charges Income", "Direct Income")}, ${ANY_LEAF("Direct Income")}, ${SALES_LEDGER})`;
+
+// Flow-F sources. Old gold & sales returns are scoped to is_bill_adjusted = false
+// (the bill-adjusted ones are already booked via A.Dr5/A.Dr7), and each carries a
+// customer/vendor JOIN so its Dr and Cr legs share the SAME rows (stay balanced).
+const OJ_STANDALONE = `
+  FROM old_jewels oj
+  JOIN customers c ON c.id = oj.customer_id AND c.deleted_at IS NULL
+  JOIN ledger   lc ON lc.id = c.ledger_id  AND lc.deleted_at IS NULL
+  WHERE oj.deleted_at IS NULL AND oj.is_active = true
+    AND oj.is_bill_adjusted = false AND oj.status = 'Printed'
+    AND (:branch_id IS NULL OR oj.branch_id = :branch_id)
+    AND oj.date BETWEEN :from_date AND :to_date`;
+const SR_STANDALONE = `
+  FROM sales_returns r
+  JOIN customers c ON c.id = r.customer_id AND c.deleted_at IS NULL
+  JOIN ledger   lc ON lc.id = c.ledger_id  AND lc.deleted_at IS NULL
+  WHERE r.deleted_at IS NULL AND r.is_active = true
+    AND r.is_bill_adjusted = false
+    AND r.status NOT IN ('Draft','Cancelled','On Hold')
+    AND (:branch_id IS NULL OR r.branch_id = :branch_id)
+    AND r.return_date BETWEEN :from_date AND :to_date`;
+const PR_BASE = `
+  FROM purchase_returns pr
+  JOIN vendors v ON v.id = pr.vendor_id AND v.deleted_at IS NULL
+  JOIN ledger  lv ON lv.id = v.ledger_id AND lv.deleted_at IS NULL
+  WHERE pr.deleted_at IS NULL
+    AND (:branch_id IS NULL OR pr.branch_id = :branch_id)
+    AND pr.pr_date BETWEEN :from_date AND :to_date`;
+
 // Shared CTE: aggregates all transaction sources by ledger_id for a date range
 const ALL_TXNS_CTE = `
   WITH all_txns AS (
@@ -164,10 +215,7 @@ const ALL_TXNS_CTE = `
 
     -- A.Dr4  Bank Accounts (Bank Transfer / Cheque)
     SELECT
-      (SELECT l.id FROM ledger l JOIN ledger_group g ON g.id = l.ledger_group_id
-        WHERE l.deleted_at IS NULL AND g.deleted_at IS NULL
-          AND l.ledger_name = 'Bank Accounts' AND g.ledger_group_name = 'Current Assets'
-        ORDER BY l.id LIMIT 1),
+      ${BANK_LEDGER},
       COALESCE(p.amount_received, 0), 0
     FROM payments p
     JOIN sales_invoice_bills s ON s.id = p.invoice_bill_id
@@ -457,10 +505,7 @@ const ALL_TXNS_CTE = `
               AND l.ledger_name = 'Card Collections' AND g.ledger_group_name = 'Current Assets'
             ORDER BY l.id LIMIT 1)
         WHEN p.payment_mode IN ('Bank Transfer','Cheque') THEN
-          (SELECT l.id FROM ledger l JOIN ledger_group g ON g.id = l.ledger_group_id
-            WHERE l.deleted_at IS NULL AND g.deleted_at IS NULL
-              AND l.ledger_name = 'Bank Accounts' AND g.ledger_group_name = 'Current Assets'
-            ORDER BY l.id LIMIT 1)
+          ${BANK_LEDGER}
       END AS ledger_id,
       COALESCE(p.amount_received, 0), 0
     FROM payments p
@@ -531,10 +576,7 @@ const ALL_TXNS_CTE = `
               AND l.ledger_name = 'Card Collections' AND g.ledger_group_name = 'Current Assets'
             ORDER BY l.id LIMIT 1)
         WHEN pm.payment_mode IN ('Bank Transfer','Cheque') THEN
-          (SELECT l.id FROM ledger l JOIN ledger_group g ON g.id = l.ledger_group_id
-            WHERE l.deleted_at IS NULL AND g.deleted_at IS NULL
-              AND l.ledger_name = 'Bank Accounts' AND g.ledger_group_name = 'Current Assets'
-            ORDER BY l.id LIMIT 1)
+          ${BANK_LEDGER}
       END AS ledger_id,
       0, COALESCE(vp.amount, 0)
     FROM vendor_payments vp
@@ -576,10 +618,7 @@ const ALL_TXNS_CTE = `
               AND l.ledger_name = 'Card Collections' AND g.ledger_group_name = 'Current Assets'
             ORDER BY l.id LIMIT 1)
         WHEN r.payment_mode_id IN (3,4) THEN
-          (SELECT l.id FROM ledger l JOIN ledger_group g ON g.id = l.ledger_group_id
-            WHERE l.deleted_at IS NULL AND g.deleted_at IS NULL
-              AND l.ledger_name = 'Bank Accounts' AND g.ledger_group_name = 'Current Assets'
-            ORDER BY l.id LIMIT 1)
+          ${BANK_LEDGER}
       END AS ledger_id,
       COALESCE(r.amount, 0), 0
     FROM voucher_receipts r
@@ -613,6 +652,131 @@ const ALL_TXNS_CTE = `
     WHERE jei.deleted_at IS NULL AND je.deleted_at IS NULL
       AND (:branch_id IS NULL OR je.branch_id = :branch_id)
       AND je.date BETWEEN :from_date AND :to_date
+
+    UNION ALL
+
+    /* =========================================================
+       F) STANDALONE OLD GOLD / SALES RETURN / PURCHASE RETURN
+       Recorded in their OWN tables (not bill-adjusted, no cash leg), so the
+       settlement is the PARTY ledger:
+         - old gold / sales return -> the shop OWES the customer (a credit under
+           Sundry Debtors, so those customers carry a credit balance).
+         - purchase return          -> the vendor OWES the shop (reduce Sundry Creditors).
+       Scoped to is_bill_adjusted = false so the bill-adjusted ones (already in
+       A.Dr5/A.Dr7 via sales_invoice_adjustments) are NOT double-counted. Each
+       flow is self-balancing (Σ debit = Σ credit).
+       ========================================================= */
+
+    -- F.1  Old Gold: Dr 'Old Gold Sales' (Sales Accounts) ; Cr customer ledger
+    SELECT ${OLD_GOLD_SALES_LEDGER}, COALESCE(oj.total_amount, 0), 0 ${OJ_STANDALONE}
+    UNION ALL
+    SELECT lc.id, 0, COALESCE(oj.total_amount, 0) ${OJ_STANDALONE}
+
+    UNION ALL
+
+    -- F.2  Sales Return (standalone refund) — reverse the sale.
+    --  Dr 'Sales Return' (net residual) + Dr Output CGST/SGST/IGST ; Cr customer (total).
+    SELECT ${SALES_RETURN_LEDGER},
+      ( COALESCE(r.total_amount,0) - COALESCE(r.cgst_amount,0)
+        - COALESCE(r.sgst_amount,0) - COALESCE(r.igst_amount,0) ), 0 ${SR_STANDALONE}
+    UNION ALL
+    SELECT ${LEAF("Output CGST", "Duties & Taxes")}, COALESCE(r.cgst_amount,0), 0 ${SR_STANDALONE}
+    UNION ALL
+    SELECT ${LEAF("Output SGST", "Duties & Taxes")}, COALESCE(r.sgst_amount,0), 0 ${SR_STANDALONE}
+    UNION ALL
+    SELECT ${LEAF("Output IGST", "Duties & Taxes")}, COALESCE(r.igst_amount,0), 0 ${SR_STANDALONE}
+    UNION ALL
+    SELECT lc.id, 0, COALESCE(r.total_amount,0) ${SR_STANDALONE}
+
+    UNION ALL
+
+    -- F.3  Purchase Return — reverse the purchase.
+    --  Dr vendor (reduce Sundry Creditors) ; Cr 'Purchase Return' (net) +
+    --  Cr GST Input CGST/SGST/IGST (reverse input tax). Vendor Dr = the full
+    --  reversed value so the leg self-balances (discount_percent not applied).
+    SELECT ${PURCHASE_RETURN_LEDGER}, 0, COALESCE(pr.subtotal_amount,0) ${PR_BASE}
+    UNION ALL
+    SELECT ${LEAF("GST Input CGST", "Current Assets")}, 0,
+      ROUND(COALESCE(pr.subtotal_amount,0) * COALESCE(pr.cgst_percent,0) / 100.0, 2) ${PR_BASE}
+    UNION ALL
+    SELECT ${LEAF("GST Input SGST", "Current Assets")}, 0,
+      ROUND(COALESCE(pr.subtotal_amount,0) * COALESCE(pr.sgst_percent,0) / 100.0, 2) ${PR_BASE}
+    UNION ALL
+    SELECT ${LEAF("GST Input IGST", "Current Assets")}, 0,
+      ROUND(COALESCE(pr.subtotal_amount,0) * COALESCE(pr.igst_percent,0) / 100.0, 2) ${PR_BASE}
+    UNION ALL
+    SELECT lv.id,
+      ( COALESCE(pr.subtotal_amount,0)
+        + ROUND(COALESCE(pr.subtotal_amount,0) * COALESCE(pr.cgst_percent,0) / 100.0, 2)
+        + ROUND(COALESCE(pr.subtotal_amount,0) * COALESCE(pr.sgst_percent,0) / 100.0, 2)
+        + ROUND(COALESCE(pr.subtotal_amount,0) * COALESCE(pr.igst_percent,0) / 100.0, 2) ), 0 ${PR_BASE}
+
+    UNION ALL
+
+    /* =========================================================
+       G) JEWEL REPAIR  (service income — NO GST on jewel_repairs)
+       Cr 'Repair Charges Income' (Direct Income) = total_amount
+       Dr payment-mode ledgers (from payments.jewel_repair_id) = amount paid
+       Dr Customer (Sundry Debtors)               = amount still due (total - paid)
+       Balance: total = Σ paid + receivable. Only status = 'Completed' repairs.
+       ========================================================= */
+
+    -- G.Cr  Repair Charges Income = total_amount
+    SELECT ${REPAIR_INCOME_LEDGER}, 0, COALESCE(jr.total_amount, 0)
+    FROM jewel_repairs jr
+    WHERE jr.deleted_at IS NULL AND jr.is_active = true AND jr.status = 'Completed'
+      AND (:branch_id IS NULL OR jr.branch_id = :branch_id)
+      AND jr.date BETWEEN :from_date AND :to_date
+
+    UNION ALL
+
+    -- G.Dr  payment-mode ledger for repair payments
+    SELECT
+      CASE
+        WHEN p.payment_mode = 'Cash' THEN
+          (SELECT l.id FROM ledger l JOIN ledger_group g ON g.id = l.ledger_group_id
+            WHERE l.deleted_at IS NULL AND g.deleted_at IS NULL
+              AND l.ledger_name = 'Cash in Hand' AND g.ledger_group_name = 'Current Assets'
+            ORDER BY l.id LIMIT 1)
+        WHEN p.payment_mode = 'UPI' THEN
+          (SELECT l.id FROM ledger l JOIN ledger_group g ON g.id = l.ledger_group_id
+            WHERE l.deleted_at IS NULL AND g.deleted_at IS NULL
+              AND l.ledger_name = 'UPI Collections' AND g.ledger_group_name = 'Current Assets'
+            ORDER BY l.id LIMIT 1)
+        WHEN p.payment_mode = 'Card' THEN
+          (SELECT l.id FROM ledger l JOIN ledger_group g ON g.id = l.ledger_group_id
+            WHERE l.deleted_at IS NULL AND g.deleted_at IS NULL
+              AND l.ledger_name = 'Card Collections' AND g.ledger_group_name = 'Current Assets'
+            ORDER BY l.id LIMIT 1)
+        WHEN p.payment_mode IN ('Bank Transfer','Cheque') THEN ${BANK_LEDGER}
+      END,
+      COALESCE(p.amount_received, 0), 0
+    FROM payments p
+    JOIN jewel_repairs jr ON jr.id = p.jewel_repair_id AND jr.deleted_at IS NULL
+    WHERE p.deleted_at IS NULL AND p.status = 'Completed'
+      AND jr.is_active = true AND jr.status = 'Completed'
+      AND p.payment_mode IN ('Cash','UPI','Card','Bank Transfer','Cheque')
+      AND (:branch_id IS NULL OR jr.branch_id = :branch_id)
+      AND jr.date BETWEEN :from_date AND :to_date
+
+    UNION ALL
+
+    -- G.Dr  Customer receivable (Sundry Debtors) = total_amount - paid
+    SELECT lc.id, ( COALESCE(jr.total_amount,0) - COALESCE(pay.paid,0) ), 0
+    FROM jewel_repairs jr
+    JOIN customers c ON c.id = jr.customer_id AND c.deleted_at IS NULL
+    JOIN ledger lc ON lc.id = c.ledger_id AND lc.deleted_at IS NULL
+    LEFT JOIN (
+      SELECT p.jewel_repair_id, SUM(COALESCE(p.amount_received,0)) AS paid
+      FROM payments p
+      WHERE p.deleted_at IS NULL AND p.status = 'Completed'
+        AND p.jewel_repair_id IS NOT NULL
+        AND p.payment_mode IN ('Cash','UPI','Card','Bank Transfer','Cheque')
+      GROUP BY p.jewel_repair_id
+    ) pay ON pay.jewel_repair_id = jr.id
+    WHERE jr.deleted_at IS NULL AND jr.is_active = true AND jr.status = 'Completed'
+      AND (:branch_id IS NULL OR jr.branch_id = :branch_id)
+      AND jr.date BETWEEN :from_date AND :to_date
   )
 `;
 
@@ -660,6 +824,20 @@ async function fetchLedgerAggregates(branchId, fromDate, toDate, searchFilter) {
   });
 }
 
+// Fetches the whole ledger_group chart with its nature + parent links, so a
+// report can build the nested group tree (Current Assets -> Bank Accounts -> …).
+// The chart is shared (branch 1), so it is NOT filtered by the report's branch.
+async function fetchGroupTree() {
+  return sequelize.query(
+    `SELECT lg.id, lg.ledger_group_name, lg.parent_group_id,
+            la.account_name AS account_type, la.normal_balance
+       FROM ledger_group lg
+       LEFT JOIN ledger_accounts la ON la.id = lg.ledger_account_id
+       WHERE lg.deleted_at IS NULL`,
+    { type: sequelize.QueryTypes.SELECT }
+  );
+}
+
 // Rounds to 2 decimals and returns a Number. The trial-balance report table
 // renders values with `.toLocaleString()`, so debit/credit must stay numeric.
 const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
@@ -699,6 +877,71 @@ function buildGroupMap(rows) {
   return groupMap;
 }
 
+// Builds the NESTED group tree for the balance sheet: attaches each ledger's
+// balance to its immediate group, links child groups to their parents, then
+// rolls totals up bottom-first so a parent's total includes all descendants.
+// Returns { roots } — the top-level groups (parent_group_id = NULL).
+function buildGroupTree(ledgerRows, groups) {
+  const node = new Map();
+  for (const g of groups) {
+    node.set(g.id, {
+      id: g.id,
+      group_name: g.ledger_group_name,
+      parent_group_id: g.parent_group_id,
+      account_type: g.account_type,
+      normal_balance: g.normal_balance,
+      ledgers: [], // direct leaf ledgers of THIS group
+      children: [], // nested sub-groups
+      selfDebit: 0,
+      selfCredit: 0,
+      totalDebit: 0,
+      totalCredit: 0,
+    });
+  }
+
+  // Attach each ledger's net to its immediate group.
+  for (const row of ledgerRows) {
+    const n = node.get(row.group_id);
+    if (!n) continue;
+    const debit = parseFloat(row.total_debit || 0);
+    const credit = parseFloat(row.total_credit || 0);
+    n.selfDebit += debit;
+    n.selfCredit += credit;
+    n.ledgers.push({
+      ledger_id: row.ledger_id,
+      ledger_name: row.ledger_name,
+      debit,
+      credit,
+    });
+  }
+
+  // Link children to parents; anything without a (resolvable) parent is a root.
+  const roots = [];
+  for (const n of node.values()) {
+    if (n.parent_group_id && node.has(n.parent_group_id)) {
+      node.get(n.parent_group_id).children.push(n);
+    } else {
+      roots.push(n);
+    }
+  }
+
+  // Roll up: a node's total = its own ledgers + every child's rolled-up total.
+  const rollup = (n) => {
+    let d = n.selfDebit;
+    let c = n.selfCredit;
+    for (const child of n.children) {
+      rollup(child);
+      d += child.totalDebit;
+      c += child.totalCredit;
+    }
+    n.totalDebit = d;
+    n.totalCredit = c;
+  };
+  roots.forEach(rollup);
+
+  return { roots };
+}
+
 // ─────────────────────────────────────────
 // TRIAL BALANCE
 //
@@ -729,61 +972,60 @@ const getTrialBalance = async (req, res) => {
     const branchId = branch_id ? parseInt(branch_id) : null;
     const includeZero = include_zero === "true" || include_zero === "1";
 
-    const rows = await fetchLedgerAggregates(branchId, fromDate, toDate, search || null);
+    const ledgerRows = await fetchLedgerAggregates(branchId, fromDate, toDate, search || null);
+    const groups = await fetchGroupTree();
+    const { roots } = buildGroupTree(ledgerRows, groups);
 
-    // Collapse flat ledger rows into groups, computing each ledger's net balance.
-    const groupMap = new Map();
-    for (const row of rows) {
-      const net = parseFloat(row.total_debit || 0) - parseFloat(row.total_credit || 0);
-      if (!includeZero && net === 0) continue;
-
-      if (!groupMap.has(row.group_id)) {
-        groupMap.set(row.group_id, {
-          id: row.group_id,
-          particulars: row.group_name,
-          account_type: row.account_type,
-          normal_balance: row.normal_balance,
-          net: 0,
-          children: [],
+    // Serialize a node into the NESTED TB shape: each group/ledger shows its own
+    // net on its side; `children` holds sub-groups (recursively) then leaf
+    // ledgers. Zero nodes (and groups with nothing to show) are pruned unless
+    // include_zero.
+    const serializeTB = (n) => {
+      const children = [];
+      for (const c of n.children) {
+        const s = serializeTB(c);
+        if (s) children.push(s);
+      }
+      for (const l of n.ledgers) {
+        const lnet = l.debit - l.credit;
+        if (lnet === 0 && !includeZero) continue;
+        children.push({
+          id: `l_${l.ledger_id}`,
+          particulars: l.ledger_name,
+          debit: lnet > 0 ? round2(lnet) : null,
+          credit: lnet < 0 ? round2(-lnet) : null,
         });
       }
-
-      const g = groupMap.get(row.group_id);
-      g.net += net;
-      g.children.push({
-        id: row.ledger_id,
-        particulars: row.ledger_name,
+      const net = n.totalDebit - n.totalCredit;
+      if (children.length === 0 && net === 0 && !includeZero) return null;
+      return {
+        id: `g_${n.id}`,
+        particulars: n.group_name,
         debit: net > 0 ? round2(net) : null,
         credit: net < 0 ? round2(-net) : null,
-      });
-    }
+        children,
+      };
+    };
 
+    roots.sort(
+      (a, b) =>
+        (NATURE_ORDER[a.account_type] || 9) - (NATURE_ORDER[b.account_type] || 9) ||
+        (a.group_name || "").localeCompare(b.group_name || "")
+    );
+
+    // Totals are the root-group nets placed on their sides (grouped TB), which
+    // balance because the books net to zero overall.
     let totalDebit = 0;
     let totalCredit = 0;
-
-    const data = Array.from(groupMap.values())
-      .filter((g) => includeZero || g.children.length > 0)
-      .sort(
-        (a, b) =>
-          (NATURE_ORDER[a.account_type] || 9) - (NATURE_ORDER[b.account_type] || 9) ||
-          a.particulars.localeCompare(b.particulars)
-      )
-      .map((g) => {
-        // Group balance = net of its ledgers, placed on the resulting side.
-        const debit = g.net > 0 ? round2(g.net) : null;
-        const credit = g.net < 0 ? round2(-g.net) : null;
-        totalDebit += debit || 0;
-        totalCredit += credit || 0;
-        return {
-          id: g.id,
-          particulars: g.particulars,
-          account_type: g.account_type,
-          normal_balance: g.normal_balance,
-          debit,
-          credit,
-          children: g.children,
-        };
-      });
+    const data = [];
+    for (const n of roots) {
+      const s = serializeTB(n);
+      if (!s) continue;
+      data.push(s);
+      const net = n.totalDebit - n.totalCredit;
+      if (net > 0) totalDebit += net;
+      else totalCredit += -net;
+    }
 
     return commonService.okResponse(res, {
       rows: data,
@@ -816,46 +1058,46 @@ const getProfitLoss = async (req, res) => {
     const toDate = to_date || new Date().toISOString().split("T")[0];
     const branchId = branch_id ? parseInt(branch_id) : null;
 
-    const rows = await fetchLedgerAggregates(branchId, fromDate, toDate, null);
-    const groupMap = buildGroupMap(rows);
+    const ledgerRows = await fetchLedgerAggregates(branchId, fromDate, toDate, null);
+    const groups = await fetchGroupTree();
+    const { roots } = buildGroupTree(ledgerRows, groups);
 
-    const tradingDebit = [];   // Opening Stock, Purchase, Direct Expenses
-    const tradingCredit = [];  // Sales, Direct Incomes, Closing Stock
+    // A nested P&L entry: the group's own amount plus its sub-groups (recursive)
+    // and leaf ledgers. Sub-group children carry `amount` + `children`; ledger
+    // children carry `debit`/`credit`.
+    const serializePL = (n) => ({
+      particulars: n.group_name,
+      amount: Math.abs(n.totalDebit - n.totalCredit).toFixed(2),
+      children: [
+        ...n.children.map(serializePL),
+        ...n.ledgers.map((l) => ({
+          particulars: l.ledger_name,
+          debit: (l.debit || 0).toFixed(2),
+          credit: (l.credit || 0).toFixed(2),
+        })),
+      ],
+    });
+
+    const tradingDebit = [];   // Purchase, Direct Expenses
+    const tradingCredit = [];  // Sales, Direct Income
     const pnlDebit = [];       // Indirect Expenses
     const pnlCredit = [];      // Indirect Income
 
-    for (const g of groupMap.values()) {
-      const name = (g.group_name || "").toLowerCase();
-      const net = g.group_debit - g.group_credit;
-      const entry = {
-        particulars: g.group_name,
-        amount: Math.abs(net).toFixed(2),
-        children: g.ledgers.map((l) => ({
-          particulars: l.ledger_name,
-          debit: l.debit,
-          credit: l.credit,
-        })),
-      };
-
-      if (g.account_type === "Expense") {
-        if (name.includes("indirect")) {
-          pnlDebit.push(entry);
-        } else {
-          tradingDebit.push(entry);
-        }
-      } else if (g.account_type === "Income") {
-        if (name.includes("indirect")) {
-          pnlCredit.push(entry);
-        } else {
-          tradingCredit.push(entry);
-        }
+    for (const n of roots) {
+      const name = (n.group_name || "").toLowerCase();
+      const entry = serializePL(n);
+      if (n.account_type === "Expense") {
+        (name.includes("indirect") ? pnlDebit : tradingDebit).push(entry);
+      } else if (n.account_type === "Income") {
+        (name.includes("indirect") ? pnlCredit : tradingCredit).push(entry);
       }
     }
 
-    const tradingDebitTotal = tradingDebit.reduce((s, e) => s + parseFloat(e.amount), 0);
-    const tradingCreditTotal = tradingCredit.reduce((s, e) => s + parseFloat(e.amount), 0);
-    const pnlDebitTotal = pnlDebit.reduce((s, e) => s + parseFloat(e.amount), 0);
-    const pnlCreditTotal = pnlCredit.reduce((s, e) => s + parseFloat(e.amount), 0);
+    const sumAmt = (arr) => arr.reduce((s, e) => s + parseFloat(e.amount), 0);
+    const tradingDebitTotal = sumAmt(tradingDebit);
+    const tradingCreditTotal = sumAmt(tradingCredit);
+    const pnlDebitTotal = sumAmt(pnlDebit);
+    const pnlCreditTotal = sumAmt(pnlCredit);
 
     // Gross Profit / Loss plugged into the second section
     const grossProfit = tradingCreditTotal - tradingDebitTotal;
@@ -893,54 +1135,52 @@ const getBalanceSheet = async (req, res) => {
     const toDate = to_date || new Date().toISOString().split("T")[0];
     const branchId = branch_id ? parseInt(branch_id) : null;
 
-    const rows = await fetchLedgerAggregates(branchId, fromDate, toDate, null);
-    const groupMap = buildGroupMap(rows);
+    const ledgerRows = await fetchLedgerAggregates(branchId, fromDate, toDate, null);
+    const groups = await fetchGroupTree();
+    const { roots } = buildGroupTree(ledgerRows, groups);
+
+    // Serialize a group node into the NESTED balance-sheet shape, placing every
+    // amount on its natural side (assets = debit-positive, liabilities =
+    // credit-positive). `children` are nested sub-groups; `ledgers` are the
+    // group's own leaf ledgers.
+    const serialize = (n, side) => ({
+      group_id: n.id,
+      group_name: n.group_name,
+      amount: round2(
+        side === "asset" ? n.totalDebit - n.totalCredit : n.totalCredit - n.totalDebit
+      ),
+      children: n.children.map((c) => serialize(c, side)),
+      ledgers: n.ledgers.map((l) => ({
+        ledger_id: l.ledger_id,
+        ledger_name: l.ledger_name,
+        amount: round2(side === "asset" ? l.debit - l.credit : l.credit - l.debit),
+      })),
+    });
 
     const liabilities = [];
     const assets = [];
     let totalLiabilities = 0;
     let totalAssets = 0;
 
-    for (const g of groupMap.values()) {
-      if (g.account_type === "Liability") {
-        // Net credit balance for liabilities
-        const amount = g.group_credit - g.group_debit;
-        const entry = {
-          group_id: g.group_id,
-          group_name: g.group_name,
-          amount: amount.toFixed(2),
-          children: g.ledgers.map((l) => ({
-            ledger_id: l.ledger_id,
-            ledger_name: l.ledger_name,
-            amount: (parseFloat(l.credit) - parseFloat(l.debit)).toFixed(2),
-          })),
-        };
-        liabilities.push(entry);
-        totalLiabilities += amount;
-      } else if (g.account_type === "Asset") {
-        // Net debit balance for assets
-        const amount = g.group_debit - g.group_credit;
-        const entry = {
-          group_id: g.group_id,
-          group_name: g.group_name,
-          amount: amount.toFixed(2),
-          children: g.ledgers.map((l) => ({
-            ledger_id: l.ledger_id,
-            ledger_name: l.ledger_name,
-            amount: (parseFloat(l.debit) - parseFloat(l.credit)).toFixed(2),
-          })),
-        };
+    // Only TOP-LEVEL groups drive the two sides; sub-groups nest inside them.
+    for (const n of roots) {
+      if (n.account_type === "Asset") {
+        const entry = serialize(n, "asset");
         assets.push(entry);
-        totalAssets += amount;
+        totalAssets += entry.amount;
+      } else if (n.account_type === "Liability") {
+        const entry = serialize(n, "liability");
+        liabilities.push(entry);
+        totalLiabilities += entry.amount;
       }
     }
 
     return commonService.okResponse(res, {
       liabilities,
       assets,
-      total_liabilities: totalLiabilities.toFixed(2),
-      total_assets: totalAssets.toFixed(2),
-      grand_total: Math.max(totalLiabilities, totalAssets).toFixed(2),
+      total_liabilities: round2(totalLiabilities).toFixed(2),
+      total_assets: round2(totalAssets).toFixed(2),
+      grand_total: Math.max(round2(totalLiabilities), round2(totalAssets)).toFixed(2),
     });
   } catch (err) {
     console.error(err);

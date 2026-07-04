@@ -7,7 +7,8 @@ const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
 // Create Ledger Group
 const create = async (req, res) => {
   try {
-    const { ledger_group_name, ledger_group_no, status_id = 1, ledger_account_id ,branch_id } = req.body;
+    const { ledger_group_name, ledger_group_no, status_id = 1, branch_id } = req.body;
+    let { ledger_account_id, parent_group_id } = req.body;
 
     // Check if ledger group ID already exists
     const ledgerGroupExists = await models.LedgerGroup.findOne({
@@ -23,11 +24,22 @@ const create = async (req, res) => {
       );
     }
 
+    // A sub-group inherits its nature (ledger_account_id) from its parent, so
+    // the balance sheet always rolls it into the same Asset/Liability side.
+    if (parent_group_id) {
+      const parent = await models.LedgerGroup.findByPk(parent_group_id);
+      if (!parent) {
+        return commonService.badRequest(res, "Parent ledger group not found");
+      }
+      ledger_account_id = parent.ledger_account_id;
+    }
+
     // Create new ledger group
     const ledgerGroup = await models.LedgerGroup.create({
       ledger_group_no,
       ledger_group_name,
       ledger_account_id,
+      parent_group_id: parent_group_id || null,
       status_id,
       branch_id: branch_id || 1, // default to 1 if not provided
     });
@@ -101,13 +113,16 @@ const list = async (req, res) => {
     }
 
     let sql = `
-      SELECT 
+      SELECT
         lg.*,
-        la.account_name AS ledger_account_name
+        la.account_name AS ledger_account_name,
+        pg.ledger_group_name AS parent_group_name
         ${pageSize ? `, COUNT(*) OVER() AS total_count` : ``}
       FROM ledger_group lg
-      LEFT JOIN ledger_accounts la 
+      LEFT JOIN ledger_accounts la
         ON la.id = lg.ledger_account_id
+      LEFT JOIN ledger_group pg
+        ON pg.id = lg.parent_group_id AND pg.deleted_at IS NULL
       ${where}
       ORDER BY lg.id ASC
     `;
@@ -155,12 +170,15 @@ const getById = async (req, res) => {
     const { id } = req.params;
 
     const sql = `
-      SELECT 
+      SELECT
         lg.*,
-        la.account_name AS ledger_account_name
+        la.account_name AS ledger_account_name,
+        pg.ledger_group_name AS parent_group_name
       FROM ledger_group lg
-      LEFT JOIN ledger_accounts la 
+      LEFT JOIN ledger_accounts la
         ON la.id = lg.ledger_account_id
+      LEFT JOIN ledger_group pg
+        ON pg.id = lg.parent_group_id AND pg.deleted_at IS NULL
       WHERE lg.id = :id
         AND lg.deleted_at IS NULL
       LIMIT 1
@@ -189,7 +207,8 @@ const getById = async (req, res) => {
 const update = async (req, res) => {
   try {
     const { id } = req.params;
-    const { ledger_group_no, ledger_group_name, status_id, ledger_account_id } = req.body;
+    const { ledger_group_no, ledger_group_name, status_id } = req.body;
+    let { ledger_account_id, parent_group_id } = req.body;
 
     const ledgerGroup = await models.LedgerGroup.findByPk(id);
 
@@ -214,11 +233,38 @@ const update = async (req, res) => {
       }
     }
 
+    // Re-parenting: guard against cycles and inherit the parent's nature.
+    if (parent_group_id !== undefined && parent_group_id) {
+      if (parseInt(parent_group_id, 10) === parseInt(id, 10)) {
+        return commonService.badRequest(res, "A ledger group cannot be its own parent");
+      }
+      // Walk up the proposed parent's ancestry; hitting this group = a cycle.
+      let cursor = await models.LedgerGroup.findByPk(parent_group_id);
+      if (!cursor) {
+        return commonService.badRequest(res, "Parent ledger group not found");
+      }
+      const inheritedNature = cursor.ledger_account_id;
+      while (cursor) {
+        if (parseInt(cursor.id, 10) === parseInt(id, 10)) {
+          return commonService.badRequest(
+            res,
+            "Cannot nest a ledger group under one of its own descendants"
+          );
+        }
+        cursor = cursor.parent_group_id
+          ? await models.LedgerGroup.findByPk(cursor.parent_group_id)
+          : null;
+      }
+      ledger_account_id = inheritedNature; // sub-group inherits nature
+    }
+
     // Update the ledger group
     await ledgerGroup.update({
       ledger_group_no: ledger_group_no || ledgerGroup.ledger_group_no,
       ledger_group_name: ledger_group_name || ledgerGroup.ledger_group_name,
       ledger_account_id: ledger_account_id || ledgerGroup.ledger_account_id,
+      parent_group_id:
+        parent_group_id !== undefined ? (parent_group_id || null) : ledgerGroup.parent_group_id,
       status_id: status_id !== undefined ? status_id : ledgerGroup.status_id,
     });
 
