@@ -183,6 +183,7 @@ const listCustomersWithMobileNumber = async (req, res) => {
         c.mobile_number,
         c.address,
         c.country_id,
+        c.branch_id,
         c.state_id,
         c.district_id,
         c.pin_code,
