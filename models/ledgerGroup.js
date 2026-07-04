@@ -21,6 +21,12 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.INTEGER,
         allowNull: true,
       },
+      // Self-reference: NULL = top-level group under a nature; set = sub-group
+      // nested under another ledger_group (inherits the parent's nature).
+      parent_group_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+      },
       branch_id:{
           type: DataTypes.INTEGER,
           allowNull: true,
@@ -42,13 +48,16 @@ module.exports = (sequelize, DataTypes) => {
     }
   );
 
-  // Add any associations here if needed
   LedgerGroup.associate = (models) => {
-    // Example association (uncomment if needed):
-    // LedgerGroup.hasMany(models.SomeOtherModel, {
-    //   foreignKey: "ledger_group_id",
-    //   as: "relatedRecords",
-    // });
+    // Nested groups: a group belongs to one parent and can have many children.
+    LedgerGroup.belongsTo(models.LedgerGroup, {
+      as: "parent",
+      foreignKey: "parent_group_id",
+    });
+    LedgerGroup.hasMany(models.LedgerGroup, {
+      as: "children",
+      foreignKey: "parent_group_id",
+    });
   };
 
   return LedgerGroup;
