@@ -651,7 +651,7 @@ const getVendorList = async (req, res) => {
  */
 const getVendorOverview = async (req, res) => {
     try {
-        const { vendor_id, start_date, end_date } = req.query;
+        const { vendor_id, from_date, to_date, date_filter, } = req.query;
 
         if (!vendor_id) {
             return res.status(400).json({
@@ -661,20 +661,29 @@ const getVendorOverview = async (req, res) => {
         }
 
         // Build date filter
-        let dateFilter = "";
-        const replacements = { vendor_id: parseInt(vendor_id) };
+        const replacements = {
+            vendor_id: parseInt(vendor_id),
+        };
 
-        if (start_date && end_date) {
-            dateFilter = " AND DATE BETWEEN CAST(:start_date AS DATE) AND CAST(:end_date AS DATE)";
-            replacements.start_date = start_date;
-            replacements.end_date = end_date;
-        } else if (start_date) {
-            dateFilter = " AND DATE >= CAST(:start_date AS DATE)";
-            replacements.start_date = start_date;
-        } else if (end_date) {
-            dateFilter = " AND DATE <= CAST(:end_date AS DATE)";
-            replacements.end_date = end_date;
-        }
+        // Date Filters
+        const grnDateFilter = dateFilter(
+            { from_date, to_date, date_filter },
+            "g.grn_date",
+            replacements
+        );
+
+        const paymentDateFilter = dateFilter(
+            { from_date, to_date, date_filter },
+            "vp.payment_date",
+            replacements
+        );
+
+        const purchaseReturnDateFilter = dateFilter(
+            { from_date, to_date, date_filter },
+            "pr.pr_date",
+            replacements
+        );
+
 
         // Get vendor basic info
         const vendorQuery = `
@@ -691,7 +700,7 @@ const getVendorOverview = async (req, res) => {
       JOIN "grnItems" gi ON gi.grn_id = g.id AND gi.deleted_at IS NULL
       WHERE g.vendor_id = :vendor_id 
         AND g.deleted_at IS NULL
-        ${dateFilter.replace('DATE', 'g.grn_date')}
+        ${grnDateFilter}
     `;
 
         // GRN Value (weight)
@@ -702,7 +711,7 @@ const getVendorOverview = async (req, res) => {
       JOIN "grnItems" gi ON gi.grn_id = g.id AND gi.deleted_at IS NULL
       WHERE g.vendor_id = :vendor_id 
         AND g.deleted_at IS NULL
-        ${dateFilter.replace('DATE', 'g.grn_date')}
+        ${grnDateFilter}
     `;
 
     // Grn Total value
@@ -712,7 +721,7 @@ const getVendorOverview = async (req, res) => {
         FROM grns g
         WHERE g.vendor_id = :vendor_id 
             AND g.deleted_at IS NULL
-            ${dateFilter.replace('DATE', 'g.grn_date')}
+            ${grnDateFilter}
         `;
 
         // Purchase Return Value (total amount)
@@ -729,7 +738,7 @@ const getVendorOverview = async (req, res) => {
         WHERE pr.vendor_id = :vendor_id
             AND pr.deleted_at IS NULL
 
-            ${dateFilter.replace('DATE', 'pr.pr_date')}
+             ${purchaseReturnDateFilter}
         `;
 
         const grnDiscrepancyQuery = `
@@ -745,7 +754,7 @@ const getVendorOverview = async (req, res) => {
             WHERE g.vendor_id = :vendor_id
                 AND g.deleted_at IS NULL
 
-                ${dateFilter.replace('DATE', 'g.grn_date')}
+               ${grnDateFilter}
             `;
 
         // Total Amount Paid
@@ -759,7 +768,7 @@ const getVendorOverview = async (req, res) => {
         AND vp.is_active = true
         AND vp.deleted_at IS NULL
         AND g.deleted_at IS NULL
-        ${dateFilter.replace('DATE', 'vp.payment_date')}
+         ${paymentDateFilter}
     `;
 
         // Purchase Values for chart - supports monthly, yearly, weekly
@@ -776,7 +785,7 @@ const getVendorOverview = async (req, res) => {
         FROM grns g
         WHERE g.vendor_id = :vendor_id 
           AND g.deleted_at IS NULL
-          ${dateFilter.replace('DATE', 'g.grn_date')}
+           ${grnDateFilter}
         GROUP BY TO_CHAR(g.grn_date, 'MON'), EXTRACT(MONTH FROM g.grn_date)
         ORDER BY sort_order
       `;
@@ -790,7 +799,7 @@ const getVendorOverview = async (req, res) => {
         FROM grns g
         WHERE g.vendor_id = :vendor_id 
           AND g.deleted_at IS NULL
-          ${dateFilter.replace('DATE', 'g.grn_date')}
+         ${grnDateFilter}
         GROUP BY EXTRACT(YEAR FROM g.grn_date)
         ORDER BY sort_order
       `;
@@ -804,7 +813,7 @@ const getVendorOverview = async (req, res) => {
         FROM grns g
         WHERE g.vendor_id = :vendor_id 
           AND g.deleted_at IS NULL
-          ${dateFilter.replace('DATE', 'g.grn_date')}
+          ${grnDateFilter}
         GROUP BY TO_CHAR(g.grn_date, 'DY'), EXTRACT(DOW FROM g.grn_date)
         ORDER BY sort_order
       `;

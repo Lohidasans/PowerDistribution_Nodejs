@@ -158,11 +158,16 @@ const createCustomer = async (req, res) => {
 // List customers (simple filters)
 const listCustomersWithMobileNumber = async (req, res) => {
   try {
-    const { search, mobile_number } = req.query;
+    const { search, mobile_number, branch_id } = req.query;
 
     // Build WHERE conditions dynamically
     let whereClause = "WHERE c.deleted_at IS NULL";
     const replacements = {};
+
+    if (branch_id) {
+      whereClause += " AND c.branch_id = :branch_id";
+      replacements.branch_id = branch_id;
+    }
 
     if (mobile_number) {
       whereClause += " AND c.mobile_number = :mobile_number";
@@ -170,19 +175,24 @@ const listCustomersWithMobileNumber = async (req, res) => {
     }
 
     if (search) {
-      whereClause +=
-        " AND (c.customer_name ILIKE :search OR c.mobile_number ILIKE :search)";
+      whereClause += `
+        AND (
+          c.customer_name ILIKE :search
+          OR c.mobile_number ILIKE :search
+        )
+      `;
       replacements.search = `%${search}%`;
     }
 
     const query = `
-      SELECT 
+      SELECT
         c.id,
         c.customer_code,
         c.customer_name,
         c.mobile_number,
         c.address,
         c.country_id,
+        c.branch_id,
         c.state_id,
         c.district_id,
         c.pin_code,
