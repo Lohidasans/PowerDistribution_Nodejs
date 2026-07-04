@@ -50,14 +50,14 @@ module.exports = (sequelize, DataTypes) => {
 
   LedgerGroup.associate = (models) => {
     // Nested groups: a group belongs to one parent and can have many children.
-    LedgerGroup.belongsTo(models.LedgerGroup, {
-      as: "parent",
-      foreignKey: "parent_group_id",
-    });
-    LedgerGroup.hasMany(models.LedgerGroup, {
-      as: "children",
-      foreignKey: "parent_group_id",
-    });
+    // LedgerGroup.belongsTo(models.LedgerGroup, {
+    //   as: "parent",
+    //   foreignKey: "parent_group_id",
+    // });
+    // LedgerGroup.hasMany(models.LedgerGroup, {
+    //   as: "children",
+    //   foreignKey: "parent_group_id",
+    // });
   };
 
   return LedgerGroup;
