@@ -166,7 +166,7 @@ const ALL_TXNS_CTE = `
     SELECT
       (SELECT l.id FROM ledger l JOIN ledger_group g ON g.id = l.ledger_group_id
         WHERE l.deleted_at IS NULL AND g.deleted_at IS NULL
-          AND l.ledger_name = 'Cash in Hand' AND g.ledger_group_name = 'Current Assets'
+          AND l.ledger_name = 'Cash in Hand'
         ORDER BY l.id LIMIT 1),
       COALESCE(p.amount_received, 0), 0
     FROM payments p
@@ -183,7 +183,7 @@ const ALL_TXNS_CTE = `
     SELECT
       (SELECT l.id FROM ledger l JOIN ledger_group g ON g.id = l.ledger_group_id
         WHERE l.deleted_at IS NULL AND g.deleted_at IS NULL
-          AND l.ledger_name = 'UPI Collections' AND g.ledger_group_name = 'Current Assets'
+          AND l.ledger_name = 'UPI Collections'
         ORDER BY l.id LIMIT 1),
       COALESCE(p.amount_received, 0), 0
     FROM payments p
@@ -200,7 +200,7 @@ const ALL_TXNS_CTE = `
     SELECT
       (SELECT l.id FROM ledger l JOIN ledger_group g ON g.id = l.ledger_group_id
         WHERE l.deleted_at IS NULL AND g.deleted_at IS NULL
-          AND l.ledger_name = 'Card Collections' AND g.ledger_group_name = 'Current Assets'
+          AND l.ledger_name = 'Card Collections'
         ORDER BY l.id LIMIT 1),
       COALESCE(p.amount_received, 0), 0
     FROM payments p
@@ -492,17 +492,17 @@ const ALL_TXNS_CTE = `
         WHEN p.payment_mode = 'Cash' THEN
           (SELECT l.id FROM ledger l JOIN ledger_group g ON g.id = l.ledger_group_id
             WHERE l.deleted_at IS NULL AND g.deleted_at IS NULL
-              AND l.ledger_name = 'Cash in Hand' AND g.ledger_group_name = 'Current Assets'
+              AND l.ledger_name = 'Cash in Hand'
             ORDER BY l.id LIMIT 1)
         WHEN p.payment_mode = 'UPI' THEN
           (SELECT l.id FROM ledger l JOIN ledger_group g ON g.id = l.ledger_group_id
             WHERE l.deleted_at IS NULL AND g.deleted_at IS NULL
-              AND l.ledger_name = 'UPI Collections' AND g.ledger_group_name = 'Current Assets'
+              AND l.ledger_name = 'UPI Collections'
             ORDER BY l.id LIMIT 1)
         WHEN p.payment_mode = 'Card' THEN
           (SELECT l.id FROM ledger l JOIN ledger_group g ON g.id = l.ledger_group_id
             WHERE l.deleted_at IS NULL AND g.deleted_at IS NULL
-              AND l.ledger_name = 'Card Collections' AND g.ledger_group_name = 'Current Assets'
+              AND l.ledger_name = 'Card Collections'
             ORDER BY l.id LIMIT 1)
         WHEN p.payment_mode IN ('Bank Transfer','Cheque') THEN
           ${BANK_LEDGER}
@@ -536,8 +536,13 @@ const ALL_TXNS_CTE = `
     UNION ALL
 
     /* =========================================================
-       D) VENDOR PAYMENT  (money out to vendor)
+       D) VENDOR PAYMENT — BILL-BY-BILL / OTHERS  (money out to a vendor)
        Dr vendor (Sundry Creditors) = vp.amount ; Cr payment-mode ledger.
+       Scope: bill_type_id NOT IN (2,3) — for those bill types account_name_id is
+       a VENDOR id (user_type 1). On-Account/Advance (bill_type 2/3) point
+       account_name_id at a LEDGER instead and are booked by flow D2 below (this
+       mirrors vendorPaymentService's join logic exactly, and stops a stray
+       On-Account row from being counted here AND in D2).
        FIX 1: D.Dr restricted to the SAME set of mapped modes (1..5) as D.Cr, so a
               mode 6 ('Other') payment cannot produce a Dr with no matching Cr.
        FIX 2: branch filter via vp.branch_id on both legs.
@@ -551,6 +556,7 @@ const ALL_TXNS_CTE = `
     JOIN payment_modes pm ON pm.id = vp.payment_mode
     WHERE vp.deleted_at IS NULL AND vp.status = 'Completed'
       AND vp.user_type_id = 1
+      AND vp.bill_type_id NOT IN (2, 3)
       AND pm.payment_mode IN ('Cash','UPI','Card','Bank Transfer','Cheque')
       AND (:branch_id IS NULL OR vp.branch_id = :branch_id)
       AND vp.payment_date BETWEEN :from_date AND :to_date
@@ -563,17 +569,17 @@ const ALL_TXNS_CTE = `
         WHEN pm.payment_mode = 'Cash' THEN
           (SELECT l.id FROM ledger l JOIN ledger_group g ON g.id = l.ledger_group_id
             WHERE l.deleted_at IS NULL AND g.deleted_at IS NULL
-              AND l.ledger_name = 'Cash in Hand' AND g.ledger_group_name = 'Current Assets'
+              AND l.ledger_name = 'Cash in Hand'
             ORDER BY l.id LIMIT 1)
         WHEN pm.payment_mode = 'UPI' THEN
           (SELECT l.id FROM ledger l JOIN ledger_group g ON g.id = l.ledger_group_id
             WHERE l.deleted_at IS NULL AND g.deleted_at IS NULL
-              AND l.ledger_name = 'UPI Collections' AND g.ledger_group_name = 'Current Assets'
+              AND l.ledger_name = 'UPI Collections'
             ORDER BY l.id LIMIT 1)
         WHEN pm.payment_mode = 'Card' THEN
           (SELECT l.id FROM ledger l JOIN ledger_group g ON g.id = l.ledger_group_id
             WHERE l.deleted_at IS NULL AND g.deleted_at IS NULL
-              AND l.ledger_name = 'Card Collections' AND g.ledger_group_name = 'Current Assets'
+              AND l.ledger_name = 'Card Collections'
             ORDER BY l.id LIMIT 1)
         WHEN pm.payment_mode IN ('Bank Transfer','Cheque') THEN
           ${BANK_LEDGER}
@@ -583,6 +589,68 @@ const ALL_TXNS_CTE = `
     JOIN payment_modes pm ON pm.id = vp.payment_mode
     WHERE vp.deleted_at IS NULL AND vp.status = 'Completed'
       AND vp.user_type_id = 1
+      AND vp.bill_type_id NOT IN (2, 3)
+      AND pm.payment_mode IN ('Cash','UPI','Card','Bank Transfer','Cheque')
+      AND (:branch_id IS NULL OR vp.branch_id = :branch_id)
+      AND vp.payment_date BETWEEN :from_date AND :to_date
+
+    UNION ALL
+
+    /* =========================================================
+       D2) VENDOR PAYMENT — ON ACCOUNT / ADVANCE  (bill_type_id IN (2,3))
+       For these bill types account_name_id is a LEDGER id chosen directly on the
+       form (Furniture, a bank, an expense ledger, …) — NOT a vendor id — exactly
+       as vendorPaymentService resolves it. user_type_id is NULL here, so flow D
+       never books them; without this leg the payment vanished from the reports.
+       Post:
+         Dr <chosen ledger>       = vp.amount
+         Cr <payment-mode ledger> = vp.amount
+       e.g. buy Furniture by UPI -> Dr Furniture / Cr UPI Collections;
+            deposit cash to bank  -> Dr Bank / Cr Cash in Hand.
+       Both legs share the SAME ledger JOIN on account_name_id, so if that ledger
+       is missing both drop together and the flow stays balanced.
+       ========================================================= */
+
+    -- D2.Dr  the ledger picked on the form (account_name_id)
+    SELECT ld.id, COALESCE(vp.amount, 0), 0
+    FROM vendor_payments vp
+    JOIN ledger ld ON ld.id = vp.account_name_id AND ld.deleted_at IS NULL
+    JOIN payment_modes pm ON pm.id = vp.payment_mode
+    WHERE vp.deleted_at IS NULL AND vp.status = 'Completed'
+      AND vp.bill_type_id IN (2, 3)
+      AND pm.payment_mode IN ('Cash','UPI','Card','Bank Transfer','Cheque')
+      AND (:branch_id IS NULL OR vp.branch_id = :branch_id)
+      AND vp.payment_date BETWEEN :from_date AND :to_date
+
+    UNION ALL
+
+    -- D2.Cr  payment-mode ledger (identical row set via the same ledger JOIN)
+    SELECT
+      CASE
+        WHEN pm.payment_mode = 'Cash' THEN
+          (SELECT l.id FROM ledger l JOIN ledger_group g ON g.id = l.ledger_group_id
+            WHERE l.deleted_at IS NULL AND g.deleted_at IS NULL
+              AND l.ledger_name = 'Cash in Hand'
+            ORDER BY l.id LIMIT 1)
+        WHEN pm.payment_mode = 'UPI' THEN
+          (SELECT l.id FROM ledger l JOIN ledger_group g ON g.id = l.ledger_group_id
+            WHERE l.deleted_at IS NULL AND g.deleted_at IS NULL
+              AND l.ledger_name = 'UPI Collections'
+            ORDER BY l.id LIMIT 1)
+        WHEN pm.payment_mode = 'Card' THEN
+          (SELECT l.id FROM ledger l JOIN ledger_group g ON g.id = l.ledger_group_id
+            WHERE l.deleted_at IS NULL AND g.deleted_at IS NULL
+              AND l.ledger_name = 'Card Collections'
+            ORDER BY l.id LIMIT 1)
+        WHEN pm.payment_mode IN ('Bank Transfer','Cheque') THEN
+          ${BANK_LEDGER}
+      END AS ledger_id,
+      0, COALESCE(vp.amount, 0)
+    FROM vendor_payments vp
+    JOIN ledger ld ON ld.id = vp.account_name_id AND ld.deleted_at IS NULL
+    JOIN payment_modes pm ON pm.id = vp.payment_mode
+    WHERE vp.deleted_at IS NULL AND vp.status = 'Completed'
+      AND vp.bill_type_id IN (2, 3)
       AND pm.payment_mode IN ('Cash','UPI','Card','Bank Transfer','Cheque')
       AND (:branch_id IS NULL OR vp.branch_id = :branch_id)
       AND vp.payment_date BETWEEN :from_date AND :to_date
@@ -605,17 +673,17 @@ const ALL_TXNS_CTE = `
         WHEN r.payment_mode_id = 1 THEN
           (SELECT l.id FROM ledger l JOIN ledger_group g ON g.id = l.ledger_group_id
             WHERE l.deleted_at IS NULL AND g.deleted_at IS NULL
-              AND l.ledger_name = 'Cash in Hand' AND g.ledger_group_name = 'Current Assets'
+              AND l.ledger_name = 'Cash in Hand'
             ORDER BY l.id LIMIT 1)
         WHEN r.payment_mode_id = 5 THEN
           (SELECT l.id FROM ledger l JOIN ledger_group g ON g.id = l.ledger_group_id
             WHERE l.deleted_at IS NULL AND g.deleted_at IS NULL
-              AND l.ledger_name = 'UPI Collections' AND g.ledger_group_name = 'Current Assets'
+              AND l.ledger_name = 'UPI Collections'
             ORDER BY l.id LIMIT 1)
         WHEN r.payment_mode_id = 2 THEN
           (SELECT l.id FROM ledger l JOIN ledger_group g ON g.id = l.ledger_group_id
             WHERE l.deleted_at IS NULL AND g.deleted_at IS NULL
-              AND l.ledger_name = 'Card Collections' AND g.ledger_group_name = 'Current Assets'
+              AND l.ledger_name = 'Card Collections'
             ORDER BY l.id LIMIT 1)
         WHEN r.payment_mode_id IN (3,4) THEN
           ${BANK_LEDGER}
@@ -736,17 +804,17 @@ const ALL_TXNS_CTE = `
         WHEN p.payment_mode = 'Cash' THEN
           (SELECT l.id FROM ledger l JOIN ledger_group g ON g.id = l.ledger_group_id
             WHERE l.deleted_at IS NULL AND g.deleted_at IS NULL
-              AND l.ledger_name = 'Cash in Hand' AND g.ledger_group_name = 'Current Assets'
+              AND l.ledger_name = 'Cash in Hand'
             ORDER BY l.id LIMIT 1)
         WHEN p.payment_mode = 'UPI' THEN
           (SELECT l.id FROM ledger l JOIN ledger_group g ON g.id = l.ledger_group_id
             WHERE l.deleted_at IS NULL AND g.deleted_at IS NULL
-              AND l.ledger_name = 'UPI Collections' AND g.ledger_group_name = 'Current Assets'
+              AND l.ledger_name = 'UPI Collections'
             ORDER BY l.id LIMIT 1)
         WHEN p.payment_mode = 'Card' THEN
           (SELECT l.id FROM ledger l JOIN ledger_group g ON g.id = l.ledger_group_id
             WHERE l.deleted_at IS NULL AND g.deleted_at IS NULL
-              AND l.ledger_name = 'Card Collections' AND g.ledger_group_name = 'Current Assets'
+              AND l.ledger_name = 'Card Collections'
             ORDER BY l.id LIMIT 1)
         WHEN p.payment_mode IN ('Bank Transfer','Cheque') THEN ${BANK_LEDGER}
       END,
