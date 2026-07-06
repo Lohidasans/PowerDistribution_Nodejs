@@ -488,35 +488,23 @@ const listCustomers = async (req, res) => {
 
             UNION ALL
 
-            -- SALES RETURN
-            SELECT sr.id
-            FROM sales_returns sr
-            WHERE sr.customer_id = c.id
-              AND sr.deleted_at IS NULL
-              AND sr.status = 'Printed'
-              ${branch_id ? 'AND sr.branch_id = :branch_id' : ''}
-
-            UNION ALL
-
-            -- OLD JEWEL
-            SELECT oj.id
-            FROM old_jewels oj
-            WHERE oj.customer_id = c.id
-              AND oj.deleted_at IS NULL
-              AND oj.status = 'Printed'
-              ${branch_id ? 'AND oj.branch_id = :branch_id' : ''}
-
-            UNION ALL
-
-            -- JEWEL REPAIR
-            SELECT jr.id
-            FROM jewel_repairs jr
-            WHERE jr.customer_id = c.id
-              AND jr.deleted_at IS NULL
-              AND jr.status = 'Completed'
-              ${branch_id ? 'AND jr.branch_id = :branch_id' : ''}
-
-          ) all_txns
+            SELECT o.id
+            FROM orders o
+            WHERE o.customer_id = c.id 
+              AND o.deleted_at IS NULL 
+              AND o.order_status <> 3  --except cancelled orders
+                ${branch_id
+                ? `
+                AND EXISTS (
+                  SELECT 1
+                  FROM order_items oi
+                  WHERE oi.order_id = o.id
+                    AND oi.branch_id = :branch_id
+                    AND oi.deleted_at IS NULL
+                    AND oi.item_status <> 'Cancelled'
+                ) `
+              : '' }
+          ) all_orders
         ) AS no_of_orders,
         c.created_at,
 
