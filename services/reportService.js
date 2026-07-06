@@ -1,299 +1,409 @@
-const { models, sequelize } = require("../models");
-const commonService = require("./commonService");
-const { dateFilter } = require("../helpers/dateHelper");
-const { calculateSellingPriceSync } = require("../services/productService");
+const { models, sequelize } = require('../models')
+const commonService = require('./commonService')
+const { dateFilter } = require('../helpers/dateHelper')
+const { calculateSellingPriceSync } = require('../services/productService')
 
 const getSalesInvoiceReport = async (req, res) => {
-    try {
-        const {
-            branch_id,
-            employee_id,
-            customer_id,
-            search,
-            from_date,
-            to_date,
-            date_filter,
-            page,
-            limit,
-        } = req.query;
+  try {
+    const {
+      branch_id,
+      employee_id,
+      customer_id,
+      search,
+      from_date,
+      to_date,
+      date_filter,
+      page,
+      limit
+    } = req.query
 
-        const usePagination = page !== undefined || limit !== undefined;
+    const usePagination = page !== undefined || limit !== undefined
+    const pageNum = usePagination ? parseInt(page || 1, 10) : null
+    const limitNum = usePagination ? parseInt(limit || 10, 10) : null
+    const offset = usePagination ? (pageNum - 1) * limitNum : null
 
-        const pageNum = usePagination ? parseInt(page || 1, 10) : null;
-        const limitNum = usePagination ? parseInt(limit || 10, 10) : null;
-        const offset = usePagination ? (pageNum - 1) * limitNum : null;
+    const replacements = {}
 
-        const replacements = {};
-
-        // 🔹 BASE WHERE
-        let baseWhere = `
-      WHERE sib.deleted_at IS NULL
-      AND sib.status = 'Invoice'
-    `;
-
-        let extraWhere = "";
-
-        if (branch_id) {
-            extraWhere += ` AND sib.branch_id = :branch_id`;
-            replacements.branch_id = +branch_id;
-        }
-
-        if (employee_id) {
-            extraWhere += ` AND sib.employee_id = :employee_id`;
-            replacements.employee_id = +employee_id;
-        }
-
-        if (customer_id) {
-            extraWhere += ` AND sib.customer_id = :customer_id`;
-            replacements.customer_id = +customer_id;
-        }
-
-        // Date filter
-        extraWhere += dateFilter(
-            { from_date, to_date, date_filter },
-            "sib.invoice_date",
-            replacements
-        );
-
-        // 🔹 SEARCH
-        let searchClause = "";
-        if (search) {
-            searchClause = `
-        AND (
-          fi.invoice_no ILIKE :search OR
-          c.customer_name ILIKE :search OR
-          e.employee_name ILIKE :search OR
-          adj.old_jewel_no ILIKE :search OR
-          adj.sales_return_no ILIKE :search OR
-          adj.scheme_no ILIKE :search OR
-          EXISTS (
-            SELECT 1 FROM sales_invoice_bill_items sii
-            LEFT JOIN "productItemDetails" pid ON pid.id = sii.product_item_detail_id
-            LEFT JOIN products p ON p.id = pid.product_id
-            WHERE sii.invoice_bill_id = fi.id
-            AND (
-              sii.product_name_snapshot ILIKE :search OR
-              pid.sku_id ILIKE :search OR
-              p.sku_id ILIKE :search
+    let offlineWhere = `
+            WHERE sib.deleted_at IS NULL
+            AND sib.status = 'Invoice'
+            AND EXISTS (
+                SELECT 1
+                FROM sales_invoice_bill_items sii_check
+                WHERE sii_check.invoice_bill_id = sib.id
+                AND sii_check.deleted_at IS NULL
+                AND sii_check.is_returned = false
             )
-          )
-        )
-      `;
-            replacements.search = `%${search}%`;
-        }
+        `
+    // ONLINE FILTER - Cancelled orders are excluded.
 
-        let query = `
-      WITH filtered_invoices AS (
-        SELECT
-          sib.id,
-          sib.invoice_no,
-          sib.invoice_date,
-          sib.customer_id,
-          sib.employee_id,
-          sib.branch_id,
-          sib.net_total,
-          sib.subtotal_amount,
-          sib.is_active,
-          sib.cgst_amount,
-          sib.sgst_amount,
-          sib.igst_amount,
-          sib.discount_amount,
-          sib.total_amount
-        FROM sales_invoice_bills sib
-        ${baseWhere}
-        ${extraWhere}
-        AND EXISTS (
-        SELECT 1
-        FROM sales_invoice_bill_items sii
-        WHERE sii.invoice_bill_id = sib.id
-          AND sii.deleted_at IS NULL
-          AND sii.is_returned = false
-        )
-      ),
-
-      adjustments AS (
-        SELECT
-          sales_invoice_id,
-
-          MAX(CASE WHEN adjustment_type_id = '2' THEN reference_no END) AS old_jewel_no,
-          SUM(CASE WHEN adjustment_type_id = '2' THEN adjustment_amount ELSE 0 END) AS old_jewel_amount,
-
-          MAX(CASE WHEN adjustment_type_id = '1' THEN reference_no END) AS sales_return_no,
-          SUM(CASE WHEN adjustment_type_id = '1' THEN adjustment_amount ELSE 0 END) AS sales_return_amount,
-
-          MAX(CASE WHEN adjustment_type_id = '3' THEN reference_no END) AS scheme_no,
-          SUM(CASE WHEN adjustment_type_id = '3' THEN adjustment_amount ELSE 0 END) AS scheme_amount
-
-        FROM sales_invoice_adjustments
-        WHERE deleted_at IS NULL
-        GROUP BY sales_invoice_id
-      ),
-
-      items AS (
-        SELECT
-          sii.invoice_bill_id,
-          JSON_AGG(
-            JSON_BUILD_OBJECT(
-              'product_item_detail_id', sii.product_item_detail_id,
-              'product_name', sii.product_name_snapshot,
-              'quantity', sii.quantity,
-              'rate', sii.rate,
-              'amount', sii.amount,
-              'product_sku_id', p.sku_id,
-              'product_item_sku_id', pid.sku_id,
-              'is_returned', sii.is_returned
+    let onlineWhere = `
+            WHERE o.deleted_at IS NULL
+            AND o.order_status <> 3
+            AND EXISTS (
+                SELECT 1
+                FROM order_items oi_check
+                WHERE oi_check.order_id = o.id
+                AND oi_check.deleted_at IS NULL
+                AND oi_check.item_status <> 'Cancelled'
             )
-          ) AS items
-        FROM sales_invoice_bill_items sii
-        LEFT JOIN "productItemDetails" pid ON pid.id = sii.product_item_detail_id
-        LEFT JOIN products p ON p.id = pid.product_id
-        WHERE sii.deleted_at IS NULL AND sii.is_returned = false
-        GROUP BY sii.invoice_bill_id
-      )
+        `
 
-      SELECT
-        fi.id,
-        fi.is_active,
-        fi.invoice_no,
-        fi.invoice_date,
-        c.customer_name,
-        e.employee_name,
-        fi.branch_id,
-        fi.customer_id,
-        fi.employee_id,
+    //Online order branch belongs to order_items.
+    if (branch_id) {
+      offlineWhere += `
+                AND sib.branch_id = :branch_id
+            `
 
-        i.items,
+      onlineWhere += `
+                AND EXISTS (
+                    SELECT 1
+                    FROM order_items oi_branch
+                    WHERE oi_branch.order_id = o.id
+                    AND oi_branch.deleted_at IS NULL
+                    AND oi_branch.item_status <> 'Cancelled'
+                    AND oi_branch.branch_id = :branch_id
+                )
+            `
 
-        fi.net_total,
-        fi.subtotal_amount,
-        fi.cgst_amount,
-        fi.sgst_amount,
-        fi.igst_amount,
-
-        adj.old_jewel_no,
-        adj.old_jewel_amount,
-        adj.sales_return_no,
-        adj.sales_return_amount,
-        adj.scheme_no,
-        adj.scheme_amount,
-
-        fi.discount_amount,
-        fi.total_amount
-
-      FROM filtered_invoices fi
-      LEFT JOIN items i ON i.invoice_bill_id = fi.id
-      LEFT JOIN customers c ON c.id = fi.customer_id
-      LEFT JOIN employees e ON e.id = fi.employee_id
-      LEFT JOIN adjustments adj ON adj.sales_invoice_id = fi.id
-
-      WHERE 1=1
-      ${searchClause}
-
-      ORDER BY fi.invoice_date DESC
-    `;
-
-        if (usePagination) {
-            query += ` LIMIT :limit OFFSET :offset`;
-            replacements.limit = limitNum;
-            replacements.offset = offset;
-        }
-
-        const [rows] = await sequelize.query(query, { replacements });
-
-        let total = null;
-
-        if (usePagination) {
-            const countQuery = `
-        SELECT COUNT(*) AS total
-        FROM sales_invoice_bills sib
-        ${baseWhere}
-        ${extraWhere}
-      `;
-
-            const [countResult] = await sequelize.query(countQuery, {
-                replacements,
-                type: sequelize.QueryTypes.SELECT,
-            });
-
-            total = Number(countResult.total);
-        }
-
-        const response = { list: rows };
-
-        if (usePagination) {
-            response.pagination = {
-                total,
-                page: pageNum,
-                limit: limitNum,
-                totalPages: Math.ceil(total / limitNum),
-            };
-        }
-
-        return commonService.okResponse(res, response);
-
-    } catch (err) {
-        console.error(err);
-        return commonService.handleError(res, err);
+      replacements.branch_id = Number(branch_id)
     }
-};
+
+    if (employee_id) {
+      offlineWhere += ` AND sib.employee_id = :employee_id `
+      replacements.employee_id = Number(employee_id)
+      onlineWhere += ` AND 1 = 0 ` // Online orders cannot match employee filter.
+    }
+
+    if (customer_id) {
+      offlineWhere += ` AND sib.customer_id = :customer_id `
+      onlineWhere += ` AND o.customer_id = :customer_id `
+      replacements.customer_id = Number(customer_id)
+    }
+
+    offlineWhere += dateFilter(
+      { from_date, to_date, date_filter },
+      'sib.invoice_date',
+      replacements
+    )
+
+    onlineWhere += dateFilter(
+      { from_date, to_date, date_filter },
+      'o.order_date',
+      replacements
+    )
+
+    const commonCTE = `
+            WITH offline_adjustments AS (
+                SELECT
+                    sales_invoice_id,
+                    MAX(CASE WHEN adjustment_type_id = '2' THEN reference_no END) AS old_jewel_no,
+                    SUM(CASE WHEN adjustment_type_id = '2' THEN adjustment_amount ELSE 0 END) AS old_jewel_amount,
+                    MAX(CASE WHEN adjustment_type_id = '1' THEN reference_no END) AS sales_return_no,
+                    SUM(CASE WHEN adjustment_type_id = '1' THEN adjustment_amount ELSE 0 END) AS sales_return_amount,
+                    MAX(CASE WHEN adjustment_type_id = '3' THEN reference_no END) AS scheme_no,
+                    SUM(CASE WHEN adjustment_type_id = '3' THEN adjustment_amount ELSE 0 END) AS scheme_amount
+                FROM sales_invoice_adjustments
+                WHERE deleted_at IS NULL
+                GROUP BY sales_invoice_id
+            ),
+            offline_sales AS (
+                SELECT
+                    sib.id,
+                    'OFFLINE'::TEXT AS sale_source,
+                    sib.invoice_no,
+                    sib.invoice_date::DATE AS sale_date,
+                    sib.customer_id,
+                    sib.employee_id,
+                    sib.branch_id,
+                    c.customer_name,
+                    e.employee_name,
+                    JSON_AGG(
+                        JSON_BUILD_OBJECT(
+                            'product_item_detail_id', sii.product_item_detail_id,
+                            'product_name', sii.product_name_snapshot,
+                            'quantity', sii.quantity,
+                            'rate', sii.rate,
+                            'amount', sii.amount,
+                            'product_sku_id', p.sku_id,
+                            'product_item_sku_id', pid.sku_id,
+                            'is_returned', sii.is_returned
+                        )
+                        ORDER BY sii.id
+                    ) AS items,
+                    sib.net_total,
+                    sib.subtotal_amount,
+                    sib.cgst_amount,
+                    sib.sgst_amount,
+                    sib.igst_amount,
+                    adj.old_jewel_no,
+
+                    COALESCE(
+                        adj.old_jewel_amount,
+                        0
+                    ) AS old_jewel_amount,
+                    adj.sales_return_no,
+
+                    COALESCE(
+                        adj.sales_return_amount,
+                        0
+                    ) AS sales_return_amount,
+
+                    adj.scheme_no,
+                    COALESCE(
+                        adj.scheme_amount,
+                        0
+                    ) AS scheme_amount,
+
+                    sib.discount_amount,
+                    sib.total_amount,
+                    sib.is_active
+                FROM sales_invoice_bills sib
+                INNER JOIN sales_invoice_bill_items sii ON sii.invoice_bill_id = sib.id AND sii.deleted_at IS NULL AND sii.is_returned = false
+                LEFT JOIN "productItemDetails" pid ON pid.id = sii.product_item_detail_id
+                LEFT JOIN products p ON p.id = pid.product_id
+                LEFT JOIN customers c ON c.id = sib.customer_id
+                LEFT JOIN employees e ON e.id = sib.employee_id
+                LEFT JOIN offline_adjustments adj ON adj.sales_invoice_id = sib.id
+                ${offlineWhere}
+                GROUP BY
+                    sib.id, c.customer_name, e.employee_name, adj.old_jewel_no, adj.old_jewel_amount,
+                    adj.sales_return_no,
+                    adj.sales_return_amount,
+                    adj.scheme_no,
+                    adj.scheme_amount
+            ),
+
+            online_sales AS (
+                SELECT
+                    o.id,
+                    'ONLINE'::TEXT AS sale_source,
+                    o.order_number AS invoice_no,
+                    o.order_date::DATE AS sale_date,
+                    o.customer_id,
+                    NULL::INTEGER AS employee_id,
+                    NULL::INTEGER AS branch_id,
+                    c.customer_name,
+                    NULL::TEXT AS employee_name,
+                    JSON_AGG(
+
+                        JSON_BUILD_OBJECT(
+                            'product_item_detail_id', oi.product_item_id,
+                            'product_name', oi.product_name,
+                            'quantity', oi.quantity,
+                            'rate', oi.rate,
+                            'amount', oi.amount,
+                            'product_sku_id', oi.sku_id,
+                            'product_item_sku_id', oi.sku_id,
+                            'is_returned', false,
+                            'branch_id', oi.branch_id
+                        )
+                        ORDER BY oi.id
+                    ) AS items,
+
+                    /*
+                     * Online order model does not have net_total.
+                     */
+                    o.subtotal AS net_total,
+                    o.subtotal AS subtotal_amount,
+                    0::NUMERIC AS cgst_amount,
+                    0::NUMERIC AS sgst_amount,
+                    o.tax_amount AS igst_amount,
+                    NULL::TEXT AS old_jewel_no,
+                    0::NUMERIC AS old_jewel_amount,
+                    NULL::TEXT AS sales_return_no,
+                    0::NUMERIC AS sales_return_amount,
+                    NULL::TEXT AS scheme_no,
+                    0::NUMERIC AS scheme_amount,
+                    o.discount_amount,
+                    o.total_amount,
+                    true AS is_active
+                FROM orders o
+                INNER JOIN order_items oi
+                    ON oi.order_id = o.id
+                    AND oi.deleted_at IS NULL
+                    AND oi.item_status <> 'Cancelled'
+                LEFT JOIN customers c
+                    ON c.id = o.customer_id
+
+                ${onlineWhere}
+                ${branch_id ? `AND oi.branch_id = :branch_id` : ''}
+
+                GROUP BY
+                    o.id,
+                    c.customer_name
+            ),
+
+            combined_sales AS (
+                SELECT * FROM offline_sales
+                UNION ALL
+                SELECT * FROM online_sales
+            )
+        `
+    let searchWhere = ''
+
+    if (search) {
+      searchWhere = `
+                WHERE (
+                    cs.invoice_no ILIKE :search
+                    OR cs.customer_name ILIKE :search
+                    OR cs.employee_name ILIKE :search
+                    OR cs.old_jewel_no ILIKE :search
+                    OR cs.sales_return_no ILIKE :search
+                    OR cs.scheme_no ILIKE :search
+                    OR EXISTS (
+                        SELECT 1
+                        FROM JSONB_ARRAY_ELEMENTS(
+                            cs.items::JSONB
+                        ) AS item
+                        WHERE
+                            item->>'product_name' ILIKE :search OR
+                            item->>'product_sku_id' ILIKE :search OR
+                            item->>'product_item_sku_id' ILIKE :search
+                    )
+                )
+            `
+
+      replacements.search = `%${search}%`
+    }
+
+
+    let query = `
+
+            ${commonCTE}
+            SELECT
+                cs.id,
+                cs.sale_source,
+                cs.is_active,
+                cs.invoice_no,
+                cs.sale_date AS invoice_date,
+                cs.customer_name,
+                cs.employee_name,
+                cs.branch_id,
+                cs.customer_id,
+                cs.employee_id,
+                cs.items,
+                cs.net_total,
+                cs.subtotal_amount,
+                cs.cgst_amount,
+                cs.sgst_amount,
+                cs.igst_amount,
+                cs.old_jewel_no,
+                cs.old_jewel_amount,
+                cs.sales_return_no,
+                cs.sales_return_amount,
+                cs.scheme_no,
+                cs.scheme_amount,
+                cs.discount_amount,
+                cs.total_amount
+            FROM combined_sales cs
+            ${searchWhere}
+            ORDER BY
+                cs.sale_date DESC,
+                cs.id DESC,
+                cs.sale_source DESC
+        `
+
+    if (usePagination) {
+      query += `
+                LIMIT :limit
+                OFFSET :offset
+            `
+
+      replacements.limit = limitNum
+      replacements.offset = offset
+    }
+
+    const [rows] = await sequelize.query(query, { replacements })
+
+   
+    let total = null
+    if (usePagination) {
+      const countQuery = `
+                ${commonCTE}
+                SELECT COUNT(*) AS total FROM combined_sales cs
+                ${searchWhere}
+            `
+      const [countResult] = await sequelize.query(countQuery, { replacements, type: sequelize.QueryTypes.SELECT })
+      total = Number(countResult.total)
+    }
+
+    const response = { list: rows }
+
+    if (usePagination) {
+      response.pagination = {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum)
+      }
+    }
+
+    return commonService.okResponse(res, response)
+  } catch (err) {
+    console.error(err)
+
+    return commonService.handleError(res, err)
+  }
+}
 
 const getSalesReturnReport = async (req, res) => {
-    try {
-        const {
-            branch_id,
-            employee_id,
-            customer_id,
-            search,
-            from_date,
-            to_date,
-            date_filter,
-            page,
-            limit,
-        } = req.query;
+  try {
+    const {
+      branch_id,
+      employee_id,
+      customer_id,
+      search,
+      from_date,
+      to_date,
+      date_filter,
+      page,
+      limit
+    } = req.query
 
-        const usePagination = page !== undefined && limit !== undefined;
+    const usePagination = page !== undefined && limit !== undefined
 
-        const pageNum = usePagination ? parseInt(page, 10) : null;
-        const limitNum = usePagination ? parseInt(limit, 10) : null;
-        const offset = usePagination ? (pageNum - 1) * limitNum : null;
+    const pageNum = usePagination ? parseInt(page, 10) : null
+    const limitNum = usePagination ? parseInt(limit, 10) : null
+    const offset = usePagination ? (pageNum - 1) * limitNum : null
 
-        const replacements = {};
+    const replacements = {}
 
-        // 🔹 BASE WHERE
-        let baseWhere = `
+    // 🔹 BASE WHERE
+    let baseWhere = `
       WHERE sr.deleted_at IS NULL
       AND sr.is_active = true
       AND sr.status = 'Printed'
-    `;
+    `
 
-        let extraWhere = "";
+    let extraWhere = ''
 
-        if (branch_id) {
-            extraWhere += ` AND sr.branch_id = :branch_id`;
-            replacements.branch_id = +branch_id;
-        }
+    if (branch_id) {
+      extraWhere += ` AND sr.branch_id = :branch_id`
+      replacements.branch_id = +branch_id
+    }
 
-        if (employee_id) {
-            extraWhere += ` AND sr.employee_id = :employee_id`;
-            replacements.employee_id = +employee_id;
-        }
+    if (employee_id) {
+      extraWhere += ` AND sr.employee_id = :employee_id`
+      replacements.employee_id = +employee_id
+    }
 
-        if (customer_id) {
-            extraWhere += ` AND sr.customer_id = :customer_id`;
-            replacements.customer_id = +customer_id;
-        }
+    if (customer_id) {
+      extraWhere += ` AND sr.customer_id = :customer_id`
+      replacements.customer_id = +customer_id
+    }
 
-        // 🔹 DATE FILTER
-        extraWhere += dateFilter(
-            { from_date, to_date, date_filter },
-            "sr.return_date",
-            replacements
-        );
+    // 🔹 DATE FILTER
+    extraWhere += dateFilter(
+      { from_date, to_date, date_filter },
+      'sr.return_date',
+      replacements
+    )
 
-        // 🔹 SEARCH
-        let searchClause = "";
-        if (search) {
-            searchClause = `
+    // 🔹 SEARCH
+    let searchClause = ''
+    if (search) {
+      searchClause = `
         AND (
           fr.sales_return_no ILIKE :search OR
           c.customer_name ILIKE :search OR
@@ -311,12 +421,12 @@ const getSalesReturnReport = async (req, res) => {
             )
           )
         )
-      `;
-            replacements.search = `%${search}%`;
-        }
+      `
+      replacements.search = `%${search}%`
+    }
 
-        // 🔹 MAIN QUERY
-        let query = `
+    // 🔹 MAIN QUERY
+    let query = `
       WITH filtered_returns AS (
         SELECT
           sr.id,
@@ -385,111 +495,110 @@ const getSalesReturnReport = async (req, res) => {
       ${searchClause}
 
       ORDER BY fr.return_date DESC
-    `;
+    `
 
-        // 🔹 PAGINATION
-        if (usePagination) {
-            query += ` LIMIT :limit OFFSET :offset`;
-            replacements.limit = limitNum;
-            replacements.offset = offset;
-        }
+    // 🔹 PAGINATION
+    if (usePagination) {
+      query += ` LIMIT :limit OFFSET :offset`
+      replacements.limit = limitNum
+      replacements.offset = offset
+    }
 
-        const [rows] = await sequelize.query(query, { replacements });
+    const [rows] = await sequelize.query(query, { replacements })
 
-        let total = null;
+    let total = null
 
-        if (usePagination) {
-            const countQuery = `
+    if (usePagination) {
+      const countQuery = `
         SELECT COUNT(*) AS total
         FROM sales_returns sr
         ${baseWhere}
         ${extraWhere}
-      `;
+      `
 
-            const [countResult] = await sequelize.query(countQuery, {
-                replacements,
-                type: sequelize.QueryTypes.SELECT,
-            });
+      const [countResult] = await sequelize.query(countQuery, {
+        replacements,
+        type: sequelize.QueryTypes.SELECT
+      })
 
-            total = Number(countResult.total);
-        }
-
-        const response = { list: rows };
-
-        if (usePagination) {
-            response.pagination = {
-                total,
-                page: pageNum,
-                limit: limitNum,
-                totalPages: Math.ceil(total / limitNum),
-            };
-        }
-
-        return commonService.okResponse(res, response);
-
-    } catch (err) {
-        console.error(err);
-        return commonService.handleError(res, err);
+      total = Number(countResult.total)
     }
-};
+
+    const response = { list: rows }
+
+    if (usePagination) {
+      response.pagination = {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum)
+      }
+    }
+
+    return commonService.okResponse(res, response)
+  } catch (err) {
+    console.error(err)
+    return commonService.handleError(res, err)
+  }
+}
 
 const getOldJewelReport = async (req, res) => {
-    try {
-        const {
-            branch_id,
-            employee_id,
-            customer_id,
-            search,
-            from_date,
-            to_date,
-            date_filter,
-            page,
-            limit,
-        } = req.query;
+  try {
+    const {
+      branch_id,
+      employee_id,
+      customer_id,
+      search,
+      from_date,
+      to_date,
+      date_filter,
+      page,
+      limit
+    } = req.query
 
-        const usePagination = page !== undefined && limit !== undefined;
+    const usePagination = page !== undefined && limit !== undefined
 
-        const pageNum = usePagination ? parseInt(page, 10) : null;
-        const limitNum = usePagination ? parseInt(limit, 10) : null;
-        const offset = usePagination ? (pageNum - 1) * limitNum : null;
+    const pageNum = usePagination ? parseInt(page, 10) : null
+    const limitNum = usePagination ? parseInt(limit, 10) : null
+    const offset = usePagination ? (pageNum - 1) * limitNum : null
 
-        const replacements = {};
+    const replacements = {}
 
-        // 🔹 BASE WHERE
-        let baseWhere = `
+    // 🔹 BASE WHERE
+    let baseWhere = `
       WHERE oj.deleted_at IS NULL
       AND oj.is_active = true
       AND oj.status = 'Printed'
-    `;
+    `
 
-        let extraWhere = "";
+    let extraWhere = ''
 
-        if (branch_id) {
-            extraWhere += ` AND oj.branch_id = :branch_id`;
-            replacements.branch_id = +branch_id;
-        }
+    if (branch_id) {
+      extraWhere += ` AND oj.branch_id = :branch_id`
+      replacements.branch_id = +branch_id
+    }
 
-        if (employee_id) {
-            extraWhere += ` AND oj.employee_id = :employee_id`;
-            replacements.employee_id = +employee_id;
-        }
+    if (employee_id) {
+      extraWhere += ` AND oj.employee_id = :employee_id`
+      replacements.employee_id = +employee_id
+    }
 
-        if (customer_id) {
-            extraWhere += ` AND oj.customer_id = :customer_id`;
-            replacements.customer_id = +customer_id;
-        }
+    if (customer_id) {
+      extraWhere += ` AND oj.customer_id = :customer_id`
+      replacements.customer_id = +customer_id
+    }
 
-        // 🔹 DATE FILTER
-        extraWhere += dateFilter(
-            { from_date, to_date, date_filter },
-            "oj.date",
-            replacements
-        );
+    // 🔹 DATE FILTER
+    extraWhere += dateFilter(
+      { from_date, to_date, date_filter },
+      'oj.date',
+      replacements
+    )
 
-        // 🔹 SEARCH
-        let searchClause = "";
-        if (search) {
-            searchClause = `
+    // 🔹 SEARCH
+    let searchClause = ''
+    if (search) {
+      searchClause = `
         AND (
           fo.old_jewel_code ILIKE :search OR
           c.customer_name ILIKE :search OR
@@ -505,12 +614,12 @@ const getOldJewelReport = async (req, res) => {
             )
           )
         )
-      `;
-            replacements.search = `%${search}%`;
-        }
+      `
+      replacements.search = `%${search}%`
+    }
 
-        // 🔹 MAIN QUERY
-        let query = `
+    // 🔹 MAIN QUERY
+    let query = `
       WITH filtered_old_jewels AS (
         SELECT
           oj.id,
@@ -589,111 +698,110 @@ const getOldJewelReport = async (req, res) => {
       ${searchClause}
 
       ORDER BY fo.date DESC
-    `;
+    `
 
-        // 🔹 PAGINATION
-        if (usePagination) {
-            query += ` LIMIT :limit OFFSET :offset`;
-            replacements.limit = limitNum;
-            replacements.offset = offset;
-        }
+    // 🔹 PAGINATION
+    if (usePagination) {
+      query += ` LIMIT :limit OFFSET :offset`
+      replacements.limit = limitNum
+      replacements.offset = offset
+    }
 
-        const [rows] = await sequelize.query(query, { replacements });
+    const [rows] = await sequelize.query(query, { replacements })
 
-        let total = null;
+    let total = null
 
-        if (usePagination) {
-            const countQuery = `
+    if (usePagination) {
+      const countQuery = `
         SELECT COUNT(*) AS total
         FROM old_jewels oj
         ${baseWhere}
         ${extraWhere}
-      `;
+      `
 
-            const [countResult] = await sequelize.query(countQuery, {
-                replacements,
-                type: sequelize.QueryTypes.SELECT,
-            });
+      const [countResult] = await sequelize.query(countQuery, {
+        replacements,
+        type: sequelize.QueryTypes.SELECT
+      })
 
-            total = Number(countResult.total);
-        }
-
-        const response = { list: rows };
-
-        if (usePagination) {
-            response.pagination = {
-                total,
-                page: pageNum,
-                limit: limitNum,
-                totalPages: Math.ceil(total / limitNum),
-            };
-        }
-
-        return commonService.okResponse(res, response);
-
-    } catch (err) {
-        console.error(err);
-        return commonService.handleError(res, err);
+      total = Number(countResult.total)
     }
-}; 
+
+    const response = { list: rows }
+
+    if (usePagination) {
+      response.pagination = {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum)
+      }
+    }
+
+    return commonService.okResponse(res, response)
+  } catch (err) {
+    console.error(err)
+    return commonService.handleError(res, err)
+  }
+}
 
 const getJewelRepairReport = async (req, res) => {
-    try {
-        const {
-            branch_id,
-            employee_id,
-            customer_id,
-            search,
-            from_date,
-            to_date,
-            date_filter,
-            page,
-            limit,
-        } = req.query;
+  try {
+    const {
+      branch_id,
+      employee_id,
+      customer_id,
+      search,
+      from_date,
+      to_date,
+      date_filter,
+      page,
+      limit
+    } = req.query
 
-        const usePagination = page !== undefined && limit !== undefined;
+    const usePagination = page !== undefined && limit !== undefined
 
-        const pageNum = usePagination ? parseInt(page, 10) : null;
-        const limitNum = usePagination ? parseInt(limit, 10) : null;
-        const offset = usePagination ? (pageNum - 1) * limitNum : null;
+    const pageNum = usePagination ? parseInt(page, 10) : null
+    const limitNum = usePagination ? parseInt(limit, 10) : null
+    const offset = usePagination ? (pageNum - 1) * limitNum : null
 
-        const replacements = {};
+    const replacements = {}
 
-        // 🔹 BASE WHERE
-        let baseWhere = `
+    // 🔹 BASE WHERE
+    let baseWhere = `
       WHERE jr.deleted_at IS NULL
       AND jr.is_active = true
       AND jr.status = 'Completed'
-    `;
+    `
 
-        let extraWhere = "";
+    let extraWhere = ''
 
-        if (branch_id) {
-            extraWhere += ` AND jr.branch_id = :branch_id`;
-            replacements.branch_id = +branch_id;
-        }
+    if (branch_id) {
+      extraWhere += ` AND jr.branch_id = :branch_id`
+      replacements.branch_id = +branch_id
+    }
 
-        if (employee_id) {
-            extraWhere += ` AND jr.employee_id = :employee_id`;
-            replacements.employee_id = +employee_id;
-        }
+    if (employee_id) {
+      extraWhere += ` AND jr.employee_id = :employee_id`
+      replacements.employee_id = +employee_id
+    }
 
-        if (customer_id) {
-            extraWhere += ` AND jr.customer_id = :customer_id`;
-            replacements.customer_id = +customer_id;
-        }
+    if (customer_id) {
+      extraWhere += ` AND jr.customer_id = :customer_id`
+      replacements.customer_id = +customer_id
+    }
 
-        // 🔹 DATE FILTER
-        extraWhere += dateFilter(
-            { from_date, to_date, date_filter },
-            "jr.date",
-            replacements
-        );
+    // 🔹 DATE FILTER
+    extraWhere += dateFilter(
+      { from_date, to_date, date_filter },
+      'jr.date',
+      replacements
+    )
 
-        // 🔹 SEARCH
-        let searchClause = "";
-        if (search) {
-            searchClause = `
+    // 🔹 SEARCH
+    let searchClause = ''
+    if (search) {
+      searchClause = `
         AND (
           fr.repair_code ILIKE :search OR
           c.customer_name ILIKE :search OR
@@ -709,12 +817,12 @@ const getJewelRepairReport = async (req, res) => {
             )
           )
         )
-      `;
-            replacements.search = `%${search}%`;
-        }
+      `
+      replacements.search = `%${search}%`
+    }
 
-        // 🔹 MAIN QUERY
-        let query = `
+    // 🔹 MAIN QUERY
+    let query = `
       WITH filtered_repairs AS (
         SELECT
           jr.id,
@@ -794,150 +902,149 @@ const getJewelRepairReport = async (req, res) => {
       ${searchClause}
 
       ORDER BY fr.date DESC
-    `;
+    `
 
-        // 🔹 PAGINATION
-        if (usePagination) {
-            query += ` LIMIT :limit OFFSET :offset`;
-            replacements.limit = limitNum;
-            replacements.offset = offset;
-        }
+    // 🔹 PAGINATION
+    if (usePagination) {
+      query += ` LIMIT :limit OFFSET :offset`
+      replacements.limit = limitNum
+      replacements.offset = offset
+    }
 
-        const [rows] = await sequelize.query(query, { replacements });
+    const [rows] = await sequelize.query(query, { replacements })
 
-        let total = null;
+    let total = null
 
-        if (usePagination) {
-            const countQuery = `
+    if (usePagination) {
+      const countQuery = `
         SELECT COUNT(*) AS total
         FROM jewel_repairs jr
         ${baseWhere}
         ${extraWhere}
-      `;
+      `
 
-            const [countResult] = await sequelize.query(countQuery, {
-                replacements,
-                type: sequelize.QueryTypes.SELECT,
-            });
+      const [countResult] = await sequelize.query(countQuery, {
+        replacements,
+        type: sequelize.QueryTypes.SELECT
+      })
 
-            total = Number(countResult.total);
-        }
-
-        const response = { list: rows };
-
-        if (usePagination) {
-            response.pagination = {
-                total,
-                page: pageNum,
-                limit: limitNum,
-                totalPages: Math.ceil(total / limitNum),
-            };
-        }
-
-        return commonService.okResponse(res, response);
-
-    } catch (err) {
-        console.error(err);
-        return commonService.handleError(res, err);
+      total = Number(countResult.total)
     }
-};
+
+    const response = { list: rows }
+
+    if (usePagination) {
+      response.pagination = {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum)
+      }
+    }
+
+    return commonService.okResponse(res, response)
+  } catch (err) {
+    console.error(err)
+    return commonService.handleError(res, err)
+  }
+}
 
 const getPurchaseReport = async (req, res) => {
-    try {
-        const {
-            branch_id,
-            vendor_id,
-            grn_no,
-            ref_no,
-            material_type_id,
-            category_id,
-            subcategory_id,
-            search,
-            from_date,
-            to_date,
-            date_filter,
-            page,
-            limit,
-        } = req.query;
+  try {
+    const {
+      branch_id,
+      vendor_id,
+      grn_no,
+      ref_no,
+      material_type_id,
+      category_id,
+      subcategory_id,
+      search,
+      from_date,
+      to_date,
+      date_filter,
+      page,
+      limit
+    } = req.query
 
-        const usePagination = page !== undefined && limit !== undefined;
+    const usePagination = page !== undefined && limit !== undefined
 
-        const pageNum = usePagination ? parseInt(page, 10) : null;
-        const limitNum = usePagination ? parseInt(limit, 10) : null;
-        const offset = usePagination ? (pageNum - 1) * limitNum : null;
+    const pageNum = usePagination ? parseInt(page, 10) : null
+    const limitNum = usePagination ? parseInt(limit, 10) : null
+    const offset = usePagination ? (pageNum - 1) * limitNum : null
 
-        const replacements = {};
+    const replacements = {}
 
-        // 🔹 BASE WHERE (GRN)
-        let baseWhere = `
+    // 🔹 BASE WHERE (GRN)
+    let baseWhere = `
       WHERE g.deleted_at IS NULL
       AND g.is_active = true
-    `;
+    `
 
-        let extraWhere = "";
+    let extraWhere = ''
 
-        if (branch_id) {
-            extraWhere += ` AND g.branch_id = :branch_id`;
-            replacements.branch_id = +branch_id;
-        }
+    if (branch_id) {
+      extraWhere += ` AND g.branch_id = :branch_id`
+      replacements.branch_id = +branch_id
+    }
 
-        if (vendor_id) {
-            extraWhere += ` AND g.vendor_id = :vendor_id`;
-            replacements.vendor_id = +vendor_id;
-        }
+    if (vendor_id) {
+      extraWhere += ` AND g.vendor_id = :vendor_id`
+      replacements.vendor_id = +vendor_id
+    }
 
-        if (grn_no) {
-            extraWhere += ` AND g.grn_no ILIKE :grn_no`;
-            replacements.grn_no = `%${grn_no}%`;
-        }
+    if (grn_no) {
+      extraWhere += ` AND g.grn_no ILIKE :grn_no`
+      replacements.grn_no = `%${grn_no}%`
+    }
 
-        // 🔹 DATE FILTER
-        extraWhere += dateFilter(
-            { from_date, to_date, date_filter },
-            "g.grn_date",
-            replacements
-        );
+    // 🔹 DATE FILTER
+    extraWhere += dateFilter(
+      { from_date, to_date, date_filter },
+      'g.grn_date',
+      replacements
+    )
 
-        // 🔹 ITEM FILTER (for EXISTS)
-        let itemFilter = `
+    // 🔹 ITEM FILTER (for EXISTS)
+    let itemFilter = `
       gi.deleted_at IS NULL
-    `;
+    `
 
-        if (ref_no) {
-            itemFilter += ` AND gi.ref_no ILIKE :ref_no`;
-            replacements.ref_no = `%${ref_no}%`;
-        }
+    if (ref_no) {
+      itemFilter += ` AND gi.ref_no ILIKE :ref_no`
+      replacements.ref_no = `%${ref_no}%`
+    }
 
-        if (material_type_id) {
-            itemFilter += ` AND gi.material_type_id = :material_type_id`;
-            replacements.material_type_id = +material_type_id;
-        }
+    if (material_type_id) {
+      itemFilter += ` AND gi.material_type_id = :material_type_id`
+      replacements.material_type_id = +material_type_id
+    }
 
-        if (category_id) {
-            itemFilter += ` AND gi.category_id = :category_id`;
-            replacements.category_id = +category_id;
-        }
+    if (category_id) {
+      itemFilter += ` AND gi.category_id = :category_id`
+      replacements.category_id = +category_id
+    }
 
-        if (subcategory_id) {
-            itemFilter += ` AND gi.subcategory_id = :subcategory_id`;
-            replacements.subcategory_id = +subcategory_id;
-        }
+    if (subcategory_id) {
+      itemFilter += ` AND gi.subcategory_id = :subcategory_id`
+      replacements.subcategory_id = +subcategory_id
+    }
 
-        // 🔹 APPLY ITEM FILTER TO GRN
-        if (ref_no || material_type_id || category_id || subcategory_id) {
-            extraWhere += `
+    // 🔹 APPLY ITEM FILTER TO GRN
+    if (ref_no || material_type_id || category_id || subcategory_id) {
+      extraWhere += `
         AND EXISTS (
           SELECT 1 FROM "grnItems" gi
           WHERE gi.grn_id = g.id
           AND ${itemFilter}
         )
-      `;
-        }
+      `
+    }
 
-        // 🔹 SEARCH
-        let searchClause = "";
-        if (search) {
-            searchClause = `
+    // 🔹 SEARCH
+    let searchClause = ''
+    if (search) {
+      searchClause = `
         AND (
           fg.grn_no ILIKE :search OR
           v.vendor_name ILIKE :search OR
@@ -956,12 +1063,12 @@ const getPurchaseReport = async (req, res) => {
             )
           )
         )
-      `;
-            replacements.search = `%${search}%`;
-        }
+      `
+      replacements.search = `%${search}%`
+    }
 
-        // 🔹 MAIN QUERY
-        let query = `
+    // 🔹 MAIN QUERY
+    let query = `
       WITH filtered_grns AS (
         SELECT
           g.id,
@@ -1036,54 +1143,53 @@ const getPurchaseReport = async (req, res) => {
       ${searchClause}
 
       ORDER BY fg.grn_date DESC
-    `;
+    `
 
-        // 🔹 PAGINATION
-        if (usePagination) {
-            query += ` LIMIT :limit OFFSET :offset`;
-            replacements.limit = limitNum;
-            replacements.offset = offset;
-        }
+    // 🔹 PAGINATION
+    if (usePagination) {
+      query += ` LIMIT :limit OFFSET :offset`
+      replacements.limit = limitNum
+      replacements.offset = offset
+    }
 
-        const [rows] = await sequelize.query(query, { replacements });
+    const [rows] = await sequelize.query(query, { replacements })
 
-        let total = null;
+    let total = null
 
-        // 🔹 COUNT QUERY
-        if (usePagination) {
-            const countQuery = `
+    // 🔹 COUNT QUERY
+    if (usePagination) {
+      const countQuery = `
         SELECT COUNT(*) AS total
         FROM grns g
         ${baseWhere}
         ${extraWhere}
-      `;
+      `
 
-            const [countResult] = await sequelize.query(countQuery, {
-                replacements,
-                type: sequelize.QueryTypes.SELECT,
-            });
+      const [countResult] = await sequelize.query(countQuery, {
+        replacements,
+        type: sequelize.QueryTypes.SELECT
+      })
 
-            total = Number(countResult.total);
-        }
-
-        const response = { list: rows };
-
-        if (usePagination) {
-            response.pagination = {
-                total,
-                page: pageNum,
-                limit: limitNum,
-                totalPages: Math.ceil(total / limitNum),
-            };
-        }
-
-        return commonService.okResponse(res, response);
-
-    } catch (err) {
-        console.error(err);
-        return commonService.handleError(res, err);
+      total = Number(countResult.total)
     }
-};
+
+    const response = { list: rows }
+
+    if (usePagination) {
+      response.pagination = {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum)
+      }
+    }
+
+    return commonService.okResponse(res, response)
+  } catch (err) {
+    console.error(err)
+    return commonService.handleError(res, err)
+  }
+}
 
 const getProductWiseReport = async (req, res) => {
   try {
@@ -1097,56 +1203,56 @@ const getProductWiseReport = async (req, res) => {
       ref_no,
       search,
       page,
-      limit,
-    } = req.query;
+      limit
+    } = req.query
 
-    const usePagination = page !== undefined && limit !== undefined;
+    const usePagination = page !== undefined && limit !== undefined
 
-    const pageNum = usePagination ? parseInt(page, 10) : null;
-    const limitNum = usePagination ? parseInt(limit, 10) : null;
-    const offset = usePagination ? (pageNum - 1) * limitNum : null;
+    const pageNum = usePagination ? parseInt(page, 10) : null
+    const limitNum = usePagination ? parseInt(limit, 10) : null
+    const offset = usePagination ? (pageNum - 1) * limitNum : null
 
-    const replacements = {};
+    const replacements = {}
 
     // 🔹 BASE WHERE (PRODUCT LEVEL - BEST PRACTICE)
     let where = `
       WHERE p.deleted_at IS NULL
       AND p.status = 'Active'
-    `;
+    `
 
     if (branch_id) {
-      where += ` AND p.branch_id = :branch_id`;
-      replacements.branch_id = +branch_id;
+      where += ` AND p.branch_id = :branch_id`
+      replacements.branch_id = +branch_id
     }
 
     if (vendor_id) {
-      where += ` AND p.vendor_id = :vendor_id`;
-      replacements.vendor_id = +vendor_id;
+      where += ` AND p.vendor_id = :vendor_id`
+      replacements.vendor_id = +vendor_id
     }
 
     if (material_type_id) {
-      where += ` AND p.material_type_id = :material_type_id`;
-      replacements.material_type_id = +material_type_id;
+      where += ` AND p.material_type_id = :material_type_id`
+      replacements.material_type_id = +material_type_id
     }
 
     if (category_id) {
-      where += ` AND p.category_id = :category_id`;
-      replacements.category_id = +category_id;
+      where += ` AND p.category_id = :category_id`
+      replacements.category_id = +category_id
     }
 
     if (subcategory_id) {
-      where += ` AND p.subcategory_id = :subcategory_id`;
-      replacements.subcategory_id = +subcategory_id;
+      where += ` AND p.subcategory_id = :subcategory_id`
+      replacements.subcategory_id = +subcategory_id
     }
 
     if (grn_no) {
-      where += ` AND g.grn_no ILIKE :grn_no`;
-      replacements.grn_no = `%${grn_no}%`;
+      where += ` AND g.grn_no ILIKE :grn_no`
+      replacements.grn_no = `%${grn_no}%`
     }
 
     if (ref_no) {
-      where += ` AND gi.ref_no ILIKE :ref_no`;
-      replacements.ref_no = `%${ref_no}%`;
+      where += ` AND gi.ref_no ILIKE :ref_no`
+      replacements.ref_no = `%${ref_no}%`
     }
 
     // 🔍 SEARCH
@@ -1163,8 +1269,8 @@ const getProductWiseReport = async (req, res) => {
           p.sku_id ILIKE :search OR
           pid.sku_id ILIKE :search
         )
-      `;
-      replacements.search = `%${search}%`;
+      `
+      replacements.search = `%${search}%`
     }
 
     // 🔹 MAIN QUERY
@@ -1233,7 +1339,7 @@ const getProductWiseReport = async (req, res) => {
       LEFT JOIN categories c ON c.id = p.category_id
       LEFT JOIN subcategories sc ON sc.id = p.subcategory_id
 
-      ${ where }
+      ${where}
 
       GROUP BY
         g.grn_no,
@@ -1249,45 +1355,45 @@ const getProductWiseReport = async (req, res) => {
           p.id
 
       ORDER BY g.grn_date DESC
-    `;
+    `
 
     if (usePagination) {
-      query += ` LIMIT :limit OFFSET :offset`;
-      replacements.limit = limitNum;
-      replacements.offset = offset;
+      query += ` LIMIT :limit OFFSET :offset`
+      replacements.limit = limitNum
+      replacements.offset = offset
     }
 
     const rows = await sequelize.query(query, {
       replacements,
-      type: sequelize.QueryTypes.SELECT,
-    });
+      type: sequelize.QueryTypes.SELECT
+    })
 
     // Batch additional details for every item so the selling price matches
     // the product create/edit calculation (which includes "others" value).
-    const allItemIds = rows.flatMap((row) =>
-      (row.items || []).map((item) => item.item_id).filter(Boolean)
-    );
+    const allItemIds = rows.flatMap(row =>
+      (row.items || []).map(item => item.item_id).filter(Boolean)
+    )
 
     const allAdds = allItemIds.length
       ? await models.ProductAdditionalDetail.findAll({
-          where: { item_detail_id: allItemIds },
-          raw: true,
-        })
-      : [];
+        where: { item_detail_id: allItemIds },
+        raw: true
+      })
+      : []
 
-    const addsByItem = {};
-    allAdds.forEach((a) => ((addsByItem[a.item_detail_id] ??= []).push(a)));
+    const addsByItem = {}
+    allAdds.forEach(a => (addsByItem[a.item_detail_id] ??= []).push(a))
 
     // SELLING PRICE CALCULATION
-    const finalRows = rows.map((row) => {
-      let totalSellingPrice = 0;
+    const finalRows = rows.map(row => {
+      let totalSellingPrice = 0
 
-      const items = row.items || [];
+      const items = row.items || []
 
       // GRN purchase rate (per gram) for this product
-      const purchaseRatePerG = Number(row.rate_per_g || 0);
+      const purchaseRatePerG = Number(row.rate_per_g || 0)
 
-      const calculatedItems = items.map((item) => {
+      const calculatedItems = items.map(item => {
         const calc = calculateSellingPriceSync(
           { product_type: row.product_type },
           {
@@ -1299,37 +1405,38 @@ const getProductWiseReport = async (req, res) => {
             wastage_type: item.wastage_type,
             // per-item rate from productItemDetails (not the undefined row.rate_per_g)
             rate_per_gram: item.rate_per_gram,
-            rate_per_gram_type: item.rate_per_gram_type,
+            rate_per_gram_type: item.rate_per_gram_type
           },
           addsByItem[item.item_id] || [],
           row.material_price
-        );
+        )
 
-        const itemSellingPrice = Number(calc.selling_price || 0);
-        const itemPurchasePrice = purchaseRatePerG * Number(item.net_weight || 0);
+        const itemSellingPrice = Number(calc.selling_price || 0)
+        const itemPurchasePrice =
+          purchaseRatePerG * Number(item.net_weight || 0)
 
-        totalSellingPrice += itemSellingPrice;
+        totalSellingPrice += itemSellingPrice
 
         return {
           ...item,
           purchase_price: Number(itemPurchasePrice.toFixed(2)),
           selling_price: Number(itemSellingPrice.toFixed(2)),
-          profit: Number((itemSellingPrice - itemPurchasePrice).toFixed(2)),
-        };
-      });
+          profit: Number((itemSellingPrice - itemPurchasePrice).toFixed(2))
+        }
+      })
 
-      const purchasePrice = Number(row.purchase_price || 0);
+      const purchasePrice = Number(row.purchase_price || 0)
 
       return {
         ...row,
         items: calculatedItems,
         selling_price: Number(totalSellingPrice.toFixed(2)),
-        profit: Number((totalSellingPrice - purchasePrice).toFixed(2)),
-      };
-    });
+        profit: Number((totalSellingPrice - purchasePrice).toFixed(2))
+      }
+    })
 
     // 🔹 COUNT
-    let total = null;
+    let total = null
     if (usePagination) {
       const countQuery = `
         SELECT COUNT(DISTINCT p.id) AS total
@@ -1344,41 +1451,40 @@ const getProductWiseReport = async (req, res) => {
         LEFT JOIN "productItemDetails" pid ON pid.product_id = p.id
 
         ${where}
-      `;
+      `
 
       const [countResult] = await sequelize.query(countQuery, {
         replacements,
-        type: sequelize.QueryTypes.SELECT,
-      });
+        type: sequelize.QueryTypes.SELECT
+      })
 
-      total = Number(countResult.total);
+      total = Number(countResult.total)
     }
 
-    const response = { list: finalRows };
+    const response = { list: finalRows }
 
     if (usePagination) {
       response.pagination = {
         total,
         page: pageNum,
         limit: limitNum,
-        totalPages: Math.ceil(total / limitNum),
-      };
+        totalPages: Math.ceil(total / limitNum)
+      }
     }
 
-    return commonService.okResponse(res, response);
-
+    return commonService.okResponse(res, response)
   } catch (err) {
-    console.error(err);
-    return commonService.handleError(res, err);
+    console.error(err)
+    return commonService.handleError(res, err)
   }
-};
+}
 
 const getVendorLedgerReport = async (req, res) => {
   try {
-    const { vendor_id, from_date, to_date } = req.query;
+    const { vendor_id, from_date, to_date } = req.query
 
-    const fromDate = from_date || '2000-01-01';
-    const toDate = to_date || new Date().toISOString().split('T')[0];
+    const fromDate = from_date || '2000-01-01'
+    const toDate = to_date || new Date().toISOString().split('T')[0]
 
     const sql = `
         SELECT * FROM (
@@ -1459,7 +1565,7 @@ const getVendorLedgerReport = async (req, res) => {
 
       ) t
       ORDER BY date ASC;
-    `;
+    `
 
     const data = await sequelize.query(sql, {
       replacements: {
@@ -1467,31 +1573,31 @@ const getVendorLedgerReport = async (req, res) => {
         from_date: fromDate,
         to_date: toDate
       },
-      type: sequelize.QueryTypes.SELECT,
-    });
+      type: sequelize.QueryTypes.SELECT
+    })
 
-    let totalDebit = 0;
-    let totalCredit = 0;
-    let runningBalance = 0;
+    let totalDebit = 0
+    let totalCredit = 0
+    let runningBalance = 0
 
     const formatted = data.map(row => {
-      const debit = parseFloat(row.debit || 0);
-      const credit = parseFloat(row.credit || 0);
+      const debit = parseFloat(row.debit || 0)
+      const credit = parseFloat(row.credit || 0)
 
-      totalDebit += debit;
-      totalCredit += credit;
+      totalDebit += debit
+      totalCredit += credit
 
-      runningBalance += (credit - debit);
+      runningBalance += credit - debit
 
       return {
         ...row,
         debit: debit.toFixed(2),
         credit: credit.toFixed(2),
         running_balance: runningBalance.toFixed(2)
-      };
-    });
+      }
+    })
 
-    const balance = totalCredit - totalDebit;
+    const balance = totalCredit - totalDebit
 
     return commonService.okResponse(res, {
       data: formatted,
@@ -1500,29 +1606,27 @@ const getVendorLedgerReport = async (req, res) => {
         totalCredit: totalCredit.toFixed(2),
         balance: balance.toFixed(2)
       }
-    });
-
+    })
   } catch (err) {
-    console.error(err);
-    return commonService.handleError(res, err);
+    console.error(err)
+    return commonService.handleError(res, err)
   }
-};
+}
 
 const getLedgerReportByLedgerName = async (req, res) => {
   try {
-    const { ledger_id, from_date, to_date } = req.query;
+    const { ledger_id, from_date, to_date } = req.query
 
     // Optional Pagination
     const hasPagination =
-      Number(req.query.page) > 0 && Number(req.query.limit) > 0;
+      Number(req.query.page) > 0 && Number(req.query.limit) > 0
 
-    const page = hasPagination ? parseInt(req.query.page) : null;
-    const limit = hasPagination ? parseInt(req.query.limit) : null;
-    const offset = hasPagination ? (page - 1) * limit : null;
+    const page = hasPagination ? parseInt(req.query.page) : null
+    const limit = hasPagination ? parseInt(req.query.limit) : null
+    const offset = hasPagination ? (page - 1) * limit : null
 
-    const fromDate = from_date || "2000-01-01";
-    const toDate =
-      to_date || new Date().toISOString().split("T")[0];
+    const fromDate = from_date || '2000-01-01'
+    const toDate = to_date || new Date().toISOString().split('T')[0]
 
     // BASE QUERY (NO LIMIT HERE)
     const baseQuery = `
@@ -1730,13 +1834,13 @@ const getLedgerReportByLedgerName = async (req, res) => {
 
     ) t
     WHERE (:ledger_id IS NULL OR t.ledger_id = :ledger_id)
-    `;
+    `
 
     // ✅ FINAL QUERY
-    let finalQuery = `${baseQuery} ORDER BY date ASC`;
+    let finalQuery = `${baseQuery} ORDER BY date ASC`
 
     if (hasPagination) {
-      finalQuery += ` LIMIT :limit OFFSET :offset`;
+      finalQuery += ` LIMIT :limit OFFSET :offset`
     }
 
     const data = await sequelize.query(finalQuery, {
@@ -1747,13 +1851,13 @@ const getLedgerReportByLedgerName = async (req, res) => {
         ...(hasPagination && { limit, offset })
       },
       type: sequelize.QueryTypes.SELECT
-    });
+    })
 
     // ✅ COUNT ONLY IF PAGINATION
-    let total = null;
+    let total = null
 
     if (hasPagination) {
-      const countQuery = `SELECT COUNT(*) as total FROM (${baseQuery}) x`;
+      const countQuery = `SELECT COUNT(*) as total FROM (${baseQuery}) x`
 
       const countResult = await sequelize.query(countQuery, {
         replacements: {
@@ -1762,31 +1866,31 @@ const getLedgerReportByLedgerName = async (req, res) => {
           to_date: toDate
         },
         type: sequelize.QueryTypes.SELECT
-      });
+      })
 
-      total = countResult[0].total;
+      total = countResult[0].total
     }
 
     // ✅ CALCULATIONS
-    let totalDebit = 0;
-    let totalCredit = 0;
-    let runningBalance = 0;
+    let totalDebit = 0
+    let totalCredit = 0
+    let runningBalance = 0
 
     const formatted = data.map(row => {
-      const debit = parseFloat(row.debit || 0);
-      const credit = parseFloat(row.credit || 0);
+      const debit = parseFloat(row.debit || 0)
+      const credit = parseFloat(row.credit || 0)
 
-      totalDebit += debit;
-      totalCredit += credit;
-      runningBalance += (debit - credit);
+      totalDebit += debit
+      totalCredit += credit
+      runningBalance += debit - credit
 
       return {
         ...row,
         debit: debit.toFixed(2),
         credit: credit.toFixed(2),
         running_balance: runningBalance.toFixed(2)
-      };
-    });
+      }
+    })
 
     // ✅ RESPONSE
     return res.json({
@@ -1807,22 +1911,20 @@ const getLedgerReportByLedgerName = async (req, res) => {
         totalCredit: totalCredit.toFixed(2),
         balance: (totalDebit - totalCredit).toFixed(2)
       }
-    });
-
+    })
   } catch (err) {
-    console.error(err);
-    return res.status(500).json({ message: err.message });
+    console.error(err)
+    return res.status(500).json({ message: err.message })
   }
-};
-
+}
 
 module.exports = {
-    getSalesInvoiceReport,
-    getSalesReturnReport,
-    getOldJewelReport,
-    getJewelRepairReport,
-    getPurchaseReport,
-    getProductWiseReport,
-    getVendorLedgerReport,
-    getLedgerReportByLedgerName
+  getSalesInvoiceReport,
+  getSalesReturnReport,
+  getOldJewelReport,
+  getJewelRepairReport,
+  getPurchaseReport,
+  getProductWiseReport,
+  getVendorLedgerReport,
+  getLedgerReportByLedgerName
 }
