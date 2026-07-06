@@ -102,6 +102,13 @@ const getSalesInvoiceReport = async (req, res) => {
         FROM sales_invoice_bills sib
         ${baseWhere}
         ${extraWhere}
+        AND EXISTS (
+        SELECT 1
+        FROM sales_invoice_bill_items sii
+        WHERE sii.invoice_bill_id = sib.id
+          AND sii.deleted_at IS NULL
+          AND sii.is_returned = false
+        )
       ),
 
       adjustments AS (
@@ -133,7 +140,8 @@ const getSalesInvoiceReport = async (req, res) => {
               'rate', sii.rate,
               'amount', sii.amount,
               'product_sku_id', p.sku_id,
-              'product_item_sku_id', pid.sku_id
+              'product_item_sku_id', pid.sku_id,
+              'is_returned', sii.is_returned
             )
           ) AS items
         FROM sales_invoice_bill_items sii
