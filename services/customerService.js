@@ -463,218 +463,304 @@ const listCustomers = async (req, res) => {
   try {
     const { search, mode, branch_id, page = 1, limit } = req.query || {};
 
+    // Pagination
     const pageNumber = parseInt(page, 10) || 1;
     const pageSize = limit ? parseInt(limit, 10) : null;
     const offset = pageSize ? (pageNumber - 1) * pageSize : 0;
 
+    // Query replacements
+    const replacements = {};
+
+    if (search) replacements.search = `%${search}%`;
+    if (branch_id) replacements.branch_id = parseInt(branch_id, 10);
+
     let sql = `
-      SELECT 
+      SELECT
         c.id,
         c.customer_code AS customer_no,
         c.customer_name,
         c.is_online,
         c.mobile_number,
-       (
-          SELECT COUNT(*) FROM (
 
-            -- INVOICE
-            SELECT i.id
-            FROM sales_invoice_bills i
-            WHERE i.customer_id = c.id
-              AND i.deleted_at IS NULL
-              AND i.status = 'Invoice'
-              AND i.is_active = true
-              ${branch_id ? 'AND i.branch_id = :branch_id' : ''}
+        -- Count offline invoices and online orders
+        (
+          SELECT COUNT(*)
+          FROM (
+            SELECT sib_count.id
+            FROM sales_invoice_bills sib_count
+            WHERE sib_count.customer_id = c.id
+              AND sib_count.deleted_at IS NULL
+              AND sib_count.status = 'Invoice'
+              AND sib_count.is_active = true
+              ${branch_id ? `AND sib_count.branch_id = :branch_id` : ''}
 
             UNION ALL
 
-            SELECT o.id
-            FROM orders o
-            WHERE o.customer_id = c.id 
-              AND o.deleted_at IS NULL 
-              AND o.order_status <> 3  --except cancelled orders
-                ${branch_id
-                ? `
+            SELECT o_count.id
+            FROM orders o_count
+            WHERE o_count.customer_id = c.id
+              AND o_count.deleted_at IS NULL
+              AND o_count.order_status <> 3
+              ${branch_id ? `
                 AND EXISTS (
                   SELECT 1
-                  FROM order_items oi
-                  WHERE oi.order_id = o.id
-                    AND oi.branch_id = :branch_id
-                    AND oi.deleted_at IS NULL
-                    AND oi.item_status <> 'Cancelled'
-                ) `
-              : '' }
+                  FROM order_items oi_count
+                  WHERE oi_count.order_id = o_count.id
+                    AND oi_count.branch_id = :branch_id
+                    AND oi_count.deleted_at IS NULL
+                    AND oi_count.item_status <> 'Cancelled'
+                )
+              ` : ''}
           ) all_orders
         ) AS no_of_orders,
+
         c.created_at,
+        COUNT(*) OVER() AS total_count,
 
-        COUNT(*) OVER() AS total_count,  --total rows
+        CASE
+          WHEN c.is_online = true THEN 'Online'
+          ELSE 'Offline'
+        END AS mode,
 
-        (
-          SELECT sib2.order_type 
-          FROM sales_invoice_bills sib2 
-          WHERE sib2.customer_id = c.id 
-            AND sib2.deleted_at IS NULL
-            AND sib2.is_active = true
-            ${mode ? 'AND sib2.order_type = :mode' : ''}
-            ${branch_id ? 'AND sib2.branch_id = :branch_id' : ''}
-          ORDER BY sib2.created_at DESC 
-          LIMIT 1
-        ) AS mode,
-
+        -- Get branch ID from latest offline invoice or online order
         COALESCE(
           (
-            SELECT sib2.branch_id
-            FROM sales_invoice_bills sib2
-            WHERE sib2.customer_id = c.id
-              AND sib2.deleted_at IS NULL
-              AND sib2.is_active = true
-              ${branch_id ? 'AND sib2.branch_id = :branch_id' : ''}
-            ORDER BY sib2.created_at DESC
+            SELECT latest_branch.branch_id
+            FROM (
+              SELECT
+                sib_branch.branch_id,
+                sib_branch.created_at
+              FROM sales_invoice_bills sib_branch
+              WHERE sib_branch.customer_id = c.id
+                AND sib_branch.deleted_at IS NULL
+                AND sib_branch.status = 'Invoice'
+                AND sib_branch.is_active = true
+                ${branch_id ? `AND sib_branch.branch_id = :branch_id` : ''}
+
+              UNION ALL
+
+              SELECT
+                oi_branch.branch_id,
+                o_branch.created_at
+              FROM orders o_branch
+              INNER JOIN order_items oi_branch
+                ON oi_branch.order_id = o_branch.id
+                AND oi_branch.deleted_at IS NULL
+                AND oi_branch.item_status <> 'Cancelled'
+              WHERE o_branch.customer_id = c.id
+                AND o_branch.deleted_at IS NULL
+                AND o_branch.order_status <> 3
+                ${branch_id ? `AND oi_branch.branch_id = :branch_id` : ''}
+            ) latest_branch
+            ORDER BY latest_branch.created_at DESC
             LIMIT 1
           ),
           c.branch_id
         ) AS branch_id,
 
+        -- Get branch name from latest offline invoice or online order
         COALESCE(
           (
             SELECT b.branch_name
-            FROM sales_invoice_bills sib2
-            LEFT JOIN branches b ON b.id = sib2.branch_id
-            WHERE sib2.customer_id = c.id
-              AND sib2.deleted_at IS NULL
-              AND sib2.is_active = true
-              ${branch_id ? 'AND sib2.branch_id = :branch_id' : ''}
-            ORDER BY sib2.created_at DESC
+            FROM (
+              SELECT
+                sib_branch.branch_id,
+                sib_branch.created_at
+              FROM sales_invoice_bills sib_branch
+              WHERE sib_branch.customer_id = c.id
+                AND sib_branch.deleted_at IS NULL
+                AND sib_branch.status = 'Invoice'
+                AND sib_branch.is_active = true
+                ${branch_id ? `AND sib_branch.branch_id = :branch_id` : ''}
+
+              UNION ALL
+
+              SELECT
+                oi_branch.branch_id,
+                o_branch.created_at
+              FROM orders o_branch
+              INNER JOIN order_items oi_branch
+                ON oi_branch.order_id = o_branch.id
+                AND oi_branch.deleted_at IS NULL
+                AND oi_branch.item_status <> 'Cancelled'
+              WHERE o_branch.customer_id = c.id
+                AND o_branch.deleted_at IS NULL
+                AND o_branch.order_status <> 3
+                ${branch_id ? `AND oi_branch.branch_id = :branch_id` : ''}
+            ) latest_branch
+            LEFT JOIN branches b ON b.id = latest_branch.branch_id
+            ORDER BY latest_branch.created_at DESC
             LIMIT 1
           ),
-          (SELECT b2.branch_name FROM branches b2 WHERE b2.id = c.branch_id)
+          (
+            SELECT b2.branch_name
+            FROM branches b2
+            WHERE b2.id = c.branch_id
+          )
         ) AS branch,
 
-        -- Total purchase amount
-        COALESCE((
-          SELECT SUM(total_amount)
-          FROM sales_invoice_bills sib3
-          WHERE sib3.customer_id = c.id
-            AND sib3.deleted_at IS NULL
-            AND sib3.is_active = true
-            ${branch_id ? 'AND sib3.branch_id = :branch_id' : ''}
-        ), 0) AS purchase_amount,
+        -- Calculate offline invoice amount and online order amount
+        (
+          COALESCE(
+            (
+              SELECT SUM(sib_amount.total_amount)
+              FROM sales_invoice_bills sib_amount
+              WHERE sib_amount.customer_id = c.id
+                AND sib_amount.deleted_at IS NULL
+                AND sib_amount.status = 'Invoice'
+                AND sib_amount.is_active = true
+                ${branch_id ? `AND sib_amount.branch_id = :branch_id` : ''}
+            ),
+            0
+          )
+          +
+          ${branch_id ? `
+            COALESCE(
+              (
+                SELECT SUM(oi_amount.total_amount)
+                FROM orders o_amount
+                INNER JOIN order_items oi_amount
+                  ON oi_amount.order_id = o_amount.id
+                  AND oi_amount.deleted_at IS NULL
+                  AND oi_amount.item_status <> 'Cancelled'
+                WHERE o_amount.customer_id = c.id
+                  AND o_amount.deleted_at IS NULL
+                  AND o_amount.order_status <> 3
+                  AND oi_amount.branch_id = :branch_id
+              ),
+              0
+            )
+          ` : `
+            COALESCE(
+              (
+                SELECT SUM(o_amount.total_amount)
+                FROM orders o_amount
+                WHERE o_amount.customer_id = c.id
+                  AND o_amount.deleted_at IS NULL
+                  AND o_amount.order_status <> 3
+              ),
+              0
+            )
+          `}
+        ) AS purchase_amount,
 
-        -- Has active scheme
+        -- Check whether customer has scheme
         EXISTS (
-          SELECT 1 
-          FROM customer_enrollments e 
-          WHERE e.customer_id = c.id 
-            AND e.deleted_at IS NULL
+          SELECT 1
+          FROM customer_enrollments ce
+          WHERE ce.customer_id = c.id
+            AND ce.deleted_at IS NULL
         ) AS has_scheme
 
       FROM customers c
-
-      LEFT JOIN sales_invoice_bills sib 
-        ON sib.customer_id = c.id 
-        AND sib.deleted_at IS NULL
-        AND sib.is_active = true
-        ${branch_id ? 'AND sib.branch_id = :branch_id' : ''}
-
       WHERE c.deleted_at IS NULL
-      -- it will remove the zero order customer from the list
-      /* AND EXISTS ( 
-        SELECT 1
-        FROM sales_invoice_bills invoice
-        WHERE invoice.customer_id = c.id
-          AND invoice.deleted_at IS NULL
-          AND invoice.status = 'Invoice'
-          AND invoice.is_active = true
-      ) */
     `;
 
-    const replacements = {};
-
-    // Search
+    // Search filter
     if (search) {
-      sql += ` AND (
-        c.customer_name ILIKE :search OR 
-        c.mobile_number ILIKE :search OR
-        c.customer_code ILIKE :search
-      )`;
-      replacements.search = `%${search}%`;
-    }
-
-    // Mode
-    if (mode) {
-      sql += ` AND EXISTS (
-        SELECT 1 
-        FROM sales_invoice_bills sib4
-        WHERE sib4.customer_id = c.id
-          AND sib4.order_type = :mode
-          AND sib4.deleted_at IS NULL
-          AND sib4.is_active = true
-      )`;
-      replacements.mode = mode;
-    }
-
-    // Branch
-    if (branch_id) {
-      sql += ` AND (
-        c.branch_id = :branch_id
-        OR EXISTS (
-          SELECT 1
-          FROM sales_invoice_bills sib5
-          WHERE sib5.customer_id = c.id
-            AND sib5.branch_id = :branch_id
-            AND sib5.deleted_at IS NULL
-            AND sib5.is_active = true
+      sql += `
+        AND (
+          c.customer_name ILIKE :search
+          OR c.mobile_number ILIKE :search
+          OR c.customer_code ILIKE :search
         )
-      )`;
-      replacements.branch_id = parseInt(branch_id, 10);
+      `;
     }
 
-    sql += `
-      GROUP BY c.id
-      ORDER BY c.created_at desc
-    `;
+    // Mode filter based on customers.is_online
+    if (mode) {
+      const normalizedMode = String(mode).toLowerCase();
 
-    // Pagination applied only if limit exists
+      if (normalizedMode === 'offline') {
+        sql += `
+          AND c.is_online = false
+        `;
+      } else if (normalizedMode === 'online') {
+        sql += `
+          AND c.is_online = true
+        `;
+      }
+    }
+
+    // Branch filter
+    if (branch_id) {
+      sql += `
+        AND (
+          c.branch_id = :branch_id
+          OR EXISTS (
+            SELECT 1
+            FROM sales_invoice_bills sib_filter
+            WHERE sib_filter.customer_id = c.id
+              AND sib_filter.branch_id = :branch_id
+              AND sib_filter.deleted_at IS NULL
+              AND sib_filter.status = 'Invoice'
+              AND sib_filter.is_active = true
+          )
+          OR EXISTS (
+            SELECT 1
+            FROM orders o_filter
+            INNER JOIN order_items oi_filter
+              ON oi_filter.order_id = o_filter.id
+              AND oi_filter.deleted_at IS NULL
+              AND oi_filter.item_status <> 'Cancelled'
+            WHERE o_filter.customer_id = c.id
+              AND o_filter.deleted_at IS NULL
+              AND o_filter.order_status <> 3
+              AND oi_filter.branch_id = :branch_id
+          )
+        )
+      `;
+    }
+
+    // Sorting
+    sql += ` ORDER BY c.created_at DESC`;
+
+    // Pagination
     if (pageSize) {
       sql += ` LIMIT :limit OFFSET :offset`;
       replacements.limit = pageSize;
       replacements.offset = offset;
     }
 
+    // Execute query
     const customers = await sequelize.query(sql, {
       replacements,
-      type: sequelize.QueryTypes.SELECT
+      type: sequelize.QueryTypes.SELECT,
     });
 
-    const totalCount = customers.length > 0 ? parseInt(customers[0].total_count, 10) : 0;
+    // Get total customer count
+    const totalCount = customers.length > 0
+      ? Number(customers[0].total_count)
+      : 0;
 
-    const formattedCustomers = customers.map(customer => ({
+    // Format response
+    const formattedCustomers = customers.map((customer) => ({
       id: customer.id,
       customer_no: customer.customer_no,
       customer_name: customer.customer_name,
       mobile_number: customer.mobile_number,
-      no_of_orders: parseInt(customer.no_of_orders, 10),
-      is_online: customer.is_online || null,
-      branch_id: customer.branch_id || null,
-      branch: customer.branch || null,
-      purchase_amount: parseFloat(customer.purchase_amount || 0).toFixed(2),
+      no_of_orders: Number(customer.no_of_orders || 0),
+      is_online: customer.is_online ?? null,
+      mode: customer.mode ?? null,
+      branch_id: customer.branch_id ?? null,
+      branch: customer.branch ?? null,
+      purchase_amount: Number(customer.purchase_amount || 0).toFixed(2),
       scheme_details: customer.has_scheme ? 'Yes' : 'No',
-      created_at: customer.created_at
+      created_at: customer.created_at,
     }));
 
+    // Send response
     return commonService.okResponse(res, {
       customers: formattedCustomers,
       pagination: pageSize
         ? {
-          total: totalCount,
-          page: pageNumber,
-          limit: pageSize,
-          total_pages: Math.ceil(totalCount / pageSize)
-        }
-        : null
+            total: totalCount,
+            page: pageNumber,
+            limit: pageSize,
+            total_pages: Math.ceil(totalCount / pageSize),
+          }
+        : null,
     });
-
   } catch (error) {
     console.error('Error in listCustomers:', error);
     return commonService.handleError(res, error);
