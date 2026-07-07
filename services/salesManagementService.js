@@ -258,9 +258,15 @@ const getFastMovingSubCategories = async (req, res) => {
         };
 
         // Date filter must be applied on SALES (invoice date)
-        const dateCondition = dateFilter(
+        const invoiceDateCondition = dateFilter(
             { from_date, to_date, date_filter },
-            "sib.created_at", // <-- THIS IS THE CORRECT DATE
+            "sib.created_at",
+            replacements
+        );
+
+        const orderDateCondition = dateFilter(
+            { from_date, to_date, date_filter },
+            "o.created_at",
             replacements
         );
 
@@ -282,30 +288,56 @@ const getFastMovingSubCategories = async (req, res) => {
           AND (:subcategory_id IS NULL OR p.subcategory_id = :subcategory_id)
       ),
       sold_products AS (
+  -- Offline invoice sales
         SELECT
-          fp.product_id,
-          fp.branch_id,
-          fp.subcategory_id,
-          SUM(sii.quantity) AS sold_qty,
-          SUM(COALESCE(sii.gross_weight, 0)) AS total_gross_weight
-
+            fp.product_id,
+            fp.branch_id,
+            fp.subcategory_id,
+            SUM(sii.quantity) AS sold_qty,
+            SUM(COALESCE(sii.gross_weight, 0)) AS total_gross_weight
         FROM filtered_products fp
         JOIN sales_invoice_bill_items sii
-          ON sii.product_id = fp.product_id
-          AND sii.deleted_at IS NULL AND sii.is_returned = false
+            ON sii.product_id = fp.product_id
+            AND sii.deleted_at IS NULL
+            AND sii.is_returned = false
         JOIN sales_invoice_bills sib
-          ON sib.id = sii.invoice_bill_id
-          AND sib.deleted_at IS NULL
-          AND sib.is_active = true
-          AND sib.status = 'Invoice'
-          ${dateCondition}
+            ON sib.id = sii.invoice_bill_id
+            AND sib.deleted_at IS NULL
+            AND sib.is_active = true
+            AND sib.status = 'Invoice'
+            ${invoiceDateCondition}
         GROUP BY
-          fp.product_id,
-          fp.branch_id,
-          fp.subcategory_id
-      )
+            fp.product_id,
+            fp.branch_id,
+            fp.subcategory_id
+
+        UNION ALL
+
+        -- Online order sales
+        SELECT
+            fp.product_id,
+            oi.branch_id,
+            fp.subcategory_id,
+            SUM(oi.quantity) AS sold_qty,
+            SUM(COALESCE(oi.gross_weight, 0) * COALESCE(oi.quantity, 0)) AS total_gross_weight
+        FROM filtered_products fp
+        JOIN order_items oi
+            ON oi.product_id = fp.product_id
+            AND oi.deleted_at IS NULL
+            AND oi.item_status <> 'Cancelled'
+        JOIN orders o
+            ON o.id = oi.order_id
+            AND o.deleted_at IS NULL
+            AND o.order_status <> 3
+            ${orderDateCondition}
+        WHERE (:branch_id IS NULL OR oi.branch_id = :branch_id)
+        GROUP BY
+            fp.product_id,
+            oi.branch_id,
+            fp.subcategory_id
+        )
       SELECT
-        b.id AS branch_id,
+        sp.branch_id AS branch_id,
         b.branch_name,
         mt.material_type,
         p.material_type_id,
@@ -322,7 +354,7 @@ const getFastMovingSubCategories = async (req, res) => {
       FROM sold_products sp
       JOIN products p ON p.id = sp.product_id
       JOIN subcategories sc ON sc.id = p.subcategory_id
-      LEFT JOIN branches b ON b.id = p.branch_id
+      LEFT JOIN branches b ON b.id = sp.branch_id
       LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
       LEFT JOIN categories c ON c.id = p.category_id
 
@@ -338,7 +370,7 @@ const getFastMovingSubCategories = async (req, res) => {
           )` : "" }
 
       GROUP BY
-        b.id,
+        sp.branch_id,
         b.branch_name,
         mt.material_type,
         p.material_type_id,
