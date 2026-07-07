@@ -531,7 +531,7 @@ const getOnlineOrderDetails = async (req, res) => {
         billing_address: {
           name: orderInfo.billing_name,
           mobile: orderInfo.billing_mobile,
-          address: orderInfo.billing_address,
+          address: orderInfo.billing_address_line,
           pincode: orderInfo.billing_pin_code,
           country: orderInfo.billing_country,
           state: orderInfo.billing_state,
@@ -541,7 +541,7 @@ const getOnlineOrderDetails = async (req, res) => {
         shipping_address: {
           name: orderInfo.shipping_name,
           mobile: orderInfo.shipping_mobile,
-          address: orderInfo.shipping_address,
+          address: orderInfo.shipping_address_line,
           pincode: orderInfo.shipping_pin_code,
           country: orderInfo.shipping_country,
           state: orderInfo.shipping_state,
