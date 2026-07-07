@@ -24,6 +24,7 @@ const getScorecardByType = async ({ config, whereSql, replacements }) => {
             LEFT JOIN ${config.itemTable} i
                 ON i.${config.itemFk} = t.id
                 AND i.deleted_at IS NULL
+                ${config.itemCondition || ""}
             WHERE ${whereSql}
               AND t.deleted_at IS NULL AND t.is_active = true
         ) weight
@@ -172,7 +173,7 @@ const getSalesReport = async (req, res) => {
                     } AS total_weight,
                 ${gridConfig.quantityExpr} AS quantity
             FROM ${gridConfig.itemTable} i
-            WHERE i.deleted_at IS NULL
+            WHERE i.deleted_at IS NULL ${gridConfig.itemCondition || ""}
             GROUP BY i.${gridConfig.itemFk}
         ) items ON items.parent_id = t.id
         LEFT JOIN customers c ON c.id = t.customer_id
