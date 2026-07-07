@@ -1066,16 +1066,15 @@ const getStockKpiSummary = async (req, res) => {
         COALESCE(SUM(pid.quantity), 0)::int AS total_quantity,
         COALESCE(SUM(pid.quantity * pid.gross_weight), 0) AS total_weight,
         COALESCE(SUM((COALESCE(gi.rate_per_g, 0) * COALESCE(pid.net_weight, 0)) * COALESCE(pid.quantity, 0)), 0) AS total_amount
-
-      FROM "productItemDetails" pid
-      INNER JOIN products p ON p.id = pid.product_id
-      INNER JOIN grns g ON g.id = p.grn_id AND g.deleted_at IS NULL
+      
+      FROM products p
+      JOIN "productItemDetails" pid ON pid.product_id = p.id AND pid.deleted_at IS NULL AND pid.quantity > 0
+      LEFT JOIN grns g ON g.id = p.grn_id AND g.deleted_at IS NULL
       LEFT JOIN "grnItems" gi ON gi.grn_id = g.id AND gi.id = p.ref_no_id AND gi.deleted_at IS NULL
-      WHERE pid.deleted_at IS NULL AND pid.quantity > 0
-        AND p.deleted_at IS NULL AND p.status = 'Active'
+      WHERE p.deleted_at IS NULL AND p.status = 'Active'
       ${branch_id ? `AND p.branch_id = :branch_id` : ``}
     `;
-
+    
     /* =====================================================
        EXECUTION
        ===================================================== */
