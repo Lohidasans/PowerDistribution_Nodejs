@@ -323,7 +323,7 @@ const getSuperAdminDashboard = async (req, res) => {
     const jewRep = {};
     const jewDateCond = buildDateCondition(
       dateOpts,
-      "sr.return_date",
+      "sr.created_at",
       jewRep,
       "_jew"
     );
@@ -331,17 +331,27 @@ const getSuperAdminDashboard = async (req, res) => {
     if (branch_id) jewRep.jew_branch = branch_id;
 
     const salesReturnQuery = `
+      WITH items AS (
+        SELECT
+          sri.sales_return_id,
+          COALESCE(SUM(sri.quantity), 0) AS total_quantity,
+          COALESCE(SUM(sri.gross_weight::numeric), 0) AS total_gross_weight,
+          COALESCE(SUM((sri.net_weight::numeric * sri.quantity)), 0) AS total_net_weight
+        FROM sales_return_items sri
+        WHERE sri.deleted_at IS NULL
+        GROUP BY sri.sales_return_id
+      )
       SELECT
-        COUNT(DISTINCT sr.id)::int                  AS bill_count,
-        COALESCE(SUM(sr.total_quantity), 0)         AS total_quantity,
-        COALESCE(SUM(sri.gross_weight::numeric), 0) AS total_gross_weight,
-        COALESCE(SUM(sri.net_weight::numeric), 0)   AS total_net_weight,
-        COALESCE(SUM(sr.total_amount), 0)           AS total_amount
+        COUNT(sr.id)::int AS bill_count,
+        COALESCE(SUM(i.total_quantity), 0) AS total_quantity,
+        COALESCE(SUM(i.total_gross_weight), 0) AS total_gross_weight,
+        COALESCE(SUM(i.total_net_weight), 0) AS total_net_weight,
+        COALESCE(SUM(sr.total_amount), 0) AS total_amount
       FROM sales_returns sr
-      LEFT JOIN sales_return_items sri
-        ON sri.sales_return_id = sr.id AND sri.deleted_at IS NULL
-      WHERE sr.deleted_at IS NULL AND sr.is_active = true
-        AND sr.status NOT IN ('Cancelled')
+      LEFT JOIN items i ON i.sales_return_id = sr.id
+      WHERE sr.deleted_at IS NULL
+        AND sr.is_active = true
+        AND sr.status = 'Printed'
         ${jewDateCond}
         ${jewBranch}
     `;
@@ -361,30 +371,39 @@ const getSuperAdminDashboard = async (req, res) => {
       LEFT JOIN old_jewel_items oji
         ON oji.old_jewel_id = oj.id AND oji.deleted_at IS NULL
       WHERE oj.deleted_at IS NULL AND oj.is_active = true
-        AND oj.status NOT IN ('Cancelled')
+        AND oj.status = 'Printed'
         ${ojDateCond}
         ${ojBranch}
     `;
 
     const jrRep = {};
-    const jrDateCond = buildDateCondition(dateOpts, "jr.date", jrRep, "_jr");
+    const jrDateCond = buildDateCondition(dateOpts, "jr.created_at", jrRep, "_jr");
     const jrBranch = branch_id ? `AND jr.branch_id = :jr_branch` : "";
     if (branch_id) jrRep.jr_branch = branch_id;
 
     const jewelRepairQuery = `
+    WITH items AS (
       SELECT
-        COUNT(DISTINCT jr.id)::int        AS bill_count,
-        COALESCE(SUM(jri.quantity), 0)    AS total_quantity,
-        COALESCE(SUM(jri.weight), 0)      AS total_weight,
-        COALESCE(SUM(jr.total_amount), 0) AS total_amount
-      FROM jewel_repairs jr
-      LEFT JOIN jewel_repair_items jri
-        ON jri.repair_id = jr.id AND jri.deleted_at IS NULL
-      WHERE jr.deleted_at IS NULL AND jr.is_active = true
-        AND jr.status NOT IN ('Cancelled')
-        ${jrDateCond}
-        ${jrBranch}
-    `;
+        jri.repair_id,
+        COALESCE(SUM(jri.quantity), 0) AS total_quantity,
+        COALESCE(SUM(jri.weight * jri.quantity), 0) AS total_weight
+      FROM jewel_repair_items jri
+      WHERE jri.deleted_at IS NULL
+      GROUP BY jri.repair_id
+    )
+    SELECT
+      COUNT(jr.id)::int AS bill_count,
+      COALESCE(SUM(i.total_quantity), 0) AS total_quantity,
+      COALESCE(SUM(i.total_weight), 0) AS total_weight,
+      COALESCE(SUM(jr.total_amount), 0) AS total_amount
+    FROM jewel_repairs jr
+    LEFT JOIN items i ON i.repair_id = jr.id
+    WHERE jr.deleted_at IS NULL
+      AND jr.is_active = true
+      AND jr.status = 'Completed'
+      ${jrDateCond}
+      ${jrBranch}
+  `;
 
     const dcRep = {};
     const dcDateCond = buildDateCondition(dateOpts, "dc.date", dcRep, "_dc");
