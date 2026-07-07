@@ -687,9 +687,11 @@ const getVendorOverview = async (req, res) => {
 
         // Get vendor basic info
         const vendorQuery = `
-      SELECT id, vendor_code, vendor_name, vendor_image_url, proprietor_name, mobile, address
-      FROM vendors
-      WHERE id = :vendor_id AND deleted_at IS NULL
+      SELECT v.id, v.vendor_code, v.vendor_name, v.vendor_image_url, v.proprietor_name, v.mobile, v.address, v.pin_code, s.state_name, d.district_name
+      FROM vendors v
+      LEFT JOIN states s ON v.state_id = s.id AND s.deleted_at is NULL
+      LEFT JOIN districts d ON v.district_id = d.id AND d.deleted_at is NULL
+      WHERE v.id = :vendor_id AND v.deleted_at IS NULL
     `;
 
         // Purchase Order metrics (from purchase_orders table if exists, or use GRNs)
@@ -896,6 +898,9 @@ const getVendorOverview = async (req, res) => {
                 proprietor_name: vendorInfo.proprietor_name,
                 mobile: vendorInfo.mobile,
                 address: vendorInfo.address,
+                state: vendorInfo.state_name,
+                district: vendorInfo.district_name,
+                pin_code: vendorInfo.pin_code,
             },
             metrics: {
                 purchase_order: parseFloat(purchaseOrderResult.total_weight).toFixed(2) + " g",
