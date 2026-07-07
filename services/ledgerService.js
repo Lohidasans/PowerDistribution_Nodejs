@@ -104,7 +104,7 @@ const list = async (req, res) => {
     let replacements = { limit: parseInt(limit), offset: parseInt(offset) };
 
     if (search) {
-      whereConditions.push("l.ledger_name LIKE :search");
+      whereConditions.push("LOWER(l.ledger_name) LIKE LOWER(:search)");
       replacements.search = `%${search}%`;
     }
 
