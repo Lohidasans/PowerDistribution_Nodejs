@@ -1304,7 +1304,18 @@ const INVOICE_BASE = `
 // Credit-note source (sales returns) with masters + original invoice ref.
 const RET_GSTIN = `NULLIF(TRIM(COALESCE(c.gst_no, '')), '')`;
 const RET_POS = `COALESCE(cst.state_name, bst.state_name)`;
-const RET_RATE = `(COALESCE(r.cgst_percent,0) + COALESCE(r.sgst_percent,0) + COALESCE(r.igst_percent,0))`;
+// A credit note should carry the SAME GST rate as the original invoice. The
+// percent columns on sales_returns are only stored when the client sends them,
+// so when they are null/0 we derive the rate from the tax amounts actually
+// booked on the return (tax / taxable * 100) — e.g. a 3% return shows 3%, not 0%.
+const RET_RATE = `
+  CASE
+    WHEN (COALESCE(r.cgst_percent,0) + COALESCE(r.sgst_percent,0) + COALESCE(r.igst_percent,0)) > 0
+      THEN (COALESCE(r.cgst_percent,0) + COALESCE(r.sgst_percent,0) + COALESCE(r.igst_percent,0))
+    WHEN COALESCE(r.subtotal_amount,0) > 0
+      THEN (COALESCE(r.cgst_amount,0) + COALESCE(r.sgst_amount,0) + COALESCE(r.igst_amount,0)) / r.subtotal_amount * 100
+    ELSE 0
+  END`;
 const RETURN_BASE = `
   FROM sales_returns r
   LEFT JOIN customers c   ON c.id = r.customer_id
