@@ -58,7 +58,7 @@ const getOldJewelReport = async (req, res) => {
 
     whereSql += dateFilter(
       { from_date, to_date, date_filter },
-      "t.date",
+      "t.created_at",
       replacements
     );
 
@@ -99,6 +99,8 @@ const getOldJewelReport = async (req, res) => {
       JOIN old_jewel_items oi ON oi.old_jewel_id = t.id AND oi.deleted_at IS NULL
       LEFT JOIN customers c ON c.id = t.customer_id
       WHERE ${whereSql}
+        AND t.deleted_at IS NULL
+        AND t.status = 'Printed'
       ${oldJewelSearchSql}
       `,
       { replacements, type: sequelize.QueryTypes.SELECT }
@@ -107,12 +109,14 @@ const getOldJewelReport = async (req, res) => {
     const [repairCard] = await sequelize.query(
       `
       SELECT
-        COALESCE(SUM(ri.weight),0) AS total_weight,
-        COUNT(ri.id) AS total_quantity
+        COALESCE(SUM(ri.weight * ri.quantity), 0) AS total_weight,
+        COALESCE(SUM(ri.quantity), 0) AS total_quantity
       FROM jewel_repairs t
       JOIN jewel_repair_items ri ON ri.repair_id = t.id AND ri.deleted_at IS NULL
       LEFT JOIN customers c ON c.id = t.customer_id
       WHERE ${whereSql}
+        AND t.deleted_at IS NULL
+        AND t.status = 'Completed'
       ${repairSearchSql}
       `,
       { replacements, type: sequelize.QueryTypes.SELECT }
