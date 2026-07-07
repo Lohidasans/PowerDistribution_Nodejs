@@ -1079,8 +1079,15 @@ const getPurchaseReport = async (req, res) => {
           g.total_amount,
           g.sgst_percent,
           g.cgst_percent,
-          g.discount_percent
+          g.discount_percent,
+          -- Inter-state purchase (vendor state <> branch state): GRNs store the
+          -- full tax in sgst_percent (cgst_percent = 0), which must be reported
+          -- as IGST rather than SGST.
+          (ven.state_id IS NOT NULL AND br.state_id IS NOT NULL
+            AND ven.state_id <> br.state_id) AS is_interstate
         FROM grns g
+        LEFT JOIN vendors ven ON ven.id = g.vendor_id
+        LEFT JOIN branches br ON br.id = g.branch_id
         ${baseWhere}
         ${extraWhere}
       ),
@@ -1109,8 +1116,13 @@ const getPurchaseReport = async (req, res) => {
               'making_charge', gi.making_charge,
               'rate_per_g', gi.rate_per_g,
               'total_amount', gi.total_amount,
-              'sgst', ROUND(gi.total_amount * fg.sgst_percent / 100, 2),
-              'cgst', ROUND(gi.total_amount * fg.cgst_percent / 100, 2)
+              'sgst', CASE WHEN fg.is_interstate THEN 0
+                ELSE ROUND(gi.total_amount * COALESCE(fg.sgst_percent, 0) / 100, 2) END,
+              'cgst', CASE WHEN fg.is_interstate THEN 0
+                ELSE ROUND(gi.total_amount * COALESCE(fg.cgst_percent, 0) / 100, 2) END,
+              'igst', CASE WHEN fg.is_interstate
+                THEN ROUND(gi.total_amount * COALESCE(fg.sgst_percent, 0) / 100, 2)
+                ELSE 0 END
             )
           ) AS items
         FROM "grnItems" gi
@@ -1354,6 +1366,9 @@ const getProductWiseReport = async (req, res) => {
           sc.subcategory_name,
           p.id
 
+      -- Drop fully sold-out products (no remaining stock) from the report.
+      HAVING COALESCE(SUM(pid.quantity), 0) > 0
+
       ORDER BY g.grn_date DESC
     `
 
@@ -1439,18 +1454,34 @@ const getProductWiseReport = async (req, res) => {
     let total = null
     if (usePagination) {
       const countQuery = `
-        SELECT COUNT(DISTINCT p.id) AS total
-        FROM products p
+        SELECT COUNT(*) AS total FROM (
+          SELECT p.id
+          FROM products p
 
-        LEFT JOIN grns g ON g.id = p.grn_id
-        LEFT JOIN "grnItems" gi ON gi.id = p.ref_no_id
-        LEFT JOIN vendors v ON v.id = p.vendor_id
-        LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
-        LEFT JOIN categories c ON c.id = p.category_id
-        LEFT JOIN subcategories sc ON sc.id = p.subcategory_id
-        LEFT JOIN "productItemDetails" pid ON pid.product_id = p.id
+          LEFT JOIN grns g ON g.id = p.grn_id
+          LEFT JOIN "grnItems" gi ON gi.id = p.ref_no_id
+          LEFT JOIN vendors v ON v.id = p.vendor_id
+          LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
+          LEFT JOIN categories c ON c.id = p.category_id
+          LEFT JOIN subcategories sc ON sc.id = p.subcategory_id
+          LEFT JOIN "productItemDetails" pid ON pid.product_id = p.id
 
-        ${where}
+          ${where}
+
+          GROUP BY
+            g.grn_no,
+            g.grn_date,
+            g.branch_id,
+            v.vendor_name,
+            gi.ref_no,
+            gi.rate_per_g,
+            mt.material_type,
+            mt.material_price,
+            c.category_name,
+            sc.subcategory_name,
+            p.id
+          HAVING COALESCE(SUM(pid.quantity), 0) > 0
+        ) sub
       `
 
       const [countResult] = await sequelize.query(countQuery, {
