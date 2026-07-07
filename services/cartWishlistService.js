@@ -194,7 +194,31 @@ const listItems = async (req, res) => {
             order: [["created_at", "DESC"]],
         });
 
-        return commonService.okResponse(res, { items: rows });
+        // Attach the current available stock (product item quantity) to each
+        // line so the storefront can cap the cart qty stepper without an extra
+        // round-trip per item.
+        const itemIds = [
+            ...new Set(rows.map((r) => r.product_item_id).filter(Boolean)),
+        ];
+
+        let stockByItemId = {};
+        if (itemIds.length) {
+            const productItems = await models.ProductItemDetail.findAll({
+                where: { id: itemIds },
+                attributes: ["id", "quantity"],
+            });
+            stockByItemId = productItems.reduce((acc, p) => {
+                acc[p.id] = Number(p.quantity) || 0;
+                return acc;
+            }, {});
+        }
+
+        const items = rows.map((r) => ({
+            ...r.get({ plain: true }),
+            available_quantity: stockByItemId[r.product_item_id] ?? 0,
+        }));
+
+        return commonService.okResponse(res, { items });
 
     } catch (err) {
         return commonService.handleError(res, err);

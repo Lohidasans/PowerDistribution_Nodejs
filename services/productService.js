@@ -1592,7 +1592,17 @@ const calculateSellingPrice = async (product, item, models) => {
     }
 
     const netWeight = parseFloat(item.net_weight) || 0;
-    const materialContribution = materialRate * netWeight;
+
+    // "Fixed Price" items carry a flat amount in rate_per_gram (not a per-gram
+    // rate), so the material contribution is that flat amount rather than
+    // rate * weight. The per-gram contribution is still used as the base for
+    // percentage making/wastage, matching the product create/edit page and the
+    // list (sync) calculation.
+    const isFixedPrice = item.rate_per_gram_type === "Fixed Price";
+    const materialRateContribution = materialRate * netWeight;
+    const materialContribution = isFixedPrice
+      ? parseFloat(item.rate_per_gram) || 0
+      : materialRateContribution;
 
     const stoneValue = parseFloat(item.stone_value) || 0;
 
@@ -1612,7 +1622,7 @@ const calculateSellingPrice = async (product, item, models) => {
         makingCharge = makingChargeValue * netWeight;
         break;
       case "Percentage":
-        makingCharge = (makingChargeValue / 100) * materialContribution;
+        makingCharge = (makingChargeValue / 100) * materialRateContribution;
         break;
       case "Amount":
         makingCharge = makingChargeValue;
@@ -1626,7 +1636,7 @@ const calculateSellingPrice = async (product, item, models) => {
         wastage = wastageValue * netWeight;
         break;
       case "Percentage":
-        wastage = (wastageValue / 100) * materialContribution;
+        wastage = (wastageValue / 100) * materialRateContribution;
         break;
       case "Amount":
         wastage = wastageValue;

@@ -437,6 +437,9 @@ const getWebsiteProductById = async (req, res) => {
       WHERE o.status = 'Active'
         AND o.deleted_at IS NULL
         AND oa.deleted_at IS NULL
+        -- Only apply offers whose validity window covers today, so deactivated
+        -- or expired offers never discount storefront products.
+        AND CURRENT_DATE BETWEEN o.valid_from AND o.valid_to
       `,
       {
         type: sequelize.QueryTypes.SELECT,
