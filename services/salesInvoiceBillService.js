@@ -458,6 +458,39 @@ const searchInvoices = async (req, res) => {
   }
 };
 
+// Backfill hsn_code onto invoice items from the product master when the payload
+// omits it (the invoice-creation UI lives in a separate project and does not send
+// hsn_code). Without this, HSN(B2B)/HSN(B2C) reports show nothing because the HSN
+// summary only lists lines that carry an HSN code. Only blank values are filled;
+// an explicit hsn_code from the caller is left untouched.
+const fillHsnFromProducts = async (items, transaction) => {
+  if (!Array.isArray(items) || items.length === 0) return items;
+
+  const missingProductIds = [
+    ...new Set(
+      items
+        .filter(i => !String(i.hsn_code || "").trim() && i.product_id)
+        .map(i => i.product_id)
+    ),
+  ];
+  if (missingProductIds.length === 0) return items;
+
+  const products = await models.Product.findAll({
+    where: { id: { [Op.in]: missingProductIds }, deleted_at: null },
+    attributes: ["id", "hsn_code"],
+    transaction,
+  });
+  const hsnByProductId = new Map(
+    products.map(p => [p.id, String(p.hsn_code || "").trim()])
+  );
+
+  return items.map(i =>
+    !String(i.hsn_code || "").trim() && hsnByProductId.get(i.product_id)
+      ? { ...i, hsn_code: hsnByProductId.get(i.product_id) }
+      : i
+  );
+};
+
 // New invoice - Calaculations are handled in the UI, so here we just save what we get
 const createSalesInvoice = async (req, res) => {
   const t = await sequelize.transaction();
@@ -603,8 +636,9 @@ const createSalesInvoice = async (req, res) => {
     }
 
     // ITEMS (amounts already calculated by UI)
+    const itemsWithHsn = await fillHsnFromProducts(items, t);
     const savedItems = await models.SalesInvoiceBillItem.bulkCreate(
-      items.map(i => ({
+      itemsWithHsn.map(i => ({
         ...i,
         invoice_bill_id: bill.id
       })),
@@ -857,7 +891,8 @@ const updateSalesInvoice = async (req, res) => {
       transaction: t,
     });
 
-    for (const item of items) {
+    const itemsWithHsn = await fillHsnFromProducts(items, t);
+    for (const item of itemsWithHsn) {
       if (item.id) {
         await models.SalesInvoiceBillItem.update(item, {
           where: { id: item.id }, transaction: t,
