@@ -994,9 +994,15 @@ const getFastMovingCategoryStats = async (req, res) => {
             search: search ? `%${search}%` : null
         };
 
-        const dateCondition = dateFilter(
+        const invoiceDateCondition = dateFilter(
             { from_date, to_date, date_filter },
             "sib.invoice_date",
+            replacements
+        );
+
+        const orderDateCondition = dateFilter(
+            { from_date, to_date, date_filter },
+            "o.order_date",
             replacements
         );
 
@@ -1004,27 +1010,61 @@ const getFastMovingCategoryStats = async (req, res) => {
 
         let query = `
         SELECT
-            sc.id AS subcategory_id,
-            sc.subcategory_name,
-            ROUND(SUM(sii.amount), 2) AS sold_value,
-            SUM(sii.quantity) AS sold_quantity
-        FROM sales_invoice_bill_items sii
-        JOIN sales_invoice_bills sib
-            ON sib.id = sii.invoice_bill_id
-            AND sib.deleted_at IS NULL
-            AND sib.is_active = true
-            AND sib.status = 'Invoice'
-            ${dateCondition}
-        JOIN products p
-            ON p.id = sii.product_id
-            AND p.deleted_at IS NULL
-            AND (:branch_id IS NULL OR p.branch_id = :branch_id)
-        JOIN subcategories sc
-            ON sc.id = p.subcategory_id
-            AND sc.deleted_at IS NULL
-        WHERE sii.deleted_at IS NULL AND sii.is_returned = false
+            x.subcategory_id,
+            x.subcategory_name,
+            ROUND(SUM(x.sold_value), 2) AS sold_value,
+            SUM(x.sold_quantity) AS sold_quantity
+        FROM (
+            -- Offline sales invoice
+            SELECT
+                sc.id AS subcategory_id,
+                sc.subcategory_name,
+                COALESCE(sii.amount, 0) AS sold_value,
+                COALESCE(sii.quantity, 0) AS sold_quantity
+            FROM sales_invoice_bill_items sii
+            JOIN sales_invoice_bills sib
+                ON sib.id = sii.invoice_bill_id
+                AND sib.deleted_at IS NULL
+                AND sib.is_active = true
+                AND sib.status = 'Invoice'
+                ${invoiceDateCondition}
+            JOIN products p
+                ON p.id = sii.product_id
+                AND p.deleted_at IS NULL
+                AND (:branch_id IS NULL OR p.branch_id = :branch_id)
+            JOIN subcategories sc
+                ON sc.id = p.subcategory_id
+                AND sc.deleted_at IS NULL
+            WHERE sii.deleted_at IS NULL AND sii.is_returned = false
+
+            UNION ALL
+
+            -- Online orders
+            SELECT
+                sc.id AS subcategory_id,
+                sc.subcategory_name,
+                COALESCE(oi.amount, 0) AS sold_value,
+                COALESCE(oi.quantity, 0) AS sold_quantity
+            FROM order_items oi
+            JOIN orders o
+                ON o.id = oi.order_id
+                AND o.deleted_at IS NULL
+                AND o.order_status <> 3
+                ${orderDateCondition}
+            JOIN products p
+                ON p.id = oi.product_id
+                AND p.deleted_at IS NULL
+            JOIN subcategories sc
+                ON sc.id = p.subcategory_id
+                AND sc.deleted_at IS NULL
+            WHERE oi.deleted_at IS NULL
+            AND oi.item_status <> 'Cancelled'
+            AND (:branch_id IS NULL OR oi.branch_id = :branch_id)
+        ) x
+        WHERE 1=1
+
         ${search ? `AND sc.subcategory_name ILIKE :search` : ""}
-        GROUP BY sc.id, sc.subcategory_name
+        GROUP BY x.subcategory_id, x.subcategory_name
         ORDER BY sold_value DESC
         `;
 
@@ -1046,19 +1086,47 @@ const getFastMovingCategoryStats = async (req, res) => {
         if (hasPagination) {
 
             const countQuery = `
-        SELECT COUNT(DISTINCT p.subcategory_id)::int AS total
-        FROM sales_invoice_bill_items sii
-        JOIN sales_invoice_bills sib
-            ON sib.id = sii.invoice_bill_id
-            AND sib.deleted_at IS NULL
-            AND sib.is_active = true
-            AND sib.status = 'Invoice'
-            ${dateCondition}
-        JOIN products p
-            ON p.id = sii.product_id
-            AND p.deleted_at IS NULL
-            AND (:branch_id IS NULL OR p.branch_id = :branch_id)
-        WHERE sii.deleted_at IS NULL AND sii.is_returned = false
+            SELECT COUNT(DISTINCT x.subcategory_id)::int AS total
+            FROM (
+                SELECT p.subcategory_id
+                FROM sales_invoice_bill_items sii
+                JOIN sales_invoice_bills sib
+                    ON sib.id = sii.invoice_bill_id
+                    AND sib.deleted_at IS NULL
+                    AND sib.is_active = true
+                    AND sib.status = 'Invoice'
+                    ${invoiceDateCondition}
+                JOIN products p
+                    ON p.id = sii.product_id
+                    AND p.deleted_at IS NULL
+                    AND (:branch_id IS NULL OR p.branch_id = :branch_id)
+                JOIN subcategories sc
+                    ON sc.id = p.subcategory_id
+                    AND sc.deleted_at IS NULL
+                WHERE sii.deleted_at IS NULL
+                AND sii.is_returned = false
+                ${search ? `AND sc.subcategory_name ILIKE :search` : ""}
+
+                UNION ALL
+
+                SELECT p.subcategory_id
+                FROM order_items oi
+                JOIN orders o
+                    ON o.id = oi.order_id
+                    AND o.deleted_at IS NULL
+                    AND o.order_status <> 3
+                    ${orderDateCondition}
+                JOIN products p
+                    ON p.id = oi.product_id
+                    AND p.deleted_at IS NULL
+                JOIN subcategories sc
+                    ON sc.id = p.subcategory_id
+                    AND sc.deleted_at IS NULL
+                WHERE oi.deleted_at IS NULL
+                AND oi.item_status <> 'Cancelled'
+                AND (:branch_id IS NULL OR oi.branch_id = :branch_id)
+                ${search ? `AND sc.subcategory_name ILIKE :search` : ""}
+            ) x
             `;
 
             const [{ total }] = await sequelize.query(countQuery, {
