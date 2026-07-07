@@ -427,89 +427,163 @@ const getFastMovingSoldProducts = async (req, res) => {
         };
 
         // Date filter is STILL on sales (correct)
-        const dateCondition = dateFilter(
+        const invoiceDateCondition = dateFilter(
             { from_date, to_date, date_filter },
             "sib.created_at",
             replacements
         );
 
-        const rows = await sequelize.query(
+        const orderDateCondition = dateFilter(
+            { from_date, to_date, date_filter },
+            "o.created_at",
+            replacements
+        );
+
+       const rows = await sequelize.query(
             `
-      SELECT
-        v.vendor_name,
-        v.vendor_code,
-        v.vendor_image_url,
-        v.id AS vendor_id,
+            SELECT *
+            FROM (
+            -- Offline invoice sold products
+            SELECT
+                v.vendor_name,
+                v.vendor_code,
+                v.vendor_image_url,
+                v.id AS vendor_id,
 
-        p.sku_id AS product_sku_id,
+                p.sku_id AS product_sku_id,
 
-        mt.material_type,
-        mt.id as material_type_id,
-        c.category_name,
-        c.id as category_id,
-        sc.subcategory_name,
-        sc.id as subcategory_id,
-        p.product_name,
-        p.purity,
-        p.id as product_id,
-        p.hsn_code,
-        p.image_urls as product_images,
+                mt.material_type,
+                mt.id AS material_type_id,
+                c.category_name,
+                c.id AS category_id,
+                sc.subcategory_name,
+                sc.id AS subcategory_id,
+                p.product_name,
+                p.purity,
+                p.id AS product_id,
+                p.hsn_code,
+                p.image_urls AS product_images,
 
-        pid.variation,
-        pid.id as product_item_detail_id,
-        pid.sku_id AS sku_id,
-        sii.quantity,
-        sii.net_weight,
-        sii.gross_weight,
-        sib.invoice_date,
-        sib.invoice_no
+                pid.variation,
+                pid.id AS product_item_detail_id,
+                pid.sku_id AS sku_id,
+                sii.quantity,
+                sii.net_weight,
+                sii.gross_weight,
+                sib.invoice_date AS sold_date,
+                sib.invoice_no AS reference_no,
+                'offline_invoice' AS sale_source
 
-      FROM sales_invoice_bill_items sii
-      JOIN sales_invoice_bills sib
-        ON sib.id = sii.invoice_bill_id
-        AND sib.deleted_at IS NULL
-        AND sib.is_active = true
-        AND sib.status = 'Invoice'
-        ${dateCondition}
+            FROM sales_invoice_bill_items sii
+            JOIN sales_invoice_bills sib
+                ON sib.id = sii.invoice_bill_id
+                AND sib.deleted_at IS NULL
+                AND sib.is_active = true
+                AND sib.status = 'Invoice'
+                ${invoiceDateCondition}
 
-      -- BRANCH FILTER COMES FROM PRODUCTS
-      JOIN products p
-        ON p.id = sii.product_id
-        AND p.deleted_at IS NULL
-        AND p.subcategory_id = :subcategory_id
-        AND p.branch_id = :branch_id
-        AND (:vendor_id IS NULL OR p.vendor_id = :vendor_id)
-        AND (:purity IS NULL OR p.purity = :purity)
-        AND (:category_id IS NULL OR p.category_id = :category_id)
-        AND (:material_type_id IS NULL OR p.material_type_id = :material_type_id)
+            JOIN products p
+                ON p.id = sii.product_id
+                AND p.deleted_at IS NULL
+                AND p.subcategory_id = :subcategory_id
+                AND p.branch_id = :branch_id
+                AND (:vendor_id IS NULL OR p.vendor_id = :vendor_id)
+                AND (:purity IS NULL OR p.purity = :purity)
+                AND (:category_id IS NULL OR p.category_id = :category_id)
+                AND (:material_type_id IS NULL OR p.material_type_id = :material_type_id)
 
-      -- optional item-level data
-      LEFT JOIN "productItemDetails" pid
-        ON pid.id = sii.product_item_detail_id
-        AND pid.deleted_at IS NULL
-        AND (pid.stock_out_reason IS NULL OR pid.stock_out_reason = 'SOLD')
+            LEFT JOIN "productItemDetails" pid
+                ON pid.id = sii.product_item_detail_id
+                AND pid.deleted_at IS NULL
+                AND (pid.stock_out_reason IS NULL OR pid.stock_out_reason = 'SOLD')
 
-      LEFT JOIN vendors v ON v.id = p.vendor_id
-      LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
-      LEFT JOIN categories c ON c.id = p.category_id
-      LEFT JOIN subcategories sc ON sc.id = p.subcategory_id
+            LEFT JOIN vendors v ON v.id = p.vendor_id
+            LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
+            LEFT JOIN categories c ON c.id = p.category_id
+            LEFT JOIN subcategories sc ON sc.id = p.subcategory_id
 
-      WHERE sii.deleted_at IS NULL AND sii.is_returned = false
-        ${search
+            WHERE sii.deleted_at IS NULL
+                AND sii.is_returned = false
+
+            UNION ALL
+
+            -- Online order sold products
+            SELECT
+                v.vendor_name,
+                v.vendor_code,
+                v.vendor_image_url,
+                v.id AS vendor_id,
+
+                p.sku_id AS product_sku_id,
+
+                mt.material_type,
+                mt.id AS material_type_id,
+                c.category_name,
+                c.id AS category_id,
+                sc.subcategory_name,
+                sc.id AS subcategory_id,
+                p.product_name,
+                p.purity,
+                p.id AS product_id,
+                p.hsn_code,
+                p.image_urls AS product_images,
+
+                pid.variation,
+                pid.id AS product_item_detail_id,
+                pid.sku_id AS sku_id,
+                oi.quantity,
+                oi.net_weight,
+                oi.gross_weight,
+                o.order_date AS sold_date,
+                o.order_number AS reference_no,
+                'online_order' AS sale_source
+
+            FROM order_items oi
+            JOIN orders o
+                ON o.id = oi.order_id
+                AND o.deleted_at IS NULL
+                AND o.order_status <> 3
+                ${orderDateCondition}
+
+            JOIN products p
+                ON p.id = oi.product_id
+                AND p.deleted_at IS NULL
+                AND p.subcategory_id = :subcategory_id
+                AND oi.branch_id = :branch_id
+                AND (:vendor_id IS NULL OR p.vendor_id = :vendor_id)
+                AND (:purity IS NULL OR p.purity = :purity)
+                AND (:category_id IS NULL OR p.category_id = :category_id)
+                AND (:material_type_id IS NULL OR p.material_type_id = :material_type_id)
+
+            LEFT JOIN "productItemDetails" pid
+                ON pid.id = oi.product_item_id
+                AND pid.deleted_at IS NULL
+
+            LEFT JOIN vendors v ON v.id = p.vendor_id
+            LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
+            LEFT JOIN categories c ON c.id = p.category_id
+            LEFT JOIN subcategories sc ON sc.id = p.subcategory_id
+
+            WHERE oi.deleted_at IS NULL
+                AND oi.item_status <> 'Cancelled'
+            ) sold
+            WHERE 1=1
+            ${search
                 ? `
-          AND (
-            p.product_name ILIKE :search
-            OR pid.sku_id ILIKE :search
-            OR p.sku_id ILIKE :search
-            OR v.vendor_name ILIKE :search
-          )` : ""
+            AND (
+                sold.product_name ILIKE :search
+                OR sold.sku_id ILIKE :search
+                OR sold.product_sku_id ILIKE :search
+                OR sold.vendor_name ILIKE :search
+            )` : ""
             }
-
-      ORDER BY sib.invoice_date DESC, p.product_name`,
+            ORDER BY sold.sold_date DESC, sold.product_name
+            `,
             {
                 replacements,
                 type: QueryTypes.SELECT,
-            });
+            }
+        );
 
         // Group by product_id
         const groupedMap = new Map();
@@ -558,8 +632,9 @@ const getFastMovingSoldProducts = async (req, res) => {
                 gross_weight: row.gross_weight,
                 net_weight: row.net_weight,
                 quantity: row.quantity,
-                invoice_date: row.invoice_date,
-                invoice_no: row.invoice_no,
+                invoice_date: row.sold_date,
+                invoice_no: row.reference_no,
+                sale_source: row.sale_source,
             });
         }
 
