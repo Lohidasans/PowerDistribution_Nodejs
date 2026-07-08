@@ -375,10 +375,15 @@ const getProductAddonList = async (req, res) => {
 
     let base = `
       FROM products p
+      JOIN "productItemDetails" pid
+        ON pid.product_id = p.id
+        AND pid.deleted_at IS NULL
+        AND pid.quantity > 0
       LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
       LEFT JOIN "categories" c ON c.id = p.category_id
       LEFT JOIN "subcategories" s ON s.id = p.subcategory_id
-      WHERE 1=1`;
+      WHERE p.deleted_at IS NULL
+        AND p.status = 'Active'`;
 
     const replacements = {};
 
@@ -421,7 +426,7 @@ const getProductAddonList = async (req, res) => {
     }
 
     const select = `
-      SELECT
+      SELECT DISTINCT
         p.id,
         p.sku_id,
         p.product_name,
