@@ -46,6 +46,7 @@ const getOutstandingPayables = async (req, res) => {
       SELECT COALESCE(SUM(total_amount), 0) as total_grn_amount
       FROM grns
       WHERE deleted_at IS NULL
+        AND is_active IS NOT FALSE
     `;
 
         // Get total vendor payments
@@ -173,7 +174,7 @@ const getVendorPurchaseContribution = async (req, res) => {
         COALESCE(SUM(CASE WHEN mt.material_type = 'Silver' THEN gi.gross_wt_in_g ELSE 0 END), 0) as silver_weight,
         COALESCE(SUM(g.total_amount), 0) as total_value
       FROM vendors v
-      LEFT JOIN grns g ON g.vendor_id = v.id AND g.deleted_at IS NULL
+      LEFT JOIN grns g ON g.vendor_id = v.id AND g.deleted_at IS NULL AND g.is_active IS NOT FALSE
       LEFT JOIN "grnItems" gi ON gi.grn_id = g.id AND gi.deleted_at IS NULL
       LEFT JOIN "materialTypes" mt ON mt.id = gi.material_type_id AND mt.deleted_at IS NULL
       WHERE v.deleted_at IS NULL
@@ -310,6 +311,7 @@ const getTransactionHistory = async (req, res) => {
 
     let whereConditions = `
       WHERE g.deleted_at IS NULL
+        AND g.is_active IS NOT FALSE
     `;
 
     if (vendor_id) {
