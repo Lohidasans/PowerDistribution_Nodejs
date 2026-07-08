@@ -399,14 +399,16 @@ const getFastMovingSoldProducts = async (req, res) => {
         const {
             branch_id,
             subcategory_id,
-            vendor_id,  
+            vendor_id,
             purity,
-            category_id, 
+            category_id,
             material_type_id,
             search,
             from_date,
             to_date,
             date_filter,
+            page = 1,
+            limit = 10,
         } = req.query;
 
         if (!branch_id || !subcategory_id) {
@@ -416,6 +418,10 @@ const getFastMovingSoldProducts = async (req, res) => {
             );
         }
 
+        const parsedPage = Math.max(parseInt(page, 10) || 1, 1);
+        const parsedLimit = Math.max(parseInt(limit, 10) || 10, 1);
+        const offset = (parsedPage - 1) * parsedLimit;
+
         const replacements = {
             branch_id,
             subcategory_id,
@@ -424,9 +430,10 @@ const getFastMovingSoldProducts = async (req, res) => {
             category_id: category_id || null,
             material_type_id: material_type_id || null,
             search: search ? `%${search}%` : null,
+            limit: parsedLimit,
+            offset,
         };
 
-        // Date filter is STILL on sales (correct)
         const invoiceDateCondition = dateFilter(
             { from_date, to_date, date_filter },
             "sib.created_at",
@@ -439,219 +446,221 @@ const getFastMovingSoldProducts = async (req, res) => {
             replacements
         );
 
-       const rows = await sequelize.query(
+        const rows = await sequelize.query(
             `
-            SELECT *
-            FROM (
-            -- Offline invoice sold products
-            SELECT
-                v.vendor_name,
-                v.vendor_code,
-                v.vendor_image_url,
-                v.id AS vendor_id,
+WITH sold_rows AS (
+    SELECT
+        sii.product_id,
+        sii.product_item_detail_id,
+        SUM(COALESCE(sii.quantity,0)) AS quantity,
+        SUM(COALESCE(sii.gross_weight,0)) AS gross_weight,
+        SUM(COALESCE(sii.net_weight,0)) AS net_weight
+    FROM sales_invoice_bill_items sii
+    JOIN sales_invoice_bills sib
+        ON sib.id = sii.invoice_bill_id
+        AND sib.deleted_at IS NULL
+        AND sib.is_active = true
+        AND sib.status = 'Invoice'
+        ${invoiceDateCondition}
+    JOIN products p
+        ON p.id = sii.product_id
+        AND p.deleted_at IS NULL
+        AND p.branch_id = :branch_id
+        AND p.subcategory_id = :subcategory_id
+        AND (:vendor_id IS NULL OR p.vendor_id = :vendor_id)
+        AND (:purity IS NULL OR p.purity = :purity)
+        AND (:category_id IS NULL OR p.category_id = :category_id)
+        AND (:material_type_id IS NULL OR p.material_type_id = :material_type_id)
+    WHERE sii.deleted_at IS NULL
+        AND sii.is_returned = false
+    GROUP BY sii.product_id, sii.product_item_detail_id
 
-                p.sku_id AS product_sku_id,
+    UNION ALL
 
-                mt.material_type,
-                mt.id AS material_type_id,
-                c.category_name,
-                c.id AS category_id,
-                sc.subcategory_name,
-                sc.id AS subcategory_id,
-                p.product_name,
-                p.purity,
-                p.id AS product_id,
-                p.hsn_code,
-                p.image_urls AS product_images,
+    SELECT
+        oi.product_id,
+        oi.product_item_id AS product_item_detail_id,
+        SUM(COALESCE(oi.quantity,0)) AS quantity,
+        SUM(COALESCE(oi.gross_weight,0)) AS gross_weight,
+        SUM(COALESCE(oi.net_weight,0)) AS net_weight
+    FROM order_items oi
+    JOIN orders o
+        ON o.id = oi.order_id
+        AND o.deleted_at IS NULL
+        AND o.order_status <> 3
+        ${orderDateCondition}
+    JOIN products p
+        ON p.id = oi.product_id
+        AND p.deleted_at IS NULL
+        AND oi.branch_id = :branch_id
+        AND p.subcategory_id = :subcategory_id
+        AND (:vendor_id IS NULL OR p.vendor_id = :vendor_id)
+        AND (:purity IS NULL OR p.purity = :purity)
+        AND (:category_id IS NULL OR p.category_id = :category_id)
+        AND (:material_type_id IS NULL OR p.material_type_id = :material_type_id)
+    WHERE oi.deleted_at IS NULL
+        AND oi.item_status <> 'Cancelled'
+    GROUP BY oi.product_id, oi.product_item_id
+),
 
-                pid.variation,
-                pid.id AS product_item_detail_id,
-                pid.sku_id AS sku_id,
-                sii.quantity,
-                sii.net_weight,
-                sii.gross_weight,
-                sib.invoice_date AS sold_date,
-                sib.invoice_no AS reference_no,
-                'offline_invoice' AS sale_source
+item_sales AS (
+    SELECT
+        product_id,
+        product_item_detail_id,
+        SUM(quantity) AS quantity,
+        SUM(gross_weight) AS gross_weight,
+        SUM(net_weight) AS net_weight
+    FROM sold_rows
+    GROUP BY product_id, product_item_detail_id
+),
 
-            FROM sales_invoice_bill_items sii
-            JOIN sales_invoice_bills sib
-                ON sib.id = sii.invoice_bill_id
-                AND sib.deleted_at IS NULL
-                AND sib.is_active = true
-                AND sib.status = 'Invoice'
-                ${invoiceDateCondition}
+product_sales AS (
+    SELECT
+        product_id,
+        COUNT(DISTINCT product_item_detail_id) AS variation_count,
+        SUM(quantity) AS total_quantity,
+        SUM(gross_weight) AS total_gross_weight,
+        SUM(net_weight) AS total_net_weight
+    FROM item_sales
+    GROUP BY product_id
+),
 
-            JOIN products p
-                ON p.id = sii.product_id
-                AND p.deleted_at IS NULL
-                AND p.subcategory_id = :subcategory_id
-                AND p.branch_id = :branch_id
-                AND (:vendor_id IS NULL OR p.vendor_id = :vendor_id)
-                AND (:purity IS NULL OR p.purity = :purity)
-                AND (:category_id IS NULL OR p.category_id = :category_id)
-                AND (:material_type_id IS NULL OR p.material_type_id = :material_type_id)
+filtered_products AS (
+    SELECT
+        ps.product_id,
+        ps.variation_count,
+        ps.total_quantity,
+        ps.total_gross_weight,
+        ps.total_net_weight,
+        p.sku_id AS product_sku_id,
+        p.product_name,
+        p.purity,
+        p.hsn_code,
+        p.image_urls AS product_images,
+        p.variation_type,
+        v.id AS vendor_id,
+        v.vendor_name,
+        v.vendor_code,
+        v.vendor_image_url,
+        mt.id AS material_type_id,
+        mt.material_type,
+        c.id AS category_id,
+        c.category_name,
+        sc.id AS subcategory_id,
+        sc.subcategory_name
+    FROM product_sales ps
+    JOIN products p
+        ON p.id = ps.product_id
+    LEFT JOIN vendors v
+        ON v.id = p.vendor_id
+    LEFT JOIN "materialTypes" mt
+        ON mt.id = p.material_type_id
+    LEFT JOIN categories c
+        ON c.id = p.category_id
+    LEFT JOIN subcategories sc
+        ON sc.id = p.subcategory_id
+    WHERE (
+        :search IS NULL
+        OR p.product_name ILIKE :search
+        OR p.sku_id ILIKE :search
+        OR v.vendor_name ILIKE :search
+    )
+),
 
-            LEFT JOIN "productItemDetails" pid
-                ON pid.id = sii.product_item_detail_id
-                AND pid.deleted_at IS NULL
-                AND (pid.stock_out_reason IS NULL OR pid.stock_out_reason = 'SOLD')
+paginated_products AS (
+    SELECT *
+    FROM filtered_products
+    ORDER BY
+        total_quantity DESC,
+        total_gross_weight DESC,
+        product_id
+    LIMIT :limit
+    OFFSET :offset
+)
 
-            LEFT JOIN vendors v ON v.id = p.vendor_id
-            LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
-            LEFT JOIN categories c ON c.id = p.category_id
-            LEFT JOIN subcategories sc ON sc.id = p.subcategory_id
-
-            WHERE sii.deleted_at IS NULL
-                AND sii.is_returned = false
-
-            UNION ALL
-
-            -- Online order sold products
-            SELECT
-                v.vendor_name,
-                v.vendor_code,
-                v.vendor_image_url,
-                v.id AS vendor_id,
-
-                p.sku_id AS product_sku_id,
-
-                mt.material_type,
-                mt.id AS material_type_id,
-                c.category_name,
-                c.id AS category_id,
-                sc.subcategory_name,
-                sc.id AS subcategory_id,
-                p.product_name,
-                p.purity,
-                p.id AS product_id,
-                p.hsn_code,
-                p.image_urls AS product_images,
-
-                pid.variation,
-                pid.id AS product_item_detail_id,
-                pid.sku_id AS sku_id,
-                oi.quantity,
-                oi.net_weight,
-                oi.gross_weight,
-                o.order_date AS sold_date,
-                o.order_number AS reference_no,
-                'online_order' AS sale_source
-
-            FROM order_items oi
-            JOIN orders o
-                ON o.id = oi.order_id
-                AND o.deleted_at IS NULL
-                AND o.order_status <> 3
-                ${orderDateCondition}
-
-            JOIN products p
-                ON p.id = oi.product_id
-                AND p.deleted_at IS NULL
-                AND p.subcategory_id = :subcategory_id
-                AND oi.branch_id = :branch_id
-                AND (:vendor_id IS NULL OR p.vendor_id = :vendor_id)
-                AND (:purity IS NULL OR p.purity = :purity)
-                AND (:category_id IS NULL OR p.category_id = :category_id)
-                AND (:material_type_id IS NULL OR p.material_type_id = :material_type_id)
-
-            LEFT JOIN "productItemDetails" pid
-                ON pid.id = oi.product_item_id
-                AND pid.deleted_at IS NULL
-
-            LEFT JOIN vendors v ON v.id = p.vendor_id
-            LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
-            LEFT JOIN categories c ON c.id = p.category_id
-            LEFT JOIN subcategories sc ON sc.id = p.subcategory_id
-
-            WHERE oi.deleted_at IS NULL
-                AND oi.item_status <> 'Cancelled'
-            ) sold
-            WHERE 1=1
-            ${search
-                ? `
-            AND (
-                sold.product_name ILIKE :search
-                OR sold.sku_id ILIKE :search
-                OR sold.product_sku_id ILIKE :search
-                OR sold.vendor_name ILIKE :search
-            )` : ""
-            }
-            ORDER BY sold.sold_date DESC, sold.product_name
-            `,
+SELECT
+    pp.*,
+    pid.id AS product_item_detail_id,
+    TRIM(pid.sku_id) AS sku_id,
+    TRIM(pid.variation) AS variation,
+    items.quantity AS item_quantity,
+    items.gross_weight AS item_gross_weight,
+    items.net_weight AS item_net_weight
+FROM paginated_products pp
+JOIN item_sales items
+    ON items.product_id = pp.product_id
+LEFT JOIN "productItemDetails" pid
+    ON pid.id = items.product_item_detail_id
+    AND pid.deleted_at IS NULL
+ORDER BY
+    pp.total_quantity DESC,
+    pp.total_gross_weight DESC,
+    pp.product_id,
+    pid.id;
+`,
             {
                 replacements,
                 type: QueryTypes.SELECT,
             }
         );
 
-        // Group by product_id
         const groupedMap = new Map();
 
         for (const row of rows) {
-            const key = row.product_id;
-
-            if (!groupedMap.has(key)) {
-                groupedMap.set(key, {
+            if (!groupedMap.has(row.product_id)) {
+                groupedMap.set(row.product_id, {
                     vendor_image: row.vendor_image_url,
                     vendor_code: row.vendor_code,
                     vendor_name: row.vendor_name,
                     vendor_id: row.vendor_id,
-
                     product_sku_id: row.product_sku_id,
-                    branch_id: branch_id,
+                    branch_id,
                     hsn_code: row.hsn_code,
                     product_name: row.product_name,
+                    variation_type: row.variation_type,
                     product_images: row.product_images,
                     purity: row.purity,
-
                     material_type: row.material_type,
                     material_type_id: row.material_type_id,
                     category_name: row.category_name,
                     category_id: row.category_id,
                     subcategory_name: row.subcategory_name,
                     subcategory_id: row.subcategory_id,
-
-                    sku_id: row.sku_id,
-                    purity: row.purity,
                     product_id: row.product_id,
-
-                    variation_count: 0,
+                    variation_count: Number(row.variation_count),
+                    total_quantity: Number(row.total_quantity),
+                    total_gross_weight: Number(row.total_gross_weight).toFixed(3),
+                    total_net_weight: Number(row.total_net_weight).toFixed(3),
                     itemDetails: [],
                 });
             }
 
-            const product = groupedMap.get(key);
-
-            // ALWAYS item-level
-            product.itemDetails.push({
+            groupedMap.get(row.product_id).itemDetails.push({
                 id: row.product_item_detail_id,
                 product_id: row.product_id,
                 sku_id: row.sku_id,
                 variation: row.variation || "{}",
-                gross_weight: row.gross_weight,
-                net_weight: row.net_weight,
-                quantity: row.quantity,
-                invoice_date: row.sold_date,
-                invoice_no: row.reference_no,
-                sale_source: row.sale_source,
+                quantity: Number(row.item_quantity),
+                gross_weight: Number(row.item_gross_weight).toFixed(3),
+                net_weight: Number(row.item_net_weight).toFixed(3),
             });
         }
 
-        // calculate variation count
-        const finalData = Array.from(groupedMap.values()).map(product => ({
-            ...product,
-            variation_count: product.itemDetails.length,
-        }));
+        const data = Array.from(groupedMap.values());
 
         return commonService.okResponse(res, {
-            data: finalData,
+            data,
+            pagination: {
+                page: parsedPage,
+                limit: parsedLimit,
+            },
         });
     } catch (error) {
         console.error("Fast Moving Sold Products Error", error);
         return commonService.handleError(res, error);
     }
 };
+
 
 const getTopBuyingCustomers = async (req, res) => {
     try {
