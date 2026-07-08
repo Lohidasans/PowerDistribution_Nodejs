@@ -914,8 +914,8 @@ const getStockKpiSummary = async (req, res) => {
             p.grn_id,
 
             /* =========================================
-               UPDATED WEIGHT
-               ========================================= */
+              UPDATED WEIGHT
+              ========================================= */
 
             -- CURRENT STOCK
             COALESCE(SUM(pid.quantity * pid.gross_weight), 0)
@@ -943,10 +943,10 @@ const getStockKpiSummary = async (req, res) => {
               0)
 
             AS total_updated_weight,
-            
+
             /* =========================================
-               UPDATED QTY
-               ========================================= */
+              UPDATED QTY
+              ========================================= */
 
             -- CURRENT STOCK
             COALESCE(SUM(pid.quantity), 0)
@@ -982,8 +982,8 @@ const getStockKpiSummary = async (req, res) => {
             AND pid.deleted_at IS NULL
 
           /* =========================================
-             OFFLINE BILL SOLD
-             ========================================= */
+            OFFLINE BILL SOLD
+            ========================================= */
 
           LEFT JOIN sales_invoice_bill_items sii
             ON sii.product_item_detail_id = pid.id
@@ -995,8 +995,8 @@ const getStockKpiSummary = async (req, res) => {
             AND sib.deleted_at IS NULL
 
           /* =========================================
-             ONLINE ORDER SOLD
-             ========================================= */
+            ONLINE ORDER SOLD
+            ========================================= */
 
           LEFT JOIN order_items oi
             ON oi.product_item_id = pid.id
@@ -1004,12 +1004,12 @@ const getStockKpiSummary = async (req, res) => {
             AND oi.item_status != 'Cancelled'
 
           WHERE p.deleted_at IS NULL
-          ${branch_id ? `AND p.branch_id = :branch_id` : ``}
 
           GROUP BY p.grn_id
         ) pi ON pi.grn_id = g.id
 
         WHERE g.deleted_at IS NULL
+        ${branch_id ? `AND g.branch_id = :branch_id` : ``}
         ${grnDateCondition}
       )
     `;
