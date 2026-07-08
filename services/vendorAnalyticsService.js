@@ -766,12 +766,13 @@ const getVendorOverview = async (req, res) => {
       SELECT 
         COALESCE(SUM(vp.amount), 0) as total_paid
       FROM vendor_payments vp
-      JOIN grns g ON g.grn_no = vp.ref_id
+      JOIN grns g ON g.id = vp.purchase_id::integer AND g.deleted_at IS NULL
       WHERE g.vendor_id = :vendor_id
         AND vp.status = 'Completed'
         AND vp.is_active = true
+        AND vp.user_type_id = 1
+        AND vp.bill_type_id = 1
         AND vp.deleted_at IS NULL
-        AND g.deleted_at IS NULL
          ${paymentDateFilter}
     `;
 
