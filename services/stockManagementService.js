@@ -1500,20 +1500,21 @@ const getGrnDiscrepancyList = async (req, res) => {
         g.status_id,
         v.vendor_name,
 
-        COALESCE(gi.total_net_weight, 0) AS ordered_weight,
-        COALESCE(gi.total_quantity, 0) AS ordered_qty,
+        COALESCE(gi.total_order_weight, 0) AS ordered_weight,
+        COALESCE(gi.total_order_qty, 0) AS ordered_qty,
 
         COALESCE(pi.total_updated_weight, 0) AS updated_weight,
         COALESCE(pi.total_updated_qty, 0) AS updated_qty
 
       FROM grns g
+
       LEFT JOIN vendors v ON v.id = g.vendor_id
 
       LEFT JOIN (
         SELECT
           grn_id,
-          SUM(net_wt_in_g) AS total_net_weight,
-          SUM(quantity) AS total_quantity
+          SUM(gross_wt_in_g) AS total_order_weight,
+          SUM(quantity) AS total_order_qty
         FROM "grnItems"
         WHERE deleted_at IS NULL
         GROUP BY grn_id
@@ -1522,18 +1523,57 @@ const getGrnDiscrepancyList = async (req, res) => {
       LEFT JOIN (
         SELECT
           p.grn_id,
-          SUM(pid.net_weight) AS total_updated_weight,
-          SUM(pid.quantity) AS total_updated_qty
+
+          SUM(pid.quantity * pid.gross_weight)
+          + COALESCE(SUM(
+            CASE
+              WHEN sib.status = 'Invoice'
+              THEN sii.quantity * sii.gross_weight
+              ELSE 0
+            END
+          ), 0)
+          + COALESCE(SUM(oi.quantity * pid.gross_weight), 0)
+          AS total_updated_weight,
+
+          SUM(pid.quantity)
+          + COALESCE(SUM(
+            CASE
+              WHEN sib.status = 'Invoice'
+              THEN sii.quantity
+              ELSE 0
+            END
+          ), 0)
+          + COALESCE(SUM(oi.quantity), 0)
+          AS total_updated_qty
+
         FROM products p
+
         JOIN "productItemDetails" pid
           ON pid.product_id = p.id
           AND pid.deleted_at IS NULL
+
+        LEFT JOIN sales_invoice_bill_items sii
+          ON sii.product_item_detail_id = pid.id
+          AND sii.deleted_at IS NULL
+          AND sii.is_returned = false
+
+        LEFT JOIN sales_invoice_bills sib
+          ON sib.id = sii.invoice_bill_id
+          AND sib.deleted_at IS NULL
+
+        LEFT JOIN order_items oi
+          ON oi.product_item_id = pid.id
+          AND oi.deleted_at IS NULL
+          AND oi.item_status != 'Cancelled'
+
         WHERE p.deleted_at IS NULL
+
         GROUP BY p.grn_id
       ) pi ON pi.grn_id = g.id
 
       ${whereSql}
-      ORDER BY g.grn_date DESC, g.grn_no DESC
+
+      ORDER BY g.created_at DESC, g.id DESC
     `;
 
     if (hasPagination) {
@@ -1547,26 +1587,11 @@ const getGrnDiscrepancyList = async (req, res) => {
       type: sequelize.QueryTypes.SELECT,
     });
 
-    let updatedCount = 0;
-    let yetToUpdateCount = 0;
-
     const data = rows.map((row) => {
       const orderedWt = Number(row.ordered_weight || 0);
       const updatedWt = Number(row.updated_weight || 0);
       const orderedQty = Number(row.ordered_qty || 0);
       const updatedQty = Number(row.updated_qty || 0);
-
-      const yetToUpdateWt = Number(
-        (orderedWt - updatedWt).toFixed(3)
-      );
-
-      const yetToUpdateQty = orderedQty - updatedQty;
-
-      // Completion is manual-only; do not infer status from matched qty/weight.
-      const status_id = Number(row.status_id || 1);
-
-      if (status_id === 2) updatedCount++;
-      else yetToUpdateCount++;
 
       return {
         id: row.id,
@@ -1575,41 +1600,45 @@ const getGrnDiscrepancyList = async (req, res) => {
         vendor_name: row.vendor_name,
 
         ordered: {
-          weight: orderedWt,
+          weight: +orderedWt.toFixed(3),
           quantity: orderedQty,
         },
         updated: {
-          weight: updatedWt,
+          weight: +updatedWt.toFixed(3),
           quantity: updatedQty,
         },
         yet_to_update: {
-          weight: yetToUpdateWt,   // ✅ can be negative
-          quantity: yetToUpdateQty // ✅ real difference
+          weight: +(orderedWt - updatedWt).toFixed(3),
+          quantity: orderedQty - updatedQty,
         },
 
-        status_id,
+        status_id: Number(row.status_id || 1),
       };
     });
 
-    let totalItems = data.length;
-    if (hasPagination) {
-      const [{ count }] = await sequelize.query(
-        `
-        SELECT COUNT(*)::int AS count
-        FROM grns g
-        LEFT JOIN vendors v ON v.id = g.vendor_id
-        ${whereSql}
-        `,
-        { replacements, type: sequelize.QueryTypes.SELECT }
-      );
-      totalItems = count;
-    }
+    const [summary] = await sequelize.query(
+      `
+      SELECT
+        COUNT(*)::int AS "totalGrns",
+        SUM(CASE WHEN g.status_id = 2 THEN 1 ELSE 0 END)::int AS updated,
+        SUM(CASE WHEN g.status_id = 1 THEN 1 ELSE 0 END)::int AS "yetToUpdate"
+      FROM grns g
+      LEFT JOIN vendors v ON v.id = g.vendor_id
+      ${whereSql}
+      `,
+      {
+        replacements,
+        type: sequelize.QueryTypes.SELECT,
+      }
+    );
+
+    const totalItems = Number(summary.totalGrns || 0);
 
     return commonService.okResponse(res, {
       summary: {
         totalGrns: totalItems,
-        updated: updatedCount,
-        yetToUpdate: yetToUpdateCount,
+        updated: Number(summary.updated || 0),
+        yetToUpdate: Number(summary.yetToUpdate || 0),
       },
       totalItems,
       data,
