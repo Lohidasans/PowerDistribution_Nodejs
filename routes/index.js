@@ -8,6 +8,7 @@ const CategoryRouter = require("./categoryRoute");
 const SubcategoryRouter = require("./subcategoryRoute");
 const VariantRouter = require("./variantRoute");
 const ImageUploadRoute = require("./imageUploadRoute");
+const ImageProxyRoute = require("./imageProxyRoute");
 const UserLoginService = require("./userLoginRoute");
 const VendorSpocDetailsRoute = require("./vendorSpocDetailsRoute");
 const VendorRoutes = require("./vendorRoute");
@@ -169,6 +170,7 @@ module.exports = (app) => {
   app.use("/api/v1", branchDashboardRoute);
   app.use("/api/v1", AbandonedCheckoutRoute);
   app.use("/api/v1", TagPrintSettingRoute);
+  app.use("/api/v1", ImageProxyRoute);
   app.use("/api/v1", PushNotificationRoute);
 };
 
