@@ -3,6 +3,105 @@ const commonService = require("./commonService");
 const message = require("../constants/en.json");
 const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
 
+// Guard against returning more than a GRN actually received. The frontend caps
+// a single return at the GRN quantity, but nothing stops the same GRN from being
+// returned again in a fresh Purchase Return — so we validate the CUMULATIVE
+// returned quantity/weight per GRN line (keyed by ref_no) across all existing,
+// non-deleted Purchase Returns for that GRN.
+// Returns an error string when the request would over-return, otherwise null.
+const validateReturnableAgainstGrn = async (grnId, items = [], options = {}) => {
+  const { excludePrId = null, transaction = null } = options;
+
+  // No GRN linked → nothing to validate against.
+  if (!grnId) return null;
+
+  // Only GRN-sourced lines (those carrying a ref_no) are bounded by the GRN.
+  const grnLinkedItems = items.filter(
+    (item) => item.ref_no !== undefined && item.ref_no !== null && String(item.ref_no).trim() !== ""
+  );
+  if (grnLinkedItems.length === 0) return null;
+
+  // Original quantity / net weight received on the GRN, per ref_no.
+  const grnRows = await sequelize.query(
+    `
+      SELECT ref_no,
+             COALESCE(SUM(quantity), 0)   AS quantity,
+             COALESCE(SUM(net_wt_in_g), 0) AS net_weight
+      FROM "grnItems"
+      WHERE grn_id = :grnId AND deleted_at IS NULL
+      GROUP BY ref_no
+    `,
+    { replacements: { grnId }, type: sequelize.QueryTypes.SELECT, transaction }
+  );
+  const grnByRef = new Map(
+    grnRows.map((r) => [
+      String(r.ref_no),
+      { quantity: Number(r.quantity) || 0, net_weight: Number(r.net_weight) || 0 },
+    ])
+  );
+
+  // Quantity / net weight already returned on prior Purchase Returns for this GRN.
+  const returnedRows = await sequelize.query(
+    `
+      SELECT pri.ref_no,
+             COALESCE(SUM(pri.quantity), 0)   AS quantity,
+             COALESCE(SUM(pri.net_weight), 0) AS net_weight
+      FROM purchase_return_items pri
+      JOIN purchase_returns pr ON pr.id = pri.pr_id
+      WHERE pr.grn_id = :grnId
+        AND pr.deleted_at IS NULL
+        AND pri.deleted_at IS NULL
+        ${excludePrId ? "AND pr.id <> :excludePrId" : ""}
+      GROUP BY pri.ref_no
+    `,
+    {
+      replacements: excludePrId ? { grnId, excludePrId } : { grnId },
+      type: sequelize.QueryTypes.SELECT,
+      transaction,
+    }
+  );
+  const returnedByRef = new Map(
+    returnedRows.map((r) => [
+      String(r.ref_no),
+      { quantity: Number(r.quantity) || 0, net_weight: Number(r.net_weight) || 0 },
+    ])
+  );
+
+  // Sum the quantities/weights requested in THIS payload, per ref_no.
+  const requestedByRef = new Map();
+  for (const item of grnLinkedItems) {
+    const key = String(item.ref_no).trim();
+    const prev = requestedByRef.get(key) || { quantity: 0, net_weight: 0 };
+    prev.quantity += Number(item.quantity) || 0;
+    prev.net_weight += Number(item.net_weight) || 0;
+    requestedByRef.set(key, prev);
+  }
+
+  const WEIGHT_EPSILON = 0.001; // tolerate float/rounding noise on decimal weights
+
+  for (const [refNo, requested] of requestedByRef.entries()) {
+    const grn = grnByRef.get(refNo);
+    // ref_no not part of this GRN — leave it to the DB / other validation.
+    if (!grn) continue;
+
+    const alreadyReturned = returnedByRef.get(refNo) || { quantity: 0, net_weight: 0 };
+
+    const totalQty = alreadyReturned.quantity + requested.quantity;
+    if (totalQty > grn.quantity) {
+      const remaining = Math.max(0, grn.quantity - alreadyReturned.quantity);
+      return `Ref No ${refNo}: return quantity exceeds the returnable GRN quantity. Already returned ${alreadyReturned.quantity} of ${grn.quantity}; only ${remaining} left to return.`;
+    }
+
+    const totalWeight = alreadyReturned.net_weight + requested.net_weight;
+    if (totalWeight - grn.net_weight > WEIGHT_EPSILON) {
+      const remainingWt = Math.max(0, grn.net_weight - alreadyReturned.net_weight);
+      return `Ref No ${refNo}: return weight exceeds the returnable GRN weight. Already returned ${alreadyReturned.net_weight.toFixed(3)}g of ${grn.net_weight.toFixed(3)}g; only ${remainingWt.toFixed(3)}g left to return.`;
+    }
+  }
+
+  return null;
+};
+
 // Create Purchase Return with items
 const createPurchaseReturn = async (req, res) => {
   const transaction = await sequelize.transaction();
@@ -17,6 +116,13 @@ const createPurchaseReturn = async (req, res) => {
         await transaction.rollback();
         return commonService.badRequest(res, `${field} is required`);
       }
+    }
+
+    // Prevent over-returning a GRN across multiple Purchase Returns.
+    const overReturnError = await validateReturnableAgainstGrn(prData.grn_id, items, { transaction });
+    if (overReturnError) {
+      await transaction.rollback();
+      return commonService.badRequest(res, overReturnError);
     }
 
     // Create Purchase Return
@@ -201,6 +307,19 @@ const updatePurchaseReturn = async (req, res) => {
       await transaction.rollback();
       return commonService.notFound(res,"Purchase Return not found"
       );
+    }
+
+    // Prevent over-returning a GRN across multiple Purchase Returns. Exclude this
+    // PR's own existing items from the cumulative total so an edit isn't blocked
+    // by the quantities it is itself replacing.
+    const targetGrnId = updateData.grn_id !== undefined ? updateData.grn_id : pr.grn_id;
+    const overReturnError = await validateReturnableAgainstGrn(targetGrnId, items, {
+      excludePrId: id,
+      transaction,
+    });
+    if (overReturnError) {
+      await transaction.rollback();
+      return commonService.badRequest(res, overReturnError);
     }
 
     // Update Purchase Return header fields
