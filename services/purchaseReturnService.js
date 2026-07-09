@@ -137,11 +137,38 @@ const getPurchaseReturnWithItems = async (prId) => {
       });
     }
 
+    // Get branch details (the selected branch's address is shown top-right on
+    // the view/print, joined to district + state for the location lines).
+    let branch = null;
+    if (pr.branch_id) {
+      const branchRows = await sequelize.query(`
+        SELECT
+          b.id,
+          b.branch_name,
+          b.address,
+          b.mobile,
+          b.gst_no,
+          b.pin_code,
+          d.district_name,
+          s.state_name
+        FROM branches b
+        LEFT JOIN districts d ON d.id = b.district_id
+        LEFT JOIN states s    ON s.id = b.state_id
+        WHERE b.id = :branchId
+        LIMIT 1
+      `, {
+        replacements: { branchId: pr.branch_id },
+        type: sequelize.QueryTypes.SELECT
+      });
+      branch = branchRows[0] || null;
+    }
+
     return {
       ...pr,
       vendor,
       order_by_user: user,
       grn,
+      branch,
       items
     };
   } catch (error) {
