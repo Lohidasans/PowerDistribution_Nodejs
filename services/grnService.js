@@ -803,13 +803,24 @@ const getGrnView = async (req, res) => {
           v.gst_no           AS vendor_gst_no,
           d.district_name    AS vendor_district,
           s.state_name       AS vendor_state,
-          c.country_name     AS vendor_country
+          c.country_name     AS vendor_country,
+          g.branch_id,
+          br.branch_name     AS branch_name,
+          br.address         AS branch_address,
+          br.mobile          AS branch_mobile,
+          br.gst_no          AS branch_gst_no,
+          br.pin_code        AS branch_pin_code,
+          bd.district_name   AS branch_district,
+          bs.state_name      AS branch_state
         FROM grns g
         LEFT JOIN vendors v   ON v.id = g.vendor_id
         LEFT JOIN purchase_orders po ON po.id = g.po_id
         LEFT JOIN districts d ON d.id = v.district_id
         LEFT JOIN states s    ON s.id = v.state_id
         LEFT JOIN countries c ON c.id = v.country_id
+        LEFT JOIN branches br ON br.id = g.branch_id
+        LEFT JOIN districts bd ON bd.id = br.district_id
+        LEFT JOIN states bs   ON bs.id = br.state_id
         WHERE g.id = :id
         LIMIT 1;
       `,

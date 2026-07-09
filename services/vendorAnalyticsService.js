@@ -720,11 +720,12 @@ const getVendorOverview = async (req, res) => {
 
     // Grn Total value
        const grnTotalValueQuery = `
-        SELECT 
+        SELECT
             COALESCE(SUM(g.total_amount), 0) as total_value
         FROM grns g
-        WHERE g.vendor_id = :vendor_id 
+        WHERE g.vendor_id = :vendor_id
             AND g.deleted_at IS NULL
+            AND g.is_active IS NOT FALSE
             ${grnDateFilter}
         `;
 
@@ -788,8 +789,9 @@ const getVendorOverview = async (req, res) => {
           EXTRACT(MONTH FROM g.grn_date) as sort_order,
           COALESCE(SUM(g.total_amount), 0) as total_value
         FROM grns g
-        WHERE g.vendor_id = :vendor_id 
+        WHERE g.vendor_id = :vendor_id
           AND g.deleted_at IS NULL
+          AND g.is_active IS NOT FALSE
            ${grnDateFilter}
         GROUP BY TO_CHAR(g.grn_date, 'MON'), EXTRACT(MONTH FROM g.grn_date)
         ORDER BY sort_order
@@ -802,8 +804,9 @@ const getVendorOverview = async (req, res) => {
           EXTRACT(YEAR FROM g.grn_date) as sort_order,
           COALESCE(SUM(g.total_amount), 0) as total_value
         FROM grns g
-        WHERE g.vendor_id = :vendor_id 
+        WHERE g.vendor_id = :vendor_id
           AND g.deleted_at IS NULL
+          AND g.is_active IS NOT FALSE
          ${grnDateFilter}
         GROUP BY EXTRACT(YEAR FROM g.grn_date)
         ORDER BY sort_order
@@ -816,8 +819,9 @@ const getVendorOverview = async (req, res) => {
           EXTRACT(DOW FROM g.grn_date) as sort_order,
           COALESCE(SUM(g.total_amount), 0) as total_value
         FROM grns g
-        WHERE g.vendor_id = :vendor_id 
+        WHERE g.vendor_id = :vendor_id
           AND g.deleted_at IS NULL
+          AND g.is_active IS NOT FALSE
           ${grnDateFilter}
         GROUP BY TO_CHAR(g.grn_date, 'DY'), EXTRACT(DOW FROM g.grn_date)
         ORDER BY sort_order
@@ -1060,6 +1064,7 @@ const getVendorDashboard = async (req, res) => {
                 0 AS total_payments
             FROM grns g
             WHERE g.deleted_at IS NULL
+            AND g.is_active IS NOT FALSE
             ${dateFilter}
             ${grnBranchFilter}
 
@@ -1153,12 +1158,14 @@ const getVendorDashboard = async (req, res) => {
           SUM(g.total_amount) AS total_purchase
         FROM grns g
         WHERE g.deleted_at IS NULL
+          AND g.is_active IS NOT FALSE
           ${dateFilter}
           ${grnBranchFilter}
         GROUP BY g.vendor_id
       ) gp ON gp.vendor_id = v.id
-      LEFT JOIN grns g ON g.vendor_id = v.id 
+      LEFT JOIN grns g ON g.vendor_id = v.id
         AND g.deleted_at IS NULL
+        AND g.is_active IS NOT FALSE
         ${dateFilter}
         ${grnBranchFilter}
       LEFT JOIN "grnItems" gi ON gi.grn_id = g.id AND gi.deleted_at IS NULL
@@ -1183,6 +1190,7 @@ const getVendorDashboard = async (req, res) => {
         AND gi.deleted_at IS NULL
       LEFT JOIN grns g ON g.id = gi.grn_id
         AND g.deleted_at IS NULL
+        AND g.is_active IS NOT FALSE
         ${dateFilter}
       LEFT JOIN vendors v ON v.id = g.vendor_id
       WHERE mt.deleted_at IS NULL

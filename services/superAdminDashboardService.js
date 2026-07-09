@@ -198,6 +198,7 @@ const getSuperAdminDashboard = async (req, res) => {
           COALESCE(SUM(g.total_amount), 0)     AS purchase_amount
         FROM grns g
         WHERE g.deleted_at IS NULL
+          AND g.is_active IS NOT FALSE
         GROUP BY TO_CHAR(g.grn_date, '${dateFormat}')
       )
       SELECT
@@ -428,6 +429,7 @@ const getSuperAdminDashboard = async (req, res) => {
         COALESCE(SUM(g.total_amount), 0) AS total_purchase
       FROM grns g
       WHERE g.deleted_at IS NULL
+        AND g.is_active IS NOT FALSE
     `;
 
     const vendorPaidQuery = `
@@ -481,6 +483,7 @@ const getSuperAdminDashboard = async (req, res) => {
         FROM grns g
         LEFT JOIN "grnItems" gi ON gi.grn_id = g.id AND gi.deleted_at IS NULL
         WHERE g.deleted_at IS NULL
+          AND g.is_active IS NOT FALSE
         GROUP BY g.vendor_id
       ),
       vendor_sales AS (
@@ -1029,6 +1032,7 @@ const getStockKpiSummary = async (req, res) => {
       JOIN grns g
         ON g.id = gi.grn_id
         AND g.deleted_at IS NULL
+        AND g.is_active IS NOT FALSE
       WHERE gi.deleted_at IS NULL
       ${branch_id ? `
         AND EXISTS (

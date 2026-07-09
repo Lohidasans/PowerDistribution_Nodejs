@@ -15,7 +15,7 @@ const getVendorRevenueStatistics = async (req, res) => {
 
     const replacements = {};
 
-    let whereConditions = ` WHERE g.deleted_at IS NULL`;
+    let whereConditions = ` WHERE g.deleted_at IS NULL AND g.is_active IS NOT FALSE`;
 
     if (vendor_id) {
       whereConditions += ` AND g.vendor_id = :vendor_id`;
