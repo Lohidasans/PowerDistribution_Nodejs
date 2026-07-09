@@ -189,12 +189,19 @@ const getBranchwiseRevenue = async (req, res) => {
                     p.payment_date AS txn_date,
                     p.payment_mode::text AS payment_mode,
                     CASE
-                        WHEN sib.id IS NOT NULL
-                            AND p.payment_mode = 'Cash'
+                        WHEN p.payment_mode = 'Cash'
                         THEN
                             p.amount_received
                             - COALESCE(
-                                MAX(sib.refund_amount) OVER (PARTITION BY sib.id),
+                                CASE
+                                    WHEN sib.id IS NOT NULL
+                                    THEN MAX(sib.refund_amount) OVER (PARTITION BY sib.id)
+
+                                    WHEN jr.id IS NOT NULL
+                                    THEN MAX(jr.refund_amount) OVER (PARTITION BY jr.id)
+
+                                    ELSE 0
+                                END,
                                 0
                             )
                         ELSE p.amount_received
@@ -215,9 +222,11 @@ const getBranchwiseRevenue = async (req, res) => {
                     ON sib.id = p.invoice_bill_id
                     AND sib.deleted_at IS NULL
                     AND sib.is_active = true
+                    AND sib.status = 'Invoice'
                 LEFT JOIN jewel_repairs jr
                     ON jr.id = p.jewel_repair_id
                     AND jr.deleted_at IS NULL AND jr.is_active = true
+                    AND jr.status = 'Completed'
                 WHERE p.deleted_at IS NULL
                     AND p.status = 'Completed'
 
@@ -244,19 +253,19 @@ const getBranchwiseRevenue = async (req, res) => {
                     p.amount_received AS amount,
                     0 AS refund_amount
                 FROM customer_scheme_payments sp
-            
+
                 JOIN customer_enrollments e
                     ON e.id = sp.enrollment_id
                     AND e.deleted_at IS NULL
-                
+
                 JOIN customers c
                     ON c.id = e.customer_id
                     AND c.deleted_at IS NULL
-                
+
                 JOIN payments p
                     ON p.scheme_payment_id = sp.id
                     AND p.deleted_at IS NULL
-                
+
                 WHERE sp.deleted_at IS NULL
                     AND sp.payment_source = 'INSTALLMENT'
                     AND p.status = 'Completed'
@@ -277,15 +286,20 @@ const getBranchwiseRevenue = async (req, res) => {
             )
 
             SELECT
-                ROUND(SUM(amount), 2) AS total_collection,
-                ROUND(SUM(CASE WHEN payment_mode = 'Cash' THEN amount ELSE 0 END), 2) AS cash,
-                ROUND(SUM(CASE WHEN payment_mode = 'UPI' THEN amount ELSE 0 END), 2) AS upi,
-                ROUND(SUM(CASE WHEN payment_mode = 'Card' THEN amount ELSE 0 END), 2) AS card,
-                ROUND(SUM(refund_amount), 2) AS refund
+                ROUND(SUM(rs.amount), 2) AS total_collection,
+                ROUND(SUM(CASE WHEN rs.payment_mode = 'Cash' THEN rs.amount ELSE 0 END), 2) AS cash,
+                ROUND(SUM(CASE WHEN rs.payment_mode = 'UPI' THEN rs.amount ELSE 0 END), 2) AS upi,
+                ROUND(SUM(CASE WHEN rs.payment_mode = 'Card' THEN rs.amount ELSE 0 END), 2) AS card,
+                ROUND(SUM(rs.refund_amount), 2) AS refund
             FROM revenue_stream rs
+            JOIN branches b
+                ON b.id = rs.branch_id
+                AND b.deleted_at IS NULL
             WHERE 1=1
                 ${dateCondition}
                 ${branchCondition}
+                ${paymentModeCondition}
+                ${searchCondition}
         `;
 
         const [summary] = await sequelize.query(summaryQuery, {
