@@ -494,6 +494,7 @@ const getAllGrns = async (req, res) => {
         g.status_id,
         g.entity_type,
         g.remarks,
+        g.is_active,
 
         v.id AS vendor_id,
         v.vendor_name,
@@ -622,6 +623,7 @@ const getAllGrns = async (req, res) => {
       return {
         id: row.id,
         grn_no: row.grn_no,
+        is_active: row.is_active,
         date: row.date,
 
         vendor_id: row.vendor_id,
