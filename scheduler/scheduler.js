@@ -3,6 +3,7 @@ const cron = require('node-cron');
 const deleteExpiredOnHoldInvoices = require('./onHoldInvoiceCleanup.job');
 const autoGenerateMonthlyPayroll  = require('./autoPayroll.job');
 const { runDailyAttendanceReport }  = require('./attendanceReport.job');
+const deactivateExpiredOffers = require('./deactivateExpiredOffers.job');
 
 console.log("🕒 Scheduler loaded at", new Date());
 
@@ -10,6 +11,7 @@ console.log("🕒 Scheduler loaded at", new Date());
 cron.schedule('0 0 * * *', async () => {
     console.log("🔄 Daily cron job started at", new Date());
     await deleteExpiredOnHoldInvoices();
+    await deactivateExpiredOffers();
     console.log("✅ Daily cron job finished at", new Date());
 });
 
