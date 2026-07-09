@@ -33,6 +33,46 @@ const createPurchaseOrder = async (req, res) => {
       });
     }
 
+    // Quotation duplicate PO check
+    if (header.reference_id) {
+      const vendorQuotation = await models.VendorQuotation.findOne({
+        where: {
+          id: header.reference_id,
+          deleted_at: null,
+        },
+        transaction: t,
+      });
+
+      if (!vendorQuotation) {
+        await t.rollback();
+        return commonService.badRequest(res, {
+          message: "Vendor quotation not found",
+        });
+      }
+
+      if (!["accepted", "received"].includes(vendorQuotation.status)) {
+        await t.rollback();
+        return commonService.badRequest(res, {
+          message: "Purchase order can be created only from received quotation",
+        });
+      }
+
+      const existingPOForQuotation = await models.PurchaseOrder.findOne({
+        where: {
+          reference_id: header.reference_id,
+          deleted_at: null,
+        },
+        transaction: t,
+      });
+
+      if (existingPOForQuotation) {
+        await t.rollback();
+        return commonService.badRequest(res, {
+          message: "Purchase order already created for this quotation",
+        });
+      }
+    }
+
     const status_id = header.entity_type === "superadmin" ? 2 : 1;
 
     // CREATE PO

@@ -20,6 +20,10 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.INTEGER,
         allowNull: false,
       },
+      reference_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true, // vendor_quotation_id(ACCEPTED vendor quotation_id)
+      },
       order_by_user_id: {
         type: DataTypes.INTEGER,
         allowNull: true,
@@ -85,7 +89,7 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.ENUM('branch', 'superadmin'),
         allowNull: true,
         defaultValue: 'branch',
-      }
+      },
     },
     {
       timestamps: true,
