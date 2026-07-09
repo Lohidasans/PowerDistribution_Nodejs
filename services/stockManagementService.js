@@ -1101,16 +1101,16 @@ const getVendorContributionReport = async (req, res) => {
     const replacements = {};
     let whereClause = ` WHERE v.deleted_at IS NULL `;
 
-    // ✅ Date filter (grn_date)
+    // Date filter based on product created date
     whereClause += dateFilter(
       { from_date, to_date, date_filter },
-      "g.grn_date",
+      "p.created_at",
       replacements
     );
 
-    // ✅ Branch filter
+    // Branch filter
     if (branch_id) {
-      whereClause += ` AND g.branch_id = :branch_id`;
+      whereClause += ` AND p.branch_id = :branch_id`;
       replacements.branch_id = branch_id;
     }
 
@@ -1119,24 +1119,31 @@ const getVendorContributionReport = async (req, res) => {
         v.id AS vendor_id,
         v.vendor_name,
 
-        gi.material_type_id,
+        p.material_type_id,
         mt.material_type,
 
-        COALESCE(SUM(gi.quantity), 0) AS quantity,
-        COALESCE(SUM(gi.gross_wt_in_g), 0) AS weight,
-        COALESCE(SUM(gi.total_amount), 0) AS value
+        COALESCE(SUM(pid.quantity), 0) AS quantity,
+        COALESCE(SUM(pid.gross_weight), 0) AS weight,
+        COALESCE(SUM(pid.item_price), 0) AS value
 
       FROM vendors v
-      JOIN grns g ON g.vendor_id = v.id AND g.deleted_at IS NULL
-      JOIN "grnItems" gi
-        ON gi.grn_id = g.id
-        AND gi.deleted_at IS NULL
-        AND gi.material_type_id = ANY(v.material_type_ids)
-      JOIN "materialTypes" mt ON mt.id = gi.material_type_id AND mt.deleted_at IS NULL
+
+      JOIN products p
+        ON p.vendor_id = v.id
+        AND p.deleted_at IS NULL
+        AND p.material_type_id = ANY(v.material_type_ids)
+
+      JOIN "productItemDetails" pid
+        ON pid.product_id = p.id
+        AND pid.deleted_at IS NULL
+
+      JOIN "materialTypes" mt
+        ON mt.id = p.material_type_id
+        AND mt.deleted_at IS NULL
 
       ${whereClause}
 
-      GROUP BY v.id, v.vendor_name, mt.material_type, gi.material_type_id
+      GROUP BY v.id, v.vendor_name, mt.material_type, p.material_type_id
 
       ORDER BY v.vendor_name;
     `;
@@ -1146,7 +1153,6 @@ const getVendorContributionReport = async (req, res) => {
       replacements,
     });
 
-    // 🔹 Grouping logic (unchanged)
     const grouped = {};
     for (const row of rows) {
       if (!grouped[row.vendor_id]) {
