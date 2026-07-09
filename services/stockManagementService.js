@@ -524,17 +524,19 @@ const buildBaseFilters = (query, replacements) => {
   return where;
 };
 
-const buildSubcategoryFilters = (query, replacements) => {
+const buildSubcategoryFilters = (query, replacements, options = {}) => {
   let where = `WHERE sc.deleted_at IS NULL`;
 
   if (query.material_type_id) {
     where += ` AND sc.materialtype_id = :material_type_id`;
     replacements.material_type_id = query.material_type_id;
   }
+
   if (query.category_id) {
     where += ` AND sc.category_id = :category_id`;
     replacements.category_id = query.category_id;
   }
+
   if (query.subcategory_id) {
     where += ` AND sc.id = :subcategory_id`;
     replacements.subcategory_id = query.subcategory_id;
@@ -546,14 +548,14 @@ const buildSubcategoryFilters = (query, replacements) => {
         sc.subcategory_name ILIKE :search
         OR c.category_name ILIKE :search
         OR mt.material_type ILIKE :search
-        OR b.branch_name ILIKE :search
       )
     `;
     replacements.search = `%${query.search}%`;
   }
 
-  // Note: this expects products p to be joined (LEFT JOIN products p ...)
-  where += dateFilter(query, "p.created_at", replacements);
+  if (!options.skipDateFilter) {
+    where += dateFilter(query, "p.created_at", replacements);
+  }
 
   return where;
 };
@@ -643,52 +645,57 @@ const getLowStockSummaryInternal = async (where, replacements) => {
 };
 
 const getOutOfStockSummaryInternal = async (query) => {
-
   const replacements = {};
+  const subcategoryWhere = buildSubcategoryFilters(query, replacements, {
+    skipDateFilter: true,
+  });
 
-  let productBranchFilter = "";
-
-  if (query.branch_id) {
-    productBranchFilter = `
-      AND p.branch_id = :branch_id
-    `;
-    replacements.branch_id = query.branch_id;
-  }
-
-  const [rows] = await sequelize.query(
+  const rows = await sequelize.query(
     `
-    SELECT
-      COUNT(*) AS subcategory_count
+    SELECT COUNT(*)::int AS subcategory_count
     FROM (
       SELECT sc.id
       FROM subcategories sc
+
       LEFT JOIN products p
         ON p.subcategory_id = sc.id
         AND p.deleted_at IS NULL
-        ${productBranchFilter}
-      LEFT JOIN "productItemDetails" pid ON pid.product_id = p.id AND pid.deleted_at IS NULL
-      WHERE sc.deleted_at IS NULL AND sc.status = 'Active'
-        -- hardcoded HO branch
+        AND p.status = 'Active'
+
+      LEFT JOIN "productItemDetails" pid
+        ON pid.product_id = p.id
+        AND pid.deleted_at IS NULL
+
+      LEFT JOIN "materialTypes" mt
+        ON mt.id = sc.materialtype_id
+        AND mt.deleted_at IS NULL
+
+      LEFT JOIN categories c
+        ON c.id = sc.category_id
+        AND c.deleted_at IS NULL
+
+      ${subcategoryWhere}
+        AND sc.status = 'Active'
         AND sc.branch_id = 1
 
       GROUP BY sc.id
+
       HAVING
-        -- no products
         COUNT(DISTINCT p.id) = 0
-        OR
-        -- total qty becomes 0
-        COALESCE(SUM(pid.quantity), 0) = 0
+        OR COALESCE(SUM(pid.quantity), 0) = 0
     ) x
     `,
-    { replacements,
+    {
+      replacements,
       type: sequelize.QueryTypes.SELECT,
     }
   );
 
   return {
-    subcategory_count: Number(rows?.subcategory_count || 0),
+    subcategory_count: Number(rows[0]?.subcategory_count || 0),
   };
 };
+
 
 /* =========================================================
    STOCK LIST HELPERS

@@ -1,4 +1,4 @@
-Subcategory will be alwasys created from the Branch_id -1(SuperAdmin).So I have hardcoded the branch_id in the low_Stock and create subcategory api
+Subcategory will be always created from the Branch_id -1(SuperAdmin).So I have hardcoded the branch_id in the low_Stock and create subcategory api
 
 
 
