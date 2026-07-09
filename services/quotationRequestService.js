@@ -199,26 +199,38 @@ const getQuotationWithItems = async (quotationId, transaction = null) => {
       );
 
       const vendorItemIds = vendorItems.map((i) => i.id);
-      const vendorMaterials = await models.AdditionalMaterial.findAll({
+      const vendorMaterials = vendorItemIds.length ? await models.AdditionalMaterial.findAll({
         where: {
           parent_type: "quotation_item",
           parent_id: vendorItemIds,
         },
         raw: true,
         transaction,
-      });
+      })
+    : [];
 
       const vendorMaterialMap = {};
       vendorMaterials.forEach((m) => {
-        if (!vendorMaterialMap[m.parent_id])
+        if (!vendorMaterialMap[m.parent_id]) {
           vendorMaterialMap[m.parent_id] = [];
+        }
         vendorMaterialMap[m.parent_id].push(m);
       });
 
-      vq.items = vendorItems.map((item) => ({
-        ...item,
-        additional_materials: vendorMaterialMap[item.id] || [],
-      }));
+      if (vendorItems.length > 0) {
+        vq.items = vendorItems.map((item) => ({
+          ...item,
+          base_item_id: item.id,
+          additional_materials: vendorMaterialMap[item.id] || [],
+        }));
+      } else {
+        vq.items = enrichedItems.map((item) => ({
+          ...item,
+          base_item_id: item.id,
+          vendor_quotation_id: vq.id,
+          is_base_item: true,
+        }));
+      }
     }
 
     return {
@@ -1592,15 +1604,19 @@ const getAllVendorQuotations = async (req, res) => {
         ON q.id = vq.quotation_id
 
       LEFT JOIN quotation_items qi
-        ON qi.deleted_at IS NULL
-        AND (
-              (vq.status IN ('accepted','received')
-                AND qi.vendor_quotation_id = vq.id)
-              OR
-              (vq.status = 'pending'
-                AND qi.quotation_id = q.id
-                AND qi.vendor_quotation_id IS NULL)
+      ON qi.deleted_at IS NULL
+      AND (
+            (
+              vq.status IN ('accepted', 'received')
+              AND qi.vendor_quotation_id = vq.id
             )
+            OR
+            (
+              vq.status IN ('pending', 'rejected')
+              AND qi.quotation_id = q.id
+              AND qi.vendor_quotation_id IS NULL
+            )
+          )
 
       LEFT JOIN subcategories sc ON sc.id = qi.subcategory_id
 
