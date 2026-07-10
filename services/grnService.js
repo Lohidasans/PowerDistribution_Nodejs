@@ -742,57 +742,40 @@ const listGrnNumbers = async (req, res) => {
 
     const grnIds = grns.map((g) => g.id);
 
-    // 2.Fetch all grnItems for these GRNs — excluding lines that are no longer
-    //   returnable, so the Purchase Return "Ref No" dropdown only shows GRN
-    //   lines that can still be sent back:
-    //     (a) lines a product has been created from (products.ref_no_id), and
-    //     (b) lines already FULLY returned (cumulative return qty >= grn qty).
-    //   (b) uses a running total, not a boolean, because partial returns are
-    //   allowed — a line stays visible until it is completely returned.
+    // 2.Fetch all grnItems for these GRNs, along with how much of each line has
+    //   already been purchase-returned to the vendor (qty + weights). We do NOT
+    //   subtract product-conversion here: a GRN line can be split into several
+    //   products, and each consuming form (Product create / Purchase Return)
+    //   already tracks its own product usage — subtracting it here too would
+    //   double-count. This endpoint's job is only to reflect RETURNED stock.
     const grnItems = await sequelize.query(
       `SELECT
         gi.*,
         mt.material_type AS material_type_name,
         c.category_name,
-        sc.subcategory_name
+        sc.subcategory_name,
+        COALESCE(ret.returned_qty, 0)        AS returned_qty,
+        COALESCE(ret.returned_net_wt, 0)     AS returned_net_wt,
+        COALESCE(ret.returned_gross_wt, 0)   AS returned_gross_wt
       FROM "grnItems" gi
       LEFT JOIN "materialTypes" mt ON gi.material_type_id = mt.id
       LEFT JOIN categories c ON gi.category_id = c.id
       LEFT JOIN subcategories sc ON gi.subcategory_id = sc.id
+      LEFT JOIN LATERAL (
+        SELECT
+          SUM(pri.quantity)     AS returned_qty,
+          SUM(pri.net_weight)   AS returned_net_wt,
+          SUM(pri.gross_weight) AS returned_gross_wt
+        FROM purchase_return_items pri
+        JOIN purchase_returns pr ON pr.id = pri.pr_id
+        WHERE pr.grn_id = gi.grn_id
+          AND (pri.grn_item_id = gi.id
+               OR (pri.grn_item_id IS NULL AND pri.ref_no = gi.ref_no))
+          AND pri.deleted_at IS NULL
+          AND pr.deleted_at IS NULL
+      ) ret ON TRUE
       WHERE gi.grn_id IN (:grnIds)
         AND gi.deleted_at IS NULL
-        AND NOT EXISTS (
-          SELECT 1 FROM products p
-          WHERE p.ref_no_id = gi.id
-            AND p.deleted_at IS NULL
-        )
-        -- Keep the line while EITHER quantity or net weight is still returnable.
-        -- Weight-based lines often carry quantity 0/NULL, so a quantity-only
-        -- test would wrongly hide them; the create-time validator remains the
-        -- hard stop against over-returning.
-        AND (
-          COALESCE(gi.quantity, 0) > COALESCE((
-            SELECT SUM(pri.quantity)
-            FROM purchase_return_items pri
-            JOIN purchase_returns pr ON pr.id = pri.pr_id
-            WHERE pr.grn_id = gi.grn_id
-              AND (pri.grn_item_id = gi.id
-                   OR (pri.grn_item_id IS NULL AND pri.ref_no = gi.ref_no))
-              AND pri.deleted_at IS NULL
-              AND pr.deleted_at IS NULL
-          ), 0)
-          OR
-          COALESCE(gi.net_wt_in_g, 0) > COALESCE((
-            SELECT SUM(pri.net_weight)
-            FROM purchase_return_items pri
-            JOIN purchase_returns pr ON pr.id = pri.pr_id
-            WHERE pr.grn_id = gi.grn_id
-              AND (pri.grn_item_id = gi.id
-                   OR (pri.grn_item_id IS NULL AND pri.ref_no = gi.ref_no))
-              AND pri.deleted_at IS NULL
-              AND pr.deleted_at IS NULL
-          ), 0) + 0.001
-        )
       ORDER BY gi.id`,
       {
         replacements: { grnIds },
@@ -800,11 +783,52 @@ const listGrnNumbers = async (req, res) => {
       }
     );
 
-    // 3.Group items
+    const WEIGHT_EPSILON = 0.001;
+
+    // 3.Reduce each line by what has been returned, and drop fully-returned lines
+    //   so neither the Purchase Return nor the Product "Ref No" dropdown offers
+    //   stock that is already back with the vendor. The remaining fraction scales
+    //   the qty-less weight/amount fields (total/bag/stone/others) proportionally.
     const groupedItems = {};
     grnItems.forEach((item) => {
+      const origQty = Number(item.quantity) || 0;
+      const origNet = Number(item.net_wt_in_g) || 0;
+      const origGross = Number(item.gross_wt_in_g) || 0;
+      const retQty = Number(item.returned_qty) || 0;
+      const retNet = Number(item.returned_net_wt) || 0;
+      const retGross = Number(item.returned_gross_wt) || 0;
+
+      const remainingQty = origQty - retQty;
+      const remainingNet = origNet - retNet;
+      const remainingGross = origGross - retGross;
+
+      // Piece lines are bounded by quantity; weight lines (qty 0/null) by net wt.
+      const isFullyReturned = origQty > 0
+        ? remainingQty <= 0
+        : remainingNet <= WEIGHT_EPSILON;
+      if (isFullyReturned) return;
+
+      // Proportional factor for the fields that have no direct return counterpart.
+      const factor = origQty > 0
+        ? Math.max(0, remainingQty) / origQty
+        : (origNet > 0 ? Math.max(0, remainingNet) / origNet : 1);
+      const scale = (v) => +(((Number(v) || 0) * factor).toFixed(4));
+
+      const remainingItem = {
+        ...item,
+        quantity: origQty > 0 ? Math.max(0, remainingQty) : origQty,
+        net_wt_in_g: Math.max(0, remainingNet),
+        gross_wt_in_g: Math.max(0, remainingGross),
+        total_wt_in_g: scale(item.total_wt_in_g),
+        bag_wt_in_g: scale(item.bag_wt_in_g),
+        stone_wt_in_g: scale(item.stone_wt_in_g),
+        others_wt_in_g: scale(item.others_wt_in_g),
+        others_value: scale(item.others_value),
+        total_amount: scale(item.total_amount),
+      };
+
       if (!groupedItems[item.grn_id]) groupedItems[item.grn_id] = [];
-      groupedItems[item.grn_id].push(item);
+      groupedItems[item.grn_id].push(remainingItem);
     });
 
     // 4.Attach items
