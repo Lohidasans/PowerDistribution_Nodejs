@@ -19,6 +19,14 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: true,
       },
 
+      // Integer link to the exact GRN line being returned (grnItems.id).
+      // Mirrors products.ref_no_id so returns and products reference a GRN line
+      // the same way. Nullable: ad-hoc return lines not sourced from a GRN.
+      grn_item_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+      },
+
       material_type_id: {
         type: DataTypes.INTEGER,
         allowNull: false,

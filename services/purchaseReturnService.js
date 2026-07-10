@@ -102,6 +102,74 @@ const validateReturnableAgainstGrn = async (grnId, items = [], options = {}) => 
   return null;
 };
 
+// A GRN line that has already been turned into a product (in any branch) is
+// stock the business now owns as sellable inventory — it can no longer be sent
+// back to the vendor as a Purchase Return. Mirrors the guard in updateGrnStatus
+// that blocks deactivating a GRN once products exist for it.
+// Returns an error string when any requested line has a product, otherwise null.
+const validateNoProductsForGrnLines = async (grnId, items = [], options = {}) => {
+  const { transaction = null } = options;
+  if (!grnId) return null;
+
+  const grnLinkedItems = items.filter(
+    (item) => item.ref_no !== undefined && item.ref_no !== null && String(item.ref_no).trim() !== ""
+  );
+  if (grnLinkedItems.length === 0) return null;
+
+  const productRows = await sequelize.query(
+    `
+      SELECT gi.ref_no
+      FROM products p
+      JOIN "grnItems" gi ON gi.id = p.ref_no_id
+      WHERE gi.grn_id = :grnId
+        AND p.deleted_at IS NULL
+        AND gi.deleted_at IS NULL
+    `,
+    { replacements: { grnId }, type: sequelize.QueryTypes.SELECT, transaction }
+  );
+  const productRefs = new Set(productRows.map((r) => String(r.ref_no)));
+
+  for (const item of grnLinkedItems) {
+    if (productRefs.has(String(item.ref_no).trim())) {
+      return `Ref No ${item.ref_no}: a product has already been created from this GRN line, so it cannot be purchase-returned.`;
+    }
+  }
+  return null;
+};
+
+// Resolve each GRN-linked return line to its source grnItems.id, so the row is
+// stored with an integer grn_item_id (like products.ref_no_id) rather than only
+// the ref_no string. Leaves grn_item_id untouched when the caller already set it
+// or the line isn't GRN-sourced.
+const attachGrnItemIds = async (grnId, items = [], options = {}) => {
+  const { transaction = null } = options;
+  if (!grnId) return items;
+
+  const needsLookup = items.some(
+    (item) =>
+      (item.grn_item_id === undefined || item.grn_item_id === null) &&
+      item.ref_no !== undefined && item.ref_no !== null && String(item.ref_no).trim() !== ""
+  );
+  if (!needsLookup) return items;
+
+  const rows = await sequelize.query(
+    `
+      SELECT id, ref_no
+      FROM "grnItems"
+      WHERE grn_id = :grnId AND deleted_at IS NULL
+    `,
+    { replacements: { grnId }, type: sequelize.QueryTypes.SELECT, transaction }
+  );
+  const idByRef = new Map(rows.map((r) => [String(r.ref_no), r.id]));
+
+  return items.map((item) => {
+    if (item.grn_item_id !== undefined && item.grn_item_id !== null) return item;
+    const ref = item.ref_no !== undefined && item.ref_no !== null ? String(item.ref_no).trim() : "";
+    if (!ref) return item;
+    return { ...item, grn_item_id: idByRef.get(ref) ?? null };
+  });
+};
+
 // Create Purchase Return with items
 const createPurchaseReturn = async (req, res) => {
   const transaction = await sequelize.transaction();
@@ -118,6 +186,13 @@ const createPurchaseReturn = async (req, res) => {
       }
     }
 
+    // Block returning any GRN line that has already been made into a product.
+    const productError = await validateNoProductsForGrnLines(prData.grn_id, items, { transaction });
+    if (productError) {
+      await transaction.rollback();
+      return commonService.badRequest(res, productError);
+    }
+
     // Prevent over-returning a GRN across multiple Purchase Returns.
     const overReturnError = await validateReturnableAgainstGrn(prData.grn_id, items, { transaction });
     if (overReturnError) {
@@ -128,9 +203,10 @@ const createPurchaseReturn = async (req, res) => {
     // Create Purchase Return
     const purchaseReturn = await models.PurchaseReturn.create(prData, { transaction });
 
-    // Create Purchase Return items
+    // Create Purchase Return items (stamped with their source grnItems.id)
     if (items && items.length > 0) {
-      const prItems = items.map(item => ({
+      const itemsWithGrnItemId = await attachGrnItemIds(prData.grn_id, items, { transaction });
+      const prItems = itemsWithGrnItemId.map(item => ({
         ...item,
         pr_id: purchaseReturn.id
       }));
@@ -313,6 +389,14 @@ const updatePurchaseReturn = async (req, res) => {
     // PR's own existing items from the cumulative total so an edit isn't blocked
     // by the quantities it is itself replacing.
     const targetGrnId = updateData.grn_id !== undefined ? updateData.grn_id : pr.grn_id;
+
+    // Block returning any GRN line that has already been made into a product.
+    const productError = await validateNoProductsForGrnLines(targetGrnId, items, { transaction });
+    if (productError) {
+      await transaction.rollback();
+      return commonService.badRequest(res, productError);
+    }
+
     const overReturnError = await validateReturnableAgainstGrn(targetGrnId, items, {
       excludePrId: id,
       transaction,
@@ -332,8 +416,9 @@ const updatePurchaseReturn = async (req, res) => {
       transaction,
     });
 
-    // CREATE NEW ITEMS
-    for (const item of items) {
+    // CREATE NEW ITEMS (stamped with their source grnItems.id)
+    const itemsWithGrnItemId = await attachGrnItemIds(targetGrnId, items, { transaction });
+    for (const item of itemsWithGrnItemId) {
 
       const {
         id: _omitId,

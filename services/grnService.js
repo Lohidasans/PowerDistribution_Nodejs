@@ -714,7 +714,13 @@ const listGrnNumbers = async (req, res) => {
 
     const grnIds = grns.map((g) => g.id);
 
-    // 2.Fetch all grnItems for these GRNs
+    // 2.Fetch all grnItems for these GRNs — excluding lines that are no longer
+    //   returnable, so the Purchase Return "Ref No" dropdown only shows GRN
+    //   lines that can still be sent back:
+    //     (a) lines a product has been created from (products.ref_no_id), and
+    //     (b) lines already FULLY returned (cumulative return qty >= grn qty).
+    //   (b) uses a running total, not a boolean, because partial returns are
+    //   allowed — a line stays visible until it is completely returned.
     const grnItems = await sequelize.query(
       `SELECT
         gi.*,
@@ -726,6 +732,39 @@ const listGrnNumbers = async (req, res) => {
       LEFT JOIN categories c ON gi.category_id = c.id
       LEFT JOIN subcategories sc ON gi.subcategory_id = sc.id
       WHERE gi.grn_id IN (:grnIds)
+        AND gi.deleted_at IS NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM products p
+          WHERE p.ref_no_id = gi.id
+            AND p.deleted_at IS NULL
+        )
+        -- Keep the line while EITHER quantity or net weight is still returnable.
+        -- Weight-based lines often carry quantity 0/NULL, so a quantity-only
+        -- test would wrongly hide them; the create-time validator remains the
+        -- hard stop against over-returning.
+        AND (
+          COALESCE(gi.quantity, 0) > COALESCE((
+            SELECT SUM(pri.quantity)
+            FROM purchase_return_items pri
+            JOIN purchase_returns pr ON pr.id = pri.pr_id
+            WHERE pr.grn_id = gi.grn_id
+              AND (pri.grn_item_id = gi.id
+                   OR (pri.grn_item_id IS NULL AND pri.ref_no = gi.ref_no))
+              AND pri.deleted_at IS NULL
+              AND pr.deleted_at IS NULL
+          ), 0)
+          OR
+          COALESCE(gi.net_wt_in_g, 0) > COALESCE((
+            SELECT SUM(pri.net_weight)
+            FROM purchase_return_items pri
+            JOIN purchase_returns pr ON pr.id = pri.pr_id
+            WHERE pr.grn_id = gi.grn_id
+              AND (pri.grn_item_id = gi.id
+                   OR (pri.grn_item_id IS NULL AND pri.ref_no = gi.ref_no))
+              AND pri.deleted_at IS NULL
+              AND pr.deleted_at IS NULL
+          ), 0) + 0.001
+        )
       ORDER BY gi.id`,
       {
         replacements: { grnIds },
