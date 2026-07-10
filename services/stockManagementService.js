@@ -1511,7 +1511,10 @@ const getGrnDiscrepancyList = async (req, res) => {
         COALESCE(gi.total_order_qty, 0) AS ordered_qty,
 
         COALESCE(pi.total_updated_weight, 0) AS updated_weight,
-        COALESCE(pi.total_updated_qty, 0) AS updated_qty
+        COALESCE(pi.total_updated_qty, 0) AS updated_qty,
+
+        COALESCE(pret.returned_weight, 0) AS returned_weight,
+        COALESCE(pret.returned_qty, 0) AS returned_qty
 
       FROM grns g
 
@@ -1578,6 +1581,20 @@ const getGrnDiscrepancyList = async (req, res) => {
         GROUP BY p.grn_id
       ) pi ON pi.grn_id = g.id
 
+      /* PURCHASE RETURNS (per GRN) — returned to vendor, so this portion of the
+         ordered GRN never becomes stock; subtracted from yet-to-update below.
+         Gross weight to match ordered_weight = SUM(gross_wt_in_g). */
+      LEFT JOIN (
+        SELECT
+          pr.grn_id,
+          SUM(pri.gross_weight) AS returned_weight,
+          SUM(pri.quantity) AS returned_qty
+        FROM purchase_return_items pri
+        JOIN purchase_returns pr ON pr.id = pri.pr_id AND pr.deleted_at IS NULL
+        WHERE pri.deleted_at IS NULL
+        GROUP BY pr.grn_id
+      ) pret ON pret.grn_id = g.id
+
       ${whereSql}
 
       ORDER BY g.created_at DESC, g.id DESC
@@ -1599,7 +1616,11 @@ const getGrnDiscrepancyList = async (req, res) => {
       const updatedWt = Number(row.updated_weight || 0);
       const orderedQty = Number(row.ordered_qty || 0);
       const updatedQty = Number(row.updated_qty || 0);
+      const returnedWt = Number(row.returned_weight || 0);
+      const returnedQty = Number(row.returned_qty || 0);
 
+      // Returned-to-vendor quantities never become stock, so they are excluded
+      // from what's still "yet to update" into products.
       return {
         id: row.id,
         grn_no: row.grn_no,
@@ -1614,9 +1635,13 @@ const getGrnDiscrepancyList = async (req, res) => {
           weight: +updatedWt.toFixed(3),
           quantity: updatedQty,
         },
+        returned: {
+          weight: +returnedWt.toFixed(3),
+          quantity: returnedQty,
+        },
         yet_to_update: {
-          weight: +(orderedWt - updatedWt).toFixed(3),
-          quantity: orderedQty - updatedQty,
+          weight: +(orderedWt - updatedWt - returnedWt).toFixed(3),
+          quantity: orderedQty - updatedQty - returnedQty,
         },
 
         status_id: Number(row.status_id || 1),

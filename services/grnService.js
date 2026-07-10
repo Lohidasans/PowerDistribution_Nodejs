@@ -509,6 +509,9 @@ const getAllGrns = async (req, res) => {
         COALESCE(ga.adjustment_weight, 0) AS adjustment_weight,
         COALESCE(ga.adjustment_qty, 0) AS adjustment_qty,
 
+        COALESCE(pret.returned_weight, 0) AS returned_weight,
+        COALESCE(pret.returned_qty, 0) AS returned_qty,
+
         CASE
           WHEN g.entity_type = 'superadmin' THEN sp.company_name
           WHEN g.entity_type = 'branch' THEN b.branch_name
@@ -591,6 +594,20 @@ const getAllGrns = async (req, res) => {
         GROUP BY grn_id
       ) ga ON ga.grn_id = g.id
 
+      /* PURCHASE RETURNS (per GRN) — returned to vendor, so this portion of the
+         ordered GRN will never become stock; subtracted from yet-to-update below.
+         Gross weight to match ordered_weight = SUM(gross_wt_in_g). */
+      LEFT JOIN (
+        SELECT
+          pr.grn_id,
+          SUM(pri.gross_weight) AS returned_weight,
+          SUM(pri.quantity) AS returned_qty
+        FROM purchase_return_items pri
+        JOIN purchase_returns pr ON pr.id = pri.pr_id AND pr.deleted_at IS NULL
+        WHERE pri.deleted_at IS NULL
+        GROUP BY pr.grn_id
+      ) pret ON pret.grn_id = g.id
+
       ${whereSql}
 
       ORDER BY g.created_at DESC, g.id DESC
@@ -617,8 +634,16 @@ const getAllGrns = async (req, res) => {
       const adjustmentQty =
         parseInt(row.adjustment_qty) || 0;
 
-      const yetToUpdateWeight = orderedWeight - updatedWeight;
-      const yetToUpdateQty = orderedQty - updatedQty;
+      const returnedWeight =
+        parseFloat(row.returned_weight) || 0;
+
+      const returnedQty =
+        parseInt(row.returned_qty) || 0;
+
+      // Returned-to-vendor quantities never become stock, so they are excluded
+      // from what's still "yet to update" into products.
+      const yetToUpdateWeight = orderedWeight - updatedWeight - returnedWeight;
+      const yetToUpdateQty = orderedQty - updatedQty - returnedQty;
 
       return {
         id: row.id,
@@ -648,6 +673,9 @@ const getAllGrns = async (req, res) => {
 
         adjustment_weight: +adjustmentWeight.toFixed(3),
         adjustment_qty: adjustmentQty,
+
+        returned_weight: +returnedWeight.toFixed(3),
+        returned_qty: returnedQty,
       };
     });
 
@@ -1317,7 +1345,10 @@ const getCompleteGrnDetails = async (req, res) => {
         COALESCE(pi.updated_qty, 0) AS updated_qty,
 
         COALESCE(ga.adjustment_weight, 0) AS adjustment_weight,
-        COALESCE(ga.adjustment_qty, 0) AS adjustment_qty
+        COALESCE(ga.adjustment_qty, 0) AS adjustment_qty,
+
+        COALESCE(pret.returned_weight, 0) AS returned_weight,
+        COALESCE(pret.returned_qty, 0) AS returned_qty
 
       FROM grns g
 
@@ -1405,6 +1436,20 @@ const getCompleteGrnDetails = async (req, res) => {
         GROUP BY grn_id
       ) ga ON ga.grn_id = g.id
 
+      /* PURCHASE RETURNS (per GRN) — returned to vendor, so this portion of the
+         ordered GRN never becomes stock; subtracted from yet-to-update below.
+         Gross weight to match ordered_weight = SUM(gross_wt_in_g). */
+      LEFT JOIN (
+        SELECT
+          pr.grn_id,
+          SUM(pri.gross_weight) AS returned_weight,
+          SUM(pri.quantity) AS returned_qty
+        FROM purchase_return_items pri
+        JOIN purchase_returns pr ON pr.id = pri.pr_id AND pr.deleted_at IS NULL
+        WHERE pri.deleted_at IS NULL
+        GROUP BY pr.grn_id
+      ) pret ON pret.grn_id = g.id
+
       WHERE g.id = :grn_id
         AND g.deleted_at IS NULL
       `,
@@ -1435,11 +1480,16 @@ const getCompleteGrnDetails = async (req, res) => {
       (parseInt(row.updated_qty) || 0) +
       (parseInt(row.adjustment_qty) || 0);
 
+    const returnedWeight = parseFloat(row.returned_weight) || 0;
+    const returnedQty = parseInt(row.returned_qty) || 0;
+
+    // Returned-to-vendor quantities never become stock, so they are excluded
+    // from what's still "yet to update" into products.
     const yetToUpdateWeight =
-      Math.max(0, orderedWeight - updatedWeight);
+      Math.max(0, orderedWeight - updatedWeight - returnedWeight);
 
     const yetToUpdateQty =
-      Math.max(0, orderedQty - updatedQty);
+      Math.max(0, orderedQty - updatedQty - returnedQty);
 
     return commonService.okResponse(res, {
       data: {
@@ -1469,6 +1519,11 @@ const getCompleteGrnDetails = async (req, res) => {
         updated: {
           weight: +updatedWeight.toFixed(3),
           quantity: updatedQty
+        },
+
+        returned: {
+          weight: +returnedWeight.toFixed(3),
+          quantity: returnedQty
         },
 
         yet_to_update: {
