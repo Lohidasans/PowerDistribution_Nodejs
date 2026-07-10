@@ -872,7 +872,7 @@ const getBranchRevenueComparison = async (req, res) => {
 
 // Get comprehensive branch statistics (Sales, Purchase, Stock, Revenue, Employees)
 const getBranchStats = async (req, res) => {
-  try {
+  try {                             
     const { period, start_date, end_date, branch_id } = req.query;
 
     // Build date filter based on period or custom date range
@@ -936,52 +936,70 @@ const getBranchStats = async (req, res) => {
       replacements.end_date = end_date;
     }
 
-    const query = `
+const query = `
       SELECT 
         b.id AS branch_id,
         b.branch_no,
         b.branch_name,
         b.status,
-        -- Sales Value (Total invoice amount)
+
+        -- Sales Value
         COALESCE(SUM(sib.total_amount), 0) AS sales_value,
-        -- Purchase Value (Total GRN value of products in this branch)
+
+        -- Purchase Value - same logic as Stock KPI Summary total_purchase
         COALESCE((
-          SELECT SUM(p.total_grn_value)
-          FROM products p
-          WHERE p.branch_id = b.id
-          AND p.deleted_at IS NULL
+          SELECT SUM(gi.total_amount)
+          FROM "grnItems" gi
+          JOIN grns g ON g.id = gi.grn_id AND g.deleted_at IS NULL AND g.is_active IS NOT FALSE
+          WHERE gi.deleted_at IS NULL
+            AND EXISTS (
+              SELECT 1
+              FROM products p
+              WHERE p.grn_id = g.id
+                AND p.branch_id = b.id
+                AND p.deleted_at IS NULL
+            )
         ), 0) AS purchase_value,
-        -- Stock Value (Current stock value based on remaining products)
+
+        -- Stock Value - same logic as Stock KPI Summary total_stock.total_amount
         COALESCE((
-          SELECT SUM(p.total_grn_value)
+          SELECT SUM(
+            (COALESCE(gi.rate_per_g, 0) * COALESCE(pid.net_weight, 0))
+            * COALESCE(pid.quantity, 0)
+          )
           FROM products p
-          WHERE p.branch_id = b.id
-          AND p.deleted_at IS NULL
-          AND p.status = 'Active'
+          JOIN "productItemDetails" pid ON pid.product_id = p.id AND pid.deleted_at IS NULL AND pid.quantity > 0
+          LEFT JOIN grns g ON g.id = p.grn_id AND g.deleted_at IS NULL
+          LEFT JOIN "grnItems" gi ON gi.grn_id = g.id AND gi.id = p.ref_no_id AND gi.deleted_at IS NULL
+          WHERE p.branch_id = b.id AND p.deleted_at IS NULL AND p.status = 'Active'
         ), 0) AS stock_value,
-        -- Total Revenue (same as sales value)
+
+        -- Total Revenue
         COALESCE(SUM(sib.total_amount), 0) AS total_revenue,
-        -- Total Employees in this branch
+
+        -- Total Employees
         COALESCE((
           SELECT COUNT(*)
           FROM employees e
           WHERE e.branch_id = b.id
-          AND e.deleted_at IS NULL
+            AND e.deleted_at IS NULL
         ), 0) AS total_employee
-      FROM 
-        branches b
-      LEFT JOIN
-        sales_invoice_bills sib ON sib.branch_id = b.id
-        AND sib.deleted_at IS NULL AND sib.is_active = true
-        AND sib.status != 'Cancelled'
+
+      FROM branches b
+
+      LEFT JOIN sales_invoice_bills sib ON sib.branch_id = b.id AND sib.deleted_at IS NULL AND sib.is_active = true 
+      AND sib.status = 'Invoice'
         ${dateFilter}
-      WHERE
-        b.deleted_at IS NULL
+      WHERE b.deleted_at IS NULL
         ${branchFilter}
+
       GROUP BY
-        b.id, b.branch_no, b.branch_name, b.status
-      ORDER BY
-        b.id ASC
+        b.id,
+        b.branch_no,
+        b.branch_name,
+        b.status
+
+      ORDER BY b.id ASC
     `;
 
     const branchStats = await sequelize.query(query, {
@@ -989,7 +1007,6 @@ const getBranchStats = async (req, res) => {
       type: sequelize.QueryTypes.SELECT,
     });
 
-    // Format the response
     const formattedStats = branchStats.map((branch, index) => ({
       s_no: index + 1,
       branch_name: branch.branch_name,
@@ -998,7 +1015,6 @@ const getBranchStats = async (req, res) => {
       stock_value: parseFloat(branch.stock_value || 0).toFixed(2),
       total_revenue: parseFloat(branch.total_revenue || 0).toFixed(2),
       total_employee: parseInt(branch.total_employee, 10),
-      // Additional fields for reference
       branch_id: branch.branch_id,
       branch_no: branch.branch_no,
       status: branch.status,
@@ -1006,12 +1022,12 @@ const getBranchStats = async (req, res) => {
 
     return commonService.okResponse(res, {
       branch_stats: formattedStats,
-      period: period || 'custom',
-      start_date: replacements.start_date || replacements.today || replacements.week_start || replacements.month_start || replacements.year_start || null,
+      period: period || "custom",
+      start_date: replacements.start_date || replacements.today || replacements.week_start || replacements.month_start ||  replacements.year_start || null,
       end_date: replacements.end_date || replacements.today || replacements.week_end || replacements.month_end || replacements.year_end || null,
     });
   } catch (err) {
-    console.error('Error in getBranchStats:', err);
+    console.error("Error in getBranchStats:", err);
     return commonService.handleError(res, err);
   }
 };
