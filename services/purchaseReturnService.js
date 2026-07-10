@@ -254,6 +254,7 @@ const getPurchaseReturnWithItems = async (prId) => {
         pri.id,
         pri.pr_id,
         pri.ref_no,
+        pri.grn_item_id,
         pri.material_type_id,
         pri.category_id,
         pri.subcategory_id,
@@ -651,9 +652,10 @@ const getPurchaseReturnView = async (req, res) => {
 
     // Items with material/category/subcategory names
     const [items] = await sequelize.query(`
-        SELECT 
+        SELECT
           pri.id,
           pri.ref_no,
+          pri.grn_item_id,
           pri.type,
           pri.purity,
           pri.material_price_per_gram,
