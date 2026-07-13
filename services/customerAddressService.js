@@ -129,7 +129,51 @@ const createAddress = async (req, res) => {
             );
         }
 
-        // 4️. Bulk create
+        // 4️. For online customers, sync address/location details onto the
+        // customer profile the first time they add an address.
+        const uniqueCustomerIds = [...new Set(addresses.map((a) => a.customer_id))];
+
+        for (const customerId of uniqueCustomerIds) {
+            const existingAddressCount = await models.CustomerAddress.count({
+                where: { customer_id: customerId },
+                transaction,
+            });
+
+            if (existingAddressCount > 0) continue;
+
+            const customer = await models.Customer.findByPk(customerId, {
+                transaction,
+            });
+
+            if (!customer || !customer.is_online) continue;
+
+            const addrForCustomer =
+                addresses.find(
+                    (a) => a.customer_id === customerId && a.is_default === true
+                ) || addresses.find((a) => a.customer_id === customerId);
+
+            await customer.update(
+                {
+                    address: addrForCustomer.address_line,
+                    country_id:
+                        addrForCustomer.country_id !== undefined
+                            ? +addrForCustomer.country_id
+                            : null,
+                    state_id:
+                        addrForCustomer.state_id !== undefined
+                            ? +addrForCustomer.state_id
+                            : null,
+                    district_id:
+                        addrForCustomer.district_id !== undefined
+                            ? +addrForCustomer.district_id
+                            : null,
+                    pin_code: addrForCustomer.pin_code,
+                },
+                { transaction }
+            );
+        }
+
+        // 5️. Bulk create
         const createdAddresses = await models.CustomerAddress.bulkCreate(
             addresses,
             { transaction }

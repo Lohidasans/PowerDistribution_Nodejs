@@ -958,7 +958,7 @@ const getCustomerTransactions = async (req, res) => {
 
         FROM sales_invoice_bills i
         LEFT JOIN sales_invoice_bill_items ii
-          ON ii.invoice_bill_id = i.id AND ii.deleted_at IS NULL AND ii.is_returned = false
+          ON ii.invoice_bill_id = i.id AND ii.deleted_at IS NULL
         LEFT JOIN branches b
           ON b.id = i.branch_id AND b.deleted_at IS NULL
 
