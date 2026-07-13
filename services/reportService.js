@@ -1344,7 +1344,7 @@ const getProductWiseReport = async (req, res) => {
 
       LEFT JOIN grns g ON g.id = p.grn_id AND g.deleted_at IS NULL
       LEFT JOIN "grnItems" gi ON gi.id = p.ref_no_id
-      LEFT JOIN "productItemDetails" pid ON pid.product_id = p.id AND pid.deleted_at IS NULL
+      LEFT JOIN "productItemDetails" pid ON pid.product_id = p.id AND pid.deleted_at IS NULL AND COALESCE(pid.quantity, 0) > 0
 
       LEFT JOIN vendors v ON v.id = p.vendor_id
       LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
@@ -1382,6 +1382,7 @@ const getProductWiseReport = async (req, res) => {
       replacements,
       type: sequelize.QueryTypes.SELECT
     })
+    
 
     // Batch additional details for every item so the selling price matches
     // the product create/edit calculation (which includes "others" value).
@@ -1464,7 +1465,7 @@ const getProductWiseReport = async (req, res) => {
           LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
           LEFT JOIN categories c ON c.id = p.category_id
           LEFT JOIN subcategories sc ON sc.id = p.subcategory_id
-          LEFT JOIN "productItemDetails" pid ON pid.product_id = p.id
+          LEFT JOIN "productItemDetails" pid ON pid.product_id = p.id AND COALESCE(pid.quantity, 0) > 0 AND pid.deleted_at IS NULL
 
           ${where}
 
