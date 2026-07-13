@@ -91,12 +91,13 @@ const createJewelRepair = async (req, res) => {
 
     // Payments
     if (Array.isArray(payment) && payment.length) {
+      const paymentDate = new Date();
       const paymentPayload = payment.map(p => ({
         jewel_repair_id: repair.id,
         payment_mode: p.payment_mode,
         amount_received: Number(p.amount_received || 0),
         transaction_id: p.transaction_id || null,
-        payment_date: new Date(),
+        payment_date: paymentDate,
         status: "Completed",
       }));
 
@@ -586,13 +587,14 @@ const updateJewelRepair = async (req, res) => {
       });
     }
 
+    const paymentDate = new Date();
     for (const p of payment) {
       const payload = {
         jewel_repair_id: repair_id,
         payment_mode: p.payment_mode,
         amount_received: Number(p.amount_received || 0),
         transaction_id: p.transaction_id || null,
-        payment_date: new Date(),
+        payment_date: paymentDate,
         status: "Completed",
       };
 
@@ -783,12 +785,13 @@ const payJewelRepairDue = async (req, res) => {
       );
     }
 
+    const paymentDate = new Date();
     const paymentPayload = payment.map(p => ({
       jewel_repair_id: repair.id,
       payment_mode: p.payment_mode,
       amount_received: Number(p.amount_received || 0),
       transaction_id: p.transaction_id || null,
-      payment_date: new Date(),
+      payment_date: paymentDate,
       status: "Completed"
     }));
 

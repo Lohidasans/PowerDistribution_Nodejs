@@ -365,79 +365,85 @@ const getBranchRevenueDetailsNew = async (req, res) => {
 
         const baseCTE = `
             WITH revenue_stream AS (
-                /* SALES + REPAIR */
+
+                /* SALES + JEWEL REPAIR PAYMENT EVENTS */
+
                 SELECT
                     COALESCE(sib.branch_id, jr.branch_id) AS branch_id,
+
                     p.payment_date AS txn_date,
+
                     p.payment_mode::text AS payment_mode,
-                    COALESCE(sib.invoice_no, jr.repair_code) AS description,
-                    CASE
-                        WHEN p.payment_mode = 'Cash'
-                        THEN
-                            p.amount_received
-                            - COALESCE(
-                                CASE
-                                    WHEN sib.id IS NOT NULL
-                                    THEN MAX(sib.refund_amount) OVER (PARTITION BY sib.id)
 
-                                    WHEN jr.id IS NOT NULL
-                                    THEN MAX(jr.refund_amount) OVER (PARTITION BY jr.id)
-                                    ELSE 0
-                                END,
-                                0
-                            )
-                        ELSE p.amount_received
-                    END AS amount,
                     COALESCE(
-                        CASE
-                            WHEN sib.id IS NOT NULL
-                            THEN MAX(sib.refund_amount) OVER (PARTITION BY sib.id)
+                        sib.invoice_no,
+                        jr.repair_code
+                    ) AS description,
 
-                            WHEN jr.id IS NOT NULL
-                            THEN MAX(jr.refund_amount) OVER (PARTITION BY jr.id)
+                    p.amount_received::numeric AS amount,
 
-                            ELSE 0
-                        END,
-                        0
-                    ) AS refund_amount
+                    0::numeric AS refund_amount,
+
+                    CASE
+                        WHEN sib.id IS NOT NULL THEN 'SALES'
+                        WHEN jr.id IS NOT NULL THEN 'REPAIR'
+                    END::text AS source_type,
+
+                    p.payment_date::text AS transaction_id
+
                 FROM payments p
+
                 LEFT JOIN sales_invoice_bills sib
                     ON sib.id = p.invoice_bill_id
                     AND sib.deleted_at IS NULL
-                    AND sib.is_active = true AND sib.status ='Invoice'
+                    AND sib.is_active = true AND sib.status = 'Invoice'
+
                 LEFT JOIN jewel_repairs jr
                     ON jr.id = p.jewel_repair_id
                     AND jr.deleted_at IS NULL
-                    AND jr.is_active = true AND jr.status ='Completed'
+                    AND jr.is_active = true AND jr.status = 'Completed'
+
                 WHERE p.deleted_at IS NULL
-                  AND p.status = 'Completed'
+                AND p.status = 'Completed'
+                AND (
+                    sib.id IS NOT NULL
+                    OR jr.id IS NOT NULL
+                )
 
                 UNION ALL
 
+
                 /* RECEIPTS */
+
                 SELECT
-                    vr.branch_id,
-                    vr.receipt_date,
-                    pm.payment_mode,
-                    vr.receipt_no,
-                    vr.amount,
-                    0 AS refund_amount
+                    vr.branch_id AS branch_id,
+                    vr.receipt_date::timestamptz AS txn_date,
+                    pm.payment_mode::text AS payment_mode,
+                    vr.receipt_no::text AS description,
+                    vr.amount::numeric AS amount,
+                    0::numeric AS refund_amount,
+                    'RECEIPT'::text AS source_type,
+                    ('RECEIPT-' || vr.id::text) AS transaction_id
+
                 FROM voucher_receipts vr
                 JOIN payment_modes pm
                     ON pm.id = vr.payment_mode_id
                 WHERE vr.deleted_at IS NULL
-                  AND vr.is_active = true
-                
+                AND vr.is_active = true
+
                 UNION ALL
 
                 /* SCHEME PAY INSTALLMENT */
                 SELECT
-                    c.branch_id,
-                    sp.payment_date,
-                    p.payment_mode::text,
-                    sp.scheme_payment_code,
-                    p.amount_received,
-                    0 AS refund_amount
+                    c.branch_id AS branch_id,
+                    p.payment_date AS txn_date,
+                    p.payment_mode::text AS payment_mode,
+                    sp.scheme_payment_code::text AS description,
+                    p.amount_received::numeric AS amount,
+                    0::numeric AS refund_amount,
+                    'SCHEME'::text AS source_type,
+                    p.payment_date::text AS transaction_id
+
                 FROM customer_scheme_payments sp
 
                 JOIN customer_enrollments e
@@ -460,19 +466,22 @@ const getBranchRevenueDetailsNew = async (req, res) => {
 
                 /* VENDOR PAYMENT NEGATIVE */
                 SELECT
-                    vp.branch_id,
-                    vp.payment_date,
-                    pm.payment_mode,
-                    vp.payment_no,
-                    -vp.amount,
-                    0 AS refund_amount
+                    vp.branch_id AS branch_id,
+                    vp.payment_date::timestamptz AS txn_date,
+                    pm.payment_mode::text AS payment_mode,
+                    vp.payment_no::text AS description,
+                    (-vp.amount)::numeric AS amount,
+                    0::numeric AS refund_amount,
+                    'VENDOR_PAYMENT'::text AS source_type,
+                    ('VENDOR-' || vp.id::text) AS transaction_id
+
                 FROM vendor_payments vp
                 JOIN payment_modes pm
                     ON pm.id = vp.payment_mode
                 WHERE vp.deleted_at IS NULL
-                  AND vp.is_active = true
-                  AND vp.status = 'Completed'
-        )
+                AND vp.is_active = true
+                AND vp.status = 'Completed'
+            )
         `;
 
         const havingCondition = `
@@ -488,24 +497,28 @@ const getBranchRevenueDetailsNew = async (req, res) => {
             ${baseCTE}
 
             SELECT
+                source_type,
+                transaction_id,
                 description,
-                ROUND(SUM(CASE WHEN payment_mode='Cash' THEN amount ELSE 0 END),2) AS cash,
-                ROUND(SUM(CASE WHEN payment_mode='UPI' THEN amount ELSE 0 END),2) AS upi,
-                ROUND(SUM(CASE WHEN payment_mode='Card' THEN amount ELSE 0 END),2) AS card,
+                ROUND(SUM(CASE WHEN payment_mode = 'Cash' THEN amount ELSE 0 END),2) AS cash,
+                ROUND(SUM(CASE WHEN payment_mode = 'UPI' THEN amount ELSE 0 END), 2) AS upi,
+                ROUND(SUM(CASE WHEN payment_mode = 'Card' THEN amount ELSE 0 END),2) AS card,
                 ROUND(MAX(refund_amount), 2) AS refund,
-                ROUND(SUM(amount),2) AS total_amount,
-                MAX(txn_date) AS payment_date
+                ROUND(SUM(amount), 2) AS total_amount,
+                txn_date AS payment_date
 
             FROM revenue_stream rs
             WHERE rs.branch_id = :branch_id
-              ${dateCondition}
-              ${paymentModeCondition}
-              ${searchCondition}
+            ${dateCondition}
+            ${paymentModeCondition}
+            ${searchCondition}
 
-            GROUP BY description
+            GROUP BY source_type, transaction_id, description, txn_date
+
             ${havingCondition}
 
-            ORDER BY payment_date DESC
+            ORDER BY txn_date DESC
+
             ${hasPagination ? "LIMIT :limit OFFSET :offset" : ""}
         `;
 
@@ -540,19 +553,23 @@ const getBranchRevenueDetailsNew = async (req, res) => {
         let totalItems = rows.length;
 
         if (hasPagination) {
-            const countQuery = `
-            ${baseCTE}
-            SELECT COUNT(*)::int AS count
-            FROM (
-                SELECT description
-                FROM revenue_stream rs
-                WHERE rs.branch_id = :branch_id
-                ${dateCondition}
-                ${paymentModeCondition}
-                ${searchCondition}
-                GROUP BY description
-                ${havingCondition}
-            ) x
+           const countQuery = `
+                ${baseCTE}
+                SELECT COUNT(*)::int AS count
+                FROM (
+                    SELECT
+                        source_type,
+                        transaction_id,
+                        description,
+                        txn_date
+                    FROM revenue_stream rs
+                    WHERE rs.branch_id = :branch_id
+                    ${dateCondition}
+                    ${paymentModeCondition}
+                    ${searchCondition}
+                    GROUP BY source_type, transaction_id, description, txn_date
+                    ${havingCondition}
+                ) x
             `;
 
             const [{ count }] = await sequelize.query(countQuery, {
@@ -562,7 +579,7 @@ const getBranchRevenueDetailsNew = async (req, res) => {
 
             totalItems = count;
         }
-
+        
         return commonService.okResponse(res, {
             data: {
                 summary: {
