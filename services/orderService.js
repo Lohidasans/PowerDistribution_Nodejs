@@ -616,6 +616,8 @@ const getWebsiteProductById = async (req, res) => {
       product.is_addOn === true || product.is_addOn === 1 || product.is_addOn === "true";
 
     if (isAddOn) {
+
+      // Get mapped add-on products
       const [addonRows] = await sequelize.query(
         `
         SELECT
@@ -623,16 +625,113 @@ const getWebsiteProductById = async (req, res) => {
           pa.addon_product_id,
           p.product_name,
           p.sku_id,
-          p.image_urls
+          p.image_urls,
+          p.material_type_id,
+          p.category_id,
+          p.subcategory_id,
+          p.product_type,
+          p.variation_type
+
         FROM "productAddOns" pa
-        JOIN products p ON p.id = pa.addon_product_id
+
+        JOIN products p
+        ON p.id = pa.addon_product_id
+          AND p.deleted_at IS NULL
+          AND p.status = 'Active'
+
         WHERE pa.product_id = :pid
+          AND pa.deleted_at IS NULL
+
         ORDER BY pa.id ASC
         `,
-        { replacements: { pid: product.id },}
+        {
+          replacements: {
+            pid: product.id,
+          },
+        }
       );
 
-      addon_products = addonRows;
+      // Calculate selling price for every add-on product
+      addon_products = await Promise.all(
+        addonRows.map(async (addon) => {
+          // Fetch full add-on product
+          const addonProductRecord =
+            await models.Product.findByPk(
+              addon.addon_product_id
+            );
+
+          if (!addonProductRecord) {
+            return {
+              ...addon,
+              item_detail: null,
+              price_details: null,
+            };
+          }
+          const addonProduct = addonProductRecord.get({ plain: true,});
+
+          // GET ADD-ON MATERIAL PRICE
+          let addonMaterialPrice = 0;
+          if (addonProduct.material_type_id) {
+            const addonMaterial =
+              await sequelize.query(
+                `SELECT material_price FROM "materialTypes" WHERE id = :id AND deleted_at IS NULL `,
+                {
+                  replacements: {id: addonProduct.material_type_id, },
+                  type: sequelize.QueryTypes.SELECT,
+                  plain: true,
+                }
+              );
+
+            addonMaterialPrice = Number(addonMaterial?.material_price || 0);
+          }
+
+          // GET ADD-ON PRODUCT ITEM DETAIL
+          const addonItemRecord =
+            await models.ProductItemDetail.findOne({
+              where: {
+                product_id: addonProduct.id,
+                is_visible: true,
+                quantity: {
+                    [Op.gt]: 0, // Return only item having stock
+                  },
+                },
+              order: [["id", "ASC"]],
+            });
+
+
+          if (!addonItemRecord) {
+            return {
+              ...addon,
+              material_price: addonMaterialPrice,
+              item_detail: null,
+              price_details: null,
+            };
+          }
+
+          const addonItem = addonItemRecord.get({ plain: true,});
+          // CALCULATE SELLING PRICE
+          const priceDetails = await calculateSellingPrice(addonProduct, addonItem, models);
+          // CALCULATE FINAL PRICE RATE
+          const finalPrice = calculateFinalPriceRate(addonProduct, addonItem, addonMaterialPrice);
+
+          return {
+            id: addon.id,
+            addon_product_id: addon.addon_product_id,
+            product_name: addon.product_name,
+            sku_id: addon.sku_id,
+            image_urls: addon.image_urls,
+            material_price: addonMaterialPrice,
+            product_item_id: addonItem.id,
+            quantity: Number(addonItem.quantity || 0),
+            gross_weight: Number(addonItem.gross_weight || 0),
+            net_weight: Number(addonItem.net_weight || 0),
+            price_details: {
+              ...priceDetails,
+              final_price_rate: finalPrice.final_price_rate,
+            },
+          };
+        })
+      );
     }
 
     // Fetch variant details
