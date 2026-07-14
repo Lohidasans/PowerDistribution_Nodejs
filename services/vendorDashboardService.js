@@ -151,23 +151,23 @@ const getQuotationDashboard = async (req, res) => {
 
     // SCORE CARDS
     const scoreCardQuery = `
-      SELECT
-        COUNT(*) FILTER (
-          WHERE vq.status = 'pending'
-        ) AS total_quotation_received,
+    SELECT
+      -- Count every quotation request assigned to this vendor: pending, accepted, received, or rejected.
+      COUNT(DISTINCT vq.quotation_id) AS total_quotation_received,
 
-        COUNT(*) FILTER (
-          WHERE vq.status = 'rejected'
-        ) AS rejected_quotation
+      -- Count only the requests this vendor rejected.
+      COUNT(DISTINCT vq.quotation_id) FILTER (
+        WHERE vq.status = 'rejected'
+      ) AS rejected_quotation
 
-      FROM vendor_quotations vq
+    FROM vendor_quotations vq
 
-      LEFT JOIN quotations q
-        ON q.id = vq.quotation_id
+    INNER JOIN quotations q
+      ON q.id = vq.quotation_id
 
-      WHERE vq.deleted_at IS NULL
-        AND vq.vendor_id = :vendor_id
-    `;
+    WHERE  vq.deleted_at IS NULL
+    AND vq.vendor_id = :vendor_id
+  `;
 
     // SALES ORDER COUNT
     const salesOrderQuery = `
