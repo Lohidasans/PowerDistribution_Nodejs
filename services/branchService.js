@@ -56,6 +56,14 @@ const createDefaultInvoiceSettings = async (transaction, branchId) => {
 };
 
 // Create a new Branch (with optional bank account, KYC docs, login)
+// Creates:
+// 1. Branch
+// 2. Default Branch Admin Employee
+// 3. Optional Bank Account
+// 4. Optional KYC Documents
+// 5. Optional Login
+// 6. Default Invoice Settings
+// 7. Default Payroll Masters
 const createBranch = async (req, res) => {
   const t = await sequelize.transaction();
   try {
@@ -92,6 +100,40 @@ const createBranch = async (req, res) => {
       { pad: 2, separator: "_" }
     );
     const branch = await models.Branch.create({ ...branchInput, branch_no: generatedBranchNo }, { transaction: t });
+    
+    // FIND ADMIN DEPARTMENT
+    const adminDepartment =
+      await models.EmployeeDepartment.findOne({
+        where: {
+          department_name: "Admin",
+        },
+
+        transaction: t,
+      });
+    if (!adminDepartment) {
+      await t.rollback();
+
+      return commonService.badRequest(
+        res,
+        "Admin department not found"
+      );
+    }
+    // FIND BRANCH ADMIN ROLE
+    const branchAdminRole =
+      await models.Role.findOne({
+        where: {
+          department_id: adminDepartment.id,
+          role_name: "Branch Admin",
+        },
+        transaction: t,
+      });
+    if (!branchAdminRole) {
+      await t.rollback();
+      return commonService.badRequest(
+        res,
+        "Branch Admin role not found under Admin department"
+      );
+    }
 
      // Generate employee_no for the employee created under this new branch
     const employeeNo = await generateFiscalSeriesCode(
@@ -110,14 +152,8 @@ const createBranch = async (req, res) => {
         status: branchInput.status || "Active",
 
         // Need to update the below fields using update employee api
-        department_id: 1,
-        role_id: 1,
-        joining_date: new Date(),
-        employment_type: "Full-Time",
-        gender: "Other",
-        date_of_birth: new Date("2000-01-01"),
-        salary: 0,
-        ref_employee_id: 0,
+          department_id: adminDepartment.id,
+          role_id: branchAdminRole.id,
       },
       { transaction: t }
     );
@@ -186,6 +222,7 @@ const createBranch = async (req, res) => {
     // Compose response
     return commonService.createdResponse(res, {
       branch,
+      employee,
       bank_account: createdBankAccount,
       kyc_documents: createdKycDocs,
       login: createdUser,

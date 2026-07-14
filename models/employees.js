@@ -30,20 +30,24 @@ module.exports = (sequelize, DataTypes) => {
             },
             joining_date: {
                 type: DataTypes.DATEONLY,
-                allowNull: false,
+                allowNull: true,
+                defaultValue: null,
             },
             employment_type: {
                 type: DataTypes.ENUM("Full-Time", "Part-Time", "Contract"),
-                allowNull: false,
+                allowNull: true,
+                defaultValue: null,
             },
             gender: {
                 type: DataTypes.ENUM("Male", "Female", "Other"),
-                allowNull: false,
+                allowNull: true,
+                defaultValue: null,
             },
             date_of_birth: {
                 type: DataTypes.DATEONLY,
-                allowNull: false,
-            },
+                allowNull: true,
+                defaultValue: null,
+            },           
             branch_id: {
                 type: DataTypes.INTEGER,
                 allowNull: false,
@@ -77,7 +81,7 @@ module.exports = (sequelize, DataTypes) => {
             salary: {
                 type: DataTypes.DECIMAL(12, 2),
                 allowNull: true,
-                defaultValue: 0,
+                defaultValue: null,
             },
         },
         {
