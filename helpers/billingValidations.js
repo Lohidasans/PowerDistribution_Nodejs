@@ -374,6 +374,101 @@ const restoreStockForSalesReturn = async (items, transaction) => {
     }
 };
 
+const applySalesReturnDeltas = async ({
+  oldItems = [],
+  newItems = [],
+  previousStatus,
+  nextStatus,
+  transaction,
+}) => {
+  const oldQuantities = isPostedSalesReturn(previousStatus)
+    ? groupQuantityByInvoiceItem(oldItems)
+    : new Map();
+
+  const newQuantities = isPostedSalesReturn(nextStatus)
+    ? groupQuantityByInvoiceItem(newItems)
+    : new Map();
+
+  const invoiceItemIds = new Set([
+    ...oldQuantities.keys(),
+    ...newQuantities.keys(),
+  ]);
+
+  for (const invoiceBillItemId of invoiceItemIds) {
+    const oldQty = Number(oldQuantities.get(invoiceBillItemId) || 0);
+    const newQty = Number(newQuantities.get(invoiceBillItemId) || 0);
+    const delta = newQty - oldQty;
+
+    if (delta === 0) continue;
+
+    // Locks the exact original invoice line.
+    const invoiceItem = await models.SalesInvoiceBillItem.findByPk(
+      invoiceBillItemId,
+      {
+        transaction,
+        lock: transaction.LOCK.UPDATE,
+      }
+    );
+
+    if (!invoiceItem) {
+      throw new ValidationError("Original invoice item was not found");
+    }
+
+    const currentReturnedQty = Number(invoiceItem.returned_quantity || 0);
+    const updatedReturnedQty = currentReturnedQty + delta;
+    const soldQty = Number(invoiceItem.quantity || 0);
+
+    if (updatedReturnedQty < 0) {
+      throw new ValidationError("Invalid return quantity reversal");
+    }
+
+    if (updatedReturnedQty > soldQty) {
+      const availableQty = soldQty - currentReturnedQty;
+
+      throw new ValidationError(
+        `Only ${Math.max(availableQty, 0)} quantity is available for return`
+      );
+    }
+
+    const productItemDetail = await models.ProductItemDetail.findByPk(
+      invoiceItem.product_item_detail_id,
+      {
+        transaction,
+        lock: transaction.LOCK.UPDATE,
+      }
+    );
+
+    if (!productItemDetail) {
+      throw new ValidationError("Product stock item was not found");
+    }
+
+    // delta > 0: return is posted / quantity increased → add stock
+    // delta < 0: return is unposted / reduced / deleted → deduct stock
+    const newStockQty = Number(productItemDetail.quantity || 0) + delta;
+
+    if (newStockQty < 0) {
+      throw new ValidationError(
+        "Cannot reverse this return because the restored stock has already been used"
+      );
+    }
+
+    await invoiceItem.update(
+      {
+        returned_quantity: updatedReturnedQty,
+        is_returned: updatedReturnedQty >= soldQty,
+      },
+      { transaction }
+    );
+
+    await productItemDetail.update(
+      {
+        quantity: newStockQty,
+        stock_out_reason: newStockQty === 0 ? "SOLD" : null,
+      },
+      { transaction }
+    );
+  }
+};
 
 
 module.exports = {
@@ -389,4 +484,5 @@ module.exports = {
     markEstimateAsConverted,
     restoreStockForInvoice,
     restoreStockForSalesReturn,
+    applySalesReturnDeltas,
 };

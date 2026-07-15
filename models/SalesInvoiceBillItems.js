@@ -65,6 +65,11 @@ module.exports = (sequelize, DataTypes) => {
                 allowNull: false,
                 defaultValue: false,
             },
+            returned_quantity: {  //To know, how many quantity have been returned by using sales return
+                type: DataTypes.INTEGER,
+                allowNull: false,
+                defaultValue: 0,
+            },
         },
         {
             timestamps: true,
