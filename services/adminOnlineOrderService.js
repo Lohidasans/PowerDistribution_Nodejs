@@ -472,7 +472,7 @@ const getOnlineOrderDetails = async (req, res) => {
         oi.delivered_time,
         oi.delivered_by,
 
-        b.branch_name
+        b.branch_name, b.id as branch_id
 
       FROM order_items oi
 
