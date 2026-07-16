@@ -414,7 +414,6 @@ const activateDeactivateVendorPayment = async (req, res) => {
   }
 };
 
-
 const getVendorPaymentsByPurchase = async (req, res) => {
   try {
     const { purchase_id, page, pageSize } = req.query;
@@ -430,159 +429,178 @@ const getVendorPaymentsByPurchase = async (req, res) => {
       user_type_id: 1,
     };
 
-    let whereSql = `
-      WHERE vp.deleted_at IS NULL
-      AND vp.is_active = true
-      AND vp.user_type_id = :user_type_id
-      AND vp.purchase_id = :purchase_id
-    `;
-
     // Pagination
     let paginationSql = "";
     let offset = 0;
 
     if (pageSize) {
       const limit = parseInt(pageSize);
-      offset = ((parseInt(page || 1) - 1) * limit);
-      paginationSql = " LIMIT :limit OFFSET :offset";
+      offset = (parseInt(page || 1) - 1) * limit;
+
+      paginationSql = `
+        LIMIT :limit OFFSET :offset
+      `;
+
       replacements.limit = limit;
       replacements.offset = offset;
     }
 
-    const dataQuery = `
+    // Get GRN Total
+    const [grn] = await sequelize.query(
+      `
       SELECT
-        vp.id,
-        vp.payment_no,
-        vp.payment_date,
-        vp.bill_type_id,
-        vp.branch_id,
-        vp.payment_mode,
-        vp.account_name_id,
-        vp.user_type_id,
-        vp.amount,
-        vp.transaction_no,
-        vp.status,
-        vp.invoice_id,
-        vp.purchase_id,
-        g.grn_no AS reference_no,
-        'GRN' AS reference_type,
-        v.vendor_name AS account_name,
-        v.mobile AS account_mobile,
-        COALESCE(g.total_amount, 0) AS total_purchase,
-        (
-          SELECT COALESCE(SUM(vp2.amount), 0)
-          FROM vendor_payments vp2
-          WHERE vp2.purchase_id = vp.purchase_id
-            AND vp2.deleted_at IS NULL
-            AND vp2.is_active = true
-            AND vp2.user_type_id = 1
-        ) AS total_paid,
-        (
-          COALESCE(g.total_amount, 0) -
-          (
-            SELECT COALESCE(SUM(vp2.amount), 0)
-            FROM vendor_payments vp2
-            WHERE vp2.purchase_id = vp.purchase_id
-              AND vp2.deleted_at IS NULL
-              AND vp2.is_active = true
-              AND vp2.user_type_id = 1
-          )
-        ) AS outstanding,
-        b.branch_name,
-        b.address AS branch_address,
-        b.gst_no AS branch_gst_no,
-        b.mobile AS branch_mobile,
-        b.signature_url AS branch_signature_url,
-        b.pin_code AS branch_pin_code,
-        d.district_name,
-        s.state_name
-      FROM vendor_payments vp
-      LEFT JOIN grns g
-        ON vp.purchase_id IS NOT NULL
-        AND g.id = vp.purchase_id::int
-        AND g.deleted_at IS NULL
+          id,
+          grn_no,
+          total_amount
+      FROM grns
+      WHERE id=:purchase_id
+      AND deleted_at IS NULL
+      `,
+      {
+        replacements,
+        type: sequelize.QueryTypes.SELECT,
+      }
+    );
 
-      LEFT JOIN vendors v
-        ON v.id = vp.account_name_id
-        AND vp.user_type_id = 1
-        AND v.deleted_at IS NULL
+    if (!grn) {
+      return commonService.notFoundResponse(res, {
+        message: "Purchase not found",
+      });
+    }
 
-      LEFT JOIN branches b
-        ON b.id = vp.branch_id
-        AND b.deleted_at IS NULL
+    // Transaction Query
+    const transactionQuery = `
+      SELECT *
+      FROM
+      (
+          -- Purchase Return
+          SELECT
+              pr.id,
+              pr.pr_date AS transaction_date,
+              pr.pr_no AS transaction_no,
+              'Purchase Return' AS transaction_type,
+              (
+                  COALESCE(pr.subtotal_amount,0)
+                  +
+                  (
+                      COALESCE(pr.subtotal_amount,0)
+                      *
+                      (
+                          COALESCE(pr.sgst_percent,0)
+                          +
+                          COALESCE(pr.cgst_percent,0)
+                          +
+                          COALESCE(pr.igst_percent,0)
+                      )/100
+                  )
+              ) AS amount,
+              pr.created_at
+          FROM purchase_returns pr
 
-      LEFT JOIN districts d
-        ON d.id = b.district_id
-        AND d.deleted_at IS NULL
+          WHERE pr.deleted_at IS NULL
+          AND pr.grn_id=:purchase_id
 
-      LEFT JOIN states s
-        ON s.id = b.state_id
-        AND s.deleted_at IS NULL
+          UNION ALL
 
-      ${whereSql}
+          -- Vendor Payments
 
-      ORDER BY vp.created_at DESC
+          SELECT
+              vp.id,
+              vp.payment_date AS transaction_date,
+              vp.payment_no AS transaction_no,
+              'Payment' AS transaction_type,
+              vp.amount,
+              vp.created_at
+
+          FROM vendor_payments vp
+
+          WHERE vp.deleted_at IS NULL
+          AND vp.is_active=true
+          AND vp.user_type_id=:user_type_id
+          AND vp.purchase_id=:purchase_id
+
+      ) transactions
+
+      ORDER BY transaction_date ASC,
+               created_at ASC
 
       ${paginationSql}
     `;
 
-    const data = await sequelize.query(dataQuery, {
+    const transactions = await sequelize.query(transactionQuery, {
       replacements,
       type: sequelize.QueryTypes.SELECT,
     });
 
-    // Count query (for pagination only)
-    let total = data.length;
+    // Count
+    let total = transactions.length;
 
     if (pageSize) {
-      const countQuery = `
-        SELECT COUNT(*)::int AS count
-        FROM vendor_payments vp
-        WHERE vp.deleted_at IS NULL
-          AND vp.is_active = true
-          AND vp.user_type_id = :user_type_id
-          AND vp.purchase_id = :purchase_id
-      `;
+      const [count] = await sequelize.query(
+        `SELECT
+        (
+            (
+                SELECT COUNT(*)
+                FROM purchase_returns
+                WHERE deleted_at IS NULL
+                AND grn_id=:purchase_id
+            )
+            +
+            (
+                SELECT COUNT(*)
+                FROM vendor_payments
+                WHERE deleted_at IS NULL
+                AND is_active=true
+                AND user_type_id=:user_type_id
+                AND purchase_id=:purchase_id
+            )
+        )::INT AS count
+        `,
+        {
+          replacements,
+          type: sequelize.QueryTypes.SELECT,
+        }
+      );
 
-      const countResult = await sequelize.query(countQuery, {
-        replacements,
-        type: sequelize.QueryTypes.SELECT,
-      });
-
-      total = countResult[0]?.count || 0;
+      total = count.count;
     }
 
-    // Summary values (take once)
-    const total_purchase = data.length > 0
-      ? data[0].total_purchase
-      : 0;
+    // Running Outstanding
+    let outstanding = Number(grn.total_amount);
 
-    const total_paid = data.length > 0
-      ? data[0].total_paid
-      : 0;
+    let totalPaid = 0;
+    let totalPurchaseReturn = 0;
 
-    const outstanding = data.length > 0
-      ? data[0].outstanding
-      : 0;
+    const data = transactions.map((item, index) => {
 
-    // Remove repeated summary fields from each row
-    const formattedData = data.map(item => {
-      const {
-        total_purchase,
-        total_paid,
-        outstanding,
-        ...rest
-      } = item;
+      if (item.transaction_type === "Purchase Return") {
+        totalPurchaseReturn += Number(item.amount);
+      } else {
+        totalPaid += Number(item.amount);
+      }
 
-      return rest;
+      outstanding =
+        Number(grn.total_amount)
+        - totalPurchaseReturn
+        - totalPaid;
+
+      return {
+        id: item.id,
+        sno: index + 1,
+        date: item.transaction_date,
+        transaction_no: item.transaction_no,
+        transaction_type: item.transaction_type,
+        total_paid: Number(item.amount).toFixed(2),
+        outstanding: outstanding.toFixed(2),
+      };
     });
 
     return commonService.okResponse(res, {
-      total_purchase,
-      total_paid,
-      outstanding,
-
-      data: formattedData,
+      total_purchase: Number(grn.total_amount).toFixed(2),
+      purchase_return: totalPurchaseReturn.toFixed(2),
+      total_paid: totalPaid.toFixed(2),
+      outstanding: outstanding.toFixed(2),
+      data,
 
       ...(pageSize && {
         pagination: {
@@ -595,13 +613,16 @@ const getVendorPaymentsByPurchase = async (req, res) => {
     });
 
   } catch (error) {
+    console.error(error);
+
     return commonService.handleError(
       res,
       error,
-      "Error fetching vendor payments by purchase"
+      "Error fetching transaction history"
     );
   }
 };
+
 
 
 module.exports = {
