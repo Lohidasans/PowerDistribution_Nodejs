@@ -898,20 +898,41 @@ const getVendorOverview = async (req, res) => {
         `;
 
         // Purchase Return Value (total amount)
-       const purchaseReturnValueQuery = `
-        SELECT 
-            COALESCE(SUM(pri.gross_weight), 0) as total_value
+        const purchaseReturnValueQuery = `
+        SELECT
+            -- Weight
+            COALESCE(SUM(pri.gross_weight),0) AS total_weight,
+           
+            -- Amount (Subtotal + GST)
+            COALESCE(
+                SUM(
+                    COALESCE(pr.subtotal_amount,0)
+                    +
+                    (
+                        COALESCE(pr.subtotal_amount,0)
+                        *
+                        (
+                            COALESCE(pr.sgst_percent,0)
+                            +
+                            COALESCE(pr.cgst_percent,0)
+                            +
+                            COALESCE(pr.igst_percent,0)
+                        )/100
+                    )
+                ),
+                0
+            ) AS total_amount
 
         FROM purchase_returns pr
 
-        JOIN purchase_return_items pri
-            ON pri.pr_id = pr.id
-            AND pri.deleted_at IS NULL
+        LEFT JOIN purchase_return_items pri
+        ON pri.pr_id=pr.id
+        AND pri.deleted_at IS NULL
 
-        WHERE pr.vendor_id = :vendor_id
-            AND pr.deleted_at IS NULL
+        WHERE pr.vendor_id=:vendor_id
+        AND pr.deleted_at IS NULL
 
-             ${purchaseReturnDateFilter}
+        ${purchaseReturnDateFilter}
         `;
 
         const grnDiscrepancyQuery = `
@@ -1025,11 +1046,12 @@ const getVendorOverview = async (req, res) => {
         }
 
         // Calculate outstanding
-        const purchaseReturnValue = parseFloat(purchaseReturnValueResult.total_value) || 0;
+        const purchaseReturnWeight = parseFloat(purchaseReturnValueResult.total_weight) || 0;
         const grnDiscrepancy = parseFloat(grnDiscrepancyResult.discrepancy_weight) || 0;
         const totalValue = parseFloat(grnTotalValueResult.total_value) || 0;
         const totalPaid = parseFloat(totalPaidResult.total_paid) || 0;
-        const outstanding = totalValue - totalPaid;
+        const purchaseReturnAmount = parseFloat(purchaseReturnValueResult.total_amount) || 0;
+        const outstanding = totalValue - purchaseReturnAmount - totalPaid;
 
         // Format purchase values based on period
         let formattedPurchaseValues = [];
@@ -1080,7 +1102,7 @@ const getVendorOverview = async (req, res) => {
             metrics: {
                 purchase_order: parseFloat(purchaseOrderResult.total_weight).toFixed(2) + " g",
                 grn_value: parseFloat(grnValueResult.grn_weight).toFixed(2) + " g",
-                purchase_return_value: purchaseReturnValue.toFixed(2) + " g",
+                purchase_return_value: purchaseReturnWeight.toFixed(2) + " g",
                 grn_discrepancy: grnDiscrepancy.toFixed(2) + " g",
                 purchase_order_value: parseFloat(grnTotalValueResult.total_value).toFixed(2),
                 total_amount_paid: totalPaid.toFixed(2),
