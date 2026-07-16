@@ -295,7 +295,14 @@ const getTopBuyingCategories = async (req, res) => {
  */
 const getTransactionHistory = async (req, res) => {
   try {
-    const { page, limit, vendor_id, from_date, to_date,   date_filter, } = req.query;
+    const {
+      page,
+      limit,
+      vendor_id,
+      from_date,
+      to_date,
+      date_filter,
+    } = req.query;
 
     const isPaginationEnabled = page && limit;
     const parsedPage = parseInt(page || 1);
@@ -311,12 +318,12 @@ const getTransactionHistory = async (req, res) => {
 
     let whereConditions = `
       WHERE g.deleted_at IS NULL
-        AND g.is_active IS NOT FALSE
+      AND g.is_active IS NOT FALSE
     `;
 
     if (vendor_id) {
-        whereConditions += ` AND g.vendor_id = :vendor_id`;
-        replacements.vendor_id = parseInt(vendor_id);
+      whereConditions += ` AND g.vendor_id = :vendor_id`;
+      replacements.vendor_id = parseInt(vendor_id);
     }
 
     const filterQuery = dateFilter(
@@ -327,9 +334,9 @@ const getTransactionHistory = async (req, res) => {
 
     whereConditions += filterQuery;
 
-    // Get transaction history with payment details
+    // Transaction History
     let query = `
-      SELECT 
+       SELECT
         g.id,
         g.grn_no,
         g.grn_date,
@@ -339,36 +346,86 @@ const getTransactionHistory = async (req, res) => {
 
         COALESCE(g.total_amount, 0) AS total_purchase,
 
+        -- Total Purchase Return Amount
         COALESCE(
-          (
-            SELECT SUM(vp.amount)
-            FROM vendor_payments vp
-            WHERE vp.deleted_at IS NULL
-              AND vp.bill_type_id = 1
-              AND vp.user_type_id = 1
-              AND vp.status = 'Completed'
-              AND vp.is_active = true
-              AND vp.purchase_id::integer = g.id
-          ), 0
-        ) AS total_paid,
-
-        (COALESCE(g.total_amount, 0)
-          -
-          COALESCE(
             (
-              SELECT SUM(vp.amount)
-              FROM vendor_payments vp
-              WHERE vp.deleted_at IS NULL
+                SELECT SUM(
+                    COALESCE(pr.subtotal_amount, 0) +
+                    (
+                        COALESCE(pr.subtotal_amount, 0) *
+                        (
+                            COALESCE(pr.sgst_percent, 0) +
+                            COALESCE(pr.cgst_percent, 0) +
+                            COALESCE(pr.igst_percent, 0)
+                        ) / 100
+                    )
+                )
+                FROM purchase_returns pr
+                WHERE pr.deleted_at IS NULL
+                AND pr.grn_id = g.id
+            ),
+            0
+        ) AS purchase_return,
+
+        -- Total Vendor Paid
+        COALESCE(
+            (
+                SELECT SUM(vp.amount)
+                FROM vendor_payments vp
+                WHERE vp.deleted_at IS NULL
                 AND vp.bill_type_id = 1
                 AND vp.user_type_id = 1
                 AND vp.status = 'Completed'
-                AND vp.is_active = true
-                AND vp.purchase_id::integer = g.id
-            ), 0
-          )) AS outstanding
-      FROM grns g
-      LEFT JOIN vendors v ON v.id = g.vendor_id
+                AND vp.is_active = TRUE
+                AND vp.purchase_id::INTEGER = g.id
+            ),
+            0
+        ) AS total_paid,
+
+        -- Outstanding Amount
+        (
+            COALESCE(g.total_amount, 0)
+            -
+            COALESCE(
+                (
+                    SELECT SUM(
+                        COALESCE(pr.subtotal_amount, 0) +
+                        (
+                            COALESCE(pr.subtotal_amount, 0) *
+                            (
+                                COALESCE(pr.sgst_percent, 0) +
+                                COALESCE(pr.cgst_percent, 0) +
+                                COALESCE(pr.igst_percent, 0)
+                            ) / 100
+                        )
+                    )
+                    FROM purchase_returns pr
+                    WHERE pr.deleted_at IS NULL
+                    AND pr.grn_id = g.id
+                ),
+                0
+            )
+            -
+            COALESCE(
+                (
+                    SELECT SUM(vp.amount)
+                    FROM vendor_payments vp
+                    WHERE vp.deleted_at IS NULL
+                    AND vp.bill_type_id = 1
+                    AND vp.user_type_id = 1
+                    AND vp.status = 'Completed'
+                    AND vp.is_active = TRUE
+                    AND vp.purchase_id::INTEGER = g.id
+                ),
+                0
+            )
+        ) AS outstanding
+
+        FROM grns g
+        LEFT JOIN vendors v ON v.id = g.vendor_id
+
       ${whereConditions}
+
       ORDER BY g.grn_date DESC, g.id DESC
     `;
 
@@ -378,77 +435,128 @@ const getTransactionHistory = async (req, res) => {
       `;
     }
 
-    // Get total count for pagination
     const countQuery = `
       SELECT COUNT(*) AS total
       FROM grns g
       ${whereConditions}
     `;
 
+    // Score Cards
     const scoreCardQuery = `
-      SELECT
-
+    SELECT
         COALESCE(SUM(g.total_amount), 0) AS total_amount,
 
+        -- Total Vendor Payments
         COALESCE(
-          SUM(
-            (
-              SELECT COALESCE(SUM(vp.amount), 0)
-              FROM vendor_payments vp
-              WHERE vp.deleted_at IS NULL
-                AND vp.bill_type_id = 1
-                AND vp.user_type_id = 1
-                AND vp.status = 'Completed'
-                AND vp.is_active = true
-                AND vp.purchase_id::integer = g.id
-            )
-          ),
-          0
-        ) AS amount_received,
-        (
-          COALESCE(SUM(g.total_amount), 0) -
-          COALESCE(
             SUM(
-              (
-                SELECT COALESCE(SUM(vp.amount), 0)
-                FROM vendor_payments vp
-                WHERE vp.deleted_at IS NULL
-                  AND vp.bill_type_id = 1
-                  AND vp.user_type_id = 1
-                  AND vp.status = 'Completed'
-                  AND vp.is_active = true
-                  AND vp.purchase_id::integer = g.id
-              )
+                (
+                    SELECT COALESCE(SUM(vp.amount), 0)
+                    FROM vendor_payments vp
+                    WHERE vp.deleted_at IS NULL
+                    AND vp.bill_type_id = 1
+                    AND vp.user_type_id = 1
+                    AND vp.status = 'Completed'
+                    AND vp.is_active = TRUE
+                    AND vp.purchase_id::INTEGER = g.id
+                )
             ),
             0
-          )
+        ) AS amount_received,
+
+        -- Total Purchase Return
+        COALESCE(
+            SUM(
+                (
+                    SELECT COALESCE(
+                        SUM(
+                            COALESCE(pr.subtotal_amount, 0) +
+                            (
+                                COALESCE(pr.subtotal_amount, 0) *
+                                (
+                                    COALESCE(pr.sgst_percent, 0) +
+                                    COALESCE(pr.cgst_percent, 0) +
+                                    COALESCE(pr.igst_percent, 0)
+                                ) / 100
+                            )
+                        ),
+                        0
+                    )
+                    FROM purchase_returns pr
+                    WHERE pr.deleted_at IS NULL
+                    AND pr.grn_id = g.id
+                )
+            ),
+            0
+        ) AS purchase_return,
+
+        -- Outstanding Amount
+        (
+            COALESCE(SUM(g.total_amount), 0)
+            -
+            COALESCE(
+                SUM(
+                    (
+                        SELECT COALESCE(
+                            SUM(
+                                COALESCE(pr.subtotal_amount, 0) +
+                                (
+                                    COALESCE(pr.subtotal_amount, 0) *
+                                    (
+                                        COALESCE(pr.sgst_percent, 0) +
+                                        COALESCE(pr.cgst_percent, 0) +
+                                        COALESCE(pr.igst_percent, 0)
+                                    ) / 100
+                                )
+                            ),
+                            0
+                        )
+                        FROM purchase_returns pr
+                        WHERE pr.deleted_at IS NULL
+                        AND pr.grn_id = g.id
+                    )
+                ),
+                0
+            )
+            -
+            COALESCE(
+                SUM(
+                    (
+                        SELECT COALESCE(SUM(vp.amount), 0)
+                        FROM vendor_payments vp
+                        WHERE vp.deleted_at IS NULL
+                        AND vp.bill_type_id = 1
+                        AND vp.user_type_id = 1
+                        AND vp.status = 'Completed'
+                        AND vp.is_active = TRUE
+                        AND vp.purchase_id::INTEGER = g.id
+                    )
+                ),
+                0
+            )
         ) AS outstanding_amount
 
-      FROM grns g
+    FROM grns g
 
-      ${whereConditions}
+    ${whereConditions}
     `;
 
-    const [
-      transactions,
-      countResult,
-      scoreCards,
-    ] = await Promise.all([
-      sequelize.query(query, {
-        replacements,
-        type: sequelize.QueryTypes.SELECT,
-      }),
+    const [transactions, countResult, scoreCards] =
+      await Promise.all([
+        sequelize.query(query, {
+          replacements,
+          type: sequelize.QueryTypes.SELECT,
+        }),
 
-      sequelize.query(countQuery, {
-        replacements,
-        type: sequelize.QueryTypes.SELECT,
-      }),
+        sequelize.query(countQuery, {
+          replacements,
+          type: sequelize.QueryTypes.SELECT,
+        }),
 
-      sequelize.query(scoreCardQuery, {
-        replacements,
-        type: sequelize.QueryTypes.SELECT,
-      }),
-    ]);
+        sequelize.query(scoreCardQuery, {
+          replacements,
+          type: sequelize.QueryTypes.SELECT,
+        }),
+      ]);
 
     const formattedTransactions = transactions.map((transaction) => ({
       id: transaction.id,
@@ -457,24 +565,18 @@ const getTransactionHistory = async (req, res) => {
       vendor_id: transaction.vendor_id,
       vendor_name: transaction.vendor_name,
       vendor_code: transaction.vendor_code,
+
       total_purchase: Number(transaction.total_purchase || 0).toFixed(2),
+      purchase_return: Number(transaction.purchase_return || 0).toFixed(2),
       total_paid: Number(transaction.total_paid || 0).toFixed(2),
-      outstanding: Number(transaction.outstanding || 0).toFixed(2),
-    }));
+      outstanding: Number(transaction.outstanding || 0 ).toFixed(2),}));
 
     return commonService.okResponse(res, {
       score_cards: {
-        total_amount: Number(
-          scoreCards[0]?.total_amount || 0
-        ).toFixed(2),
-
-        amount_received: Number(
-          scoreCards[0]?.amount_received || 0
-        ).toFixed(2),
-
-        outstanding_amount: Number(
-          scoreCards[0]?.outstanding_amount || 0
-        ).toFixed(2),
+        total_amount: Number(scoreCards[0]?.total_amount || 0).toFixed(2),
+        purchase_return: Number(scoreCards[0]?.purchase_return || 0).toFixed(2),
+        amount_received: Number(scoreCards[0]?.amount_received || 0).toFixed(2),
+        outstanding_amount: Number(scoreCards[0]?.outstanding_amount || 0).toFixed(2),
       },
 
       transactions: formattedTransactions,
@@ -485,7 +587,8 @@ const getTransactionHistory = async (req, res) => {
           limit: parsedLimit,
           total: parseInt(countResult[0]?.total || 0),
           totalPages: Math.ceil(
-            parseInt(countResult[0]?.total || 0) / parsedLimit
+            parseInt(countResult[0]?.total || 0) /
+              parsedLimit
           ),
         },
       }),
