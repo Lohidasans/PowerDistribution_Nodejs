@@ -640,60 +640,123 @@ const getVendorList = async (req, res) => {
             v.status,
             v.visibilities,
 
-            COALESCE(g.total_purchase, 0) AS total_purchase,
-            COALESCE(p.total_paid, 0) AS total_paid,
-            COALESCE(g.total_purchase, 0) - COALESCE(p.total_paid, 0) AS outstanding
+            COALESCE(g.total_purchase,0) AS total_purchase,
+            COALESCE(pr.purchase_return,0) AS purchase_return,
+            COALESCE(p.total_paid,0) AS total_paid,
+            (
+                COALESCE(g.total_purchase,0)
+                -
+                COALESCE(pr.purchase_return,0)
+                -
+                COALESCE(p.total_paid,0)
+            ) AS outstanding
 
         FROM vendors v
-        LEFT JOIN(
-            SELECT 
+
+        -- Purchase Amount
+        LEFT JOIN
+        (
+            SELECT
                 vendor_id,
                 SUM(total_amount) AS total_purchase
             FROM grns
             WHERE deleted_at IS NULL
-            GROUP BY vendor_id) g ON g.vendor_id = v.id
-        LEFT JOIN(
-            SELECT 
+            GROUP BY vendor_id
+        ) g
+        ON g.vendor_id = v.id
+
+        -- Purchase Return Amount
+        LEFT JOIN
+        (
+            SELECT
+                vendor_id,
+                SUM(
+                    COALESCE(subtotal_amount,0)
+                    +
+                    (
+                        COALESCE(subtotal_amount,0)
+                        *
+                        (
+                            COALESCE(sgst_percent,0)
+                            +
+                            COALESCE(cgst_percent,0)
+                            +
+                            COALESCE(igst_percent,0)
+                        ) /100
+                    )
+                ) AS purchase_return
+
+            FROM purchase_returns
+            WHERE deleted_at IS NULL
+            GROUP BY vendor_id
+
+        ) pr
+        ON pr.vendor_id = v.id
+
+        -- Vendor Paid
+        LEFT JOIN
+        (
+            SELECT
                 vendor_id,
                 SUM(amount) AS total_paid
-            FROM(
-            --Bill by Bill
-            SELECT 
-                g.vendor_id,
-                vp.amount
-            FROM vendor_payments vp
-            JOIN grns g ON g.id = vp.purchase_id:: integer
-            WHERE vp.deleted_at IS NULL
-                AND vp.status = 'Completed'
-                AND vp.bill_type_id = 1
-                AND vp.user_type_id = 1
-                AND vp.is_active = true
+            FROM
+            (
+            -- Bill Payments
+                SELECT
+                    g.vendor_id,
+                    vp.amount
+
+                FROM vendor_payments vp
+
+                JOIN grns g
+                    ON g.id = vp.purchase_id::integer
+
+                WHERE vp.deleted_at IS NULL
+                AND vp.status='Completed'
+                AND vp.bill_type_id=1
+                AND vp.user_type_id=1
+                AND vp.is_active=true
                 AND g.deleted_at IS NULL
 
-            UNION ALL
+                UNION ALL
 
-            --On Account + Advance
-            SELECT 
-                v.id AS vendor_id,
-                vp.amount
-            FROM vendor_payments vp
-            JOIN vendors v ON v.ledger_id = vp.account_name_id
-            WHERE vp.deleted_at IS NULL
-                AND vp.status = 'Completed'
-                AND vp.bill_type_id IN(2, 3)
-                AND vp.is_active = true) payments
-        GROUP BY vendor_id) p ON p.vendor_id = v.id
-        ${ whereClause }
+               
+                -- On Account
+               
+                SELECT
+                    v.id,
+                    vp.amount
+
+                FROM vendor_payments vp
+
+                JOIN vendors v
+                    ON v.ledger_id=vp.account_name_id
+
+                WHERE vp.deleted_at IS NULL
+                AND vp.status='Completed'
+                AND vp.bill_type_id IN (2,3)
+                AND vp.is_active=true
+
+            ) payments
+
+            GROUP BY vendor_id
+
+        ) p
+        ON p.vendor_id=v.id
+
+        ${whereClause}
+
         ORDER BY v.id DESC
+
         LIMIT :limit OFFSET :offset
         `;
 
         // Get total count for pagination
         const countQuery = `
-      SELECT COUNT(*) as total
-      FROM vendors v
-      ${whereClause}
-    `;
+            SELECT COUNT(*) as total
+                FROM vendors v
+                ${whereClause}
+            `;
 
         const [vendors, [countResult]] = await Promise.all([
             sequelize.query(query, { replacements }),
@@ -729,9 +792,11 @@ const getVendorList = async (req, res) => {
                     vendor_name: vendor.vendor_name,
                     vendor_image_url: vendor.vendor_image_url,
                     status: vendor.status,
-                    total_purchase: parseFloat(vendor.total_purchase).toFixed(2),
-                    total_paid: parseFloat(vendor.total_paid).toFixed(2),
-                    outstanding: parseFloat(vendor.outstanding).toFixed(2),
+
+                    total_purchase: Number(vendor.total_purchase || 0).toFixed(2),
+                    purchase_return: Number(vendor.purchase_return || 0).toFixed(2),
+                    total_paid: Number(vendor.total_paid || 0).toFixed(2),
+                    outstanding: Number(vendor.outstanding || 0).toFixed(2),
                     branch: branchName,
                 };
             })
