@@ -425,11 +425,18 @@ const getSuperAdminDashboard = async (req, res) => {
     // 7. VENDOR OVERVIEW
     // ============================================================
     const vendorOverviewQuery = `
-      SELECT
-        COALESCE(SUM(g.total_amount), 0) AS total_purchase
-      FROM grns g
-      WHERE g.deleted_at IS NULL
-        AND g.is_active IS NOT FALSE
+    SELECT
+        COALESCE(SUM(g.total_amount),0) AS total_purchase,
+        COALESCE((SELECT SUM(COALESCE(pr.subtotal_amount,0) + (
+                  COALESCE(pr.subtotal_amount,0) * (COALESCE(pr.sgst_percent,0) + COALESCE(pr.cgst_percent,0) + COALESCE(pr.igst_percent,0)) / 100))
+            FROM purchase_returns pr
+            WHERE pr.deleted_at IS NULL
+          ), 0
+        ) AS purchase_return
+
+    FROM grns g
+    WHERE g.deleted_at IS NULL
+    AND g.is_active IS NOT FALSE
     `;
 
     const vendorPaidQuery = `
@@ -598,7 +605,9 @@ const getSuperAdminDashboard = async (req, res) => {
     ]);
 
     const totalPurchase = money(vendorPurchaseResult?.total_purchase);
+    const totalPurchaseReturn = money(vendorPurchaseResult?.purchase_return);
     const totalPaid = money(vendorPaidResult?.total_paid);
+    const outstandingPayable = money(totalPurchase - totalPurchaseReturn - totalPaid);
 
     return commonService.okResponse(res, {
       filters_applied: {
@@ -691,8 +700,9 @@ const getSuperAdminDashboard = async (req, res) => {
 
       vendor_overview: {
         total_purchase: totalPurchase,
+        purchase_return: totalPurchaseReturn,
         total_paid: totalPaid,
-        outstanding_payable: money(totalPurchase - totalPaid),
+        outstanding_payable: outstandingPayable,
       },
 
       purchase_vs_sales: (purchaseVsSalesResult || []).map((r) => ({
