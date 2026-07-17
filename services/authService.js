@@ -354,6 +354,37 @@ const verifyOTP = async (req, res) => {
 
             statusCode = 201;
             isNewCustomer = true;
+        } else {
+            // Existing customer (created via offline/counter billing or a
+            // prior online order) logging in for the first time online:
+            // carry their stored address into customer_addresses so it
+            // shows up automatically instead of asking them to re-enter it.
+            const hasAddress = await models.CustomerAddress.count({
+                where: { customer_id: customer.id },
+                transaction: t
+            });
+
+            if (
+                !hasAddress &&
+                customer.address &&
+                customer.customer_name &&
+                customer.country_id &&
+                customer.state_id &&
+                customer.district_id &&
+                customer.pin_code
+            ) {
+                await models.CustomerAddress.create({
+                    customer_id: customer.id,
+                    name: customer.customer_name,
+                    mobile_number: customer.mobile_number,
+                    address_line: customer.address,
+                    country_id: customer.country_id,
+                    state_id: customer.state_id,
+                    district_id: customer.district_id,
+                    pin_code: customer.pin_code,
+                    is_default: true
+                }, { transaction: t });
+            }
         }
 
         await t.commit();
