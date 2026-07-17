@@ -374,6 +374,23 @@ const restoreStockForSalesReturn = async (items, transaction) => {
     }
 };
 
+const isPostedSalesReturn = (status) => status === "Printed";
+
+const groupQuantityByInvoiceItem = (items = []) => {
+  const quantities = new Map();
+
+  for (const item of items) {
+    const id = Number(item.invoice_bill_item_id);
+    const qty = Number(item.quantity || 0);
+
+    if (!id || qty <= 0) continue;
+
+    quantities.set(id, (quantities.get(id) || 0) + qty);
+  }
+
+  return quantities;
+};
+
 const applySalesReturnDeltas = async ({
   oldItems = [],
   newItems = [],

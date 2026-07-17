@@ -3,7 +3,8 @@ const commonService = require("./commonService");
 const enMessage = require("../constants/en.json");
 const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
 const { Op } = require("sequelize");
-const { restoreStockForSalesReturn, validateDuplicateUniqueCode } = require('../helpers/billingValidations');
+const { ValidationError } = require("../utils/errors");
+const { restoreStockForSalesReturn, validateDuplicateUniqueCode, applySalesReturnDeltas } = require('../helpers/billingValidations');
 
 // Generate sales return number (series)
 const generateSalesReturnNo = async (req, res) => {
@@ -22,19 +23,16 @@ const generateSalesReturnNo = async (req, res) => {
   }
 };
 
-// Create sales return (header + items)
 const createSalesReturn = async (req, res) => {
   const t = await sequelize.transaction();
   try {
     const { header = {}, items = [] } = req.body || {};
 
     if (!Array.isArray(items) || items.length === 0) {
-      await t.rollback();
       return commonService.badRequest(res, "At least one item is required");
     }
 
-    // CHECK DUPLICATE
-    const employee = await validateDuplicateUniqueCode({
+    await validateDuplicateUniqueCode({
       model: models.SalesReturn,
       billField: "sales_return_no",
       billValue: header.sales_return_no,
@@ -42,51 +40,21 @@ const createSalesReturn = async (req, res) => {
       transaction: t,
       bill_name: "Sales Return",
     });
-    
-    // VALIDATION OF INVOICES & ITEMS
-    const isValid = await validateSalesReturnInvoices({
-      items,
+
+    const itemRows = getReturnItemRows(items);
+
+    await validateSalesReturnInvoices({
+      items: itemRows,
       transaction: t,
-      models,
-      res,
-      commonService,
     });
 
-    if (isValid !== true) return; // response already sent
+    const totalQty = itemRows.reduce(
+      (sum, item) => sum + Number(item.quantity || 0),
+      0
+    );
 
-    // USE UI VALUES DIRECTLY
-    let totalQty = 0;
-
-    const itemRows = items.map((it) => {
-      const qty = Number(it.quantity || 0);
-      totalQty += qty;
-      const hasIgst = it.igst_amount &&  Number(it.igst_amount) > 0;
-
-      return {
-        product_id: it.product_id,
-        product_item_detail_id: it.product_item_detail_id || null,
-        sku_id: it.sku_id || null,
-        product_description: it.product_description || null,
-        net_weight: it.net_weight || null,
-        gross_weight: it.gross_weight || null,
-        quantity: qty,
-        rate: Number(it.rate || 0),
-        amount: Number(it.amount || 0),
-        cgst_percent: hasIgst ? null : (it.cgst_percent ?? null),
-        sgst_percent: hasIgst ? null : (it.sgst_percent ?? null),
-        cgst_amount: hasIgst  ? 0 : Number(it.cgst_amount || 0),
-        sgst_amount: hasIgst  ? 0 : Number(it.sgst_amount || 0),
-        igst_percent: hasIgst ? (it.igst_percent ?? null) : null,
-        igst_amount: hasIgst ? Number(it.igst_amount || 0) : 0,
-        invoice_date: it.invoice_date || null,
-        invoice_id: it.invoice_id,
-        invoice_no: it.invoice_no || null,
-      };
-    });
-
-   const hasHeaderIgst =
-      header.igst_amount &&
-      Number(header.igst_amount) > 0;
+    const hasHeaderIgst = Number(header.igst_amount || 0) > 0;
+    const status = header.status || "Printed";
 
     const salesReturn = await models.SalesReturn.create(
       {
@@ -96,57 +64,48 @@ const createSalesReturn = async (req, res) => {
         employee_id: header.employee_id,
         customer_id: header.customer_id || null,
         branch_id: header.branch_id || null,
+
         subtotal_amount: Number(header.subtotal_amount || 0),
         discount_type: header.discount_type || null,
         discount_amount: Number(header.discount_amount || 0),
         discount_calculated: Number(header.discount_calculated || 0),
-        cgst_percent: hasHeaderIgst ? null : (header.cgst_percent || null),
-        sgst_percent: hasHeaderIgst ? null : (header.sgst_percent || null),
-        igst_percent: hasHeaderIgst ? (header.igst_percent || null) : null,
+
+        cgst_percent: hasHeaderIgst ? null : (header.cgst_percent ?? null),
+        sgst_percent: hasHeaderIgst ? null : (header.sgst_percent ?? null),
+        igst_percent: hasHeaderIgst ? (header.igst_percent ?? null) : null,
+
         cgst_amount: hasHeaderIgst ? 0 : Number(header.cgst_amount || 0),
         sgst_amount: hasHeaderIgst ? 0 : Number(header.sgst_amount || 0),
-        igst_amount: hasHeaderIgst ? Number(header.igst_amount || 0): 0,
+        igst_amount: hasHeaderIgst ? Number(header.igst_amount || 0) : 0,
+
         total_amount: Number(header.total_amount || 0),
         total_quantity: totalQty,
-        status: header.status || "Printed",
+        status,
       },
       { transaction: t }
     );
 
-    // Create sales return items
-    const withFK = itemRows.map((row) => ({
-      ...row,
-      sales_return_id: salesReturn.id,
-    }));
+    const createdItems = await models.SalesReturnItem.bulkCreate(
+      itemRows.map((item) => ({
+        ...item,
+        sales_return_id: salesReturn.id,
+      })),
+      {
+        transaction: t,
+        returning: true,
+      }
+    );
 
-    const createdItems = await models.SalesReturnItem.bulkCreate(withFK, {
+    // On Hold/Draft: no stock and no returned_quantity update.
+    // Printed: quantities are added to stock and invoice returned_quantity is increased.
+    await applySalesReturnDeltas({
+      oldItems: [],
+      newItems: createdItems,
+      previousStatus: null,
+      nextStatus: salesReturn.status,
       transaction: t,
-      returning: true,
     });
 
-    // === UPDATE ORIGINAL INVOICE ITEMS: is_returned = true (per item) ===
-    if (header.status !== "On Hold") {
-      for (const item of createdItems) {
-      if (item.invoice_id && item.product_item_detail_id) {
-        await models.SalesInvoiceBillItem.update(
-          { is_returned: true, updated_at: new Date(), },
-          {
-            where: {
-              invoice_bill_id: item.invoice_id,
-              product_item_detail_id: item.product_item_detail_id,
-            },
-            transaction: t,
-          });
-        }
-      }   
-    }
-
-    // 🔺 RESTORE STOCK (ONLY IF FINALIZED)
-    if (salesReturn.status !== "On Hold") {
-      await restoreStockForSalesReturn(createdItems, t);
-    }
-
-    // === END UPDATE ===
     await t.commit();
 
     return commonService.createdResponse(res, {
@@ -154,7 +113,12 @@ const createSalesReturn = async (req, res) => {
       items: createdItems,
     });
   } catch (err) {
-    await t.rollback();
+    if (!t.finished) await t.rollback();
+
+    if (err.name === "ValidationError") {
+      return commonService.badRequest(res, err.message);
+    }
+
     return commonService.handleError(res, err);
   }
 };
@@ -398,228 +362,179 @@ const updateSalesReturn = async (req, res) => {
     const salesReturnId = req.params.id;
     const { header = {}, items = [] } = req.body || {};
 
-    // 1. FETCH & VALIDATE SALES RETURN
+    if (!Array.isArray(items) || items.length === 0) {
+      throw new ValidationError("At least one item is required");
+    }
+
     const salesReturn = await models.SalesReturn.findByPk(salesReturnId, {
-      transaction: t
+      transaction: t,
+      lock: t.LOCK.UPDATE,
     });
 
     if (!salesReturn) {
-      await t.rollback();
       return commonService.notFound(res, "Sales return not found");
     }
 
-    const previousStatus = salesReturn.status;
-
-    // On hold - stock not added
-    // Printed - stock added
-    // If changing from On Hold to Printed - add stock for all items
-
-    // 2. ITEMS VALIDATION
-    if (!Array.isArray(items) || items.length === 0) {
-      await t.rollback();
-      return commonService.badRequest(
-        res,
-        "At least one item is required"
-      );
-    }
-
     if (salesReturn.status === "Cancelled") {
-      await t.rollback();
-      return commonService.badRequest(
-        res,
-        "Cancelled sales return cannot be edited"
-      );
+      throw new ValidationError("Cancelled sales return cannot be edited");
     }
 
-    // INVOICE + ITEM VALIDATION
-    const valid = await validateSalesReturnInvoices({
-      items,
+    const previousStatus = salesReturn.status;
+    const nextStatus = header.status ?? salesReturn.status;
+
+    const existingItems = await models.SalesReturnItem.findAll({
+      where: { sales_return_id: salesReturn.id },
       transaction: t,
-      models,
-      res,
-      commonService,
+      lock: t.LOCK.UPDATE,
     });
 
-    if (valid !== true) return;
+    const existingItemMap = new Map(
+      existingItems.map((item) => [Number(item.id), item])
+    );
 
-    // 3. USE UI CALCULATED VALUES DIRECTLY
-    const itemRows = items.map((it) => ({
-      id: it.id || null,
-      product_id: it.product_id,
-      product_item_detail_id: it.product_item_detail_id,
-      sku_id: it.sku_id || null,
-      product_description: it.product_description || null,
-      net_weight: it.net_weight || null,
-      gross_weight: it.gross_weight || null,
-      quantity: Number(it.quantity || 0),
-      rate: Number(it.rate || 0),
-      amount: Number(it.amount || 0),
-      cgst_percent: it.cgst_percent ?? null,
-      sgst_percent: it.sgst_percent ?? null,
-      igst_percent: it.igst_percent ?? null,
-      cgst_amount: Number(it.cgst_amount || 0),
-      sgst_amount: Number(it.sgst_amount || 0),
-      igst_amount: Number(it.igst_amount || 0),
-    }));
+    const itemRows = getReturnItemRows(items);
 
-    const subtotal = Number(header.subtotal_amount || 0);
-    const totalQty = Number(header.total_quantity || 0);
-    const total = Number(header.total_amount || 0);
+    // Do not allow another sales return item's ID to be edited here.
+    for (const row of itemRows) {
+      if (row.id && !existingItemMap.has(Number(row.id))) {
+        throw new ValidationError("Invalid sales return item ID");
+      }
+    }
 
-    // 4. UPDATE SALES RETURN HEADER
+    await validateSalesReturnInvoices({
+      items: itemRows,
+      transaction: t,
+    });
+
+    const totalQty = itemRows.reduce(
+      (sum, item) => sum + Number(item.quantity || 0),
+      0
+    );
+
+    const hasHeaderIgst = Number(header.igst_amount || 0) > 0;
+
+    /*
+      Apply stock / returned-quantity difference BEFORE changing item rows.
+
+      On Hold → Printed: old applied qty = 0, new applied qty = all lines.
+      Printed → On Hold/Cancelled: new applied qty = 0, reverses all lines.
+      Printed → Printed: applies only the quantity difference.
+      Removing a line: new quantity becomes 0, reverses that line.
+    */
+    await applySalesReturnDeltas({
+      oldItems: existingItems,
+      newItems: itemRows,
+      previousStatus,
+      nextStatus,
+      transaction: t,
+    });
+
     await salesReturn.update(
       {
         sales_return_no: header.sales_return_no ?? salesReturn.sales_return_no,
-        return_date: header.return_date || salesReturn.return_date,
-        return_time: header.return_time || salesReturn.return_time,
-        employee_id: header.employee_id,
-        customer_id: header.customer_id,
-        branch_id: header.branch_id,
-        subtotal_amount: subtotal,
-        cgst_percent: hasHeaderIgst ? null : (header.cgst_percent || null),
-        sgst_percent: hasHeaderIgst ? null : (header.sgst_percent || null),
-        igst_percent: hasHeaderIgst ? (header.igst_percent || null) : null,
-        cgst_amount: cgstAmt,
-        sgst_amount: sgstAmt,
-        igst_amount: igstAmt,
-        total_amount: total,
+        return_date: header.return_date ?? salesReturn.return_date,
+        return_time: header.return_time ?? salesReturn.return_time,
+        employee_id: header.employee_id ?? salesReturn.employee_id,
+        customer_id: header.customer_id ?? salesReturn.customer_id,
+        branch_id: header.branch_id ?? salesReturn.branch_id,
+
+        subtotal_amount: Number(header.subtotal_amount || 0),
+        discount_type: header.discount_type ?? salesReturn.discount_type,
+        discount_amount: Number(header.discount_amount || 0),
+        discount_calculated: Number(header.discount_calculated || 0),
+
+        cgst_percent: hasHeaderIgst ? null : (header.cgst_percent ?? null),
+        sgst_percent: hasHeaderIgst ? null : (header.sgst_percent ?? null),
+        igst_percent: hasHeaderIgst ? (header.igst_percent ?? null) : null,
+
+        cgst_amount: hasHeaderIgst ? 0 : Number(header.cgst_amount || 0),
+        sgst_amount: hasHeaderIgst ? 0 : Number(header.sgst_amount || 0),
+        igst_amount: hasHeaderIgst ? Number(header.igst_amount || 0) : 0,
+
+        total_amount: Number(header.total_amount || 0),
         total_quantity: totalQty,
-        status: header.status
+        status: nextStatus,
       },
       { transaction: t }
     );
 
-    // Update Existing items
-    const existingItems = await models.SalesReturnItem.findAll({
-      where: { sales_return_id: salesReturn.id },
-      transaction: t
-    });
+    const payloadIds = itemRows
+      .filter((item) => item.id)
+      .map((item) => Number(item.id));
 
-    const payloadItemIds = itemRows
-      .filter(i => i.id)
-      .map(i => i.id);
+    // Soft-delete lines removed from the UI.
+    for (const existingItem of existingItems) {
+      if (!payloadIds.includes(Number(existingItem.id))) {
+        await existingItem.destroy({ transaction: t });
+      }
+    }
 
-    // DELETE omitted items
-    await models.SalesReturnItem.destroy({
-      where: {
-        sales_return_id: salesReturn.id,
-        id: { [Op.notIn]: payloadItemIds }
-      },
-      transaction: t
-    });
-
-    // UPSERT items
     for (const row of itemRows) {
       if (row.id) {
-        await models.SalesReturnItem.update(
+        const existingItem = existingItemMap.get(Number(row.id));
+
+        await existingItem.update(
           {
-            product_id: row.product_id,
-            product_item_detail_id: row.product_item_detail_id,
-            sku_id: row.sku_id,
-            product_description: row.product_description,
-            net_weight: row.net_weight,
-            gross_weight: row.gross_weight,
-            quantity: row.quantity,
-            rate: row.rate,
-            amount: row.amount,
-            cgst_percent: row.cgst_percent,
-            sgst_percent: row.sgst_percent,
-            igst_percent: row.igst_percent,
-            cgst_amount: row.cgst_amount,
-            sgst_amount: row.sgst_amount,
-            igst_amount: row.igst_amount,
+            ...row,
+            id: undefined,
           },
-          {
-            where: { id: row.id },
-            transaction: t
-          }
+          { transaction: t }
         );
       } else {
         await models.SalesReturnItem.create(
           {
             ...row,
-            sales_return_id: salesReturn.id
+            sales_return_id: salesReturn.id,
           },
           { transaction: t }
         );
       }
     }
 
-    // === UPDATE ORIGINAL INVOICE ITEMS IF STATUS CHANGED TO PRINTED ===
-    if (header.status === "Printed") {
-      for (const row of items) {
-      if (row.invoice_id && row.product_item_detail_id) {
-        await models.SalesInvoiceBillItem.update(
-          { is_returned: true },
-          {
-            where: {
-              invoice_bill_id: row.invoice_id,
-              product_item_detail_id: row.product_item_detail_id,
-            },
-            transaction: t,
-          });
-        }
-      }
-    }
-
-    // 🔺 RESTORE STOCK WHEN FINALIZING HOLD RETURN
-    if (previousStatus === "On Hold" && header.status === "Printed") {
-      const finalItems = await models.SalesReturnItem.findAll({
-        where: { sales_return_id: salesReturn.id },
-        transaction: t,
-      });
-
-      await restoreStockForSalesReturn(finalItems, t);
-    }
-
-    // 🔺 RESTORE STOCK ONLY FOR NEW ITEMS WHEN EDITING PRINTED RETURN
-    if (previousStatus === "Printed" && header.status === "Printed") {
-
-      const existingItems = await models.SalesReturnItem.findAll({
-        where: { sales_return_id: salesReturn.id },
-        transaction: t
-      });
-
-      const existingIds = existingItems.map(i => i.id);
-
-      const newItems = itemRows.filter(i => !existingIds.includes(i.id));
-
-      if (newItems.length) {
-        await restoreStockForSalesReturn(newItems, t);
-      }
-    }
-
     await t.commit();
-    return commonService.okResponse(res, {
-      message: "Sales return updated successfully"
-    });
 
+    return commonService.okResponse(res, {
+      message: "Sales return updated successfully",
+    });
   } catch (err) {
-    await t.rollback();
+    if (!t.finished) await t.rollback();
+
+    if (err.name === "ValidationError") {
+      return commonService.badRequest(res, err.message);
+    }
+
     return commonService.handleError(res, err);
   }
 };
 
-const validateSalesReturnInvoices = async ({
-  items,
-  transaction,
-  models,
-  res,
-  commonService,
-}) => {
-  for (const it of items) {
-    if (!it.invoice_no) {
-      await transaction.rollback();
-      return commonService.badRequest(
-        res,
-        "invoice_no is required for all return items"
+const validateSalesReturnInvoices = async ({ items, transaction }) => {
+  for (const item of items) {
+    if (!item.invoice_id || !item.invoice_no) {
+      throw new ValidationError(
+        "invoice_id and invoice_no are required for every return item"
       );
+    }
+
+    if (!item.invoice_bill_item_id) {
+      throw new ValidationError(
+        "invoice_bill_item_id is required for every return item"
+      );
+    }
+
+    if (!item.product_id || !item.product_item_detail_id) {
+      throw new ValidationError(
+        "product_id and product_item_detail_id are required for every return item"
+      );
+    }
+
+    if (Number(item.quantity) <= 0) {
+      throw new ValidationError("Return quantity must be greater than zero");
     }
 
     const invoice = await models.SalesInvoiceBill.findOne({
       where: {
-        id: it.invoice_id,
-        invoice_no: it.invoice_no,
+        id: item.invoice_id,
+        invoice_no: item.invoice_no,
         status: "Invoice",
         deleted_at: null,
       },
@@ -627,51 +542,61 @@ const validateSalesReturnInvoices = async ({
     });
 
     if (!invoice) {
-      await transaction.rollback();
-      return commonService.badRequest(
-        res,
-        `Invalid invoice_no ${it.invoice_no}. Invoice not found or not in Invoice status`
-      );
-    }
-
-    if (!it.product_id || !it.product_item_detail_id) {
-      await transaction.rollback();
-      return commonService.badRequest(
-        res,
-        "product_id and product_item_detail_id are required for sales return"
+      throw new ValidationError(
+        `Invalid invoice ${item.invoice_no}; it was not found or is not finalized`
       );
     }
 
     const invoiceItem = await models.SalesInvoiceBillItem.findOne({
       where: {
-        invoice_bill_id: invoice.id,
-        product_id: it.product_id,
-        product_item_detail_id: it.product_item_detail_id,
+        id: item.invoice_bill_item_id,
+        invoice_bill_id: item.invoice_id,
+        product_id: item.product_id,
+        product_item_detail_id: item.product_item_detail_id,
         deleted_at: null,
       },
       transaction,
     });
 
     if (!invoiceItem) {
-      await transaction.rollback();
-      return commonService.badRequest(
-        res,
-        `Item not found in invoice ${it.invoice_no} for product_id ${it.product_id} and product_item_detail_id ${it.product_item_detail_id}`
-      );
-    }
-
-    if (invoiceItem.is_returned) {
-      await transaction.rollback();
-      return commonService.badRequest(
-        res,
-        `Item already returned for invoice ${it.invoice_no}`
+      throw new ValidationError(
+        `Invoice item ${item.invoice_bill_item_id} does not belong to invoice ${item.invoice_no}`
       );
     }
   }
-
-  return true;
 };
 
+const getReturnItemRows = (items) =>
+  items.map((it) => {
+    const hasIgst = Number(it.igst_amount || 0) > 0;
+
+    return {
+      id: it.id || null,
+      invoice_id: it.invoice_id,
+      invoice_no: it.invoice_no || null,
+      invoice_date: it.invoice_date || null,
+      invoice_bill_item_id: it.invoice_bill_item_id,
+
+      product_id: it.product_id,
+      product_item_detail_id: it.product_item_detail_id || null,
+      sku_id: it.sku_id || null,
+      product_description: it.product_description || null,
+      net_weight: it.net_weight || null,
+      gross_weight: it.gross_weight || null,
+
+      quantity: Number(it.quantity || 0),
+      rate: Number(it.rate || 0),
+      amount: Number(it.amount || 0),
+
+      cgst_percent: hasIgst ? null : (it.cgst_percent ?? null),
+      sgst_percent: hasIgst ? null : (it.sgst_percent ?? null),
+      cgst_amount: hasIgst ? 0 : Number(it.cgst_amount || 0),
+      sgst_amount: hasIgst ? 0 : Number(it.sgst_amount || 0),
+
+      igst_percent: hasIgst ? (it.igst_percent ?? null) : null,
+      igst_amount: hasIgst ? Number(it.igst_amount || 0) : 0,
+    };
+});
 
 // Toggle active status for sales return
 const toggleSalesReturnActive = async (req, res) => {
