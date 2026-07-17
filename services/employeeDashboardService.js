@@ -125,7 +125,7 @@ const getEmployeeWiseSalesReport = async (req, res) => {
       SELECT
         COALESCE(SUM(sib.total_amount), 0) AS total_sales_value,
         COALESCE(SUM(sib.total_quantity), 0) AS total_sales_quantity,
-        COALESCE(SUM(sibi.gross_weight * sibi.quantity),0) AS total_sales_weight,
+        COALESCE(SUM(sibi.gross_weight * (sibi.quantity - sibi.returned_quantity)),0) AS total_sales_weight,
         COUNT(DISTINCT sib.id) AS total_transactions
       FROM sales_invoice_bills sib
       LEFT JOIN sales_invoice_bill_items sibi ON sibi.invoice_bill_id = sib.id AND sibi.deleted_at IS NULL AND sibi.is_returned = false

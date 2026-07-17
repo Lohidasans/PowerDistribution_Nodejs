@@ -293,7 +293,7 @@ const getFastMovingSubCategories = async (req, res) => {
             fp.product_id,
             fp.branch_id,
             fp.subcategory_id,
-            SUM(sii.quantity) AS sold_qty,
+            SUM(sii.quantity - sii.returned_quantity) AS sold_qty,
             SUM(COALESCE(sii.gross_weight, 0)) AS total_gross_weight
         FROM filtered_products fp
         JOIN sales_invoice_bill_items sii
@@ -452,7 +452,7 @@ WITH sold_rows AS (
     SELECT
         sii.product_id,
         sii.product_item_detail_id,
-        SUM(COALESCE(sii.quantity,0)) AS quantity,
+        SUM(COALESCE(sii.quantity,0) - COALESCE(sii.returned_quantity,0)) AS quantity,
         SUM(COALESCE(sii.gross_weight,0)) AS gross_weight,
         SUM(COALESCE(sii.net_weight,0)) AS net_weight
     FROM sales_invoice_bill_items sii
@@ -1033,7 +1033,7 @@ const getSalesByMaterialType = async (req, res) => {
             SELECT
                 mt.id AS material_type_id,
                 mt.material_type,
-                SUM(i.amount) AS material_amount
+                SUM(i.amount * (i.quantity - i.returned_quantity) / NULLIF(i.quantity, 0)) AS material_amount
             FROM sales_invoice_bills t
             JOIN sales_invoice_bill_items i
                 ON i.invoice_bill_id = t.id AND i.is_returned = false

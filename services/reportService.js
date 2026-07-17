@@ -127,7 +127,8 @@ const getSalesInvoiceReport = async (req, res) => {
                             'amount', sii.amount,
                             'product_sku_id', p.sku_id,
                             'product_item_sku_id', pid.sku_id,
-                            'is_returned', sii.is_returned
+                            'is_returned', sii.is_returned,
+                            'returned_quantity', sii.returned_quantity
                         )
                         ORDER BY sii.id
                     ) AS items,

@@ -557,7 +557,7 @@ const getAllGrns = async (req, res) => {
             + COALESCE(SUM(                    --OFFLINE BILL SOLD
               CASE
                 WHEN sib.status = 'Invoice'
-                THEN sii.quantity * sii.gross_weight
+                THEN (sii.quantity - sii.returned_quantity) * sii.gross_weight
                 ELSE 0
               END
             ),0)
@@ -566,7 +566,7 @@ const getAllGrns = async (req, res) => {
           SUM(pid.quantity) + COALESCE(SUM(   --QTY
               CASE
                 WHEN sib.status = 'Invoice'
-                THEN sii.quantity
+                THEN (sii.quantity - sii.returned_quantity)
                 ELSE 0
               END
             ),0) + COALESCE(SUM(oi.quantity),0) AS total_updated_qty
@@ -1406,7 +1406,7 @@ const getCompleteGrnDetails = async (req, res) => {
           SUM(pid.quantity * pid.gross_weight) + COALESCE(SUM(
               CASE
                 WHEN sib.status = 'Invoice'
-                THEN sii.quantity * sii.gross_weight
+                THEN (sii.quantity - sii.returned_quantity) * sii.gross_weight
                 ELSE 0
               END
             ),0) + COALESCE(SUM(oi.quantity * pid.gross_weight),0) AS updated_weight,
@@ -1415,7 +1415,7 @@ const getCompleteGrnDetails = async (req, res) => {
           SUM(pid.quantity) + COALESCE(SUM(
               CASE
                 WHEN sib.status = 'Invoice'
-                THEN sii.quantity
+                THEN (sii.quantity - sii.returned_quantity)
                 ELSE 0
               END
             ),0) + COALESCE(SUM(oi.quantity),0) AS updated_qty

@@ -1538,7 +1538,7 @@ const getGrnDiscrepancyList = async (req, res) => {
           + COALESCE(SUM(
             CASE
               WHEN sib.status = 'Invoice'
-              THEN sii.quantity * sii.gross_weight
+              THEN (sii.quantity - sii.returned_quantity) * sii.gross_weight
               ELSE 0
             END
           ), 0)
@@ -1549,7 +1549,7 @@ const getGrnDiscrepancyList = async (req, res) => {
           + COALESCE(SUM(
             CASE
               WHEN sib.status = 'Invoice'
-              THEN sii.quantity
+              THEN (sii.quantity - sii.returned_quantity)
               ELSE 0
             END
           ), 0)

@@ -130,7 +130,7 @@ const getSuperAdminDashboard = async (req, res) => {
         items AS (
           SELECT
             i.invoice_bill_id,
-            COALESCE(SUM(i.quantity), 0)      AS total_quantity,
+            COALESCE(SUM(i.quantity - i.returned_quantity), 0)      AS total_quantity,
             COALESCE(SUM(i.gross_weight), 0)  AS total_gross_weight,
             COALESCE(SUM(i.net_weight), 0)    AS total_net_weight
           FROM sales_invoice_bill_items i
@@ -496,8 +496,8 @@ const getSuperAdminDashboard = async (req, res) => {
       vendor_sales AS (
         SELECT
           p.vendor_id,
-          COALESCE(SUM(sibi.amount), 0)        AS sales_amount,
-          COALESCE(SUM(sibi.quantity), 0)::int AS sales_qty,
+          COALESCE(SUM(sibi.amount * (sibi.quantity - sibi.returned_quantity) / NULLIF(sibi.quantity, 0)), 0) AS sales_amount,
+          COALESCE(SUM(sibi.quantity - sibi.returned_quantity), 0)::int AS sales_qty,
           COALESCE(SUM(sibi.net_weight), 0)    AS sales_weight
         FROM sales_invoice_bill_items sibi
         JOIN products p
@@ -821,7 +821,7 @@ const getProfitKPISummary = async (req, res) => {
             SELECT SUM(
                 COALESCE(gi.rate_per_g, 0)
                 * COALESCE(pid.net_weight, 0)
-                * COALESCE(sibi.quantity, 1)
+                * COALESCE(sibi.quantity - sibi.returned_quantity, 1)
             )
             FROM sales_invoice_bill_items sibi
             INNER JOIN sales_invoice_bills sib
@@ -938,7 +938,7 @@ const getStockKpiSummary = async (req, res) => {
                 SUM(
                   CASE
                     WHEN sib.status = 'Invoice'
-                    THEN sii.quantity * sii.gross_weight
+                    THEN (sii.quantity - sii.returned_quantity) * sii.gross_weight
                     ELSE 0
                   END
                 ),
@@ -969,7 +969,7 @@ const getStockKpiSummary = async (req, res) => {
                 SUM(
                   CASE
                     WHEN sib.status = 'Invoice'
-                    THEN sii.quantity
+                    THEN (sii.quantity - sii.returned_quantity)
                     ELSE 0
                   END
                 ),

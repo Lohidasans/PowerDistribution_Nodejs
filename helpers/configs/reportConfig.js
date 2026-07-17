@@ -52,8 +52,8 @@ const REPORT_CONFIG = {
   itemFk: "invoice_bill_id",
   dateColumn: "t.created_at",
   codeColumn: "invoice_no",
-  weightColumn: "(i.net_weight * i.quantity)",
-  quantityExpr: "SUM(i.quantity)",
+  weightColumn: "(i.net_weight * (i.quantity - i.returned_quantity))",
+  quantityExpr: "SUM(i.quantity - i.returned_quantity)",
   statusCondition: "AND t.status = 'Invoice'",
   itemCondition: "AND COALESCE(i.is_returned, false) = false",
 

@@ -2770,16 +2770,16 @@ const getProductGrnSummary = async (req, res) => {
           CASE
             WHEN sib.status = 'Invoice'
               AND sii.is_returned = false
-            THEN sii.quantity
+            THEN (sii.quantity - sii.returned_quantity)
             ELSE 0
           END
-        ), 0) AS invoice_sold_qty,    /* SOLD INVOICE QTY */       
+        ), 0) AS invoice_sold_qty,    /* SOLD INVOICE QTY */
 
         COALESCE(SUM(
           CASE
             WHEN sib.status = 'Invoice'
               AND sii.is_returned = false
-            THEN sii.quantity * pid.gross_weight
+            THEN (sii.quantity - sii.returned_quantity) * pid.gross_weight
             ELSE 0
           END
         ), 0) AS invoice_sold_weight,  /* SOLD INVOICE WEIGHT */

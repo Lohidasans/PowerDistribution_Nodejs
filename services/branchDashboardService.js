@@ -299,7 +299,7 @@ const getTopPerformanceDashboard = async (req, res) => {
                 c.category_name,
                 c.category_image_url,
                 COUNT(sibi.id) AS total_count,
-                COALESCE(SUM(sibi.quantity), 0) AS total_quantity,
+                COALESCE(SUM(sibi.quantity - sibi.returned_quantity), 0) AS total_quantity,
                 SUM(sib.total_amount) AS sales_amount
 
             FROM sales_invoice_bills sib
