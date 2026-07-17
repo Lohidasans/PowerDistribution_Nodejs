@@ -431,9 +431,168 @@ try {
 }
 };
 
+
+const listCustomerSavingSchemes = async (req, res) => {
+    try {
+        const { customer_id } = req.query;
+
+        if (!customer_id) {
+            return commonService.badRequest(res, "customer_id is required");
+        }
+
+        const [rows] = await sequelize.query(
+            `
+            SELECT
+                e.id,
+                e.enrollment_code AS scheme_no,
+                e.customer_name,
+                e.mobile_number,
+                e.created_at AS date_of_scheme,
+                e.completed_date,
+                e.closed_date,
+                e.status,
+
+                s.id AS scheme_id,
+                s.scheme_name,
+
+                d.months AS duration,
+
+                e.installment_amount_id AS monthly_installment_amount,
+
+                CASE
+                    WHEN e.completed_date IS NOT NULL
+                        THEN e.completed_date
+                    ELSE
+                        (e.created_at + (d.months * INTERVAL '1 month'))
+                END AS scheme_completed_date,
+
+                COALESCE(p.total_paid, 0) AS total_paid_amount,
+
+                COALESCE(p.paid_count, 0) AS paid_installments,
+
+                d.months AS total_installments,
+
+                CONCAT(
+                    COALESCE(p.paid_count, 0),
+                    '/',
+                    d.months
+                ) AS dues,
+
+                inv.invoice_no
+
+            FROM customer_enrollments e
+
+            LEFT JOIN schemes s
+                ON s.id = e.scheme_plan_id
+
+            LEFT JOIN scheme_durations d
+                ON d.id = s.duration_id
+
+            LEFT JOIN (
+                SELECT
+                    enrollment_id,
+                    COUNT(*) AS paid_count,
+                    SUM(paid_amount) AS total_paid,
+                    MAX(payment_date) AS last_payment_date
+                FROM customer_scheme_payments
+                WHERE deleted_at IS NULL
+                GROUP BY enrollment_id
+            ) p
+                ON p.enrollment_id = e.id
+
+            LEFT JOIN (
+                SELECT
+                    sia.reference_id,
+                    MAX(sib.invoice_no) AS invoice_no
+                FROM sales_invoice_adjustments sia
+                INNER JOIN sales_invoice_bills sib
+                    ON sib.id = sia.sales_invoice_id
+                    AND sib.deleted_at IS NULL
+                WHERE
+                    sia.deleted_at IS NULL
+                    AND sia.adjustment_type_id = '3'
+                GROUP BY sia.reference_id
+            ) inv
+                ON inv.reference_id = e.id
+
+            WHERE
+                e.deleted_at IS NULL
+                AND e.customer_id = :customer_id
+
+            ORDER BY e.created_at DESC
+            `,
+            {
+                replacements: {
+                    customer_id
+                }
+            }
+        );
+
+        const ongoing = [];
+        const completed = [];
+        const closed = [];
+
+        rows.forEach((row) => {
+
+            const data = {
+                id: row.id,
+                scheme_no: row.scheme_no,
+                customer_name: row.customer_name,
+                mobile_number: row.mobile_number,
+                date_of_scheme: row.date_of_scheme,
+                scheme_name: row.scheme_name,
+                scheme_id: row.scheme_id,
+                duration: row.duration,
+                monthly_installment_amount: row.monthly_installment_amount,
+                total_paid_amount: Number(row.total_paid_amount),
+                paid_installments: Number(row.paid_installments),
+                total_installments: Number(row.total_installments),
+                dues: row.dues,
+                completed_date: row.completed_date,
+                closed_date: row.closed_date,
+                scheme_completed_date: row.scheme_completed_date,
+                invoice_no: row.invoice_no,
+                status: row.status
+            };
+
+            if (
+                row.status === "Active" &&
+                Number(row.paid_installments) < Number(row.total_installments)
+            ) {
+                ongoing.push(data);
+            }
+            else if (
+                row.status === "Completed" &&
+                Number(row.paid_installments) >= Number(row.total_installments)
+            ) {
+                completed.push(data);
+            }
+            else if (row.status === "Closed") {
+                closed.push(data);
+            }
+        });
+
+        return commonService.okResponse(res, {
+            ongoing,
+            completed,
+            closed,
+            summary: {
+                ongoing: ongoing.length,
+                completed: completed.length,
+                closed: closed.length
+            }
+        });
+
+    } catch (err) {
+        console.error(err);
+        return commonService.handleError(res, err);
+    }
+};
+
 module.exports = {
     generateSchemePaymentCode,
     createSchemePayment,
     closeEnrollment,
     listSchemeEnrollmentsForAdmin,
+    listCustomerSavingSchemes
 };
