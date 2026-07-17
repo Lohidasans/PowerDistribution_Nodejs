@@ -460,6 +460,12 @@ const listCustomerSavingSchemes = async (req, res) => {
                 e.installment_amount_id AS monthly_installment_amount,
 
                 CASE
+                    WHEN e.status IN ('Completed','Closed') THEN NULL
+                    ELSE
+                        (DATE(e.created_at) + (COALESCE(p.paid_count, 0) * INTERVAL '1 month'))::DATE
+                END AS next_due,
+
+                CASE
                     WHEN e.completed_date IS NOT NULL
                         THEN e.completed_date
                     ELSE
@@ -543,6 +549,7 @@ const listCustomerSavingSchemes = async (req, res) => {
                 scheme_name: row.scheme_name,
                 scheme_id: row.scheme_id,
                 duration: row.duration,
+                next_due: row.next_due,
                 monthly_installment_amount: row.monthly_installment_amount,
                 total_paid_amount: Number(row.total_paid_amount),
                 paid_installments: Number(row.paid_installments),
