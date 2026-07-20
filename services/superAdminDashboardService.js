@@ -1226,6 +1226,10 @@ const getProfitSection = async (req, res) => {
       ? ` AND grn.branch_id = :branch_id`
       : "";
 
+    const collectionBranchFilter = branch_id
+      ? ` AND cs.branch_id = :branch_id`
+      : "";
+
     // Date filters use the selected filter:
     // today / week / month / year / custom from_date and to_date.
     const salesDateFilter = dateFilter(
@@ -1246,11 +1250,18 @@ const getProfitSection = async (req, res) => {
       replacements
     );
 
+    const collectionDateFilter = dateFilter(
+      { from_date, to_date, date_filter },
+      "cs.txn_date",
+      replacements
+    );
+
     const [
       capitalRows,
       salesRows,
       oldJewelRows,
       purchaseRows,
+      collectionRows,
     ] = await Promise.all([
       // CAPITAL:
       // Static date cutoff before 27-Jan-2026.
@@ -1378,12 +1389,120 @@ const getProfitSection = async (req, res) => {
           type: sequelize.QueryTypes.SELECT,
         }
       ),
+      // COLLECTIONS:
+      // Incoming Cash + UPI + Card receipts only.
+      // Vendor payments are intentionally excluded.
+      sequelize.query(
+        `
+          WITH collection_stream AS (
+
+            /* Sales invoice and jewel-repair payments */
+            SELECT
+              COALESCE(sib.branch_id, jr.branch_id) AS branch_id,
+              p.payment_date AS txn_date,
+              p.payment_mode::text AS payment_mode,
+              p.amount_received::numeric AS amount
+            FROM payments p
+            LEFT JOIN sales_invoice_bills sib
+              ON sib.id = p.invoice_bill_id
+              AND sib.deleted_at IS NULL
+              AND sib.is_active = true
+              AND sib.status = 'Invoice'
+            LEFT JOIN jewel_repairs jr
+              ON jr.id = p.jewel_repair_id
+              AND jr.deleted_at IS NULL
+              AND jr.is_active = true
+              AND jr.status = 'Completed'
+            WHERE p.deleted_at IS NULL
+              AND p.status = 'Completed'
+              AND (
+                sib.id IS NOT NULL
+                OR jr.id IS NOT NULL
+              )
+
+            UNION ALL
+
+            /* Voucher receipts */
+            SELECT
+              vr.branch_id,
+              vr.receipt_date AS txn_date,
+              pm.payment_mode::text AS payment_mode,
+              vr.amount::numeric AS amount
+            FROM voucher_receipts vr
+            INNER JOIN payment_modes pm
+              ON pm.id = vr.payment_mode_id
+            WHERE vr.deleted_at IS NULL
+              AND vr.is_active = true
+
+            UNION ALL
+
+            /* Saving-scheme installment payments */
+            SELECT
+              c.branch_id,
+              p.payment_date AS txn_date,
+              p.payment_mode::text AS payment_mode,
+              p.amount_received::numeric AS amount
+            FROM customer_scheme_payments sp
+            INNER JOIN customer_enrollments ce
+              ON ce.id = sp.enrollment_id
+              AND ce.deleted_at IS NULL
+            INNER JOIN customers c
+              ON c.id = ce.customer_id
+              AND c.deleted_at IS NULL
+            INNER JOIN payments p
+              ON p.scheme_payment_id = sp.id
+              AND p.deleted_at IS NULL
+            WHERE sp.deleted_at IS NULL
+              AND sp.payment_source = 'INSTALLMENT'
+              AND p.status = 'Completed'
+          )
+
+          SELECT
+            COALESCE(
+              SUM(
+                CASE WHEN cs.payment_mode = 'Cash'
+                THEN cs.amount
+                ELSE 0 END
+              ),
+              0
+            ) AS cash_amount,
+
+            COALESCE(
+              SUM(
+                CASE WHEN cs.payment_mode = 'UPI'
+                THEN cs.amount
+                ELSE 0 END
+              ),
+              0
+            ) AS upi_amount,
+
+            COALESCE(
+              SUM(
+                CASE WHEN cs.payment_mode = 'Card'
+                THEN cs.amount
+                ELSE 0 END
+              ),
+              0
+            ) AS card_amount,
+
+            COALESCE(SUM(cs.amount), 0) AS total_amount_collected
+          FROM collection_stream cs
+          WHERE 1 = 1
+            ${collectionBranchFilter}
+            ${collectionDateFilter}
+        `,
+        {
+          replacements,
+          type: sequelize.QueryTypes.SELECT,
+        }
+      ),
     ]);
 
     const capital = capitalRows[0] || {};
     const sales = salesRows[0] || {};
     const oldJewel = oldJewelRows[0] || {};
     const purchase = purchaseRows[0] || {};
+    const collections = collectionRows[0] || {};
 
     const AVERAGE_LABOUR_COST = 100;
 
@@ -1451,6 +1570,14 @@ const getProfitSection = async (req, res) => {
       profit: { // (Increase in stock * average value) + old silver weight
         profit_value: Number(profitValue.toFixed(2)),
         old_silver_weight_in_grams: oldSilverWeight,
+      },
+
+      collections: {
+        cash_amount: Number(collections.cash_amount || 0),
+        upi_amount: Number(collections.upi_amount || 0),
+        card_amount: Number(collections.card_amount || 0),
+        total_amount_collected: Number(collections.total_amount_collected || 0
+        ),
       },
     });
   } catch (error) {
