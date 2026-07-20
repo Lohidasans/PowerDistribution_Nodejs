@@ -1196,36 +1196,139 @@ const getStockKpiSummary = async (req, res) => {
 
 const getProfitSection = async (req, res) => {
   try {
+    // Capital remains static: only GRNs before 27 January 2026.
     const CAPITAL_CUTOFF_DATE = "2026-01-27";
 
-     const [capital] = await sequelize.query(
-      `
-        SELECT
-          COALESCE(SUM(grn.total_gross_wt_in_g), 0) AS total_weight_in_grams,
-          COALESCE(SUM(grn.total_amount), 0) AS total_value
-        FROM grns grn
-        WHERE grn.deleted_at IS NULL
-          AND grn.is_active = true
-          AND grn.status_id = 1
-          AND grn.grn_date < :capitalCutoffDate
-      `,
-      {
-        replacements: {
-          capitalCutoffDate: CAPITAL_CUTOFF_DATE,
-        },
-        type: sequelize.QueryTypes.SELECT,
-      }
-    );
+    const [capitalRows, salesRows, oldJewelRows] = await Promise.all([
+      // CAPITAL: GRN + GST value and gross weight before cutoff date
+      sequelize.query(
+        `
+          SELECT
+            COALESCE(SUM(grn.total_gross_wt_in_g), 0) AS total_weight_in_grams,
+            COALESCE(SUM(grn.total_amount), 0) AS total_value
+          FROM grns grn
+          WHERE grn.deleted_at IS NULL
+            AND grn.is_active = true
+            AND grn.status_id = 1
+            AND grn.grn_date < :capitalCutoffDate
+        `,
+        {
+          replacements: {
+            capitalCutoffDate: CAPITAL_CUTOFF_DATE,
+          },
+          type: sequelize.QueryTypes.SELECT,
+        }
+      ),
+
+      // SALES: Invoice GST raised weight and value till today
+      sequelize.query(
+        `
+          WITH valid_invoices AS (
+            SELECT
+              sib.id,
+              sib.total_amount
+            FROM sales_invoice_bills sib
+            WHERE sib.deleted_at IS NULL
+              AND sib.is_active = true
+              AND sib.status = 'Invoice'
+              AND sib.invoice_date <= CURRENT_DATE
+          )
+          SELECT
+            COALESCE(
+              (
+                SELECT SUM(
+                  COALESCE(sii.gross_weight, 0)
+                  * COALESCE(sii.quantity, 1)
+                )
+                FROM sales_invoice_bill_items sii
+                INNER JOIN valid_invoices vi
+                  ON vi.id = sii.invoice_bill_id
+                WHERE sii.deleted_at IS NULL
+              ),
+              0
+            ) AS total_weight_in_grams,
+
+            COALESCE(
+              (
+                SELECT SUM(vi.total_amount)
+                FROM valid_invoices vi
+              ),
+              0
+            ) AS total_value
+        `,
+        {
+          type: sequelize.QueryTypes.SELECT,
+        }
+      ),
+
+      // OLD JEWEL: Printed and active old-jewel receipt weight and value till today
+      sequelize.query(
+        `
+          WITH valid_old_jewels AS (
+            SELECT
+              oj.id,
+              oj.total_amount
+            FROM old_jewels oj
+            WHERE oj.deleted_at IS NULL
+              AND oj.is_active = true
+              AND oj.status = 'Printed'
+              AND oj.date <= CURRENT_DATE
+          )
+          SELECT
+            COALESCE(
+              (
+                SELECT SUM(COALESCE(oji.grs_weight, 0))
+                FROM old_jewel_items oji
+                INNER JOIN valid_old_jewels voj
+                  ON voj.id = oji.old_jewel_id
+                WHERE oji.deleted_at IS NULL
+              ),
+              0
+            ) AS total_weight_in_grams,
+
+            COALESCE(
+              (
+                SELECT SUM(voj.total_amount)
+                FROM valid_old_jewels voj
+              ),
+              0
+            ) AS total_value
+        `,
+        {
+          type: sequelize.QueryTypes.SELECT,
+        }
+      ),
+    ]);
+
+    const capital = capitalRows[0] || {};
+    const sales = salesRows[0] || {};
+    const oldJewel = oldJewelRows[0] || {};
 
     return commonService.okResponse(res, {
       capital: {
         cutoff_date: "2026-01-26",
-        total_weight_in_grams: Number(capital?.total_weight_in_grams || 0),
-        total_value: Number(capital?.total_value || 0),
+        total_weight_in_grams: Number(
+          capital.total_weight_in_grams || 0
+        ),
+        total_value: Number(capital.total_value || 0),
+      },
+
+      sales: {
+        total_weight_in_grams: Number(
+          sales.total_weight_in_grams || 0
+        ),
+        total_value: Number(sales.total_value || 0),
+      },
+
+      old_jewel: {
+        total_weight_in_grams: Number(
+          oldJewel.total_weight_in_grams || 0
+        ),
+        total_value: Number(oldJewel.total_value || 0),
       },
     });
   } catch (error) {
-    console.error("Get Capital Error:", error);
+    console.error("Get Profit Section Error:", error);
     return commonService.handleError(res, error);
   }
 };
