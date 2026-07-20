@@ -1,8 +1,8 @@
 const { sequelize } = require("../models/index");
 const commonService = require("./commonService");
 const { dateFilter } = require("../helpers/dateHelper");
+const enumType = require("../constants/enum");
 
-const CAPITAL_CUTOFF_DATE = "2026-01-27";
 
 /* =========================================================
    HELPER – build date condition SQL from query params
@@ -1385,34 +1385,72 @@ const getProfitSection = async (req, res) => {
     const oldJewel = oldJewelRows[0] || {};
     const purchase = purchaseRows[0] || {};
 
+    const AVERAGE_LABOUR_COST = 100;
+
+    // Capital stock
+    const capitalStockWeight = Number(capital.total_weight_in_grams || 0);
+    const capitalStockValue = Number(capital.total_value || 0);
+
+    // Total stock = Purchase
+    const totalStockWeight = Number(purchase.total_weight_in_grams || 0);
+    const totalStockValue = Number(purchase.total_value || 0);
+
+    // Increase in stock = Total stock(Purchase) - Capital stock
+    const increaseInStockWeight = totalStockWeight - capitalStockWeight;
+    const increaseInStockValue =  totalStockValue - capitalStockValue;
+
+    // Average value per gram
+    const totalWeightForAverage = capitalStockWeight + totalStockWeight;
+
+    const averageValuePerGram = totalWeightForAverage > 0 ? (capitalStockValue + totalStockValue) / totalWeightForAverage : 0;
+
+    // Old silver / old jewel weight
+    const oldSilverWeight = Number(
+      oldJewel.total_weight_in_grams || 0
+    );
+
+    // Profit from increase in stock
+    const profitValue = increaseInStockWeight * averageValuePerGram;
+
+
     return commonService.okResponse(res, {
       capital: {
         cutoff_date: "2026-01-26",
-        total_weight_in_grams: Number(
-          capital.total_weight_in_grams || 0
-        ),
-        total_value: Number(capital.total_value || 0),
+        total_weight_in_grams: capitalStockWeight,
+        total_value: capitalStockValue,
       },
 
       sales: {
-        total_weight_in_grams: Number(
-          sales.total_weight_in_grams || 0
-        ),
+        total_weight_in_grams: Number(sales.total_weight_in_grams || 0),
         total_value: Number(sales.total_value || 0),
       },
 
       old_jewel: {
-        total_weight_in_grams: Number(
-          oldJewel.total_weight_in_grams || 0
-        ),
+        total_weight_in_grams: oldSilverWeight,
         total_value: Number(oldJewel.total_value || 0),
       },
 
       purchase: {
-        total_weight_in_grams: Number(
-          purchase.total_weight_in_grams || 0
-        ),
-        total_value: Number(purchase.total_value || 0),
+        total_weight_in_grams: totalStockWeight,
+        total_value: totalStockValue,
+      },
+
+      average_labour_cost_per_gram: AVERAGE_LABOUR_COST,
+
+      increase_in_stock: {
+        purchase_stock_in_grams: totalStockWeight,
+        purchase_stock_in_value: totalStockValue,
+        capital_stock_in_grams: capitalStockWeight,
+        capital_stock_in_value: capitalStockValue,
+        total_weight_in_grams: increaseInStockWeight, 
+        total_value: increaseInStockValue,
+      },
+
+      average_value_per_gram: Number(averageValuePerGram.toFixed(2)),
+
+      profit: { // (Increase in stock * average value) + old silver weight
+        profit_value: Number(profitValue.toFixed(2)),
+        old_silver_weight_in_grams: oldSilverWeight,
       },
     });
   } catch (error) {
