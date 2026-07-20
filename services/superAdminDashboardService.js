@@ -2,6 +2,8 @@ const { sequelize } = require("../models/index");
 const commonService = require("./commonService");
 const { dateFilter } = require("../helpers/dateHelper");
 
+const CAPITAL_CUTOFF_DATE = "2026-01-27";
+
 /* =========================================================
    HELPER – build date condition SQL from query params
    Supports: period (today|week|month|year|ytd) OR from_date + to_date
@@ -1192,10 +1194,50 @@ const getStockKpiSummary = async (req, res) => {
 };
 
 
+const getProfitSection = async (req, res) => {
+  try {
+    const CAPITAL_CUTOFF_DATE = "2026-01-27";
+
+     const [capital] = await sequelize.query(
+      `
+        SELECT
+          COALESCE(SUM(grn.total_gross_wt_in_g), 0) AS total_weight_in_grams,
+          COALESCE(SUM(grn.total_amount), 0) AS total_value
+        FROM grns grn
+        WHERE grn.deleted_at IS NULL
+          AND grn.is_active = true
+          AND grn.status_id = 1
+          AND grn.grn_date < :capitalCutoffDate
+      `,
+      {
+        replacements: {
+          capitalCutoffDate: CAPITAL_CUTOFF_DATE,
+        },
+        type: sequelize.QueryTypes.SELECT,
+      }
+    );
+
+    return commonService.okResponse(res, {
+      capital: {
+        cutoff_date: "2026-01-26",
+        total_weight_in_grams: Number(capital?.total_weight_in_grams || 0),
+        total_value: Number(capital?.total_value || 0),
+      },
+    });
+  } catch (error) {
+    console.error("Get Capital Error:", error);
+    return commonService.handleError(res, error);
+  }
+};
+
+
+
+
 module.exports = {
   getSuperAdminDashboard,
   getStockKpiSummary,
   getSalesSummary,
   getProfitKPISummary,
+  getProfitSection
 
 };
