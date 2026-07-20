@@ -1199,7 +1199,7 @@ const getProfitSection = async (req, res) => {
     // Capital remains static: only GRNs before 27 January 2026.
     const CAPITAL_CUTOFF_DATE = "2026-01-27";
 
-    const [capitalRows, salesRows, oldJewelRows] = await Promise.all([
+    const [capitalRows, salesRows, oldJewelRows, purchaseRows] = await Promise.all([
       // CAPITAL: GRN + GST value and gross weight before cutoff date
       sequelize.query(
         `
@@ -1298,11 +1298,29 @@ const getProfitSection = async (req, res) => {
           type: sequelize.QueryTypes.SELECT,
         }
       ),
+
+      // PURCHASE: GRN GST raised weight and value till today
+      sequelize.query(
+        `
+          SELECT
+            COALESCE(SUM(grn.total_gross_wt_in_g), 0) AS total_weight_in_grams,
+            COALESCE(SUM(grn.total_amount), 0) AS total_value
+          FROM grns grn
+          WHERE grn.deleted_at IS NULL
+            AND grn.is_active = true
+            AND grn.status_id = 1
+            AND grn.grn_date <= CURRENT_DATE
+        `,
+        {
+          type: sequelize.QueryTypes.SELECT,
+        }
+      ),
     ]);
 
     const capital = capitalRows[0] || {};
     const sales = salesRows[0] || {};
     const oldJewel = oldJewelRows[0] || {};
+    const purchase = purchaseRows[0] || {};
 
     return commonService.okResponse(res, {
       capital: {
@@ -1325,6 +1343,12 @@ const getProfitSection = async (req, res) => {
           oldJewel.total_weight_in_grams || 0
         ),
         total_value: Number(oldJewel.total_value || 0),
+      },
+      purchase: {
+        total_weight_in_grams: Number(
+          purchase.total_weight_in_grams || 0
+        ),
+        total_value: Number(purchase.total_value || 0),
       },
     });
   } catch (error) {
