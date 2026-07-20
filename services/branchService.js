@@ -670,7 +670,14 @@ const getBranchDashboard = async (req, res) => {
         c.customer_code,
         c.customer_name,
         c.mobile_number,
-        COALESCE(SUM(sib.total_amount), 0) AS total_amount,
+        COALESCE(SUM(
+          (
+            SELECT COALESCE(SUM(sibi.amount * (sibi.quantity - COALESCE(sibi.returned_quantity, 0)) / NULLIF(sibi.quantity, 0)), 0)
+            FROM sales_invoice_bill_items sibi
+            WHERE sibi.invoice_bill_id = sib.id
+              AND sibi.deleted_at IS NULL
+          )
+        ), 0) AS total_amount,
         COUNT(sib.id) AS total_invoices
       FROM
         customers c
@@ -680,19 +687,19 @@ const getBranchDashboard = async (req, res) => {
         AND sib.status = 'Invoice'
         ${branchFilter}
         ${dateFilter}
-      AND EXISTS (
-        SELECT 1
-        FROM sales_invoice_bill_items sibi
-        WHERE sibi.invoice_bill_id = sib.id
-          AND sibi.deleted_at IS NULL
-          AND sibi.is_returned = false
-      )
       WHERE
         c.deleted_at IS NULL
       GROUP BY
         c.id, c.customer_code, c.customer_name, c.mobile_number
       HAVING
-        COALESCE(SUM(sib.total_amount), 0) > 0
+        COALESCE(SUM(
+          (
+            SELECT COALESCE(SUM(sibi.amount * (sibi.quantity - COALESCE(sibi.returned_quantity, 0)) / NULLIF(sibi.quantity, 0)), 0)
+            FROM sales_invoice_bill_items sibi
+            WHERE sibi.invoice_bill_id = sib.id
+              AND sibi.deleted_at IS NULL
+          )
+        ), 0) > 0
       ORDER BY
         total_amount DESC
       LIMIT :limit
@@ -709,8 +716,8 @@ const getBranchDashboard = async (req, res) => {
         e.id AS employee_id,
         e.employee_no,
         e.employee_name,
-        COALESCE(SUM(DISTINCT sib.total_amount), 0) AS sales_amount,
-        COALESCE(SUM(sibi.net_weight), 0) AS total_weight,
+        COALESCE(SUM(sibi.amount * (sibi.quantity - COALESCE(sibi.returned_quantity, 0)) / NULLIF(sibi.quantity, 0)), 0) AS sales_amount,
+        COALESCE(SUM(sibi.net_weight * (sibi.quantity - COALESCE(sibi.returned_quantity, 0))), 0) AS total_weight,
         COUNT(DISTINCT sib.id) AS total_invoices
       FROM
         employees e
@@ -721,14 +728,14 @@ const getBranchDashboard = async (req, res) => {
         ${branchFilter}
         ${dateFilter}
       LEFT JOIN
-        sales_invoice_bill_items sibi ON sibi.invoice_bill_id = sib.id AND sibi.is_returned = false
+        sales_invoice_bill_items sibi ON sibi.invoice_bill_id = sib.id
         AND sibi.deleted_at IS NULL
       WHERE
         e.deleted_at IS NULL
       GROUP BY
         e.id, e.employee_no, e.employee_name
       HAVING
-        COALESCE(SUM(DISTINCT sib.total_amount), 0) > 0
+        COALESCE(SUM(sibi.amount * (sibi.quantity - COALESCE(sibi.returned_quantity, 0)) / NULLIF(sibi.quantity, 0)), 0) > 0
       ORDER BY
         sales_amount DESC
       LIMIT :limit
@@ -1871,11 +1878,13 @@ const getRecentSales = async (req, res) => {
         COALESCE(sibi.gross_weight, 0) AS grs_weight,
         COALESCE(sibi.net_weight, 0) AS net_weight,
         COALESCE(sibi.quantity, 0) AS quantity,
+        sibi.is_returned,
+        COALESCE(sibi.returned_quantity, 0) AS returned_quantity,
         sib.total_amount
-      FROM 
+      FROM
         sales_invoice_bills sib
-      INNER JOIN 
-        sales_invoice_bill_items sibi ON sibi.invoice_bill_id = sib.id AND sibi.deleted_at IS NULL AND sibi.is_returned = false
+      INNER JOIN
+        sales_invoice_bill_items sibi ON sibi.invoice_bill_id = sib.id AND sibi.deleted_at IS NULL
       WHERE 
         ${whereClause}
       ORDER BY 
@@ -1910,6 +1919,8 @@ const getRecentSales = async (req, res) => {
         grs_weight: parseFloat(row.grs_weight || 0).toFixed(2),
         net_weight: parseFloat(row.net_weight || 0).toFixed(2),
         quantity: parseInt(row.quantity, 10),
+        is_returned: row.is_returned,
+        returned_quantity: parseInt(row.returned_quantity, 10),
       });
     });
 
@@ -1973,14 +1984,14 @@ const getTopSellingCategories = async (req, res) => {
         c.category_name,
         c.category_image_url,
         COUNT(DISTINCT sib.id) AS total_invoices,
-        COALESCE(SUM(sib.total_amount), 0) AS total_sales_amount
-      FROM 
+        COALESCE(SUM(sibi.amount * (sibi.quantity - COALESCE(sibi.returned_quantity, 0)) / NULLIF(sibi.quantity, 0)), 0) AS total_sales_amount
+      FROM
         categories c
-      INNER JOIN 
+      INNER JOIN
         products p ON p.category_id = c.id AND p.deleted_at IS NULL
-      INNER JOIN 
-        sales_invoice_bill_items sibi ON sibi.product_id = p.id AND sibi.deleted_at IS NULL AND sibi.is_returned = false
-      INNER JOIN 
+      INNER JOIN
+        sales_invoice_bill_items sibi ON sibi.product_id = p.id AND sibi.deleted_at IS NULL
+      INNER JOIN
         sales_invoice_bills sib ON sib.id = sibi.invoice_bill_id
       WHERE 
         c.deleted_at IS NULL
@@ -2439,9 +2450,9 @@ const getCustomerInvoices = async (req, res) => {
         sales_invoice_bills sib
       INNER JOIN 
         branches b ON b.id = sib.branch_id AND b.deleted_at IS NULL
-      LEFT JOIN 
-        sales_invoice_bill_items sibi ON sibi.invoice_bill_id = sib.id AND sibi.deleted_at IS NULL AND sibi.is_returned = false
-      WHERE 
+      LEFT JOIN
+        sales_invoice_bill_items sibi ON sibi.invoice_bill_id = sib.id AND sibi.deleted_at IS NULL
+      WHERE
         sib.customer_id = :customer_id
         AND sib.deleted_at IS NULL
         AND sib.is_active = true

@@ -787,29 +787,36 @@ const getTopBuyingCustomers = async (req, res) => {
         c.customer_code,
         c.customer_name,
         c.mobile_number,
-        COALESCE(SUM(sib.total_amount), 0) AS total_amount,
+        COALESCE(SUM(
+          (
+            SELECT COALESCE(SUM(sibi.amount * (sibi.quantity - COALESCE(sibi.returned_quantity, 0)) / NULLIF(sibi.quantity, 0)), 0)
+            FROM sales_invoice_bill_items sibi
+            WHERE sibi.invoice_bill_id = sib.id
+              AND sibi.deleted_at IS NULL
+          )
+        ), 0) AS total_amount,
         COUNT(sib.id) AS total_invoices
-      FROM 
+      FROM
         customers c
-      LEFT JOIN 
-        sales_invoice_bills sib ON sib.customer_id = c.id 
+      LEFT JOIN
+        sales_invoice_bills sib ON sib.customer_id = c.id
         AND sib.deleted_at IS NULL
         AND sib.is_active = true
         AND sib.status = 'Invoice'
         ${branchFilter}
-        AND EXISTS (
-        SELECT 1
-        FROM sales_invoice_bill_items sibi
-        WHERE sibi.invoice_bill_id = sib.id
-          AND sibi.deleted_at IS NULL
-          AND sibi.is_returned = false
-      )
-      WHERE 
+      WHERE
         c.deleted_at IS NULL
-      GROUP BY 
+      GROUP BY
         c.id, c.customer_code, c.customer_name, c.mobile_number
-      HAVING 
-        COALESCE(SUM(sib.total_amount), 0) > 0
+      HAVING
+        COALESCE(SUM(
+          (
+            SELECT COALESCE(SUM(sibi.amount * (sibi.quantity - COALESCE(sibi.returned_quantity, 0)) / NULLIF(sibi.quantity, 0)), 0)
+            FROM sales_invoice_bill_items sibi
+            WHERE sibi.invoice_bill_id = sib.id
+              AND sibi.deleted_at IS NULL
+          )
+        ), 0) > 0
       ORDER BY 
         total_amount DESC
       LIMIT :limit

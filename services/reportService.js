@@ -27,13 +27,6 @@ const getSalesInvoiceReport = async (req, res) => {
     let offlineWhere = `
             WHERE sib.deleted_at IS NULL
             AND sib.status = 'Invoice'
-            AND EXISTS (
-                SELECT 1
-                FROM sales_invoice_bill_items sii_check
-                WHERE sii_check.invoice_bill_id = sib.id
-                AND sii_check.deleted_at IS NULL
-                AND sii_check.is_returned = false
-            )
         `
     // ONLINE FILTER - Cancelled orders are excluded.
 
@@ -160,7 +153,7 @@ const getSalesInvoiceReport = async (req, res) => {
                     sib.total_amount,
                     sib.is_active
                 FROM sales_invoice_bills sib
-                INNER JOIN sales_invoice_bill_items sii ON sii.invoice_bill_id = sib.id AND sii.deleted_at IS NULL AND sii.is_returned = false
+                INNER JOIN sales_invoice_bill_items sii ON sii.invoice_bill_id = sib.id AND sii.deleted_at IS NULL
                 LEFT JOIN "productItemDetails" pid ON pid.id = sii.product_item_detail_id
                 LEFT JOIN products p ON p.id = pid.product_id
                 LEFT JOIN customers c ON c.id = sib.customer_id

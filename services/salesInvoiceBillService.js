@@ -425,11 +425,9 @@ const searchInvoices = async (req, res) => {
           where: { invoice_bill_id: invoice.id },
           raw: true
         }),
-        // ← ONLY NON-RETURNED ITEMS
         models.SalesInvoiceBillItem.findAll({
           where: {
-            invoice_bill_id: invoice.id,
-            is_returned: false  // ← This filters out returned items
+            invoice_bill_id: invoice.id
           },
           raw: true
         })
@@ -444,12 +442,9 @@ const searchInvoices = async (req, res) => {
       };
     }));
 
-    // Optional: filter out invoices that have no items after excluding returned ones
-    const filteredResult = result.filter(r => r.items.length > 0);
-
     return commonService.okResponse(res, {
-      count: filteredResult.length,
-      invoices: filteredResult
+      count: result.length,
+      invoices: result
     });
 
   } catch (error) {

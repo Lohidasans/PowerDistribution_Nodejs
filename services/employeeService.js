@@ -855,26 +855,26 @@ const getTopEmployeePerformers = async (req, res) => {
         e.id AS employee_id,
         e.employee_no,
         e.employee_name,
-        COALESCE(SUM(DISTINCT sib.total_amount), 0) AS sales_amount,
-        COALESCE(SUM(sibi.net_weight), 0) AS total_weight,
+        COALESCE(SUM(sibi.amount * (sibi.quantity - COALESCE(sibi.returned_quantity, 0)) / NULLIF(sibi.quantity, 0)), 0) AS sales_amount,
+        COALESCE(SUM(sibi.net_weight * (sibi.quantity - COALESCE(sibi.returned_quantity, 0))), 0) AS total_weight,
         COUNT(DISTINCT sib.id) AS total_invoices
-      FROM 
+      FROM
         employees e
-      LEFT JOIN 
-        sales_invoice_bills sib ON sib.employee_id = e.id 
+      LEFT JOIN
+        sales_invoice_bills sib ON sib.employee_id = e.id
         AND sib.deleted_at IS NULL
         AND sib.is_active = true
         AND sib.status != 'Cancelled'
         ${branchFilter}
       LEFT JOIN
         sales_invoice_bill_items sibi ON sibi.invoice_bill_id = sib.id
-        AND sibi.deleted_at IS NULL AND sibi.is_returned = false
-      WHERE 
+        AND sibi.deleted_at IS NULL
+      WHERE
         e.deleted_at IS NULL
-      GROUP BY 
+      GROUP BY
         e.id, e.employee_no, e.employee_name
-      HAVING 
-        COALESCE(SUM(DISTINCT sib.total_amount), 0) > 0
+      HAVING
+        COALESCE(SUM(sibi.amount * (sibi.quantity - COALESCE(sibi.returned_quantity, 0)) / NULLIF(sibi.quantity, 0)), 0) > 0
       ORDER BY 
         sales_amount DESC
       LIMIT :limit

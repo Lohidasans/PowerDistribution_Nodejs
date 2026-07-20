@@ -720,7 +720,14 @@ const getTopBuyingCustomersData = async ({
             COUNT(DISTINCT sib.id) AS no_of_orders,
 
             ROUND(
-                COALESCE(SUM(sib.total_amount), 0),
+                COALESCE(SUM(
+                    (
+                        SELECT COALESCE(SUM(sibi.amount * (sibi.quantity - COALESCE(sibi.returned_quantity, 0)) / NULLIF(sibi.quantity, 0)), 0)
+                        FROM sales_invoice_bill_items sibi
+                        WHERE sibi.invoice_bill_id = sib.id
+                            AND sibi.deleted_at IS NULL
+                    )
+                ), 0),
                 2
             ) AS purchase_amount
 
@@ -733,14 +740,6 @@ const getTopBuyingCustomersData = async ({
         WHERE sib.deleted_at IS NULL
           AND sib.is_active = true
           AND sib.status = 'Invoice'
-        AND EXISTS (
-            SELECT 1
-            FROM sales_invoice_bill_items sibi
-            WHERE sibi.invoice_bill_id = sib.id
-                AND sibi.deleted_at IS NULL
-                AND sibi.is_returned = false
-        )       
-
           ${dateCondition}
           ${branchCondition}
 
@@ -1135,8 +1134,8 @@ const getFastMovingCategoryStats = async (req, res) => {
             SELECT
                 sc.id AS subcategory_id,
                 sc.subcategory_name,
-                COALESCE(sii.amount, 0) AS sold_value,
-                COALESCE(sii.quantity, 0) AS sold_quantity
+                COALESCE(sii.amount * (sii.quantity - COALESCE(sii.returned_quantity, 0)) / NULLIF(sii.quantity, 0), 0) AS sold_value,
+                COALESCE(sii.quantity - COALESCE(sii.returned_quantity, 0), 0) AS sold_quantity
             FROM sales_invoice_bill_items sii
             JOIN sales_invoice_bills sib
                 ON sib.id = sii.invoice_bill_id
@@ -1151,7 +1150,7 @@ const getFastMovingCategoryStats = async (req, res) => {
             JOIN subcategories sc
                 ON sc.id = p.subcategory_id
                 AND sc.deleted_at IS NULL
-            WHERE sii.deleted_at IS NULL AND sii.is_returned = false
+            WHERE sii.deleted_at IS NULL
 
             UNION ALL
 

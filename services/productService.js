@@ -1066,10 +1066,10 @@ const getAllProductDetails = async (req, res) => {
             SUM(sold_quantity) AS sold_quantity
           FROM (
 
-            -- ✅ INVOICE SALES (existing logic untouched)
+            -- ✅ INVOICE SALES (prorated for partial returns)
             SELECT
               sii.product_item_detail_id,
-              SUM(sii.quantity) AS sold_quantity
+              SUM(sii.quantity - COALESCE(sii.returned_quantity, 0)) AS sold_quantity
             FROM sales_invoice_bill_items sii
             JOIN sales_invoice_bills sib
               ON sib.id = sii.invoice_bill_id
@@ -1077,7 +1077,6 @@ const getAllProductDetails = async (req, res) => {
               AND sib.status = 'Invoice'
               AND sib.is_active = true
             WHERE sii.deleted_at IS NULL
-              AND sii.is_returned = false
               AND sii.product_item_detail_id IN (:itemIds)
             GROUP BY sii.product_item_detail_id
 
@@ -2643,20 +2642,20 @@ const getTopSellingSubcategories = async (req, res) => {
         s.subcategory_name,
         s.subcategory_image_url,
         COUNT(DISTINCT sib.id) AS total_invoices,
-        COALESCE(SUM(sib.total_amount), 0) AS total_sales_amount
-      FROM 
+        COALESCE(SUM(sibi.amount * (sibi.quantity - COALESCE(sibi.returned_quantity, 0)) / NULLIF(sibi.quantity, 0)), 0) AS total_sales_amount
+      FROM
         subcategories s
-      INNER JOIN 
+      INNER JOIN
         products p ON p.subcategory_id = s.id AND p.deleted_at IS NULL
-      INNER JOIN 
+      INNER JOIN
         sales_invoice_bill_items sibi ON sibi.product_id = p.id AND sibi.deleted_at IS NULL
-      INNER JOIN 
-        sales_invoice_bills sib ON sib.id = sibi.invoice_bill_id 
+      INNER JOIN
+        sales_invoice_bills sib ON sib.id = sibi.invoice_bill_id
         AND sib.deleted_at IS NULL AND sib.is_active = true
         AND sib.status != 'Cancelled'
         ${branchFilter}
-      WHERE 
-        s.deleted_at IS NULL AND sibi.is_returned = false
+      WHERE
+        s.deleted_at IS NULL
         AND s.status = 'Active'
       GROUP BY 
         s.id, s.subcategory_name, s.subcategory_image_url

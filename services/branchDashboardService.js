@@ -266,13 +266,13 @@ const getTopPerformanceDashboard = async (req, res) => {
                 e.id,
                 e.employee_no,
                 e.employee_name,
-                ROUND(COALESCE(SUM(sibi.gross_weight), 0), 3) AS total_weight,
-                SUM(sib.total_amount) AS sales_amount,
+                ROUND(COALESCE(SUM(sibi.gross_weight * (sibi.quantity - COALESCE(sibi.returned_quantity, 0))), 0), 3) AS total_weight,
+                COALESCE(SUM(sibi.amount * (sibi.quantity - COALESCE(sibi.returned_quantity, 0)) / NULLIF(sibi.quantity, 0)), 0) AS sales_amount,
                 COUNT(DISTINCT sib.id) AS total_bills
 
             FROM sales_invoice_bills sib
             JOIN employees e ON e.id = sib.employee_id AND e.deleted_at IS NULL
-            JOIN sales_invoice_bill_items sibi ON sibi.invoice_bill_id = sib.id AND sibi.deleted_at IS NULL AND sibi.is_returned = false
+            JOIN sales_invoice_bill_items sibi ON sibi.invoice_bill_id = sib.id AND sibi.deleted_at IS NULL
 
             WHERE sib.deleted_at IS NULL AND sib.status ='Invoice'
               ${branchCondition}
@@ -299,11 +299,11 @@ const getTopPerformanceDashboard = async (req, res) => {
                 c.category_name,
                 c.category_image_url,
                 COUNT(sibi.id) AS total_count,
-                COALESCE(SUM(sibi.quantity - sibi.returned_quantity), 0) AS total_quantity,
-                SUM(sib.total_amount) AS sales_amount
+                COALESCE(SUM(sibi.quantity - COALESCE(sibi.returned_quantity, 0)), 0) AS total_quantity,
+                COALESCE(SUM(sibi.amount * (sibi.quantity - COALESCE(sibi.returned_quantity, 0)) / NULLIF(sibi.quantity, 0)), 0) AS sales_amount
 
             FROM sales_invoice_bills sib
-            JOIN sales_invoice_bill_items sibi ON sibi.invoice_bill_id = sib.id AND sibi.deleted_at IS NULL AND sibi.is_returned = false
+            JOIN sales_invoice_bill_items sibi ON sibi.invoice_bill_id = sib.id AND sibi.deleted_at IS NULL
             JOIN products p ON p.id = sibi.product_id AND p.deleted_at IS NULL
             JOIN categories c ON c.id = p.category_id AND c.deleted_at IS NULL
 
