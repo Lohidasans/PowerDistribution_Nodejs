@@ -1196,11 +1196,65 @@ const getStockKpiSummary = async (req, res) => {
 
 const getProfitSection = async (req, res) => {
   try {
-    // Capital remains static: only GRNs before 27 January 2026.
-    const CAPITAL_CUTOFF_DATE = "2026-01-27";
+    const {
+      branch_id,
+      from_date,
+      to_date,
+      date_filter,
+    } = req.query;
 
-    const [capitalRows, salesRows, oldJewelRows, purchaseRows] = await Promise.all([
-      // CAPITAL: GRN + GST value and gross weight before cutoff date
+    const CAPITAL_CUTOFF_DATE = "2026-01-27";
+    const replacements = {};
+
+    if (branch_id) {
+      replacements.branch_id = branch_id;
+    }
+
+    const capitalBranchFilter = branch_id
+      ? ` AND grn.branch_id = :branch_id`
+      : "";
+
+    const salesBranchFilter = branch_id
+      ? ` AND sib.branch_id = :branch_id`
+      : "";
+
+    const oldJewelBranchFilter = branch_id
+      ? ` AND oj.branch_id = :branch_id`
+      : "";
+
+    const purchaseBranchFilter = branch_id
+      ? ` AND grn.branch_id = :branch_id`
+      : "";
+
+    // Date filters use the selected filter:
+    // today / week / month / year / custom from_date and to_date.
+    const salesDateFilter = dateFilter(
+      { from_date, to_date, date_filter },
+      "sib.invoice_date",
+      replacements
+    );
+
+    const oldJewelDateFilter = dateFilter(
+      { from_date, to_date, date_filter },
+      "oj.date",
+      replacements
+    );
+
+    const purchaseDateFilter = dateFilter(
+      { from_date, to_date, date_filter },
+      "grn.grn_date",
+      replacements
+    );
+
+    const [
+      capitalRows,
+      salesRows,
+      oldJewelRows,
+      purchaseRows,
+    ] = await Promise.all([
+      // CAPITAL:
+      // Static date cutoff before 27-Jan-2026.
+      // Branch filter applies when branch_id is sent.
       sequelize.query(
         `
           SELECT
@@ -1209,18 +1263,20 @@ const getProfitSection = async (req, res) => {
           FROM grns grn
           WHERE grn.deleted_at IS NULL
             AND grn.is_active = true
-            AND grn.status_id = 1
             AND grn.grn_date < :capitalCutoffDate
+            ${capitalBranchFilter}
         `,
         {
           replacements: {
+            ...replacements,
             capitalCutoffDate: CAPITAL_CUTOFF_DATE,
           },
           type: sequelize.QueryTypes.SELECT,
         }
       ),
 
-      // SALES: Invoice GST raised weight and value till today
+      // SALES:
+      // Sales invoice GST raised weight and value for selected date range.
       sequelize.query(
         `
           WITH valid_invoices AS (
@@ -1231,7 +1287,8 @@ const getProfitSection = async (req, res) => {
             WHERE sib.deleted_at IS NULL
               AND sib.is_active = true
               AND sib.status = 'Invoice'
-              AND sib.invoice_date <= CURRENT_DATE
+              ${salesBranchFilter}
+              ${salesDateFilter}
           )
           SELECT
             COALESCE(
@@ -1257,11 +1314,13 @@ const getProfitSection = async (req, res) => {
             ) AS total_value
         `,
         {
+          replacements,
           type: sequelize.QueryTypes.SELECT,
         }
       ),
 
-      // OLD JEWEL: Printed and active old-jewel receipt weight and value till today
+      // OLD JEWEL:
+      // Printed old jewel received from customer for selected date range.
       sequelize.query(
         `
           WITH valid_old_jewels AS (
@@ -1272,7 +1331,8 @@ const getProfitSection = async (req, res) => {
             WHERE oj.deleted_at IS NULL
               AND oj.is_active = true
               AND oj.status = 'Printed'
-              AND oj.date <= CURRENT_DATE
+              ${oldJewelBranchFilter}
+              ${oldJewelDateFilter}
           )
           SELECT
             COALESCE(
@@ -1295,11 +1355,13 @@ const getProfitSection = async (req, res) => {
             ) AS total_value
         `,
         {
+          replacements,
           type: sequelize.QueryTypes.SELECT,
         }
       ),
 
-      // PURCHASE: GRN GST raised weight and value till today
+      // PURCHASE:
+      // GRN GST raised weight and value for selected date range.
       sequelize.query(
         `
           SELECT
@@ -1308,10 +1370,11 @@ const getProfitSection = async (req, res) => {
           FROM grns grn
           WHERE grn.deleted_at IS NULL
             AND grn.is_active = true
-            AND grn.status_id = 1
-            AND grn.grn_date <= CURRENT_DATE
+            ${purchaseBranchFilter}
+            ${purchaseDateFilter}
         `,
         {
+          replacements,
           type: sequelize.QueryTypes.SELECT,
         }
       ),
@@ -1344,6 +1407,7 @@ const getProfitSection = async (req, res) => {
         ),
         total_value: Number(oldJewel.total_value || 0),
       },
+
       purchase: {
         total_weight_in_grams: Number(
           purchase.total_weight_in_grams || 0
