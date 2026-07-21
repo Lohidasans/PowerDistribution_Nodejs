@@ -1348,7 +1348,7 @@ const getProfitSection = async (req, res) => {
           SELECT
             COALESCE(
               (
-                SELECT SUM(COALESCE(oji.grs_weight, 0))
+                SELECT SUM(COALESCE(oji.net_weight, 0))
                 FROM old_jewel_items oji
                 INNER JOIN valid_old_jewels voj
                   ON voj.id = oji.old_jewel_id
