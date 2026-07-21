@@ -1234,6 +1234,10 @@ const getProfitSection = async (req, res) => {
       ? ` AND vp.branch_id = :branch_id`
       : "";
 
+    const silverRateBranchFilter = branch_id
+      ? ` AND mt.branch_id = :branch_id`
+      : "";
+
     // Date filters use the selected filter:
     // today / week / month / year / custom from_date and to_date.
     const salesDateFilter = dateFilter(
@@ -1272,7 +1276,8 @@ const getProfitSection = async (req, res) => {
       oldJewelRows,
       purchaseRows,
       collectionRows,
-      expenseRows
+      expenseRows,
+      silverRateRows,
     ] = await Promise.all([
       // CAPITAL:
       // Static date cutoff before 27-Jan-2026.
@@ -1533,6 +1538,23 @@ const getProfitSection = async (req, res) => {
           type: sequelize.QueryTypes.SELECT,
         }
       ),
+
+      // TODAY'S SILVER PRICE
+      sequelize.query(
+        `
+          SELECT mt.material_price
+          FROM "materialTypes" mt
+          WHERE mt.deleted_at IS NULL
+            AND LOWER(TRIM(mt.material_type)) = 'silver'
+            ${silverRateBranchFilter}
+          ORDER BY mt.updated_at DESC
+          LIMIT 1
+        `,
+        {
+          replacements,
+          type: sequelize.QueryTypes.SELECT,
+        }
+      ),
     ]);
 
     const capital = capitalRows[0] || {};
@@ -1541,6 +1563,7 @@ const getProfitSection = async (req, res) => {
     const purchase = purchaseRows[0] || {};
     const collections = collectionRows[0] || {};
     const expenses = expenseRows[0] || {};
+    const silverRate = silverRateRows[0] || {};
 
     const AVERAGE_LABOUR_COST = 100;
 
@@ -1562,12 +1585,23 @@ const getProfitSection = async (req, res) => {
     const averageValuePerGram = totalWeightForAverage > 0 ? (capitalStockValue + totalStockValue) / totalWeightForAverage : 0;
 
     // Old silver / old jewel weight
-    const oldSilverWeight = Number(
-      oldJewel.total_weight_in_grams || 0
-    );
+    const oldSilverWeight = Number(oldJewel.total_weight_in_grams || 0);
 
     // Profit from increase in stock
     const profitValue = increaseInStockWeight * averageValuePerGram;
+
+    const totalCollectionAmount = Number(collections.total_amount_collected || 0);
+
+    const totalExpenseAmount = Number(expenses.total_expense_amount || 0);
+
+    // Expenses already exclude Cash in Hand / HDFC bank-deposit entries.
+    const cashVsStockAmount = totalCollectionAmount - totalExpenseAmount;
+
+    const silverRatePerGram = Number(silverRate.material_price || 0);
+
+    const cashVsStockRatePerGram = silverRatePerGram + AVERAGE_LABOUR_COST;
+
+    const cashVsStockWeightInGrams = cashVsStockRatePerGram > 0 ? cashVsStockAmount / cashVsStockRatePerGram : 0;
 
 
     return commonService.okResponse(res, {
@@ -1622,6 +1656,18 @@ const getProfitSection = async (req, res) => {
         total_expense_amount: Number(
           expenses.total_expense_amount || 0
         ),
+      },
+
+      cash_vs_stock: {
+        collection_amount: Number(totalCollectionAmount.toFixed(2)),
+        payment_amount_excluding_cash_deposit: Number(totalExpenseAmount.toFixed(2)),
+        total_value: Number(cashVsStockAmount.toFixed(2)),
+
+        silver_rate_per_gram: Number(silverRatePerGram.toFixed(2)),
+        average_labour_cost_per_gram: AVERAGE_LABOUR_COST,
+        rate_per_gram: Number(cashVsStockRatePerGram.toFixed(2)),
+
+        total_weight_in_grams: Number(cashVsStockWeightInGrams.toFixed(3)),
       },
     });
   } catch (error) {
