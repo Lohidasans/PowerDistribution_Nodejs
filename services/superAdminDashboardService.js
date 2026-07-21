@@ -1230,6 +1230,10 @@ const getProfitSection = async (req, res) => {
       ? ` AND cs.branch_id = :branch_id`
       : "";
 
+    const expenseBranchFilter = branch_id
+      ? ` AND vp.branch_id = :branch_id`
+      : "";
+
     // Date filters use the selected filter:
     // today / week / month / year / custom from_date and to_date.
     const salesDateFilter = dateFilter(
@@ -1256,12 +1260,19 @@ const getProfitSection = async (req, res) => {
       replacements
     );
 
+    const expenseDateFilter = dateFilter(
+      { from_date, to_date, date_filter },
+      "vp.payment_date",
+      replacements
+    );
+
     const [
       capitalRows,
       salesRows,
       oldJewelRows,
       purchaseRows,
       collectionRows,
+      expenseRows
     ] = await Promise.all([
       // CAPITAL:
       // Static date cutoff before 27-Jan-2026.
@@ -1496,6 +1507,32 @@ const getProfitSection = async (req, res) => {
           type: sequelize.QueryTypes.SELECT,
         }
       ),
+      // EXPENSES:
+      // Vendor payments only, excluding Cash in Hand and HDFC ledgers.
+      sequelize.query(
+        `
+          SELECT
+            COALESCE(SUM(vp.amount), 0) AS total_expense_amount
+          FROM vendor_payments vp
+          LEFT JOIN ledger l
+            ON l.id = vp.account_name_id
+            AND l.deleted_at IS NULL
+          WHERE vp.deleted_at IS NULL
+            AND vp.is_active = true
+            AND vp.status = 'Completed'
+            ${expenseBranchFilter}
+            ${expenseDateFilter}
+            AND COALESCE(LOWER(TRIM(l.ledger_name)), '') NOT IN (
+              'cash in hand',
+              'hdfc',
+              'hdfc bank'
+            )
+        `,
+        {
+          replacements,
+          type: sequelize.QueryTypes.SELECT,
+        }
+      ),
     ]);
 
     const capital = capitalRows[0] || {};
@@ -1503,6 +1540,7 @@ const getProfitSection = async (req, res) => {
     const oldJewel = oldJewelRows[0] || {};
     const purchase = purchaseRows[0] || {};
     const collections = collectionRows[0] || {};
+    const expenses = expenseRows[0] || {};
 
     const AVERAGE_LABOUR_COST = 100;
 
@@ -1577,6 +1615,12 @@ const getProfitSection = async (req, res) => {
         upi_amount: Number(collections.upi_amount || 0),
         card_amount: Number(collections.card_amount || 0),
         total_amount_collected: Number(collections.total_amount_collected || 0
+        ),
+      },
+
+      expenses: {
+        total_expense_amount: Number(
+          expenses.total_expense_amount || 0
         ),
       },
     });
