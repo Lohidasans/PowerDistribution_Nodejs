@@ -1324,7 +1324,7 @@ const getProfitSection = async (req, res) => {
               (
                 SELECT SUM(
                   COALESCE(sii.gross_weight, 0)
-                  * COALESCE(sii.quantity, 1)
+                  * (COALESCE(sii.quantity, 1) - COALESCE(sii.returned_quantity, 0))
                 )
                 FROM sales_invoice_bill_items sii
                 INNER JOIN valid_invoices vi
