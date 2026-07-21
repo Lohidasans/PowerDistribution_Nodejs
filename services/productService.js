@@ -891,7 +891,7 @@ const getAllProductDetails = async (req, res) => {
                 AND sib.status = 'Invoice'
                 AND sib.is_active = true
               WHERE sii.deleted_at IS NULL
-                AND sii.is_returned = false
+                AND (sii.quantity - COALESCE(sii.returned_quantity, 0)) > 0
                 AND sii.product_item_detail_id = pid2.id
             )
             OR
@@ -2485,7 +2485,8 @@ const getProductStockCounts = async (req, res) => {
             AND sib.deleted_at IS NULL
             AND sib.status = 'Invoice'
             AND sib.is_active = true
-          WHERE sii.deleted_at IS NULL AND sii.is_returned = false
+          WHERE sii.deleted_at IS NULL
+            AND (sii.quantity - COALESCE(sii.returned_quantity, 0)) > 0
             AND sii.product_item_detail_id = pid.id
         )
         OR
@@ -2768,8 +2769,7 @@ const getProductGrnSummary = async (req, res) => {
         COALESCE(SUM(
           CASE
             WHEN sib.status = 'Invoice'
-              AND sii.is_returned = false
-            THEN (sii.quantity - sii.returned_quantity)
+            THEN (sii.quantity - COALESCE(sii.returned_quantity, 0))
             ELSE 0
           END
         ), 0) AS invoice_sold_qty,    /* SOLD INVOICE QTY */
@@ -2777,8 +2777,7 @@ const getProductGrnSummary = async (req, res) => {
         COALESCE(SUM(
           CASE
             WHEN sib.status = 'Invoice'
-              AND sii.is_returned = false
-            THEN (sii.quantity - sii.returned_quantity) * pid.gross_weight
+            THEN (sii.quantity - COALESCE(sii.returned_quantity, 0)) * pid.gross_weight
             ELSE 0
           END
         ), 0) AS invoice_sold_weight,  /* SOLD INVOICE WEIGHT */
@@ -2802,7 +2801,10 @@ const getProductGrnSummary = async (req, res) => {
       FROM products p
 
       JOIN "productItemDetails" pid ON pid.product_id = p.id AND pid.deleted_at IS NULL
-      LEFT JOIN sales_invoice_bill_items sii ON sii.product_item_detail_id = pid.id AND sii.deleted_at IS NULL AND sii.is_returned = false
+      -- Kept as a row filter (not folded into the CASEs above) so a fully
+      -- returned line does not join and inflate the current_qty/current_weight
+      -- fan-out; partially returned lines still join and are prorated.
+      LEFT JOIN sales_invoice_bill_items sii ON sii.product_item_detail_id = pid.id AND sii.deleted_at IS NULL AND (sii.quantity - COALESCE(sii.returned_quantity, 0)) > 0
       LEFT JOIN sales_invoice_bills sib ON sib.id = sii.invoice_bill_id AND sib.deleted_at IS NULL
       LEFT JOIN order_items oi ON oi.product_item_id = pid.id AND oi.deleted_at IS NULL
       WHERE p.deleted_at IS NULL AND p.ref_no_id = :ref_no_id

@@ -91,8 +91,8 @@ const getVendorSalesContribution = async (req, res) => {
                 v.vendor_image_url,
                 COALESCE(mt.material_type, 'Unknown') AS material_type,
 
-                SUM(sib_items.net_weight * sib_items.quantity) AS total_weight,
-                SUM(sib_items.amount * (sib_items.quantity - sib_items.returned_quantity) / NULLIF(sib_items.quantity, 0)) AS total_value
+                SUM(sib_items.net_weight * (sib_items.quantity - COALESCE(sib_items.returned_quantity, 0))) AS total_weight,
+                SUM(sib_items.amount * (sib_items.quantity - COALESCE(sib_items.returned_quantity, 0)) / NULLIF(sib_items.quantity, 0)) AS total_value
 
             FROM vendors v
 
@@ -103,7 +103,6 @@ const getVendorSalesContribution = async (req, res) => {
             JOIN "sales_invoice_bill_items" sib_items
                 ON sib_items.product_id = p.id
                 AND sib_items.deleted_at IS NULL
-                AND sib_items.is_returned = false
 
             JOIN "sales_invoice_bills" sib
                 ON sib.id = sib_items.invoice_bill_id
@@ -1311,12 +1310,11 @@ const getVendorDashboard = async (req, res) => {
         -- Sales metrics (from Sales Invoice Bills)
         COALESCE(
           (
-            SELECT SUM(sibi.amount * (sibi.quantity - sibi.returned_quantity) / NULLIF(sibi.quantity, 0))
+            SELECT SUM(sibi.amount * (sibi.quantity - COALESCE(sibi.returned_quantity, 0)) / NULLIF(sibi.quantity, 0))
             FROM sales_invoice_bill_items sibi
             JOIN products p ON p.id = sibi.product_id AND p.deleted_at IS NULL
             JOIN sales_invoice_bills sib ON sib.id = sibi.invoice_bill_id AND sib.deleted_at IS NULL
             WHERE p.vendor_id = v.id
-              AND sibi.is_returned = false
               AND sibi.deleted_at IS NULL
               AND sib.is_active = true
               AND sib.status != 'Cancelled'

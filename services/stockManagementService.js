@@ -1538,7 +1538,7 @@ const getGrnDiscrepancyList = async (req, res) => {
           + COALESCE(SUM(
             CASE
               WHEN sib.status = 'Invoice'
-              THEN (sii.quantity - sii.returned_quantity) * sii.gross_weight
+              THEN (sii.quantity - COALESCE(sii.returned_quantity, 0)) * sii.gross_weight
               ELSE 0
             END
           ), 0)
@@ -1549,7 +1549,7 @@ const getGrnDiscrepancyList = async (req, res) => {
           + COALESCE(SUM(
             CASE
               WHEN sib.status = 'Invoice'
-              THEN (sii.quantity - sii.returned_quantity)
+              THEN (sii.quantity - COALESCE(sii.returned_quantity, 0))
               ELSE 0
             END
           ), 0)
@@ -1562,10 +1562,13 @@ const getGrnDiscrepancyList = async (req, res) => {
           ON pid.product_id = p.id
           AND pid.deleted_at IS NULL
 
+        -- Row filter (not folded into the CASEs) so a fully returned line does
+        -- not join and inflate the SUM(pid.quantity) fan-out; partially
+        -- returned lines still join and are prorated above.
         LEFT JOIN sales_invoice_bill_items sii
           ON sii.product_item_detail_id = pid.id
           AND sii.deleted_at IS NULL
-          AND sii.is_returned = false
+          AND (sii.quantity - COALESCE(sii.returned_quantity, 0)) > 0
 
         LEFT JOIN sales_invoice_bills sib
           ON sib.id = sii.invoice_bill_id

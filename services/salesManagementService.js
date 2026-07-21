@@ -293,13 +293,12 @@ const getFastMovingSubCategories = async (req, res) => {
             fp.product_id,
             fp.branch_id,
             fp.subcategory_id,
-            SUM(sii.quantity - sii.returned_quantity) AS sold_qty,
-            SUM(COALESCE(sii.gross_weight, 0)) AS total_gross_weight
+            SUM(sii.quantity - COALESCE(sii.returned_quantity, 0)) AS sold_qty,
+            SUM(COALESCE(sii.gross_weight, 0) * (sii.quantity - COALESCE(sii.returned_quantity, 0))) AS total_gross_weight
         FROM filtered_products fp
         JOIN sales_invoice_bill_items sii
             ON sii.product_id = fp.product_id
             AND sii.deleted_at IS NULL
-            AND sii.is_returned = false
         JOIN sales_invoice_bills sib
             ON sib.id = sii.invoice_bill_id
             AND sib.deleted_at IS NULL
@@ -453,8 +452,8 @@ WITH sold_rows AS (
         sii.product_id,
         sii.product_item_detail_id,
         SUM(COALESCE(sii.quantity,0) - COALESCE(sii.returned_quantity,0)) AS quantity,
-        SUM(COALESCE(sii.gross_weight,0)) AS gross_weight,
-        SUM(COALESCE(sii.net_weight,0)) AS net_weight
+        SUM(COALESCE(sii.gross_weight,0) * (COALESCE(sii.quantity,0) - COALESCE(sii.returned_quantity,0))) AS gross_weight,
+        SUM(COALESCE(sii.net_weight,0) * (COALESCE(sii.quantity,0) - COALESCE(sii.returned_quantity,0))) AS net_weight
     FROM sales_invoice_bill_items sii
     JOIN sales_invoice_bills sib
         ON sib.id = sii.invoice_bill_id
@@ -472,7 +471,6 @@ WITH sold_rows AS (
         AND (:category_id IS NULL OR p.category_id = :category_id)
         AND (:material_type_id IS NULL OR p.material_type_id = :material_type_id)
     WHERE sii.deleted_at IS NULL
-        AND sii.is_returned = false
     GROUP BY sii.product_id, sii.product_item_detail_id
 
     UNION ALL
@@ -1032,10 +1030,10 @@ const getSalesByMaterialType = async (req, res) => {
             SELECT
                 mt.id AS material_type_id,
                 mt.material_type,
-                SUM(i.amount * (i.quantity - i.returned_quantity) / NULLIF(i.quantity, 0)) AS material_amount
+                SUM(i.amount * (i.quantity - COALESCE(i.returned_quantity, 0)) / NULLIF(i.quantity, 0)) AS material_amount
             FROM sales_invoice_bills t
             JOIN sales_invoice_bill_items i
-                ON i.invoice_bill_id = t.id AND i.is_returned = false
+                ON i.invoice_bill_id = t.id
                 AND i.deleted_at IS NULL
             JOIN products p
                 ON p.id = i.product_id
@@ -1219,7 +1217,7 @@ const getFastMovingCategoryStats = async (req, res) => {
                     ON sc.id = p.subcategory_id
                     AND sc.deleted_at IS NULL
                 WHERE sii.deleted_at IS NULL
-                AND sii.is_returned = false
+                AND (sii.quantity - COALESCE(sii.returned_quantity, 0)) > 0
                 ${search ? `AND sc.subcategory_name ILIKE :search` : ""}
 
                 UNION ALL

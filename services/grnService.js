@@ -557,7 +557,7 @@ const getAllGrns = async (req, res) => {
             + COALESCE(SUM(                    --OFFLINE BILL SOLD
               CASE
                 WHEN sib.status = 'Invoice'
-                THEN (sii.quantity - sii.returned_quantity) * sii.gross_weight
+                THEN (sii.quantity - COALESCE(sii.returned_quantity, 0)) * sii.gross_weight
                 ELSE 0
               END
             ),0)
@@ -566,7 +566,7 @@ const getAllGrns = async (req, res) => {
           SUM(pid.quantity) + COALESCE(SUM(   --QTY
               CASE
                 WHEN sib.status = 'Invoice'
-                THEN (sii.quantity - sii.returned_quantity)
+                THEN (sii.quantity - COALESCE(sii.returned_quantity, 0))
                 ELSE 0
               END
             ),0) + COALESCE(SUM(oi.quantity),0) AS total_updated_qty
@@ -574,7 +574,10 @@ const getAllGrns = async (req, res) => {
         FROM products p
 
         JOIN "productItemDetails" pid ON pid.product_id = p.id AND pid.deleted_at IS NULL
-        LEFT JOIN sales_invoice_bill_items sii ON sii.product_item_detail_id = pid.id AND sii.deleted_at IS NULL AND sii.is_returned = false
+        -- Row filter (not folded into the CASEs) so a fully returned line does
+        -- not join and inflate the SUM(pid.quantity) fan-out; partially
+        -- returned lines still join and are prorated above.
+        LEFT JOIN sales_invoice_bill_items sii ON sii.product_item_detail_id = pid.id AND sii.deleted_at IS NULL AND (sii.quantity - COALESCE(sii.returned_quantity, 0)) > 0
         LEFT JOIN sales_invoice_bills sib ON sib.id = sii.invoice_bill_id AND sib.deleted_at IS NULL
         LEFT JOIN order_items oi ON oi.product_item_id = pid.id AND oi.deleted_at IS NULL AND oi.item_status != 'Cancelled'
         
@@ -1406,7 +1409,7 @@ const getCompleteGrnDetails = async (req, res) => {
           SUM(pid.quantity * pid.gross_weight) + COALESCE(SUM(
               CASE
                 WHEN sib.status = 'Invoice'
-                THEN (sii.quantity - sii.returned_quantity) * sii.gross_weight
+                THEN (sii.quantity - COALESCE(sii.returned_quantity, 0)) * sii.gross_weight
                 ELSE 0
               END
             ),0) + COALESCE(SUM(oi.quantity * pid.gross_weight),0) AS updated_weight,
@@ -1415,7 +1418,7 @@ const getCompleteGrnDetails = async (req, res) => {
           SUM(pid.quantity) + COALESCE(SUM(
               CASE
                 WHEN sib.status = 'Invoice'
-                THEN (sii.quantity - sii.returned_quantity)
+                THEN (sii.quantity - COALESCE(sii.returned_quantity, 0))
                 ELSE 0
               END
             ),0) + COALESCE(SUM(oi.quantity),0) AS updated_qty
@@ -1426,10 +1429,13 @@ const getCompleteGrnDetails = async (req, res) => {
           ON pid.product_id = p.id
         AND pid.deleted_at IS NULL
 
+        -- Row filter (not folded into the CASEs) so a fully returned line does
+        -- not join and inflate the SUM(pid.quantity) fan-out; partially
+        -- returned lines still join and are prorated above.
         LEFT JOIN sales_invoice_bill_items sii
           ON sii.product_item_detail_id = pid.id
         AND sii.deleted_at IS NULL
-        AND sii.is_returned = false
+        AND (sii.quantity - COALESCE(sii.returned_quantity, 0)) > 0
 
         LEFT JOIN sales_invoice_bills sib
           ON sib.id = sii.invoice_bill_id

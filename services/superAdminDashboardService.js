@@ -132,11 +132,11 @@ const getSuperAdminDashboard = async (req, res) => {
         items AS (
           SELECT
             i.invoice_bill_id,
-            COALESCE(SUM(i.quantity - i.returned_quantity), 0)      AS total_quantity,
-            COALESCE(SUM(i.gross_weight), 0)  AS total_gross_weight,
-            COALESCE(SUM(i.net_weight), 0)    AS total_net_weight
+            COALESCE(SUM(i.quantity - COALESCE(i.returned_quantity, 0)), 0)                        AS total_quantity,
+            COALESCE(SUM(i.gross_weight * (i.quantity - COALESCE(i.returned_quantity, 0))), 0)      AS total_gross_weight,
+            COALESCE(SUM(i.net_weight   * (i.quantity - COALESCE(i.returned_quantity, 0))), 0)      AS total_net_weight
           FROM sales_invoice_bill_items i
-          WHERE i.deleted_at IS NULL and i.is_returned = false
+          WHERE i.deleted_at IS NULL
           GROUP BY i.invoice_bill_id
         )
         SELECT
@@ -498,9 +498,9 @@ const getSuperAdminDashboard = async (req, res) => {
       vendor_sales AS (
         SELECT
           p.vendor_id,
-          COALESCE(SUM(sibi.amount * (sibi.quantity - sibi.returned_quantity) / NULLIF(sibi.quantity, 0)), 0) AS sales_amount,
-          COALESCE(SUM(sibi.quantity - sibi.returned_quantity), 0)::int AS sales_qty,
-          COALESCE(SUM(sibi.net_weight), 0)    AS sales_weight
+          COALESCE(SUM(sibi.amount * (sibi.quantity - COALESCE(sibi.returned_quantity, 0)) / NULLIF(sibi.quantity, 0)), 0) AS sales_amount,
+          COALESCE(SUM(sibi.quantity - COALESCE(sibi.returned_quantity, 0)), 0)::int AS sales_qty,
+          COALESCE(SUM(sibi.net_weight * (sibi.quantity - COALESCE(sibi.returned_quantity, 0))), 0)    AS sales_weight
         FROM sales_invoice_bill_items sibi
         JOIN products p
           ON p.id = sibi.product_id AND p.deleted_at IS NULL
@@ -509,7 +509,7 @@ const getSuperAdminDashboard = async (req, res) => {
           AND sib.deleted_at IS NULL AND sib.is_active = true
           AND sib.status='Invoice'
           ${pvSalesBranch}
-        WHERE sibi.deleted_at IS NULL and sibi.is_returned = false
+        WHERE sibi.deleted_at IS NULL
         GROUP BY p.vendor_id
       )
       SELECT
@@ -823,7 +823,7 @@ const getProfitKPISummary = async (req, res) => {
             SELECT SUM(
                 COALESCE(gi.rate_per_g, 0)
                 * COALESCE(pid.net_weight, 0)
-                * COALESCE(sibi.quantity - sibi.returned_quantity, 1)
+                * (COALESCE(sibi.quantity, 1) - COALESCE(sibi.returned_quantity, 0))
             )
             FROM sales_invoice_bill_items sibi
             INNER JOIN sales_invoice_bills sib
@@ -842,7 +842,6 @@ const getProfitKPISummary = async (req, res) => {
               AND p.deleted_at IS NULL
               AND gi.deleted_at IS NULL
               AND pid.deleted_at IS NULL
-              AND sibi.is_returned = false
               ${branchCondition}
               ${dateCondition}
         ), 0) AS total_purchase
@@ -940,7 +939,7 @@ const getStockKpiSummary = async (req, res) => {
                 SUM(
                   CASE
                     WHEN sib.status = 'Invoice'
-                    THEN (sii.quantity - sii.returned_quantity) * sii.gross_weight
+                    THEN (sii.quantity - COALESCE(sii.returned_quantity, 0)) * sii.gross_weight
                     ELSE 0
                   END
                 ),
@@ -971,7 +970,7 @@ const getStockKpiSummary = async (req, res) => {
                 SUM(
                   CASE
                     WHEN sib.status = 'Invoice'
-                    THEN (sii.quantity - sii.returned_quantity)
+                    THEN (sii.quantity - COALESCE(sii.returned_quantity, 0))
                     ELSE 0
                   END
                 ),
@@ -1000,10 +999,13 @@ const getStockKpiSummary = async (req, res) => {
             OFFLINE BILL SOLD
             ========================================= */
 
+          -- Kept as a row filter so a fully returned line does not join and
+          -- inflate the SUM(pid.quantity) fan-out; partially returned lines
+          -- still join and are prorated by the CASEs above.
           LEFT JOIN sales_invoice_bill_items sii
             ON sii.product_item_detail_id = pid.id
             AND sii.deleted_at IS NULL
-            AND sii.is_returned = false
+            AND (sii.quantity - COALESCE(sii.returned_quantity, 0)) > 0
 
           LEFT JOIN sales_invoice_bills sib
             ON sib.id = sii.invoice_bill_id

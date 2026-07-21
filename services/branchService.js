@@ -1729,12 +1729,11 @@ const getBranchSalesAnalytics = async (req, res) => {
 
     // Sales Stock: Weight sold during the period
     const salesStockQuery = `
-      SELECT COALESCE(SUM(sibi.net_weight), 0) AS sales_stock
+      SELECT COALESCE(SUM(sibi.net_weight * (sibi.quantity - COALESCE(sibi.returned_quantity, 0))), 0) AS sales_stock
       FROM sales_invoice_bill_items sibi
       INNER JOIN sales_invoice_bills sib ON sib.id = sibi.invoice_bill_id
       WHERE sib.branch_id = :branch_id
         AND sibi.deleted_at IS NULL
-        AND sibi.is_returned = false
         AND sib.deleted_at IS NULL
         AND sib.is_active = true
         AND sib.status != 'Cancelled'

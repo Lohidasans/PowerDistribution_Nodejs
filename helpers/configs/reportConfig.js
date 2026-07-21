@@ -52,10 +52,12 @@ const REPORT_CONFIG = {
   itemFk: "invoice_bill_id",
   dateColumn: "t.created_at",
   codeColumn: "invoice_no",
-  weightColumn: "(i.net_weight * (i.quantity - i.returned_quantity))",
-  quantityExpr: "SUM(i.quantity - i.returned_quantity)",
+  weightColumn: "(i.net_weight * (i.quantity - COALESCE(i.returned_quantity, 0)))",
+  quantityExpr: "SUM(i.quantity - COALESCE(i.returned_quantity, 0))",
   statusCondition: "AND t.status = 'Invoice'",
-  itemCondition: "AND COALESCE(i.is_returned, false) = false",
+  // No is_returned row filter: partial returns mean a line is only PARTLY sold,
+  // so weightColumn/quantityExpr net off returned_quantity instead. A fully
+  // returned line falls out naturally because quantity - returned_quantity = 0.
 
   extraSelectSql: `
     , COALESCE(adj.sales_return_amount, 0) AS sales_return_amount
