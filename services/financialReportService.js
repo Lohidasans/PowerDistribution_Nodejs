@@ -66,12 +66,26 @@ const PURCHASE_RETURN_LEDGER = `COALESCE(${LEAF("Purchase Return", "Purchase Acc
 // add-direct-income-ledgers seeder to land it on the proper leaf).
 const REPAIR_INCOME_LEDGER = `COALESCE(${LEAF("Repair Charges Income", "Direct Income")}, ${ANY_LEAF("Direct Income")}, ${SALES_LEDGER})`;
 
+// SOFT-DELETED PARTIES ARE DELIBERATELY INCLUDED.
+// None of the customer/vendor joins below filter on the party's deleted_at.
+// A posted voucher is a historical fact; soft-deleting a customer or vendor only
+// removes them from the master LIST, it must never retract accounting history.
+// Gating on deleted_at used to do real damage in two ways:
+//   1. Self-balancing flows (F.1/F.2/F.3) lost every leg together — the books
+//      still balanced but silently UNDERSTATED (old gold lost Rs.49,905.60).
+//   2. Worse, on sales invoices / GRNs / jewel repairs the Cr leg is keyed off
+//      the document alone while only the Dr leg carries the party join, so
+//      deleting one customer knocked the TRIAL BALANCE out by their unpaid
+//      amount (Rs.990.19 from a single deleted customer).
+// The ledger half of each join stays: a leg posted to a deleted ledger is
+// dropped by LEDGER_AGG_SELECT anyway, so gating there costs nothing.
+
 // Flow-F sources. Old gold & sales returns are scoped to is_bill_adjusted = false
 // (the bill-adjusted ones are already booked via A.Dr5/A.Dr7), and each carries a
 // customer/vendor JOIN so its Dr and Cr legs share the SAME rows (stay balanced).
 const OJ_STANDALONE = `
   FROM old_jewels oj
-  JOIN customers c ON c.id = oj.customer_id AND c.deleted_at IS NULL
+  JOIN customers c ON c.id = oj.customer_id
   JOIN ledger   lc ON lc.id = c.ledger_id  AND lc.deleted_at IS NULL
   WHERE oj.deleted_at IS NULL AND oj.is_active = true
     AND oj.is_bill_adjusted = false AND oj.status = 'Printed'
@@ -79,7 +93,7 @@ const OJ_STANDALONE = `
     AND oj.date BETWEEN :from_date AND :to_date`;
 const SR_STANDALONE = `
   FROM sales_returns r
-  JOIN customers c ON c.id = r.customer_id AND c.deleted_at IS NULL
+  JOIN customers c ON c.id = r.customer_id
   JOIN ledger   lc ON lc.id = c.ledger_id  AND lc.deleted_at IS NULL
   WHERE r.deleted_at IS NULL AND r.is_active = true
     AND r.is_bill_adjusted = false
@@ -88,7 +102,7 @@ const SR_STANDALONE = `
     AND r.return_date BETWEEN :from_date AND :to_date`;
 const PR_BASE = `
   FROM purchase_returns pr
-  JOIN vendors v ON v.id = pr.vendor_id AND v.deleted_at IS NULL
+  JOIN vendors v ON v.id = pr.vendor_id
   JOIN ledger  lv ON lv.id = v.ledger_id AND lv.deleted_at IS NULL
   WHERE pr.deleted_at IS NULL
     AND (:branch_id IS NULL OR pr.branch_id = :branch_id)
@@ -283,7 +297,7 @@ const ALL_TXNS_CTE = `
       ( COALESCE(s.total_amount,0) - COALESCE(pay.paid, 0) ) AS debit,
       0
     FROM sales_invoice_bills s
-    JOIN customers c ON c.id = s.customer_id AND c.deleted_at IS NULL
+    JOIN customers c ON c.id = s.customer_id
     JOIN ledger lc ON lc.id = c.ledger_id AND lc.deleted_at IS NULL
     LEFT JOIN (
       SELECT p.invoice_bill_id, SUM(COALESCE(p.amount_received,0)) AS paid
@@ -311,7 +325,7 @@ const ALL_TXNS_CTE = `
           - COALESCE(adj.adjusted,0) ) - COALESCE(s.total_amount,0), 0) AS debit,
       0
     FROM sales_invoice_bills s
-    JOIN customers c ON c.id = s.customer_id AND c.deleted_at IS NULL
+    JOIN customers c ON c.id = s.customer_id
     JOIN ledger lc ON lc.id = c.ledger_id AND lc.deleted_at IS NULL
     LEFT JOIN (
       SELECT a.sales_invoice_id, SUM(COALESCE(a.adjustment_amount,0)) AS adjusted
@@ -336,7 +350,7 @@ const ALL_TXNS_CTE = `
           + COALESCE(s.sgst_amount,0) + COALESCE(s.igst_amount,0)
           - COALESCE(adj.adjusted,0) ), 0) AS credit
     FROM sales_invoice_bills s
-    JOIN customers c ON c.id = s.customer_id AND c.deleted_at IS NULL
+    JOIN customers c ON c.id = s.customer_id
     JOIN ledger lc ON lc.id = c.ledger_id AND lc.deleted_at IS NULL
     LEFT JOIN (
       SELECT a.sales_invoice_id, SUM(COALESCE(a.adjustment_amount,0)) AS adjusted
@@ -366,7 +380,7 @@ const ALL_TXNS_CTE = `
     -- B.Cr  Vendor (Sundry Creditors) = total_amount
     SELECT lv.id, 0, COALESCE(g.total_amount, 0)
     FROM grns g
-    JOIN vendors v ON v.id = g.vendor_id AND v.deleted_at IS NULL
+    JOIN vendors v ON v.id = g.vendor_id
     JOIN ledger lv ON lv.id = v.ledger_id AND lv.deleted_at IS NULL
     WHERE g.deleted_at IS NULL
       AND (:branch_id IS NULL OR g.branch_id = :branch_id)
@@ -551,7 +565,7 @@ const ALL_TXNS_CTE = `
     -- D.Dr  Vendor (Sundry Creditors)
     SELECT lv.id, COALESCE(vp.amount, 0), 0
     FROM vendor_payments vp
-    JOIN vendors v ON v.id = vp.account_name_id AND v.deleted_at IS NULL
+    JOIN vendors v ON v.id = vp.account_name_id
     JOIN ledger lv ON lv.id = v.ledger_id AND lv.deleted_at IS NULL
     JOIN payment_modes pm ON pm.id = vp.payment_mode
     WHERE vp.deleted_at IS NULL AND vp.status = 'Completed'
@@ -832,7 +846,7 @@ const ALL_TXNS_CTE = `
     -- G.Dr  Customer receivable (Sundry Debtors) = total_amount - paid
     SELECT lc.id, ( COALESCE(jr.total_amount,0) - COALESCE(pay.paid,0) ), 0
     FROM jewel_repairs jr
-    JOIN customers c ON c.id = jr.customer_id AND c.deleted_at IS NULL
+    JOIN customers c ON c.id = jr.customer_id
     JOIN ledger lc ON lc.id = c.ledger_id AND lc.deleted_at IS NULL
     LEFT JOIN (
       SELECT p.jewel_repair_id, SUM(COALESCE(p.amount_received,0)) AS paid

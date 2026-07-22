@@ -4,6 +4,95 @@ const enMessage = require("../constants/en.json");
 const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
 const { Op } = require("sequelize");
 
+// Every customer must own exactly ONE ledger under 'Sundry Debtors'. The
+// financial reports post the customer leg of a sales invoice / sales return /
+// old gold voucher to it and reach it by INNER JOIN through
+// customers.ledger_id — so a customer without a ledger silently drops those
+// vouchers out of the trial balance, P&L and balance sheet entirely.
+//
+// Idempotent: returns the existing ledger id if the customer already has a live
+// one, so it is safe to call on EVERY create / login / update. Online customers
+// register with only a mobile number, so the ledger falls back to being named
+// after the mobile until the profile is completed — syncCustomerLedgerName then
+// renames it.
+const ensureCustomerLedger = async (customer, transaction) => {
+  if (customer.ledger_id) {
+    // findByPk skips soft-deleted rows, so a customer pointing at a deleted
+    // ledger gets a fresh one instead of staying unpostable.
+    const existing = await models.Ledger.findByPk(customer.ledger_id, { transaction });
+    if (existing) return existing.id;
+  }
+
+  // Resolve the "Sundry Debtors" group by name so we never depend on a
+  // hardcoded, per-environment ledger_group_id.
+  const sundryDebtors = await models.LedgerGroup.findOne({
+    where: { ledger_group_name: "Sundry Debtors" },
+    attributes: ["id"],
+    order: [["id", "ASC"]],
+    transaction,
+  });
+
+  if (!sundryDebtors) {
+    throw new Error(
+      "Ledger group 'Sundry Debtors' not found. Seed the chart of accounts first."
+    );
+  }
+
+  // generateFiscalSeriesCode reads MAX(ledger_no) OUTSIDE the caller's
+  // transaction, so two registrations racing each other are handed the SAME
+  // number and one trips the unique constraint. The OTP flow makes this
+  // reachable: unlike counter staff creating customers one at a time, customers
+  // self-register concurrently.
+  //
+  // Each retry both re-reads MAX (picking up a rival that has since committed)
+  // and adds `attempt` — the re-read alone is not enough, because a colliding
+  // row that is still uncommitted stays invisible and would be regenerated
+  // forever.
+  let ledger;
+  for (let attempt = 0; ; attempt++) {
+    const code = await generateFiscalSeriesCode(models.Ledger, "ledger_no", "LAID", { pad: 3 });
+    const next = (parseInt(code.replace(/^LAID/i, ""), 10) || 1) + attempt;
+    const ledger_no = `LAID${String(next).padStart(3, "0")}`;
+
+    try {
+      // Each attempt runs in its own SAVEPOINT: in Postgres a failed statement
+      // aborts the entire transaction, so without one a collision would poison
+      // the caller's transaction and the retry could never succeed.
+      ledger = await sequelize.transaction({ transaction }, (savepoint) =>
+        models.Ledger.create(
+          {
+            ledger_no,
+            ledger_group_id: sundryDebtors.id,
+            // ledger_name is NOT NULL; an online customer has no name at OTP time.
+            ledger_name: customer.customer_name || customer.mobile_number,
+            branch_id: customer.branch_id,
+          },
+          { transaction: savepoint }
+        )
+      );
+      break;
+    } catch (err) {
+      if (err.name !== "SequelizeUniqueConstraintError" || attempt >= 4) throw err;
+    }
+  }
+
+  await customer.update({ ledger_id: ledger.id }, { transaction });
+
+  return ledger.id;
+};
+
+// Keeps the ledger's display name in step with the customer's. Online customers
+// are created ledger-named after their mobile number, so this is what gives
+// them a proper name once they complete their profile.
+const syncCustomerLedgerName = async (customer, transaction) => {
+  if (!customer.ledger_id || !customer.customer_name) return;
+
+  const ledger = await models.Ledger.findByPk(customer.ledger_id, { transaction });
+  if (!ledger || ledger.ledger_name === customer.customer_name) return;
+
+  await ledger.update({ ledger_name: customer.customer_name }, { transaction });
+};
+
 // Create customer
 const createCustomer = async (req, res) => {
   let transaction;
@@ -95,49 +184,10 @@ const createCustomer = async (req, res) => {
  
     console.log("Customer created:", customer.id);
  
-    const ledger_no = await generateFiscalSeriesCode(
-      models.Ledger,
-      "ledger_no",
-      "LAID",
-      { pad: 3, transaction }
-    );
- 
-    console.log("Generated Ledger No:", ledger_no);
- 
-    // Resolve the "Sundry Debtors" group by name so we never depend on a
-    // hardcoded, per-environment ledger_group_id. Each customer gets one
-    // ledger created under this group.
-    const sundryDebtors = await models.LedgerGroup.findOne({
-      where: { ledger_group_name: "Sundry Debtors" },
-      attributes: ["id"],
-      order: [["id", "ASC"]],
-      transaction,
-    });
-    if (!sundryDebtors) {
-      throw new Error(
-        "Ledger group 'Sundry Debtors' not found. Seed the chart of accounts first."
-      );
-    }
- 
-    const ledger = await models.Ledger.create(
-      {
-        ledger_no,
-        ledger_group_id: sundryDebtors.id, // Sundry Debtors group (resolved by name)
-        ledger_name: payload.customer_name,
-        branch_id: payload.branch_id,
-      },
-      { transaction }
-    );
- 
-    console.log("Ledger created:", ledger.id);
- 
-    await customer.update(
-      { ledger_id: ledger.id },
-      { transaction }
-    );
- 
-    console.log("Customer updated with ledger_id:", ledger.id);
- 
+    const ledgerId = await ensureCustomerLedger(customer, transaction);
+
+    console.log("Customer updated with ledger_id:", ledgerId);
+
     await transaction.commit();
     console.log("Transaction committed successfully");
  
@@ -308,7 +358,23 @@ const updateCustomer = async (req, res) => {
       is_online: req.body.is_online !== undefined ? Boolean(req.body.is_online) : entity.is_online,
       branch_id: req.body.branch_id !== undefined ? (+req.body.branch_id || null) : entity.branch_id,
     };
-    await entity.update(up);
+
+    // The profile update is the point where an online customer finally has a
+    // real name, so it both backfills a missing ledger (customers registered
+    // through the OTP flow before ensureCustomerLedger existed) and renames the
+    // mobile-number-named ledger. Transactional so the customer row and its
+    // ledger can never disagree.
+    const transaction = await sequelize.transaction();
+    try {
+      await entity.update(up, { transaction });
+      await ensureCustomerLedger(entity, transaction);
+      await syncCustomerLedgerName(entity, transaction);
+      await transaction.commit();
+    } catch (err) {
+      if (!transaction.finished) await transaction.rollback();
+      throw err;
+    }
+
     return commonService.okResponse(res, { customer: entity });
   } catch (err) {
     return commonService.handleError(res, err);
@@ -1197,6 +1263,8 @@ module.exports = {
   listCustomerNameMobileDropdown,
   listCustomers,
   generateOnlineCustomerCode,
+  ensureCustomerLedger,
+  syncCustomerLedgerName,
   getTopBuyingCustomers,
   getCustomerSchemes,
   getCustomerTransactions

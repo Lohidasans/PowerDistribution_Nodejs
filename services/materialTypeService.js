@@ -21,10 +21,13 @@ const createMaterialType = async (req, res) => {
       return commonService.badRequest(res, enMessage.materialType.required);
     }
 
-    // Check if material type already exists (only among non-deleted records)
+    // Check if this exact material type + purity combination already exists
+    // (only among non-deleted records). Different purities of the same
+    // material_type (e.g. Gold 22K vs Gold 24K) are allowed to coexist.
     const existingMaterialType = await models.MaterialType.findOne({
       where: {
         material_type: material_type,
+        purity_percentage: purity_percentage ?? null,
         deleted_at: null,
       },
       paranoid: false,
@@ -174,13 +177,25 @@ const updateMaterialType = async (req, res) => {
   if (!entity) return;
 
   try {
-    const { material_type } = req.body;
+    const { material_type, purity_percentage } = req.body;
 
-    // Check if material_type is being updated and if it already exists in another record
-    if (material_type && material_type !== entity.material_type) {
+    const effectiveMaterialType = material_type ?? entity.material_type;
+    const effectivePurity =
+      purity_percentage !== undefined
+        ? purity_percentage
+        : entity.purity_percentage;
+
+    // Check if the resulting material_type + purity combination collides
+    // with another record. Different purities of the same material_type
+    // (e.g. Gold 22K vs Gold 24K) are allowed to coexist.
+    if (
+      material_type !== undefined ||
+      purity_percentage !== undefined
+    ) {
       const existingMaterialType = await models.MaterialType.findOne({
         where: {
-          material_type: material_type,
+          material_type: effectiveMaterialType,
+          purity_percentage: effectivePurity ?? null,
           id: { [Op.ne]: req.params.id },
           deleted_at: null,
         },
@@ -223,72 +238,97 @@ const updateMaterialTypesBulk = async (req, res) => {
       return commonService.badRequest(res, "materials array is required");
     }
 
-    const updatedMaterials = [];
+    const savedMaterials = [];
 
     for (const item of materials) {
-      const { id, material_type } = item;
+      const { id, material_type, purity_percentage } = item;
 
-      if (!id) {
-        await transaction.rollback();
-        return commonService.badRequest(res, "Each material must have an id");
-      }
-
-      // Fetch material
-      const entity = await models.MaterialType.findByPk(id, {
-        transaction,
-        paranoid: false,
-      });
-
-      if (!entity || entity.deleted_at) {
-        await transaction.rollback();
-        return commonService.notFound(
-          res,
-          `MaterialType not found for id ${id}`
-        );
-      }
-
-      // Duplicate material_type check
-      if (material_type && material_type !== entity.material_type) {
-        const existingMaterialType = await models.MaterialType.findOne({
-          where: {
-            material_type,
-            id: { [Op.ne]: id },
-            deleted_at: null,
-          },
-          paranoid: false,
+      // A row with no id is a brand-new material + purity variant
+      // (e.g. adding Gold 22K alongside an existing Gold 24K row) —
+      // create it instead of requiring a pre-existing id.
+      let entity = null;
+      if (id) {
+        entity = await models.MaterialType.findByPk(id, {
           transaction,
+          paranoid: false,
         });
 
-        if (existingMaterialType) {
+        if (!entity || entity.deleted_at) {
           await transaction.rollback();
-          return commonService.badRequest(
+          return commonService.notFound(
             res,
-            `Material type '${material_type}' already exists`
+            `MaterialType not found for id ${id}`
           );
         }
       }
 
-      //  Remove null / undefined fields
-      const updateData = { ...item };
-      delete updateData.id;
+      const effectiveMaterialType = material_type ?? entity?.material_type;
+      const effectivePurity =
+        purity_percentage !== undefined
+          ? purity_percentage
+          : entity?.purity_percentage;
 
-      Object.keys(updateData).forEach((key) => {
-        if (updateData[key] === undefined || updateData[key] === null) {
-          delete updateData[key];
+      if (!effectiveMaterialType) {
+        await transaction.rollback();
+        return commonService.badRequest(res, "material_type is required");
+      }
+
+      // Duplicate (material_type + purity_percentage) check — different
+      // purities of the same material_type are allowed to coexist, but the
+      // exact same combination can't appear twice.
+      const duplicateWhere = {
+        material_type: effectiveMaterialType,
+        purity_percentage: effectivePurity ?? null,
+        deleted_at: null,
+      };
+      if (entity) {
+        duplicateWhere.id = { [Op.ne]: entity.id };
+      }
+
+      const existingMaterialType = await models.MaterialType.findOne({
+        where: duplicateWhere,
+        paranoid: false,
+        transaction,
+      });
+
+      if (existingMaterialType) {
+        await transaction.rollback();
+        return commonService.badRequest(
+          res,
+          `Material type '${effectiveMaterialType}'${
+            effectivePurity !== undefined && effectivePurity !== null
+              ? ` (${effectivePurity}%)`
+              : ""
+          } already exists`
+        );
+      }
+
+      //  Remove id / null / undefined fields
+      const rowData = { ...item };
+      delete rowData.id;
+
+      Object.keys(rowData).forEach((key) => {
+        if (rowData[key] === undefined || rowData[key] === null) {
+          delete rowData[key];
         }
       });
 
-      //  Update
-      await entity.update(updateData, { transaction });
-
-      updatedMaterials.push(entity);
+      if (entity) {
+        await entity.update(rowData, { transaction });
+        savedMaterials.push(entity);
+      } else {
+        const created = await models.MaterialType.create(rowData, {
+          transaction,
+        });
+        savedMaterials.push(created);
+      }
     }
 
     await transaction.commit();
 
     return commonService.okResponse(res, {
-      message: "Materials updated successfully",
-      materials: updatedMaterials,
+      message: "Materials saved successfully",
+      materials: savedMaterials,
     });
 
   } catch (error) {

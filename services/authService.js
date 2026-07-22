@@ -6,7 +6,7 @@ const commonService = require('./commonService');
 const enMessage = require('../constants/en.json');
 const { JWT_SECRET, JWT_EXPIRES_IN } = process.env;
 const otpCache = require('../utils/otpCache');
-const { generateOnlineCustomerCode } = require('./customerService');
+const { generateOnlineCustomerCode, ensureCustomerLedger } = require('./customerService');
 const {sendCustomerNotification,} = require("../helpers/notificationHelper");
 const notificationMessages = require("../constants/notificationMessages");
 const { sendPushToSubscribers } = require("./pushNotificationService");
@@ -386,6 +386,20 @@ const verifyOTP = async (req, res) => {
                 }, { transaction: t });
             }
         }
+
+        // Offline customers get their Sundry Debtors ledger at creation time;
+        // the online flow only registers a mobile number here, so it has to be
+        // done at OTP verification instead. Called for existing customers too
+        // (not just new ones) because the helper is idempotent — that also
+        // backfills anyone who registered before this existed, on next login.
+        // Without a ledger the customer's invoices, sales returns and old-gold
+        // vouchers are dropped from every financial report.
+        //
+        // Deliberately allowed to throw and fail the login: a ledger-less
+        // customer corrupts the books silently, which is worse than a login
+        // error someone will actually report. The whole transaction rolls back,
+        // so a new customer is not left half-created.
+        await ensureCustomerLedger(customer, t);
 
         await t.commit();
 
