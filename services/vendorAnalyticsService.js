@@ -659,7 +659,7 @@ const getVendorList = async (req, res) => {
                 vendor_id,
                 SUM(total_amount) AS total_purchase
             FROM grns
-            WHERE deleted_at IS NULL
+            WHERE deleted_at IS NULL AND is_active = true
             GROUP BY vendor_id
         ) g
         ON g.vendor_id = v.id
@@ -715,7 +715,8 @@ const getVendorList = async (req, res) => {
                 AND vp.bill_type_id=1
                 AND vp.user_type_id=1
                 AND vp.is_active=true
-                AND g.deleted_at IS NULL
+                AND g.deleted_at IS NULL 
+                AND g.is_active = true
 
                 UNION ALL
 
