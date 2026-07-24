@@ -11,6 +11,11 @@ const {sendCustomerNotification,} = require("../helpers/notificationHelper");
 const notificationMessages = require("../constants/notificationMessages");
 const { sendPushToSubscribers } = require("./pushNotificationService");
 
+// Website signups have no logged-in branch, so customers created through the
+// OTP flow were being stored with branch_id = null and dropped from every
+// branch-wise report. Park them on the main branch instead.
+const ONLINE_CUSTOMER_BRANCH_ID = 1;
+
 const login = async (req, res) => {
     const t = await sequelize.transaction();
     try {
@@ -349,12 +354,23 @@ const verifyOTP = async (req, res) => {
             customer = await models.Customer.create({
                 customer_code: customerCode,
                 mobile_number: mobile,
+                branch_id: ONLINE_CUSTOMER_BRANCH_ID,
                 is_active: true
             }, { transaction: t });
 
             statusCode = 201;
             isNewCustomer = true;
         } else {
+            // Backfill anyone who signed up online before the branch was set.
+            // Only when it is null — an offline customer keeps the branch that
+            // actually created them.
+            if (customer.branch_id === null) {
+                await customer.update(
+                    { branch_id: ONLINE_CUSTOMER_BRANCH_ID },
+                    { transaction: t }
+                );
+            }
+
             // Existing customer (created via offline/counter billing or a
             // prior online order) logging in for the first time online:
             // carry their stored address into customer_addresses so it
