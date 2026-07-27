@@ -134,23 +134,38 @@ const listMaterialTypesDropdown = async (req, res) => {
       };
     }
 
-    const items = await models.MaterialType.findAll({
-      where,
-      attributes: [
-        "id",
-        "material_type",
-        "material_price",
-        "purity_name",
-        "purity_percentage",
-        "website_visibility",
-        "branch_id"
-      ],
-      order: [["material_type", "ASC"]]
-    });
+   const items = await models.MaterialType.findAll({
+    where,
+    attributes: [
+      "id",
+      "material_type",
+      "material_price",
+      "purity_name",
+      "purity_percentage",
+      "website_visibility",
+      "branch_id"
+    ],
+    order: [["material_type", "ASC"],
+      ["id", "ASC"] // keeps the first created record
+    ]
+  });
 
-    return commonService.okResponse(res, {
-      materialTypes: items
-    });
+  // Remove duplicate material types
+  const uniqueMaterialTypes = [];
+  const seen = new Set();
+
+  for (const item of items) {
+    const key = item.material_type?.trim().toLowerCase();
+
+    if (!seen.has(key)) {
+      seen.add(key);
+      uniqueMaterialTypes.push(item);
+    }
+  }
+
+  return commonService.okResponse(res, {
+    materialTypes: uniqueMaterialTypes
+  });
 
   } catch (err) {
     return commonService.handleError(res, err);
