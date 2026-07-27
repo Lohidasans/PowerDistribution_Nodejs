@@ -1048,20 +1048,8 @@ const getStockKpiSummary = async (req, res) => {
         AND g.deleted_at IS NULL
         AND g.is_active IS NOT FALSE
       WHERE gi.deleted_at IS NULL
-      ${branch_id ? `
-        AND EXISTS (
-          SELECT 1
-          FROM products p
-          WHERE p.grn_id = g.id
-            AND p.branch_id = :branch_id
-            AND p.deleted_at IS NULL
-        )
-      ` : ``}
-    -- to include only the particular branch pdt not the transferred pdt
-    -- ${branch_id ? `
-    --     AND g.branch_id = :branch_id
-    --  ` : ``}
-
+      ${branch_id ? `AND g.branch_id = :branch_id` : ``}    -- to include only the particular branch pdt not the transferred pdt
+   
       ${grnDateCondition}
     `;
 
