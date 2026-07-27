@@ -720,7 +720,7 @@ const getAllGrns = async (req, res) => {
 // GET: list of GRN numbers with full ProductGrnInfo + joined details
 const listGrnNumbers = async (req, res) => {
   try {
-    const { vendor_id } = req.query;
+    const { vendor_id, purpose } = req.query;
     // Base condition: only active GRNs
     const whereCondition = {
       is_active: true,
@@ -729,6 +729,11 @@ const listGrnNumbers = async (req, res) => {
     // Optional vendor filter
     if (vendor_id) {
       whereCondition.vendor_id = vendor_id;
+    }
+
+    // Only Purchase Return should restrict to Pending grn
+    if (purpose === "purchase_return") {
+        whereCondition.status_id = 1;
     }
 
     // 1.Fetch filtered GRNs
