@@ -222,6 +222,82 @@ const forgotPassword = async (req, res) => {
     }
 };
 
+// Password change for an already logged-in user. The account is taken from the
+// bearer token, never from the request body, so a user can only change their own
+// password. This is not the forgot-password flow - the old password is required.
+const changePassword = async (req, res) => {
+    const t = await sequelize.transaction();
+    try {
+        const authHeader = req.headers.authorization || '';
+        const token = authHeader.startsWith('Bearer ')
+            ? authHeader.slice(7).trim()
+            : null;
+
+        if (!token) {
+            await t.rollback();
+            return commonService.unauthorized(res, enMessage.auth.invalidOrExpiredToken);
+        }
+
+        let decoded;
+        try {
+            decoded = jwt.verify(token, JWT_SECRET);
+        } catch (error) {
+            await t.rollback();
+            return commonService.unauthorized(res, enMessage.auth.invalidOrExpiredToken);
+        }
+
+        const { old_password, new_password } = req.body;
+
+        if (!old_password || !new_password) {
+            await t.rollback();
+            return commonService.badRequest(res, enMessage.auth.allFieldsRequired);
+        }
+
+        if (new_password.length < 6) {
+            await t.rollback();
+            return commonService.badRequest(res, enMessage.auth.passwordMinLength);
+        }
+
+        if (old_password === new_password) {
+            await t.rollback();
+            return commonService.badRequest(res, enMessage.auth.samePassword);
+        }
+
+        const user = await models.User.findOne({
+            where: { id: decoded.id, deleted_at: null },
+            transaction: t
+        });
+
+        if (!user) {
+            await t.rollback();
+            return commonService.notFound(res, enMessage.auth.invalidCredentials);
+        }
+
+        // Passwords are stored as plain text in password_hash (login compares them
+        // with ===), so the old password is matched the same way.
+        if (!user.password_hash || user.password_hash !== old_password) {
+            await t.rollback();
+            return commonService.badRequest(res, enMessage.auth.oldPasswordIncorrect);
+        }
+
+        await user.update({ password_hash: new_password }, { transaction: t });
+
+        await t.commit();
+
+        return commonService.okResponse(res, {
+            message: enMessage.auth.passwordChangeSuccess
+        });
+
+    } catch (error) {
+        // Only rollback if transaction is still active
+        if (t && !t.finished) {
+            await t.rollback();
+        }
+        console.error('Change password error:', error);
+        return commonService.handleError(res, error);
+    }
+};
+
 const resetPassword = async (req, res) => {
     const t = await sequelize.transaction();
     try {
@@ -461,6 +537,7 @@ module.exports = {
     login,
     forgotPassword,
     resetPassword,
+    changePassword,
     customerSendOTP,
     verifyOTP
 };

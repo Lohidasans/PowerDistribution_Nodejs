@@ -84,7 +84,11 @@
     "passwordResetSuccess": "Password has been reset successfully.",
     "passwordsDontMatch": "New password and confirm password do not match.",
     "invalidOrExpiredToken": "Invalid or expired token.",
-    "passwordResetSuccessful": "Password has been reset successfully."
+    "passwordResetSuccessful": "Password has been reset successfully.",
+    "oldPasswordIncorrect": "Old password is incorrect.",
+    "samePassword": "New password must be different from the old password.",
+    "passwordMinLength": "New password must be at least 6 characters.",
+    "passwordChangeSuccess": "Password changed successfully."
   }
 
 }
