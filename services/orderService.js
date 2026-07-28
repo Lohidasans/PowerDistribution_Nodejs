@@ -1,9 +1,10 @@
 const { Op } = require("sequelize");
 const commonService = require("./commonService");
 const { models, sequelize } = require("../models");
-const { generateFiscalSeriesCode } = require("../helpers/codeGeneration");
+const { generateFiscalSeriesCode, generateBranchSeriesCode } = require("../helpers/codeGeneration");
 const enumType = require("../constants/enum");
 const { calculateSellingPrice, calculateFinalPriceRate } = require("../services/productService");
+const { buildInvoiceSummary, getSalesInvoiceType } = require("../helpers/onlineInvoiceHelper");
 
 // Generate Order Number
 const generateOrderCode = async (req, res) => {
@@ -206,12 +207,25 @@ const createOrder = async (req, res) => {
         );
 
         // 5️. Bulk Create Order Items
-        const finalItems = orderItemsPayload.map(i => ({
-            ...i,
+        const finalItems = orderItemsPayload.map(item => ({
+            ...item,
             order_id: order.id,
         }));
 
-        await models.OrderItem.bulkCreate(finalItems, { transaction });
+        const createdOrderItems = await models.OrderItem.bulkCreate(
+            finalItems,
+            {
+                transaction,
+                returning: true,
+            }
+        );
+
+        await createOnlineInvoices({
+            order,
+            customer_id,
+            orderItems: createdOrderItems,
+            transaction,
+        });
 
         await transaction.commit();
 
@@ -233,6 +247,158 @@ const createOrder = async (req, res) => {
     }
 };
 
+
+const createOnlineInvoices = async ({
+    order,
+    customer_id,
+    orderItems,
+    transaction,
+}) => {
+
+    const salesInvoiceType = await getSalesInvoiceType();
+
+    // Get product & branch details only
+    const productIds = [...new Set(orderItems.map(x => x.product_id))];
+    const branchIds = [...new Set(orderItems.map(x => x.branch_id))];
+
+    const products = await models.Product.findAll({
+        where: {
+            id: {
+                [Op.in]: productIds,
+            },
+        },
+        attributes: [
+            "id",
+            "hsn_code",
+        ],
+        raw: true,
+        transaction,
+    });
+
+    const branches = await models.Branch.findAll({
+        where: {
+            id: {
+                [Op.in]: branchIds,
+            },
+        },
+        attributes: [
+            "id",
+            "branch_name",
+        ],
+        raw: true,
+        transaction,
+    });
+
+    const settings = await models.InvoiceSetting.findAll({
+        where: {
+            branch_id: {
+                [Op.in]: branchIds,
+            },
+            invoice_sequence_name_id: salesInvoiceType.id,
+        },
+        raw: true,
+        transaction,
+    });
+
+    const productMap = new Map(
+        products.map(p => [p.id, p])
+    );
+
+    const branchMap = new Map(
+        branches.map(b => [b.id, b])
+    );
+
+    const settingMap = new Map(
+        settings.map(s => [String(s.branch_id), s])
+    );
+
+    // Build invoice items from created order items
+    const invoiceItems = orderItems.map(item => ({
+        order_item_id: item.id,
+        branch_id: item.branch_id,
+        product_id: item.product_id,
+        product_name: item.product_name,
+        quantity: item.quantity,
+        rate: item.rate,
+        amount: item.amount,
+        tax_amount: item.tax,
+        total_amount: item.total_amount,
+    }));
+
+    // Group by Branch
+    const grouped = invoiceItems.reduce((acc, item) => {
+
+        const key = String(item.branch_id);
+
+        if (!acc[key]) {
+            acc[key] = [];
+        }
+
+        acc[key].push(item);
+
+        return acc;
+
+    }, {});
+
+    // Create Invoice per Branch
+    for (const branchId of Object.keys(grouped)) {
+
+        const items = grouped[branchId];
+
+        const setting = settingMap.get(branchId);
+
+        if (!setting) {
+            throw new Error(
+                `Invoice settings not found for Branch ${branchId}`
+            );
+        }
+
+        const invoiceNo = await generateBranchSeriesCode(
+            models.OnlineOrderInvoice,
+            "invoice_no",
+            setting.invoice_prefix,
+            `${setting.invoice_suffix}/ONL`,
+            setting.invoice_start_no || "001",
+            Number(branchId)
+        );
+
+        const summary = buildInvoiceSummary(items);
+
+        const invoice = await models.OnlineOrderInvoice.create({
+            invoice_no: invoiceNo,
+            order_id: order.id,
+            customer_id,
+            branch_id: Number(branchId),
+            subtotal: summary.subtotal,
+            tax_amount: summary.tax_amount,
+            discount_amount: 0,
+            shipping_charge: 0,
+            total_amount: summary.total_amount,
+            invoice_date: order.order_date || new Date(),
+        }, {
+            transaction,
+        });
+
+        await models.OnlineOrderInvoiceItem.bulkCreate(
+
+            items.map(item => ({
+                online_order_invoice_id: invoice.id,
+                order_item_id: item.order_item_id,
+                product_id: item.product_id,
+                product_name: item.product_name,
+                quantity: item.quantity,
+                rate: item.rate,
+                amount: item.amount,
+                tax_amount: item.tax_amount,
+                total_amount: item.total_amount,
+            })),
+
+            {
+                transaction,
+            }
+        );
+    }
+};
 
 // Delete Order
 const deleteOrder = async (req, res) => {

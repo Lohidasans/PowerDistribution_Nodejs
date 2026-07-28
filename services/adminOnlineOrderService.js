@@ -512,7 +512,7 @@ const getOnlineOrderDetails = async (req, res) => {
     }
 
     // FINAL RESPONSE   
-    const invoices = await getOnlineOrderInvoices(orderInfo, order_id);
+   const invoices = await getStoredOnlineInvoices(order_id);
     return commonService.okResponse(res, {
       order: {
         id: orderInfo.id,
@@ -566,6 +566,119 @@ const getOnlineOrderDetails = async (req, res) => {
     console.error("getOnlineOrderDetails Error:", error);
     return commonService.handleError(res, error);
   }
+};
+
+const getStoredOnlineInvoices = async (order_id) => {
+  const invoices = await sequelize.query(
+    ` SELECT
+        oi.id,
+        oi.invoice_no,
+        oi.invoice_date,
+        oi.branch_id,
+        b.branch_name,
+        oi.subtotal,
+        oi.tax_amount,
+        oi.discount_amount,
+        oi.shipping_charge,
+        oi.total_amount
+        FROM online_order_invoices oi
+        LEFT JOIN branches b ON b.id = oi.branch_id
+        WHERE oi.order_id = :order_id
+        AND oi.deleted_at IS NULL
+      ORDER BY oi.id
+     `,
+    {
+      replacements: {
+        order_id,
+      },
+      type: sequelize.QueryTypes.SELECT,
+    },
+  );
+
+  if (!invoices.length) {
+    return [];
+  }
+
+  const invoiceIds = invoices.map((x) => x.id);
+
+  const invoiceItems = await sequelize.query(
+    ` SELECT
+        i.online_order_invoice_id,
+        i.order_item_id,
+        i.product_id,
+        i.product_name,
+        i.quantity,
+        i.rate,
+        i.amount,
+        i.tax_amount,
+        i.total_amount,
+        oi.sku_id,
+        oi.image_url,
+        oi.product_item_id,
+        oi.gross_weight,
+        oi.net_weight,
+        oi.wastage,
+        p.hsn_code
+
+      FROM online_order_invoice_items i
+      JOIN order_items oi ON oi.id = i.order_item_id AND oi.deleted_at IS NULL
+      LEFT JOIN products p ON p.id = i.product_id AND p.deleted_at IS NULL
+
+    WHERE i.online_order_invoice_id IN(:invoiceIds)
+    AND i.deleted_at IS NULL
+
+    ORDER BY i.id
+    `,
+    {
+      replacements: {
+        invoiceIds,
+      },
+      type: sequelize.QueryTypes.SELECT,
+    },
+  );
+
+  const itemMap = {};
+
+  invoiceItems.forEach((item) => {
+    if (!itemMap[item.online_order_invoice_id]) {
+      itemMap[item.online_order_invoice_id] = [];
+    }
+
+    itemMap[item.online_order_invoice_id].push({
+      order_item_id: item.order_item_id,
+      product_id: item.product_id,
+      product_item_detail_id: item.product_item_id,
+      product_name: item.product_name,
+      sku_id: item.sku_id,
+      image_url: item.image_url,
+      hsn_code: item.hsn_code,
+      gross_weight: item.gross_weight,
+      net_weight: item.net_weight,
+      wastage: item.wastage,
+      quantity: item.quantity,
+      rate: item.rate,
+      amount: item.amount,
+      discount_amount: item.discount_amount,
+      tax_amount: item.tax_amount,
+      total_amount: item.total_amount,
+    });
+  });
+
+  return invoices.map((invoice) => ({
+    invoice_no: invoice.invoice_no,
+    invoice_date: invoice.invoice_date,
+    branch_id: invoice.branch_id,
+    branch_name: invoice.branch_name,
+    items: itemMap[invoice.id] || [],
+    summary: {
+      subtotal: invoice.subtotal,
+      tax_amount: invoice.tax_amount,
+      discount_amount: invoice.discount_amount,
+      shipping_charge: invoice.shipping_charge,
+      total_amount: invoice.total_amount,
+    },
+    payment_details: {},
+  }));
 };
 
 const cancelOrder = async (req, res) => {
@@ -659,175 +772,6 @@ const cancelOrder = async (req, res) => {
     console.error("Cancel Order Error:", error);
     return commonService.handleError(res, error);
   }
-};
-
-const getOnlineOrderInvoices = async (
-  orderInfo,
-  order_id
-) => {
-
-  const salesInvoiceType =  await getSalesInvoiceType();
-
-  const itemsQuery = `
-    SELECT
-      oi.id AS order_item_id,
-
-      ROW_NUMBER() OVER (PARTITION BY COALESCE(oi.branch_id, pr.branch_id) ORDER BY oi.id) AS s_no,
-
-      oi.product_id,
-      oi.product_item_id AS product_item_detail_id,
-      oi.product_name,
-      oi.sku_id,
-      oi.image_url,
-
-      oi.quantity,
-      oi.rate,
-      oi.amount,
-
-      COALESCE(oi.discount,0) AS discount_amount,
-      COALESCE(oi.tax,0) AS tax_amount,
-
-      oi.total_amount,
-
-      oi.gross_weight,
-      oi.net_weight,
-      oi.wastage,
-
-      pr.hsn_code,
-
-      COALESCE( oi.branch_id, pr.branch_id) AS branch_id,
-
-      b.branch_name
-
-    FROM order_items oi
-
-    JOIN products pr ON pr.id = oi.product_id
-
-    LEFT JOIN branches b ON b.id = COALESCE(
-        oi.branch_id,
-        pr.branch_id
-      )
-
-    WHERE oi.order_id = :order_id
-    AND oi.deleted_at IS NULL
-
-    ORDER BY oi.id
-  `;
-
-  const invoiceItems =
-    await sequelize.query(itemsQuery, {
-      replacements: { order_id },
-      type: sequelize.QueryTypes.SELECT,
-    });
-
-  if (!invoiceItems.length) {
-    return [];
-  }
-
-  const branchIds = [
-    ...new Set(
-      invoiceItems.map(
-        (x) => x.branch_id
-      )
-    ),
-  ];
-
-  const settings =
-    await models.InvoiceSetting.findAll({
-      where: {
-        branch_id: branchIds,
-        invoice_sequence_name_id:
-          salesInvoiceType.id,
-      },
-      raw: true,
-    });
-
-  const settingMap = new Map(
-    settings.map((x) => [
-      String(x.branch_id),
-      x,
-    ])
-  );
-
-  const grouped =
-    invoiceItems.reduce(
-      (acc, item) => {
-        const key =
-          String(item.branch_id);
-
-        if (!acc[key]) {
-          acc[key] = [];
-        }
-
-        acc[key].push(item);
-        return acc;
-      },
-      {}
-    );
-
-  const invoices = [];
-
-  for (const branchId of Object.keys(grouped)) {
-    const items =
-      grouped[branchId];
-
-    const setting =
-      settingMap.get(branchId);
-
-    if (!setting) {
-      continue;
-    }
-
-    const invoiceNo = await generateBranchSeriesCode(
-        models.OnlineOrderInvoice,
-        "invoice_no",
-        setting.invoice_prefix,
-        `${setting.invoice_suffix}/ONL`,
-        setting.invoice_start_no || "001",
-        branchId
-      );
-
-    invoices.push({
-      invoice_no: invoiceNo,
-      invoice_type: {
-        id: salesInvoiceType.id,
-        name:
-          salesInvoiceType.invoice_setting_enum,
-      },
-      order_no: orderInfo.order_number,
-      order_date: orderInfo.order_date,
-      invoice_date: new Date(),
-      branch_id: Number(branchId),
-      branch_name: items[0].branch_name,
-      items: items.map(
-        (item) => ({
-          s_no: item.s_no,
-          order_item_id: item.order_item_id,
-          product_id: item.product_id,
-          product_item_detail_id: item.product_item_detail_id,
-          product_name: item.product_name,
-          sku_id: item.sku_id,
-          image_url: item.image_url,
-          hsn_code: item.hsn_code,
-          gross_weight: item.gross_weight,
-          net_weight: item.net_weight,
-          wastage: item.wastage,
-          quantity: item.quantity,
-          rate: item.rate || item.amount,
-          amount: item.amount,
-          discount_amount: item.discount_amount,
-          tax_amount: item.tax_amount,
-          total_amount: item.total_amount,
-        })
-      ),
-
-      summary: buildInvoiceSummary( items),
-
-      payment_details: {},
-    });
-  }
-
-  return invoices;
 };
 
 module.exports = {

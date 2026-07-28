@@ -14,28 +14,26 @@ const buildInvoiceSummary = (items) => {
     0
   );
 
-  const discountAmount = items.reduce(
-    (sum, item) => sum + Number(item.discount_amount || 0),
-    0
-  );
-
   const totalQuantity = items.reduce(
     (sum, item) => sum + Number(item.quantity || 0),
     0
   );
 
+  const shippingCharge = 0;
+
+  const totalAmount =
+    subtotal +
+    taxAmount +
+    shippingCharge;
+
   return {
-    subtotal: subtotal.toFixed(2),
-    cgst: (taxAmount / 2).toFixed(2),
-    sgst: (taxAmount / 2).toFixed(2),
-    tax_amount: taxAmount.toFixed(2),
-    discount: discountAmount.toFixed(2),
-    shipping_charge: "0.00",
-    total_amount: (
-      subtotal +
-      taxAmount -
-      discountAmount
-    ).toFixed(2),
+    subtotal: Number(subtotal.toFixed(2)),
+    cgst: Number((taxAmount / 2).toFixed(2)),
+    sgst: Number((taxAmount / 2).toFixed(2)),
+    tax_amount: Number(taxAmount.toFixed(2)),
+    discount_amount: 0,
+    shipping_charge: Number(shippingCharge.toFixed(2)),
+    total_amount: Number(totalAmount.toFixed(2)),
     total_quantity: totalQuantity,
   };
 };
