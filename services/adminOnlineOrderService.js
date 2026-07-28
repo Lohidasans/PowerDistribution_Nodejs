@@ -774,10 +774,204 @@ const cancelOrder = async (req, res) => {
   }
 };
 
+
+const getOnlineOrderInvoice = async (req, res) => {
+    const { invoice_id } = req.params;
+    const replacements = { invoice_id, };
+
+    // Query 1
+    const invoiceInfoSql = ` SELECT
+        ooi.id,
+        ooi.invoice_no,
+        ooi.invoice_date,
+        ooi.subtotal,
+        ooi.tax_amount,
+        ooi.discount_amount,
+        ooi.shipping_charge,
+        ooi.total_amount,
+
+        b.id AS branch_id,
+        b.branch_name,
+        b.gst_no,
+        b.email,
+        b.mobile,
+        b.address,
+
+        c.customer_name,
+        c.mobile_number,
+        c.email_id,
+
+        bill.name AS billing_name,
+        bill.mobile_number AS billing_mobile,
+        bill.address_line AS billing_address,
+        bill.pin_code AS billing_pincode,
+        bill_country.country_name AS billing_country,
+        bill_state.state_name AS billing_state,
+        bill_district.district_name AS billing_district,
+
+        ship.name AS shipping_name,
+        ship.mobile_number AS shipping_mobile,
+        ship.address_line AS shipping_address,
+        ship.pin_code AS shipping_pincode,
+        ship_country.country_name AS shipping_country,
+        ship_state.state_name AS shipping_state,
+        ship_district.district_name AS shipping_district
+
+      FROM online_order_invoices ooi
+
+      INNER JOIN orders o
+          ON o.id = ooi.order_id
+          AND o.deleted_at IS NULL
+
+      INNER JOIN customers c
+          ON c.id = ooi.customer_id
+          AND c.deleted_at IS NULL
+
+      LEFT JOIN branches b
+          ON b.id = ooi.branch_id
+          AND b.deleted_at IS NULL
+
+      LEFT JOIN customer_addresses bill
+          ON bill.id = o.billing_address_id
+
+      LEFT JOIN countries bill_country
+          ON bill_country.id = bill.country_id
+
+      LEFT JOIN states bill_state
+          ON bill_state.id = bill.state_id
+
+      LEFT JOIN districts bill_district
+          ON bill_district.id = bill.district_id::INTEGER
+
+      LEFT JOIN customer_addresses ship
+          ON ship.id = o.shipping_address_id
+
+      LEFT JOIN countries ship_country
+          ON ship_country.id = ship.country_id
+
+      LEFT JOIN states ship_state
+          ON ship_state.id = ship.state_id
+
+      LEFT JOIN districts ship_district
+          ON ship_district.id = ship.district_id::INTEGER
+
+      WHERE
+          ooi.id = :invoice_id
+          AND ooi.deleted_at IS NULL;
+          `;
+
+    const [invoiceInfo] = await sequelize.query(invoiceInfoSql, {
+    replacements,
+    type: sequelize.QueryTypes.SELECT,
+    });
+
+    if (!invoiceInfo) {
+        return commonService.badRequest(res, "Invoice not found");
+    }
+
+    // Query 2
+    const itemSql = `SELECT
+        oii.order_item_id,
+        oii.product_id,
+        oii.product_name,
+        oii.quantity,
+        oii.rate,
+        oii.amount,
+        oii.tax_amount,
+        oii.total_amount,
+
+        oi.sku_id AS product_sku,
+        oi.image_url,
+        oi.net_weight AS net_weight,
+        oi.gross_weight AS gross_weight,
+        oi.wastage,
+
+        p.hsn_code
+
+    FROM online_order_invoice_items oii
+
+    LEFT JOIN order_items oi
+        ON oi.id = oii.order_item_id
+        AND oi.deleted_at IS NULL
+
+    LEFT JOIN products p
+        ON p.id = oii.product_id
+        AND p.deleted_at IS NULL
+
+    WHERE
+        oii.online_order_invoice_id = :invoice_id
+        AND oii.deleted_at IS NULL
+
+    ORDER BY oii.id
+    `;
+
+    const items =  await sequelize.query(itemSql, {
+      replacements,
+      type: sequelize.QueryTypes.SELECT
+    });
+
+    return commonService.okResponse(res, {
+        invoice: {
+            id: invoiceInfo.id,
+            invoice_no: invoiceInfo.invoice_no,
+            invoice_date: invoiceInfo.invoice_date,
+            branch_id: invoiceInfo.branch_id,
+            branch_name: invoiceInfo.branch_name,
+            gst_no: invoiceInfo.gst_no,
+            branch_address: invoiceInfo.address,
+            branch_phone: invoiceInfo.mobile,
+            branch_email: invoiceInfo.email,
+            qr_code: ""
+        },
+
+        customer: {
+            customer_name: invoiceInfo.customer_name,
+            mobile_number: invoiceInfo.mobile_number,
+            email_id: invoiceInfo.email_id,
+
+            billing_address: {
+                name: invoiceInfo.billing_name,
+                mobile: invoiceInfo.billing_mobile,
+                address: invoiceInfo.billing_address,
+                district: invoiceInfo.billing_district,
+                state: invoiceInfo.billing_state,
+                country: invoiceInfo.billing_country,
+                pincode: invoiceInfo.billing_pincode
+            },
+
+            shipping_address: {
+                name: invoiceInfo.shipping_name,
+                mobile: invoiceInfo.shipping_mobile,
+                address: invoiceInfo.shipping_address,
+                district: invoiceInfo.shipping_district,
+                state: invoiceInfo.shipping_state,
+                country: invoiceInfo.shipping_country,
+                pincode: invoiceInfo.shipping_pincode
+            }
+        },
+
+        items,
+
+        summary: {
+            subtotal: invoiceInfo.subtotal,
+            cgst: 0,
+            sgst: 0,
+            igst: invoiceInfo.tax_amount,
+            tax_amount: invoiceInfo.tax_amount,
+            discount_amount: invoiceInfo.discount_amount,
+            shipping_charge: invoiceInfo.shipping_charge,
+            total_amount: invoiceInfo.total_amount
+        },
+
+        payment_details: {}
+    });
+};
+
 module.exports = {
   getOnlineOrders,
   updateShipmentDetails,
   updateDeliveredDetails,
   getOnlineOrderDetails,
   cancelOrder,
+  getOnlineOrderInvoice,
 };
