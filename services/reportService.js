@@ -86,6 +86,7 @@ const getSalesInvoiceReport = async (req, res) => {
             offline_sales AS (
                 SELECT
                     sib.id,
+                    NULL::INTEGER AS online_invoice_id,
                     'OFFLINE'::TEXT AS sale_source,
                     sib.invoice_no,
                     sib.invoice_date::DATE AS sale_date,
@@ -154,6 +155,7 @@ const getSalesInvoiceReport = async (req, res) => {
             online_sales AS (
                 SELECT
                     ooi.id,
+                    ooi.id AS online_invoice_id,
                     'ONLINE'::TEXT AS sale_source,
                     ooi.invoice_no,
                     ooi.invoice_date::DATE AS sale_date,
@@ -258,6 +260,7 @@ const getSalesInvoiceReport = async (req, res) => {
             ${commonCTE}
             SELECT
                 cs.id,
+                cs.online_invoice_id,
                 cs.sale_source,
                 cs.is_active,
                 cs.invoice_no,
