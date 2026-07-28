@@ -1719,6 +1719,74 @@ const getLedgerReportByLedgerName = async (req, res) => {
         AND s.status = 'Invoice'
         AND s.invoice_date BETWEEN :from_date AND :to_date
 
+      -- ===================== OLD JEWEL =====================
+      UNION ALL
+
+      -- Dr: Old Gold Sales
+      SELECT
+        oj.date,
+        lop.id,
+        lop.ledger_name,
+        oj.old_jewel_code,
+        oj.total_amount,
+        0
+      FROM old_jewels oj
+      JOIN ledger lop ON lop.ledger_name = 'Old Gold Sales'
+      WHERE oj.deleted_at IS NULL
+        AND oj.status = 'Printed'
+        AND oj.date BETWEEN :from_date AND :to_date
+
+      UNION ALL
+
+      -- Cr: Customer ledger
+      SELECT
+        oj.date,
+        lc.id,
+        lc.ledger_name,
+        oj.old_jewel_code,
+        0,
+        oj.total_amount
+      FROM old_jewels oj
+      JOIN customers c ON c.id = oj.customer_id
+      JOIN ledger lc ON lc.id = c.ledger_id
+      WHERE oj.deleted_at IS NULL
+        AND oj.status = 'Printed'
+        AND oj.date BETWEEN :from_date AND :to_date
+
+      -- ===================== JEWEL REPAIR =====================
+      UNION ALL
+
+      -- Dr: Customer ledger
+      SELECT
+        jr.date,
+        lc.id,
+        lc.ledger_name,
+        jr.repair_code,
+        jr.total_amount,
+        0
+      FROM jewel_repairs jr
+      JOIN customers c ON c.id = jr.customer_id
+      JOIN ledger lc ON lc.id = c.ledger_id
+      WHERE jr.deleted_at IS NULL
+        AND jr.status = 'Completed'
+        AND jr.date BETWEEN :from_date AND :to_date
+
+      UNION ALL
+
+      -- Cr: Repair income ledger
+      SELECT
+        jr.date,
+        lri.id,
+        lri.ledger_name,
+        jr.repair_code,
+        0,
+        jr.total_amount
+      FROM jewel_repairs jr
+      JOIN ledger lri ON lri.ledger_name = 'Repair Charges Income'
+      WHERE jr.deleted_at IS NULL
+        AND jr.status = 'Completed'
+        AND jr.date BETWEEN :from_date AND :to_date
+
       -- ===================== PAYMENTS =====================
       UNION ALL
 
