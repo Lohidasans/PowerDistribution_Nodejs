@@ -1007,6 +1007,7 @@ const getCustomerTransactions = async (req, res) => {
         -- 🧾 INVOICE
         SELECT
           i.id,
+          NULL::INTEGER AS online_invoice_id,
           i.customer_id,
           i.invoice_no AS reference_no,
           i.invoice_date AS date,
@@ -1043,6 +1044,7 @@ const getCustomerTransactions = async (req, res) => {
         -- 🔁 SALES RETURN
         SELECT
           sr.id,
+          NULL::INTEGER AS online_invoice_id,
           sr.customer_id,
           sr.sales_return_no AS reference_no,
           sr.return_date AS date,
@@ -1079,6 +1081,7 @@ const getCustomerTransactions = async (req, res) => {
         -- 🪙 OLD JEWEL
         SELECT
           oj.id,
+          NULL::INTEGER AS online_invoice_id,
           oj.customer_id,
           oj.old_jewel_code AS reference_no,
           oj.date,
@@ -1115,6 +1118,7 @@ const getCustomerTransactions = async (req, res) => {
         -- 🔧 JEWEL REPAIR
         SELECT
           jr.id,
+          NULL::INTEGER AS online_invoice_id,
           jr.customer_id,
           jr.repair_code AS reference_no,
           jr.date,
@@ -1151,6 +1155,7 @@ const getCustomerTransactions = async (req, res) => {
         -- 🛒 ONLINE ORDERS
         SELECT
           ooi.id,
+          ooi.id AS online_invoice_id,
           ooi.customer_id,
           ooi.invoice_no AS reference_no,
           ooi.invoice_date AS date,
@@ -1221,6 +1226,7 @@ const getCustomerTransactions = async (req, res) => {
     // Final UI Format
    const formatted = data.map((item, index) => ({
       s_no: index + 1,
+      online_invoice_id: item.online_invoice_id,
       date: item.date,
       reference_no: item.reference_no,
 
