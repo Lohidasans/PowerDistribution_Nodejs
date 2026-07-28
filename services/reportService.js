@@ -31,34 +31,17 @@ const getSalesInvoiceReport = async (req, res) => {
     // ONLINE FILTER - Cancelled orders are excluded.
 
     let onlineWhere = `
-            WHERE o.deleted_at IS NULL
-            AND o.order_status <> 3
-            AND EXISTS (
-                SELECT 1
-                FROM order_items oi_check
-                WHERE oi_check.order_id = o.id
-                AND oi_check.deleted_at IS NULL
-                AND oi_check.item_status <> 'Cancelled'
-            )
-        `
+        WHERE ooi.deleted_at IS NULL
+    `
 
     //Online order branch belongs to order_items.
     if (branch_id) {
       offlineWhere += `
                 AND sib.branch_id = :branch_id
             `
-
       onlineWhere += `
-                AND EXISTS (
-                    SELECT 1
-                    FROM order_items oi_branch
-                    WHERE oi_branch.order_id = o.id
-                    AND oi_branch.deleted_at IS NULL
-                    AND oi_branch.item_status <> 'Cancelled'
-                    AND oi_branch.branch_id = :branch_id
-                )
-            `
-
+          AND ooi.branch_id = :branch_id
+      `
       replacements.branch_id = Number(branch_id)
     }
 
@@ -70,7 +53,7 @@ const getSalesInvoiceReport = async (req, res) => {
 
     if (customer_id) {
       offlineWhere += ` AND sib.customer_id = :customer_id `
-      onlineWhere += ` AND o.customer_id = :customer_id `
+      onlineWhere += ` AND ooi.customer_id = :customer_id `
       replacements.customer_id = Number(customer_id)
     }
 
@@ -82,7 +65,7 @@ const getSalesInvoiceReport = async (req, res) => {
 
     onlineWhere += dateFilter(
       { from_date, to_date, date_filter },
-      'o.order_date',
+      'ooi.invoice_date',
       replacements
     )
 
@@ -170,13 +153,13 @@ const getSalesInvoiceReport = async (req, res) => {
 
             online_sales AS (
                 SELECT
-                    o.id,
+                    ooi.id,
                     'ONLINE'::TEXT AS sale_source,
-                    o.order_number AS invoice_no,
-                    o.order_date::DATE AS sale_date,
-                    o.customer_id,
+                    ooi.invoice_no,
+                    ooi.invoice_date::DATE AS sale_date,
+                    ooi.customer_id,
                     NULL::INTEGER AS employee_id,
-                    NULL::INTEGER AS branch_id,
+                    ooi.branch_id,
                     c.customer_name,
                     NULL::TEXT AS employee_name,
                     JSON_AGG(
@@ -198,33 +181,41 @@ const getSalesInvoiceReport = async (req, res) => {
                     /*
                      * Online order model does not have net_total.
                      */
-                    o.subtotal AS net_total,
-                    o.subtotal AS subtotal_amount,
+                    ooi.subtotal AS net_total,
+                    ooi.subtotal AS subtotal_amount,
                     0::NUMERIC AS cgst_amount,
                     0::NUMERIC AS sgst_amount,
-                    o.tax_amount AS igst_amount,
+                    ooi.tax_amount AS igst_amount,
                     NULL::TEXT AS old_jewel_no,
                     0::NUMERIC AS old_jewel_amount,
                     NULL::TEXT AS sales_return_no,
                     0::NUMERIC AS sales_return_amount,
                     NULL::TEXT AS scheme_no,
                     0::NUMERIC AS scheme_amount,
-                    o.discount_amount,
-                    o.total_amount,
+                    ooi.discount_amount,
+                    ooi.total_amount,
                     true AS is_active
-                FROM orders o
-                INNER JOIN order_items oi
-                    ON oi.order_id = o.id
+                FROM online_order_invoices ooi
+
+                INNER JOIN online_order_invoice_items oii
+                    ON oii.online_order_invoice_id = ooi.id
+                    AND oii.deleted_at IS NULL
+
+                LEFT JOIN order_items oi
+                    ON oi.id = oii.order_item_id
                     AND oi.deleted_at IS NULL
-                    AND oi.item_status <> 'Cancelled'
+
                 LEFT JOIN customers c
-                    ON c.id = o.customer_id
+                    ON c.id = ooi.customer_id
+
+                LEFT JOIN branches b
+                    ON b.id = ooi.branch_id
+                    AND b.deleted_at IS NULL
 
                 ${onlineWhere}
-                ${branch_id ? `AND oi.branch_id = :branch_id` : ''}
 
                 GROUP BY
-                    o.id,
+                    ooi.id,
                     c.customer_name
             ),
 
