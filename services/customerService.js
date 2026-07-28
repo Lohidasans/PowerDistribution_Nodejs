@@ -1150,46 +1150,45 @@ const getCustomerTransactions = async (req, res) => {
 
         -- 🛒 ONLINE ORDERS
         SELECT
-            o.id,
-            o.customer_id,
-            o.order_number AS reference_no,
-            o.order_date AS date,
-            o.total_amount,
-            NULL AS amount_due,
+          ooi.id,
+          ooi.customer_id,
+          ooi.invoice_no AS reference_no,
+          ooi.invoice_date AS date,
+          ooi.total_amount,
+          NULL AS amount_due,
 
-            JSON_AGG(
-                JSON_BUILD_OBJECT(
-                    'product_name', oi.product_name,
-                    'quantity', oi.quantity
-                )
-            ) FILTER (WHERE oi.id IS NOT NULL) AS items,
+          JSON_AGG(
+              JSON_BUILD_OBJECT(
+                  'product_name', oii.product_name,
+                  'quantity', oii.quantity
+              )
+          ) FILTER (WHERE oii.id IS NOT NULL) AS items,
 
-            SUM(oi.quantity) AS total_quantity,
+          SUM(oii.quantity) AS total_quantity,
 
-            MAX(oi.branch_id) AS branch_id,
-            MAX(b.branch_name) AS branch_name,
+          ooi.branch_id,
+          MAX(b.branch_name) AS branch_name,
 
-            'Online' AS order_type,
-            'ONLINE_ORDER' AS type,
+          'Online' AS order_type,
+          'ONLINE_ORDER' AS type,
 
-            o.created_at,
-            o.deleted_at
+          ooi.created_at,
+          ooi.deleted_at
 
-        FROM orders o
+      FROM online_order_invoices ooi
 
-        LEFT JOIN order_items oi
-            ON oi.order_id = o.id
-            AND oi.deleted_at IS NULL
+      LEFT JOIN online_order_invoice_items oii
+          ON oii.online_order_invoice_id = ooi.id
+          AND oii.deleted_at IS NULL
 
-        LEFT JOIN branches b
-            ON b.id = oi.branch_id
-            AND b.deleted_at IS NULL
+      LEFT JOIN branches b
+          ON b.id = ooi.branch_id
+          AND b.deleted_at IS NULL
 
-        WHERE
-            o.deleted_at IS NULL
-            AND o.order_status != 3
+      WHERE
+          ooi.deleted_at IS NULL
 
-        GROUP BY o.id
+      GROUP BY ooi.id
 
       ) t
 
