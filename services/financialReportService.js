@@ -1883,6 +1883,10 @@ const getGstr1Portal = async (req, res) => {
           MAX(si.product_name_snapshot) AS description,
           -- Jewellery is reported in grams (UQC = GMS); quantity is total weight.
           SUM(COALESCE(si.gross_weight,0)) AS total_quantity,
+          SUM(CASE WHEN COALESCE(s.net_total, 0) > 0
+                THEN COALESCE(si.amount, 0) / s.net_total * COALESCE(s.total_amount, 0)
+              ELSE 0
+            END) AS total_value,
           SUM(CASE WHEN COALESCE(s.net_total,0) > 0
                 THEN si.amount / s.net_total * COALESCE(s.subtotal_amount,0)
                 ELSE si.amount END) AS taxable_value,
@@ -1911,13 +1915,14 @@ const getGstr1Portal = async (req, res) => {
         const igst = parseFloat(r.integrated_tax_amount || 0);
         const cgst = parseFloat(r.central_tax_amount || 0);
         const sgst = parseFloat(r.state_ut_tax_amount || 0);
+        const totalValue = parseFloat(r.total_value || 0);
         return {
           branch: r.branch || null,
           hsn: r.hsn,
           description: r.description || null,
           uqc: "GMS",
           total_quantity: parseFloat(parseFloat(r.total_quantity || 0).toFixed(3)),
-          total_value: round2(taxable + igst + cgst + sgst),
+          total_value: round2(totalValue),
           rate: round2(r.rate),
           taxable_value: round2(taxable),
           integrated_tax_amount: round2(igst),
