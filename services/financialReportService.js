@@ -382,7 +382,7 @@ const ALL_TXNS_CTE = `
     FROM grns g
     JOIN vendors v ON v.id = g.vendor_id
     JOIN ledger lv ON lv.id = v.ledger_id AND lv.deleted_at IS NULL
-    WHERE g.deleted_at IS NULL
+    WHERE g.deleted_at IS NULL AND g.is_active = true
       AND (:branch_id IS NULL OR g.branch_id = :branch_id)
       AND g.grn_date BETWEEN :from_date AND :to_date
 
@@ -404,7 +404,7 @@ const ALL_TXNS_CTE = `
                  + COALESCE(others_value,0)) AS stone
       FROM "grnItems" WHERE deleted_at IS NULL GROUP BY grn_id
     ) gi ON gi.grn_id = g.id
-    WHERE g.deleted_at IS NULL
+    WHERE g.deleted_at IS NULL AND g.is_active = true
       AND (:branch_id IS NULL OR g.branch_id = :branch_id)
       AND g.grn_date BETWEEN :from_date AND :to_date
 
@@ -423,7 +423,7 @@ const ALL_TXNS_CTE = `
                  + COALESCE(others_value,0)) AS stone
       FROM "grnItems" WHERE deleted_at IS NULL GROUP BY grn_id
     ) gi ON gi.grn_id = g.id
-    WHERE g.deleted_at IS NULL
+    WHERE g.deleted_at IS NULL AND g.is_active = true
       AND (:branch_id IS NULL OR g.branch_id = :branch_id)
       AND g.grn_date BETWEEN :from_date AND :to_date
 
@@ -437,7 +437,7 @@ const ALL_TXNS_CTE = `
         ORDER BY l.id LIMIT 1),
       ROUND(COALESCE(g.subtotal_amount,0) * COALESCE(g.cgst_percent,0) / 100.0, 2), 0
     FROM grns g
-    WHERE g.deleted_at IS NULL
+    WHERE g.deleted_at IS NULL AND g.is_active = true
       AND (:branch_id IS NULL OR g.branch_id = :branch_id)
       AND g.grn_date BETWEEN :from_date AND :to_date
 
@@ -451,7 +451,7 @@ const ALL_TXNS_CTE = `
         ORDER BY l.id LIMIT 1),
       ROUND(COALESCE(g.subtotal_amount,0) * COALESCE(g.sgst_percent,0) / 100.0, 2), 0
     FROM grns g
-    WHERE g.deleted_at IS NULL
+    WHERE g.deleted_at IS NULL AND g.is_active = true
       AND (:branch_id IS NULL OR g.branch_id = :branch_id)
       AND g.grn_date BETWEEN :from_date AND :to_date
 
@@ -469,7 +469,7 @@ const ALL_TXNS_CTE = `
         - ROUND(COALESCE(g.subtotal_amount,0) * COALESCE(g.sgst_percent,0) / 100.0, 2), 0) AS debit,
       0
     FROM grns g
-    WHERE g.deleted_at IS NULL
+    WHERE g.deleted_at IS NULL AND g.is_active = true
       AND (:branch_id IS NULL OR g.branch_id = :branch_id)
       AND g.grn_date BETWEEN :from_date AND :to_date
 
@@ -486,7 +486,7 @@ const ALL_TXNS_CTE = `
         + ROUND(COALESCE(g.subtotal_amount,0) * COALESCE(g.sgst_percent,0) / 100.0, 2)
         - COALESCE(g.total_amount,0), 0) AS credit
     FROM grns g
-    WHERE g.deleted_at IS NULL
+    WHERE g.deleted_at IS NULL AND g.is_active = true
       AND (:branch_id IS NULL OR g.branch_id = :branch_id)
       AND g.grn_date BETWEEN :from_date AND :to_date
 
