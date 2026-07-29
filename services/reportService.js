@@ -185,9 +185,23 @@ const getSalesInvoiceReport = async (req, res) => {
                      */
                     ooi.subtotal AS net_total,
                     ooi.subtotal AS subtotal_amount,
-                    0::NUMERIC AS cgst_amount,
-                    0::NUMERIC AS sgst_amount,
-                    ooi.tax_amount AS igst_amount,
+                    CASE
+                        WHEN LOWER(ship_state.state_name) = 'tamil nadu'
+                        THEN ooi.tax_amount / 2
+                        ELSE 0
+                    END AS cgst_amount,
+
+                    CASE
+                        WHEN LOWER(ship_state.state_name) = 'tamil nadu'
+                        THEN ooi.tax_amount / 2
+                        ELSE 0
+                    END AS sgst_amount,
+
+                    CASE
+                        WHEN LOWER(ship_state.state_name) = 'tamil nadu'
+                        THEN 0
+                        ELSE ooi.tax_amount
+                    END AS igst_amount,
                     NULL::TEXT AS old_jewel_no,
                     0::NUMERIC AS old_jewel_amount,
                     NULL::TEXT AS sales_return_no,
@@ -213,12 +227,23 @@ const getSalesInvoiceReport = async (req, res) => {
                 LEFT JOIN branches b
                     ON b.id = ooi.branch_id
                     AND b.deleted_at IS NULL
+                
+                LEFT JOIN orders o
+                    ON o.id = ooi.order_id
+                    AND o.deleted_at IS NULL
+
+                LEFT JOIN customer_addresses ship
+                    ON ship.id = o.shipping_address_id
+
+                LEFT JOIN states ship_state
+                    ON ship_state.id = ship.state_id
 
                 ${onlineWhere}
 
                 GROUP BY
                     ooi.id,
-                    c.customer_name
+                    c.customer_name,
+                    ship_state.state_name
             ),
 
             combined_sales AS (
