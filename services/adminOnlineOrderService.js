@@ -910,6 +910,13 @@ const getOnlineOrderInvoice = async (req, res) => {
       type: sequelize.QueryTypes.SELECT
     });
 
+
+    const isTamilNadu = invoiceInfo.shipping_state?.trim().toLowerCase() === "tamil nadu";
+
+    const cgst = isTamilNadu ? Number(invoiceInfo.tax_amount) / 2 : 0;
+    const sgst = isTamilNadu ? Number(invoiceInfo.tax_amount) / 2 : 0;
+    const igst = isTamilNadu ? 0 : Number(invoiceInfo.tax_amount);
+
     return commonService.okResponse(res, {
         invoice: {
             id: invoiceInfo.id,
@@ -954,9 +961,9 @@ const getOnlineOrderInvoice = async (req, res) => {
 
         summary: {
             subtotal: invoiceInfo.subtotal,
-            cgst: 0,
-            sgst: 0,
-            igst: invoiceInfo.tax_amount,
+            cgst,
+            sgst,
+            igst,
             tax_amount: invoiceInfo.tax_amount,
             discount_amount: invoiceInfo.discount_amount,
             shipping_charge: invoiceInfo.shipping_charge,
