@@ -620,6 +620,7 @@ const getPurchaseReturnView = async (req, res) => {
           pr.subtotal_amount,
           pr.sgst_percent,
           pr.cgst_percent,
+          pr.igst_percent,
           pr.discount_percent,
           pr.remarks,
           pr.gst_no,
