@@ -1093,15 +1093,8 @@ const getPurchaseReport = async (req, res) => {
           g.sgst_percent,
           g.cgst_percent,
           g.igst_percent,
-          g.discount_percent,
-          -- Inter-state purchase (vendor state <> branch state): GRNs store the
-          -- full tax in sgst_percent (cgst_percent = 0), which must be reported
-          -- as IGST rather than SGST.
-          (ven.state_id IS NOT NULL AND br.state_id IS NOT NULL
-            AND ven.state_id <> br.state_id) AS is_interstate
+          g.discount_percent
         FROM grns g
-        LEFT JOIN vendors ven ON ven.id = g.vendor_id
-        LEFT JOIN branches br ON br.id = g.branch_id
         ${baseWhere}
         ${extraWhere}
       ),
@@ -1130,13 +1123,11 @@ const getPurchaseReport = async (req, res) => {
               'making_charge', gi.making_charge,
               'rate_per_g', gi.rate_per_g,
               'total_amount', gi.total_amount,
-              'sgst', CASE WHEN fg.is_interstate THEN 0
-                ELSE ROUND(gi.total_amount * COALESCE(fg.sgst_percent, 0) / 100, 2) END,
-              'cgst', CASE WHEN fg.is_interstate THEN 0
-                ELSE ROUND(gi.total_amount * COALESCE(fg.cgst_percent, 0) / 100, 2) END,
-              'igst', CASE WHEN fg.is_interstate
-                THEN ROUND(gi.total_amount * COALESCE(fg.igst_percent, 0) / 100, 2)
-                ELSE 0 END
+              -- Each tax comes from its own GRN column: intra-state GRNs carry
+              -- cgst_percent = sgst_percent, inter-state GRNs carry igst_percent.
+              'sgst', ROUND(gi.total_amount * COALESCE(fg.sgst_percent, 0) / 100, 2),
+              'cgst', ROUND(gi.total_amount * COALESCE(fg.cgst_percent, 0) / 100, 2),
+              'igst', ROUND(gi.total_amount * COALESCE(fg.igst_percent, 0) / 100, 2)
             )
           ) AS items
         FROM "grnItems" gi

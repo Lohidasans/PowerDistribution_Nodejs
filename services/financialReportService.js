@@ -367,13 +367,18 @@ const ALL_TXNS_CTE = `
     /* =========================================================
        B) GRN  (purchase)
        Cr: Vendor (Sundry Creditors) = grns.total_amount
-       Dr: Purchase (metal + making) + Stone(+others) + GST Input CGST/SGST + plug
-       total_amount = subtotal + subtotal*cgst_percent/100 + subtotal*sgst_percent/100
+       Dr: Purchase (metal + making) + Stone(+others) + GST Input CGST/SGST/IGST
+           + plug
+       total_amount = subtotal + subtotal*(cgst_percent + sgst_percent
+                      + igst_percent)/100
                       + discount_percent(signed round-off, ADDED)
        subtotal     = SUM(grnItems.total_amount) = SUM(net*rate + stone_wt*stone_rate
                       + making + others_value)
-       GRN has NO igst; inter-state GST is carried in sgst_percent with cgst_percent=0.
-       Plug (B.Dr6) absorbs the signed round-off AND any 4dp->2dp rounding drift so
+       Intra-state GRNs carry cgst_percent = sgst_percent with igst_percent 0/NULL;
+       inter-state GRNs carry igst_percent only. All three legs post unconditionally
+       (COALESCE to 0), so a GRN keyed with an odd mix is still reported at face
+       value rather than silently dropped.
+       Plug (B.Dr7) absorbs the signed round-off AND any 4dp->2dp rounding drift so
        Dr = Cr(total_amount) to the cent for every GRN.
        ========================================================= */
 
@@ -457,16 +462,34 @@ const ALL_TXNS_CTE = `
 
     UNION ALL
 
-    -- B.Dr6a  GRN round-off LOSS (payable rounded UP -> we pay MORE -> worse off)
+    -- B.Dr6  GST Input IGST = subtotal_amount * igst_percent / 100
+    --  Inter-state purchases. Mirrors the Purchase Return IGST reversal (F.3):
+    --  without this leg the ledger only ever received credits and showed an
+    --  abnormal credit balance on a Current Asset.
+    SELECT
+      (SELECT l.id FROM ledger l JOIN ledger_group grp ON grp.id = l.ledger_group_id
+        WHERE l.deleted_at IS NULL AND grp.deleted_at IS NULL
+          AND l.ledger_name = 'GST Input IGST' AND grp.ledger_group_name = 'Current Assets'
+        ORDER BY l.id LIMIT 1),
+      ROUND(COALESCE(g.subtotal_amount,0) * COALESCE(g.igst_percent,0) / 100.0, 2), 0
+    FROM grns g
+    WHERE g.deleted_at IS NULL AND g.is_active = true
+      AND (:branch_id IS NULL OR g.branch_id = :branch_id)
+      AND g.grn_date BETWEEN :from_date AND :to_date
+
+    UNION ALL
+
+    -- B.Dr7a  GRN round-off LOSS (payable rounded UP -> we pay MORE -> worse off)
     --  Booked to Round Off under Indirect EXPENSES.
-    --  plug = total_amount - subtotal - CGST - SGST, when > 0. B.Dr1..2 already sum
-    --  to subtotal, so this is a TRUE round-off (a few paise), not the metal cost.
+    --  plug = total_amount - subtotal - CGST - SGST - IGST, when > 0. B.Dr1..2 already
+    --  sum to subtotal, so this is a TRUE round-off (a few paise), not the metal cost.
     SELECT
       ${ROUNDOFF_EXPENSE},
       GREATEST(
           COALESCE(g.total_amount,0) - COALESCE(g.subtotal_amount, 0)
         - ROUND(COALESCE(g.subtotal_amount,0) * COALESCE(g.cgst_percent,0) / 100.0, 2)
-        - ROUND(COALESCE(g.subtotal_amount,0) * COALESCE(g.sgst_percent,0) / 100.0, 2), 0) AS debit,
+        - ROUND(COALESCE(g.subtotal_amount,0) * COALESCE(g.sgst_percent,0) / 100.0, 2)
+        - ROUND(COALESCE(g.subtotal_amount,0) * COALESCE(g.igst_percent,0) / 100.0, 2), 0) AS debit,
       0
     FROM grns g
     WHERE g.deleted_at IS NULL AND g.is_active = true
@@ -475,7 +498,7 @@ const ALL_TXNS_CTE = `
 
     UNION ALL
 
-    -- B.Dr6b  GRN round-off GAIN (payable rounded DOWN -> we pay LESS -> better off)
+    -- B.Dr7b  GRN round-off GAIN (payable rounded DOWN -> we pay LESS -> better off)
     --  Booked to Round Off under Indirect INCOME (credit) = -(plug), when plug < 0.
     SELECT
       ${ROUNDOFF_INCOME},
@@ -484,6 +507,7 @@ const ALL_TXNS_CTE = `
           COALESCE(g.subtotal_amount, 0)
         + ROUND(COALESCE(g.subtotal_amount,0) * COALESCE(g.cgst_percent,0) / 100.0, 2)
         + ROUND(COALESCE(g.subtotal_amount,0) * COALESCE(g.sgst_percent,0) / 100.0, 2)
+        + ROUND(COALESCE(g.subtotal_amount,0) * COALESCE(g.igst_percent,0) / 100.0, 2)
         - COALESCE(g.total_amount,0), 0) AS credit
     FROM grns g
     WHERE g.deleted_at IS NULL AND g.is_active = true
