@@ -1092,6 +1092,7 @@ const getPurchaseReport = async (req, res) => {
           g.total_amount,
           g.sgst_percent,
           g.cgst_percent,
+          g.igst_percent,
           g.discount_percent,
           -- Inter-state purchase (vendor state <> branch state): GRNs store the
           -- full tax in sgst_percent (cgst_percent = 0), which must be reported
@@ -1134,7 +1135,7 @@ const getPurchaseReport = async (req, res) => {
               'cgst', CASE WHEN fg.is_interstate THEN 0
                 ELSE ROUND(gi.total_amount * COALESCE(fg.cgst_percent, 0) / 100, 2) END,
               'igst', CASE WHEN fg.is_interstate
-                THEN ROUND(gi.total_amount * COALESCE(fg.sgst_percent, 0) / 100, 2)
+                THEN ROUND(gi.total_amount * COALESCE(fg.igst_percent, 0) / 100, 2)
                 ELSE 0 END
             )
           ) AS items

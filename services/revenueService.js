@@ -706,6 +706,7 @@ const getVendorGrnView = async (req, res) => {
                 g.subtotal_amount,
                 g.sgst_percent,
                 g.cgst_percent,
+                g.igst_percent,
                 g.discount_percent,
                 g.remarks,
 
