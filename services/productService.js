@@ -25,22 +25,16 @@ const calculateSellingPriceSync = (
   try {
     let materialRate = Number(materialPrice || 0);
 
-    // "Piece Rate" means rate_per_gram holds the fixed selling price
-    // for one item. Never multiply it by net_weight.
+    // "Piece Rate" products price off the item's own rate_per_gram when it is
+    // higher than the material master rate. Whether that rate is a per-gram
+    // rate or a flat amount is decided by rate_per_gram_type below — not by
+    // product_type — so the calculation must continue through the normal flow
+    // (making charge, wastage, stone, additional details) exactly like
+    // calculateSellingPrice().
     if (product.product_type === "Piece Rate") {
-    const fixedPrice = Number(item.rate_per_gram || 0);
-
-      return {
-        material_rate_per_gram: fixedPrice,
-        material_contribution: fixedPrice,
-        making_charge: 0,
-        wastage: 0,
-        stone_value: Number(item.stone_value || 0),
-        additional_details_value: 0,
-        selling_price: fixedPrice,
-      };
+      const ratePerGram = Number(item.rate_per_gram || 0);
+      materialRate = Math.max(ratePerGram, materialRate);
     }
-
 
     const netWeight = Number(item.net_weight || 0);
 
