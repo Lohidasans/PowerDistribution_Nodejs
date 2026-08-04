@@ -259,6 +259,7 @@ const getSuperAdminDashboard = async (req, res) => {
           AND jr.is_active = true
         WHERE p.deleted_at IS NULL
           AND p.status = 'Completed'
+          AND (sib.id IS NOT NULL OR jr.id IS NOT NULL)
 
         UNION ALL
 
@@ -275,23 +276,17 @@ const getSuperAdminDashboard = async (req, res) => {
         UNION ALL
 
         SELECT
-          c.branch_id,
-          sp.payment_date AS txn_date,
+          sp.branch_id,
+          p.payment_date AS txn_date,
           p.payment_mode::text AS payment_mode,
           p.amount_received AS amount
         FROM customer_scheme_payments sp
-        JOIN customer_enrollments e
-          ON e.id = sp.enrollment_id
-          AND e.deleted_at IS NULL
-        JOIN customers c
-          ON c.id = e.customer_id
-          AND c.deleted_at IS NULL
         JOIN payments p
           ON p.scheme_payment_id = sp.id
           AND p.deleted_at IS NULL
+          AND p.status = 'Completed'
         WHERE sp.deleted_at IS NULL
           AND sp.payment_source = 'INSTALLMENT'
-          AND p.status = 'Completed'
 
         UNION ALL
 
