@@ -260,7 +260,7 @@ const getTopBuyingCategories = async (req, res) => {
       SELECT 
         c.id,
         c.category_name,
-        COUNT(gi.id) as item_count,
+        COALESCE(SUM(gi.quantity), 0) AS item_count,
         COALESCE(SUM(gi.gross_wt_in_g), 0) as total_weight,
         COALESCE(SUM(gi.total_amount), 0) as total_value
       FROM categories c
