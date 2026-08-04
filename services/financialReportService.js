@@ -783,8 +783,7 @@ const ALL_TXNS_CTE = `
     -- F.2  Sales Return (standalone refund) — reverse the sale.
     --  Dr 'Sales Return' (net residual) + Dr Output CGST/SGST/IGST ; Cr customer (total).
     SELECT ${SALES_RETURN_LEDGER},
-      ( COALESCE(r.total_amount,0) - COALESCE(r.cgst_amount,0)
-        - COALESCE(r.sgst_amount,0) - COALESCE(r.igst_amount,0) ), 0 ${SR_STANDALONE}
+      ( COALESCE(r.subtotal_amount, 0) ), 0 ${SR_STANDALONE}
     UNION ALL
     SELECT ${LEAF("Output CGST", "Duties & Taxes")}, COALESCE(r.cgst_amount,0), 0 ${SR_STANDALONE}
     UNION ALL
