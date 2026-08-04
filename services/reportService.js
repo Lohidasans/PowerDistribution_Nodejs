@@ -1804,6 +1804,43 @@ const getLedgerReportByLedgerName = async (req, res) => {
         AND jr.status = 'Completed'
         AND jr.date BETWEEN :from_date AND :to_date
 
+
+    -- ===================== SALES RETURN =====================
+      UNION ALL
+
+      -- Dr: Sales Return ledger
+      SELECT
+        sr.return_date AS date,
+        lsr.id AS ledger_id,
+        lsr.ledger_name,
+        sr.sales_return_no AS reference_no,
+        sr.subtotal_amount AS debit,
+        0 AS credit
+      FROM sales_returns sr
+      JOIN ledger lsr ON lsr.ledger_name = 'Sales Return'
+      WHERE sr.deleted_at IS NULL
+        AND sr.is_active = true
+        AND sr.status = 'Printed'
+        AND sr.return_date BETWEEN :from_date AND :to_date
+
+      UNION ALL
+
+      -- Cr: Customer ledger
+      SELECT
+        sr.return_date AS date,
+        lc.id AS ledger_id,
+        lc.ledger_name,
+        sr.sales_return_no AS reference_no,
+        0 AS debit,
+        sr.subtotal_amount AS credit
+      FROM sales_returns sr
+      JOIN customers c ON c.id = sr.customer_id
+      JOIN ledger lc ON lc.id = c.ledger_id
+      WHERE sr.deleted_at IS NULL
+        AND sr.is_active = true
+        AND sr.status = 'Printed'
+        AND sr.return_date BETWEEN :from_date AND :to_date
+
       -- ===================== PAYMENTS =====================
       UNION ALL
 
