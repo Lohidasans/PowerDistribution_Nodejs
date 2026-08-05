@@ -41,6 +41,7 @@ const createEnrollment = async (req, res) => {
     const payload = {
       enrollment_code: String(req.body.enrollment_code),
       customer_id: req.body.customer_id ?? null,
+      branch_id: req.body.branch_id ?? null,
       mobile_number: String(req.body.mobile_number),
       customer_no: String(req.body.customer_no),
       customer_name: req.body.customer_name,
@@ -834,6 +835,7 @@ const updateEnrollment = async (req, res) => {
     // Prepare payload
     const payload = {
       customer_id: req.body.customer_id ?? null,
+      branch_id: req.body.branch_id ?? null,
       mobile_number: String(req.body.mobile_number),
       customer_no: String(req.body.customer_no),
       customer_name: req.body.customer_name,
