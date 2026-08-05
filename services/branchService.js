@@ -446,10 +446,20 @@ const updateBranch = async (req, res) => {
     }
 
     await t.commit();
+
+    const currentKycDocuments = await models.KycDocument.findAll({
+      where: {
+        entity_type: "branch",
+        entity_id: branch.id,
+        deleted_at: null,
+      },
+      order: [["id", "ASC"]],
+    });
+
     return commonService.okResponse(res, {
       branch,
       bank_account: upsertedBankAccount,
-      kyc_documents: updatedKyc,
+      kyc_documents: currentKycDocuments,
       login: upsertedUser,
     });
   } catch (err) {

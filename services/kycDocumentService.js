@@ -156,11 +156,23 @@ module.exports = {
 
       if (row) {
         await row.update({
-          doc_type: doc.doc_type ?? row.doc_type,
-          doc_number: doc.doc_number ?? row.doc_number,
-          file_url: doc.file_url ?? row.file_url,
-        }, { transaction });
+            doc_type: doc.doc_type ?? row.doc_type,
+            doc_number: doc.doc_number ?? row.doc_number,
+            file_url: doc.file_url ?? row.file_url,
+          },{ transaction });
         updated.push(row);
+      } else if (doc.doc_type) {
+        const created = await models.KycDocument.create(
+          {
+            entity_type,
+            entity_id,
+            doc_type: doc.doc_type,
+            doc_number: doc.doc_number,
+            file_url: doc.file_url,
+          },
+          { transaction }
+        );
+        updated.push(created);
       }
     }
 
