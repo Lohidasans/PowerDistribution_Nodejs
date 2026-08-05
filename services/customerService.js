@@ -356,7 +356,7 @@ const updateCustomer = async (req, res) => {
       gst_no: req.body.gst_no ?? entity.gst_no,
       email_id: req.body.email_id ?? (entity.email_id || null),
       is_online: req.body.is_online !== undefined ? Boolean(req.body.is_online) : entity.is_online,
-      branch_id: req.body.branch_id !== undefined ? (+req.body.branch_id || null) : entity.branch_id,
+      branch_id: req.body.branch_id !== undefined ? (req.body.branch_id === null ? null : Number(req.body.branch_id)) : entity.branch_id,
     };
 
     // The profile update is the point where an online customer finally has a

@@ -16,6 +16,10 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.INTEGER,
         allowNull: true,
       },
+      branch_id: { // pass the enrolled scheme - login - branch_id
+        type: DataTypes.INTEGER,
+        allowNull: true,
+      },
       mobile_number: {
         type: DataTypes.STRING,
         allowNull: false,
