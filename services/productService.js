@@ -20,10 +20,26 @@ const calculateSellingPriceSync = (
   product,
   item,
   additionalDetails = [],
-  materialPrice = 0
+  materialPrice = 0,
+  { usePieceRateShortcut = false } = {}
 ) => {
   try {
     let materialRate = Number(materialPrice || 0);
+
+     // Preserve existing getAllProductDetails behaviour by default.- only for website side list details api
+     if (usePieceRateShortcut && product.product_type === "Piece Rate") 
+      {
+        const fixedPrice = Number(item.rate_per_gram || 0);
+          return {
+            material_rate_per_gram: fixedPrice,
+            material_contribution: fixedPrice,
+            making_charge: 0,
+            wastage: 0,
+            stone_value: Number(item.stone_value || 0),
+            additional_details_value: 0,
+            selling_price: fixedPrice,
+          };
+      }
 
     // "Piece Rate" products price off the item's own rate_per_gram when it is
     // higher than the material master rate. Whether that rate is a per-gram
@@ -1953,7 +1969,8 @@ const getProductsForWebsiteList = async (req, res) => {
         product,
         item,
         addsByItem[row.item_id] || [],
-        materialPrice
+        materialPrice,
+        { usePieceRateShortcut: true }
       );
 
       const sellingPrice = priceResult.selling_price;
