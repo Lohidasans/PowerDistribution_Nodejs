@@ -164,7 +164,7 @@ const listEnrollments = async (req, res) => {
           '-' AS duration,
           0 AS installment_amount,
           CASE WHEN c.is_online = true THEN 'Online' ELSE 'Offline' END AS mode,
-          c.branch_id,
+          e.branch_id,
           b.branch_name,
           '0/0' AS dues,
           NULL AS invoice_no,
@@ -174,7 +174,7 @@ const listEnrollments = async (req, res) => {
         LEFT JOIN customer_enrollments e
           ON e.customer_id = c.id
           AND e.deleted_at IS NULL
-        LEFT JOIN branches b ON b.id = c.branch_id
+        LEFT JOIN branches b ON b.id = e.branch_id
 
         WHERE c.deleted_at IS NULL
         AND e.id IS NULL
@@ -216,7 +216,7 @@ const listEnrollments = async (req, res) => {
 
           CASE WHEN c.is_online = true THEN 'Online' ELSE 'Offline' END AS mode,
 
-          c.branch_id,
+          e.branch_id,
           b.branch_name,
 
           COALESCE(p.paid_count,0) AS paid_installments,
@@ -230,7 +230,7 @@ const listEnrollments = async (req, res) => {
 
         FROM customer_enrollments e
         LEFT JOIN customers c ON c.id = e.customer_id AND c.deleted_at IS NULL
-        LEFT JOIN branches b ON b.id = c.branch_id
+        LEFT JOIN branches b ON b.id = e.branch_id
         LEFT JOIN schemes s ON s.id = e.scheme_plan_id AND s.deleted_at IS NULL
         LEFT JOIN scheme_types st ON st.id = s.scheme_type_id
         LEFT JOIN scheme_durations d ON d.id = s.duration_id
