@@ -2091,18 +2091,30 @@ const getStockAnalytics = async (req, res) => {
 
     // 2. Stock by Category - Bar chart data (weight by category)
     const stockByCategoryQuery = `
-      SELECT 
+      SELECT
         c.category_name,
-        COALESCE(SUM(p.remaining_weight), 0) AS total_weight
+        COALESCE(SUM(p.remaining_weight), 0) AS total_weight,
+        COALESCE(SUM(COALESCE(item_qty.total_quantity, 0)), 0)
+          AS total_quantity
       FROM categories c
-      INNER JOIN products p ON p.category_id = c.id 
+      INNER JOIN products p
+        ON p.category_id = c.id
         AND p.branch_id = :branch_id
         AND p.deleted_at IS NULL
         AND p.status = 'Active'
         ${dateFilter}
+      LEFT JOIN (
+        SELECT
+          product_id,
+          SUM(COALESCE(quantity, 0)) AS total_quantity
+        FROM "productItemDetails"
+        WHERE deleted_at IS NULL
+        GROUP BY product_id
+      ) item_qty
+        ON item_qty.product_id = p.id
       WHERE c.deleted_at IS NULL
         AND c.status = 'Active'
-      GROUP BY c.category_name
+      GROUP BY c.id, c.category_name
       ORDER BY total_weight DESC
     `;
 
@@ -2167,6 +2179,7 @@ const getStockAnalytics = async (req, res) => {
     // Format stock by category for bar chart
     const stockByCategory = stockByCategoryResult.map(item => ({
       category_name: item.category_name,
+      total_quantity: parseInt(item.total_quantity || 0, 10),
       total_weight: parseFloat(item.total_weight || 0).toFixed(2)
     }));
 
