@@ -47,115 +47,115 @@ const REPORT_CONFIG = {
     },
 
     sales_invoice: {
-  table: "sales_invoice_bills",
-  itemTable: "sales_invoice_bill_items",
-  itemFk: "invoice_bill_id",
-  dateColumn: "t.created_at",
-  codeColumn: "invoice_no",
-  weightColumn: "(i.net_weight * (i.quantity - COALESCE(i.returned_quantity, 0)))",
-  quantityExpr: "SUM(i.quantity - COALESCE(i.returned_quantity, 0))",
-  statusCondition: "AND t.status = 'Invoice'",
-  // No is_returned row filter: partial returns mean a line is only PARTLY sold,
-  // so weightColumn/quantityExpr net off returned_quantity instead. A fully
-  // returned line falls out naturally because quantity - returned_quantity = 0.
+        table: "sales_invoice_bills",
+        itemTable: "sales_invoice_bill_items",
+        itemFk: "invoice_bill_id",
+        dateColumn: "t.created_at",
+        codeColumn: "invoice_no",
+        weightColumn: "(i.net_weight * i.quantity)",
+        quantityExpr: "SUM(i.quantity)",
+        statusCondition: "AND t.status = 'Invoice'",
+        // No is_returned row filter: partial returns mean a line is only PARTLY sold,
+        // so weightColumn/quantityExpr net off returned_quantity instead. A fully
+        // returned line falls out naturally because quantity - returned_quantity = 0.
 
-  extraSelectSql: `
-    , COALESCE(adj.sales_return_amount, 0) AS sales_return_amount
-    , COALESCE(adj.old_jewel_amount, 0) AS old_jewel_amount
-    , COALESCE(
-        adj.saving_scheme_collection_amount,
-        0
-      ) AS saving_scheme_collection_amount
+        extraSelectSql: `
+            , COALESCE(adj.sales_return_amount, 0) AS sales_return_amount
+            , COALESCE(adj.old_jewel_amount, 0) AS old_jewel_amount
+            , COALESCE(
+                adj.saving_scheme_collection_amount,
+                0
+            ) AS saving_scheme_collection_amount
 
-    , adj.sales_return_no
-    , adj.old_jewel_code
-    , adj.enrollment_code
-  `,
+            , adj.sales_return_no
+            , adj.old_jewel_code
+            , adj.enrollment_code
+        `,
 
-    extraJoinSql: `
-        LEFT JOIN (
-        SELECT
-            a.sales_invoice_id,
+        extraJoinSql: `
+            LEFT JOIN (
+            SELECT
+                a.sales_invoice_id,
 
-            COALESCE(
-            SUM(
-                CASE
-                WHEN a.adjustment_type_id::integer = 1
-                THEN a.adjustment_amount
-                ELSE 0
-                END
-            ),
-            0
-            ) AS sales_return_amount,
+                COALESCE(
+                SUM(
+                    CASE
+                    WHEN a.adjustment_type_id::integer = 1
+                    THEN a.adjustment_amount
+                    ELSE 0
+                    END
+                ),
+                0
+                ) AS sales_return_amount,
 
-            COALESCE(
-            SUM(
-                CASE
-                WHEN a.adjustment_type_id::integer = 2
-                THEN a.adjustment_amount
-                ELSE 0
-                END
-            ),
-            0
-            ) AS old_jewel_amount,
+                COALESCE(
+                SUM(
+                    CASE
+                    WHEN a.adjustment_type_id::integer = 2
+                    THEN a.adjustment_amount
+                    ELSE 0
+                    END
+                ),
+                0
+                ) AS old_jewel_amount,
 
-            COALESCE(
-            SUM(
-                CASE
-                WHEN a.adjustment_type_id::integer = 3
-                THEN a.adjustment_amount
-                ELSE 0
-                END
-            ),
-            0
-            ) AS saving_scheme_collection_amount,
+                COALESCE(
+                SUM(
+                    CASE
+                    WHEN a.adjustment_type_id::integer = 3
+                    THEN a.adjustment_amount
+                    ELSE 0
+                    END
+                ),
+                0
+                ) AS saving_scheme_collection_amount,
 
-            STRING_AGG(
-            DISTINCT CASE
-                WHEN a.adjustment_type_id::integer = 1
-                THEN sr.sales_return_no
-            END,
-            ', '
-            ) AS sales_return_no,
+                STRING_AGG(
+                DISTINCT CASE
+                    WHEN a.adjustment_type_id::integer = 1
+                    THEN sr.sales_return_no
+                END,
+                ', '
+                ) AS sales_return_no,
 
-            STRING_AGG(
-            DISTINCT CASE
-                WHEN a.adjustment_type_id::integer = 2
-                THEN oj.old_jewel_code
-            END,
-            ', '
-            ) AS old_jewel_code,
+                STRING_AGG(
+                DISTINCT CASE
+                    WHEN a.adjustment_type_id::integer = 2
+                    THEN oj.old_jewel_code
+                END,
+                ', '
+                ) AS old_jewel_code,
 
-            STRING_AGG(
-            DISTINCT CASE
-                WHEN a.adjustment_type_id::integer = 3
-                THEN ce.enrollment_code
-            END,
-            ', '
-            ) AS enrollment_code
+                STRING_AGG(
+                DISTINCT CASE
+                    WHEN a.adjustment_type_id::integer = 3
+                    THEN ce.enrollment_code
+                END,
+                ', '
+                ) AS enrollment_code
 
-        FROM sales_invoice_adjustments a
+            FROM sales_invoice_adjustments a
 
-        LEFT JOIN sales_returns sr
-            ON sr.id = a.reference_id
-            AND sr.deleted_at IS NULL
-            AND a.adjustment_type_id::integer = 1
+            LEFT JOIN sales_returns sr
+                ON sr.id = a.reference_id
+                AND sr.deleted_at IS NULL
+                AND a.adjustment_type_id::integer = 1
 
-        LEFT JOIN old_jewels oj
-            ON oj.id = a.reference_id
-            AND oj.deleted_at IS NULL
-            AND a.adjustment_type_id::integer = 2
+            LEFT JOIN old_jewels oj
+                ON oj.id = a.reference_id
+                AND oj.deleted_at IS NULL
+                AND a.adjustment_type_id::integer = 2
 
-        LEFT JOIN customer_enrollments ce
-            ON ce.id = a.reference_id
-            AND ce.deleted_at IS NULL
-            AND a.adjustment_type_id::integer = 3
+            LEFT JOIN customer_enrollments ce
+                ON ce.id = a.reference_id
+                AND ce.deleted_at IS NULL
+                AND a.adjustment_type_id::integer = 3
 
-        WHERE a.deleted_at IS NULL
-        GROUP BY a.sales_invoice_id
-        ) adj ON adj.sales_invoice_id = t.id
-    `,
-    },
+            WHERE a.deleted_at IS NULL
+            GROUP BY a.sales_invoice_id
+            ) adj ON adj.sales_invoice_id = t.id
+        `,
+        },
 
     sales_return: {
         table: "sales_returns",
