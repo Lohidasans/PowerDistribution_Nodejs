@@ -728,7 +728,7 @@ const ALL_TXNS_CTE = `
       END AS ledger_id,
       COALESCE(r.amount, 0), 0
     FROM voucher_receipts r
-    WHERE r.deleted_at IS NULL
+    WHERE r.deleted_at IS NULL AND r.is_active = true
       AND r.bill_type_id IN (2, 3)
       AND r.payment_mode_id IN (1,2,3,4,5)
       AND (:branch_id IS NULL OR r.branch_id = :branch_id)
@@ -741,7 +741,7 @@ const ALL_TXNS_CTE = `
     SELECT lc.id, 0, COALESCE(r.amount, 0)
     FROM voucher_receipts r
     JOIN ledger lc ON lc.id = r.account_id AND lc.deleted_at IS NULL
-    WHERE r.deleted_at IS NULL
+    WHERE r.deleted_at IS NULL AND r.is_active = true
       AND r.bill_type_id IN (2, 3)
       AND r.payment_mode_id IN (1,2,3,4,5)
       AND (:branch_id IS NULL OR r.branch_id = :branch_id)
