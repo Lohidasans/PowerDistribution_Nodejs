@@ -132,9 +132,9 @@ const getSuperAdminDashboard = async (req, res) => {
         items AS (
           SELECT
             i.invoice_bill_id,
-            COALESCE(SUM(i.quantity - COALESCE(i.returned_quantity, 0)), 0)                        AS total_quantity,
-            COALESCE(SUM(i.gross_weight * (i.quantity - COALESCE(i.returned_quantity, 0))), 0)      AS total_gross_weight,
-            COALESCE(SUM(i.net_weight   * (i.quantity - COALESCE(i.returned_quantity, 0))), 0)      AS total_net_weight
+            COALESCE(SUM(i.quantity), 0) AS total_quantity,
+            COALESCE(SUM(i.gross_weight * i.quantity), 0) AS total_gross_weight,
+            COALESCE(SUM(i.net_weight * i.quantity), 0) AS total_net_weight
           FROM sales_invoice_bill_items i
           WHERE i.deleted_at IS NULL
           GROUP BY i.invoice_bill_id
