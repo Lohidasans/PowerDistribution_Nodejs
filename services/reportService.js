@@ -1979,7 +1979,7 @@ const getLedgerReportByLedgerName = async (req, res) => {
     `
 
     // ✅ FINAL QUERY
-    let finalQuery = `${baseQuery} ORDER BY date ASC`
+    let finalQuery = `${baseQuery} ORDER BY t.date::date ASC, t.reference_no ASC`
 
     if (hasPagination) {
       finalQuery += ` LIMIT :limit OFFSET :offset`
