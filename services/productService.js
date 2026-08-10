@@ -27,7 +27,7 @@ const calculateSellingPriceSync = (
     let materialRate = Number(materialPrice || 0);
 
      // Preserve existing getAllProductDetails behaviour by default.- only for website side list details api
-     if (usePieceRateShortcut && product.product_type === "Piece Rate") 
+     if (usePieceRateShortcut && item.rate_per_gram_type === "Fixed Price" && product.product_type === "Piece Rate") 
       {
         const fixedPrice = Number(item.rate_per_gram || 0);
           return {
@@ -1810,6 +1810,7 @@ const getProductsForWebsiteList = async (req, res) => {
 
         pi.id AS item_id,
         pi.rate_per_gram,
+        pi.rate_per_gram_type,
         pi.net_weight,
         pi.making_charge,
         pi.making_charge_type,
@@ -1955,6 +1956,7 @@ const getProductsForWebsiteList = async (req, res) => {
       const item = {
         id: row.item_id,
         rate_per_gram: row.rate_per_gram,
+        rate_per_gram_type: row.rate_per_gram_type,
         net_weight: row.net_weight,
         making_charge: row.making_charge,
         making_charge_type: row.making_charge_type,
