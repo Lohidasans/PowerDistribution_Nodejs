@@ -3,11 +3,82 @@ const commonService = require("./commonService");
 
 // Resolve a chart leaf id by (ledger_name, ledger_group_name) — the by-NAME
 // convention used throughout this report.
+// PERF: this used to expand to its own inline
+//   (SELECT l.id FROM ledger l JOIN ledger_group grp … ORDER BY l.id LIMIT 1)
+// pasted into every branch — 79 such subqueries resolving only 28 distinct
+// lookups, on every report call. All 28 are now resolved by ONE pass over the
+// chart in the `led` CTE below and read back as a column. MIN(l.id) IS exactly
+// `ORDER BY l.id LIMIT 1`, and both stay NULL when the leaf is not seeded, so
+// every fallback/COALESCE semantic documented below is unchanged.
 const LEAF = (name, group) =>
-  `(SELECT l.id FROM ledger l JOIN ledger_group grp ON grp.id = l.ledger_group_id
-      WHERE l.deleted_at IS NULL AND grp.deleted_at IS NULL
-        AND l.ledger_name = '${name}' AND grp.ledger_group_name = '${group}'
-      ORDER BY l.id LIMIT 1)`;
+  `MIN(l.id) FILTER (WHERE l.ledger_name = '${name}' AND grp.ledger_group_name = '${group}')`;
+
+// Leaf matched on ledger_name ALONE (no group predicate). The three collection
+// leaves have always been resolved this way — kept as-is on purpose: adding the
+// group predicate could change which ledger they resolve to on a live chart.
+const NAMED_LEAF = (name) => `MIN(l.id) FILTER (WHERE l.ledger_name = '${name}')`;
+
+// ANY active leaf in a group (lowest id) — the guaranteed-resolvable fallback.
+const ANY_LEAF = (group) =>
+  `MIN(l.id) FILTER (WHERE grp.ledger_group_name = '${group}')`;
+
+// Every posting target the report can use, resolved in a single scan of the
+// chart. It aggregates with NO GROUP BY, so it always yields exactly one row
+// (all-NULL on an empty chart) and can never add or drop rows anywhere.
+const LEDGER_LOOKUP_CTE = `
+  led AS (
+    SELECT
+      ${NAMED_LEAF("Cash in Hand")}                            AS cash_id,
+      ${NAMED_LEAF("UPI Collections")}                         AS upi_id,
+      ${NAMED_LEAF("Card Collections")}                        AS card_id,
+      ${LEAF("Bank Accounts", "Current Assets")}               AS bank_leaf_id,
+      ${ANY_LEAF("Bank Accounts")}                             AS bank_group_id,
+      ${LEAF("Output CGST", "Duties & Taxes")}                 AS out_cgst_id,
+      ${LEAF("Output SGST", "Duties & Taxes")}                 AS out_sgst_id,
+      ${LEAF("Output IGST", "Duties & Taxes")}                 AS out_igst_id,
+      ${LEAF("GST Input CGST", "Current Assets")}              AS in_cgst_id,
+      ${LEAF("GST Input SGST", "Current Assets")}              AS in_sgst_id,
+      ${LEAF("GST Input IGST", "Current Assets")}              AS in_igst_id,
+      ${LEAF("Sales", "Sales Accounts")}                       AS sales_id,
+      ${LEAF("Silver Sales", "Sales Accounts")}                AS silver_sales_id,
+      ${ANY_LEAF("Sales Accounts")}                            AS any_sales_id,
+      ${LEAF("Sales Return", "Sales Accounts")}                AS sales_return_id,
+      ${LEAF("Old Gold Sales", "Sales Accounts")}              AS old_gold_sales_id,
+      ${LEAF("Purchase", "Purchase Accounts")}                 AS purchase_id,
+      ${LEAF("Silver Purchase", "Purchase Accounts")}          AS silver_purchase_id,
+      ${ANY_LEAF("Purchase Accounts")}                         AS any_purchase_id,
+      ${LEAF("Purchase Return", "Purchase Accounts")}          AS purchase_return_id,
+      ${LEAF("Old Gold Purchase", "Purchase Accounts")}        AS old_gold_pur_id,
+      ${LEAF("Stone Purchase Cost", "Direct Expenses")}        AS stone_id,
+      ${LEAF("Repair Charges Income", "Direct Income")}        AS repair_income_id,
+      ${ANY_LEAF("Direct Income")}                             AS any_direct_income_id,
+      ${LEAF("Scheme Collection Liability", "Current Liabilities")} AS scheme_liab_id,
+      ${LEAF("Round Off", "Indirect Income")}                  AS roundoff_income_id,
+      ${LEAF("Round Off", "Indirect Expenses")}                AS roundoff_expense_id,
+      ${LEAF("Discount Received", "Indirect Income")}          AS discount_received_id
+    FROM ledger l
+    JOIN ledger_group grp ON grp.id = l.ledger_group_id
+    WHERE l.deleted_at IS NULL AND grp.deleted_at IS NULL
+  )`;
+
+// Read a resolved id back out of the single-row `led` CTE. Uncorrelated, so
+// Postgres evaluates it once per statement as an InitPlan — the same treatment
+// the old inline lookups got, minus 51 redundant index scans.
+const LED = (expr) => `(SELECT ${expr} FROM led)`;
+
+// The three payment-collection leaves + the bank leaf.
+const CASH_LEDGER = LED(`led.cash_id`);
+const UPI_LEDGER = LED(`led.upi_id`);
+const CARD_LEDGER = LED(`led.card_id`);
+
+// Output/Input GST leaves.
+const OUT_CGST_LEDGER = LED(`led.out_cgst_id`);
+const OUT_SGST_LEDGER = LED(`led.out_sgst_id`);
+const OUT_IGST_LEDGER = LED(`led.out_igst_id`);
+const IN_CGST_LEDGER = LED(`led.in_cgst_id`);
+const IN_SGST_LEDGER = LED(`led.in_sgst_id`);
+const IN_IGST_LEDGER = LED(`led.in_igst_id`);
+const SCHEME_LIABILITY_LEDGER = LED(`led.scheme_liab_id`);
 
 // Round-off targets. A rounding that leaves us WORSE off (sales collect less /
 // purchase pay more) is an Indirect EXPENSE; BETTER off (collect more / pay
@@ -15,15 +86,8 @@ const LEAF = (name, group) =>
 // Received' income leaf when the dedicated 'Round Off' ledgers are not seeded
 // yet, so the report ALWAYS balances regardless of deploy order — run the
 // add-round-off-ledgers seeder to move them onto the proper 'Round Off' leaves.
-const ROUNDOFF_INCOME = `COALESCE(${LEAF("Round Off", "Indirect Income")}, ${LEAF("Discount Received", "Indirect Income")})`;
-const ROUNDOFF_EXPENSE = `COALESCE(${LEAF("Round Off", "Indirect Expenses")}, ${LEAF("Round Off", "Indirect Income")}, ${LEAF("Discount Received", "Indirect Income")})`;
-
-// ANY active leaf in a group (lowest id) — the guaranteed-resolvable fallback.
-const ANY_LEAF = (group) => `
-  (SELECT l.id FROM ledger l JOIN ledger_group grp ON grp.id = l.ledger_group_id
-     WHERE l.deleted_at IS NULL AND grp.deleted_at IS NULL
-       AND grp.ledger_group_name = '${group}'
-     ORDER BY l.id LIMIT 1)`;
+const ROUNDOFF_INCOME = LED(`COALESCE(led.roundoff_income_id, led.discount_received_id)`);
+const ROUNDOFF_EXPENSE = LED(`COALESCE(led.roundoff_expense_id, led.roundoff_income_id, led.discount_received_id)`);
 
 // Resilient posting ledgers for the single-purpose Sales/Purchase groups. The
 // report USED to hard-code specific leaf names ('Silver Sales', 'Silver
@@ -34,14 +98,15 @@ const ANY_LEAF = (group) => `
 // never vanish. (Safe here only because Sales/Purchase Accounts are
 // single-purpose groups; do NOT group-fallback a mixed group like Current
 // Assets, where a stray posting could land on the wrong leaf.)
-const SALES_LEDGER = `COALESCE(${LEAF("Sales", "Sales Accounts")}, ${LEAF("Silver Sales", "Sales Accounts")}, ${ANY_LEAF("Sales Accounts")})`;
-const PURCHASE_LEDGER = `COALESCE(${LEAF("Purchase", "Purchase Accounts")}, ${LEAF("Silver Purchase", "Purchase Accounts")}, ${ANY_LEAF("Purchase Accounts")})`;
-const SALES_RETURN_LEDGER = `COALESCE(${LEAF("Sales Return", "Sales Accounts")}, ${ANY_LEAF("Sales Accounts")})`;
-const OLD_GOLD_LEDGER = `COALESCE(${LEAF("Old Gold Purchase", "Purchase Accounts")}, ${ANY_LEAF("Purchase Accounts")})`;
+const SALES_LEDGER = LED(`COALESCE(led.sales_id, led.silver_sales_id, led.any_sales_id)`);
+const PURCHASE_LEDGER = LED(`COALESCE(led.purchase_id, led.silver_purchase_id, led.any_purchase_id)`);
+const SALES_RETURN_LEDGER = LED(`COALESCE(led.sales_return_id, led.any_sales_id)`);
+const OLD_GOLD_LEDGER = LED(`COALESCE(led.old_gold_pur_id, led.any_purchase_id)`);
 // GRN stone cost: its own Direct-Expenses leaf, else fold into Purchase so it is
 // never dropped. (Making/Karigar charges are folded into PURCHASE_LEDGER because
 // the owner deleted the 'Karigar Charges' ledger — see B.Dr1.)
-const STONE_LEDGER = `COALESCE(${LEAF("Stone Purchase Cost", "Direct Expenses")}, ${PURCHASE_LEDGER})`;
+// The flattened COALESCE below is the old COALESCE(stone, PURCHASE_LEDGER).
+const STONE_LEDGER = LED(`COALESCE(led.stone_id, led.purchase_id, led.silver_purchase_id, led.any_purchase_id)`);
 
 // 'Bank Accounts' may be a single ledger under Current Assets OR — once the owner
 // nests banks — a GROUP holding HDFC/IOB leaves. Resolve the ledger, else the
@@ -49,22 +114,45 @@ const STONE_LEDGER = `COALESCE(${LEAF("Stone Purchase Cost", "Direct Expenses")}
 // (e.g. a sales invoice paid by Bank Transfer) never drop when the chart is
 // restructured. Manual receipts/vendor payments already post to the exact bank
 // ledger the user picks, so they are unaffected.
-const BANK_LEDGER = `COALESCE(
-        ${LEAF("Bank Accounts", "Current Assets")},
-        (SELECT l.id FROM ledger l JOIN ledger_group grp ON grp.id = l.ledger_group_id
-           WHERE l.deleted_at IS NULL AND grp.deleted_at IS NULL
-             AND grp.ledger_group_name = 'Bank Accounts'
-           ORDER BY l.id LIMIT 1))`;
+const BANK_LEDGER = LED(`COALESCE(led.bank_leaf_id, led.bank_group_id)`);
 
 // Resilient posting ledgers for the standalone old-gold / return flows (flow F).
-const OLD_GOLD_SALES_LEDGER = `COALESCE(${LEAF("Old Gold Sales", "Sales Accounts")}, ${ANY_LEAF("Sales Accounts")})`;
-const PURCHASE_RETURN_LEDGER = `COALESCE(${LEAF("Purchase Return", "Purchase Accounts")}, ${ANY_LEAF("Purchase Accounts")})`;
+const OLD_GOLD_SALES_LEDGER = LED(`COALESCE(led.old_gold_sales_id, led.any_sales_id)`);
+const PURCHASE_RETURN_LEDGER = LED(`COALESCE(led.purchase_return_id, led.any_purchase_id)`);
 
 // Jewel-repair income (flow G) -> 'Repair Charges Income' under Direct Income.
 // If the Direct Income leaves are not seeded yet, fall back to any Direct Income
 // leaf, then to the Sales ledger, so the leg never drops (run the
 // add-direct-income-ledgers seeder to land it on the proper leaf).
-const REPAIR_INCOME_LEDGER = `COALESCE(${LEAF("Repair Charges Income", "Direct Income")}, ${ANY_LEAF("Direct Income")}, ${SALES_LEDGER})`;
+// (The tail of the chain is SALES_LEDGER, flattened.)
+const REPAIR_INCOME_LEDGER = LED(
+  `COALESCE(led.repair_income_id, led.any_direct_income_id,
+            led.sales_id, led.silver_sales_id, led.any_sales_id)`
+);
+
+// Payment mode -> collection ledger. Each flow normalises its own mode column to
+// a MODE KEY in its scope CTE ('Bank Transfer' and 'Cheque' both mean the bank
+// leaf, exactly as the old per-branch CASE did), so the posting target is
+// resolved once per KEY instead of once per payment row.
+const MODE_LEDGER = (col) => `
+      CASE ${col}
+        WHEN 'Cash' THEN ${CASH_LEDGER}
+        WHEN 'UPI'  THEN ${UPI_LEDGER}
+        WHEN 'Card' THEN ${CARD_LEDGER}
+        WHEN 'Bank' THEN ${BANK_LEDGER}
+      END`;
+
+// Mode key for the tables that store the mode NAME (payments.payment_mode,
+// payment_modes.payment_mode). Every THEN is an untyped literal so the result is
+// text even when the source column is an ENUM. No ELSE — same as the old CASEs,
+// and every call site restricts the column to exactly these five values.
+const MODE_KEY = (col) => `
+      CASE
+        WHEN ${col} = 'Cash' THEN 'Cash'
+        WHEN ${col} = 'UPI'  THEN 'UPI'
+        WHEN ${col} = 'Card' THEN 'Card'
+        WHEN ${col} IN ('Bank Transfer','Cheque') THEN 'Bank'
+      END`;
 
 // SOFT-DELETED PARTIES ARE DELIBERATELY INCLUDED.
 // None of the customer/vendor joins below filter on the party's deleted_at.
@@ -108,9 +196,17 @@ const PR_BASE = `
     AND (:branch_id IS NULL OR pr.branch_id = :branch_id)
     AND pr.pr_date BETWEEN :from_date AND :to_date`;
 
-// Shared CTE: aggregates all transaction sources by ledger_id for a date range
+// Shared CTE: aggregates all transaction sources by ledger_id for a date range.
+// `led` MUST come first in the WITH list — every ${..._LEDGER} below expands to
+// `(SELECT … FROM led)`, and a WITH item is only visible to items after it.
 const ALL_TXNS_CTE = `
-  WITH all_txns AS (
+  WITH ${LEDGER_LOOKUP_CTE},
+  -- MATERIALIZED IS LOAD-BEARING, DO NOT REMOVE.
+  -- all_txns is referenced exactly once (the LEFT JOIN in LEDGER_AGG_SELECT), so
+  -- PG12+ would auto-INLINE it and is then free to put this 45-branch UNION on
+  -- the inner side of a nested loop over ledger l -- re-running the whole union
+  -- once per ledger row (~1.4k rows). Measured: >120 s inlined vs 2.6 s here.
+  all_txns AS MATERIALIZED (
 
     /* =========================================================
        A) SALES INVOICE  (status = 'Invoice')
@@ -785,11 +881,11 @@ const ALL_TXNS_CTE = `
     SELECT ${SALES_RETURN_LEDGER},
       ( COALESCE(r.subtotal_amount, 0) ), 0 ${SR_STANDALONE}
     UNION ALL
-    SELECT ${LEAF("Output CGST", "Duties & Taxes")}, COALESCE(r.cgst_amount,0), 0 ${SR_STANDALONE}
+    SELECT ${OUT_CGST_LEDGER}, COALESCE(r.cgst_amount,0), 0 ${SR_STANDALONE}
     UNION ALL
-    SELECT ${LEAF("Output SGST", "Duties & Taxes")}, COALESCE(r.sgst_amount,0), 0 ${SR_STANDALONE}
+    SELECT ${OUT_SGST_LEDGER}, COALESCE(r.sgst_amount,0), 0 ${SR_STANDALONE}
     UNION ALL
-    SELECT ${LEAF("Output IGST", "Duties & Taxes")}, COALESCE(r.igst_amount,0), 0 ${SR_STANDALONE}
+    SELECT ${OUT_IGST_LEDGER}, COALESCE(r.igst_amount,0), 0 ${SR_STANDALONE}
     UNION ALL
     SELECT lc.id, 0, COALESCE(r.total_amount,0) ${SR_STANDALONE}
 
@@ -801,13 +897,13 @@ const ALL_TXNS_CTE = `
     --  reversed value so the leg self-balances (discount_percent not applied).
     SELECT ${PURCHASE_RETURN_LEDGER}, 0, COALESCE(pr.subtotal_amount,0) ${PR_BASE}
     UNION ALL
-    SELECT ${LEAF("GST Input CGST", "Current Assets")}, 0,
+    SELECT ${IN_CGST_LEDGER}, 0,
       ROUND(COALESCE(pr.subtotal_amount,0) * COALESCE(pr.cgst_percent,0) / 100.0, 2) ${PR_BASE}
     UNION ALL
-    SELECT ${LEAF("GST Input SGST", "Current Assets")}, 0,
+    SELECT ${IN_SGST_LEDGER}, 0,
       ROUND(COALESCE(pr.subtotal_amount,0) * COALESCE(pr.sgst_percent,0) / 100.0, 2) ${PR_BASE}
     UNION ALL
-    SELECT ${LEAF("GST Input IGST", "Current Assets")}, 0,
+    SELECT ${IN_IGST_LEDGER}, 0,
       ROUND(COALESCE(pr.subtotal_amount,0) * COALESCE(pr.igst_percent,0) / 100.0, 2) ${PR_BASE}
     UNION ALL
     SELECT lv.id,
