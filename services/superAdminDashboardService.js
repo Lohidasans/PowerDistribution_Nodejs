@@ -1556,18 +1556,28 @@ const getProfitSection = async (req, res) => {
     const capitalStockWeight = Number(capital.total_weight_in_grams || 0);
     const capitalStockValue = Number(capital.total_value || 0);
 
-    // Total stock = Purchase
-    const totalStockWeight = Number(purchase.total_weight_in_grams || 0);
-    const totalStockValue = Number(purchase.total_value || 0);
+    // Total stock = Capital + Purchase - Sales
+    const purchaseStockWeight = Number(purchase.total_weight_in_grams || 0);
+    const purchaseStockValue = Number(purchase.total_value || 0);
 
-    // Increase in stock = Total stock(Purchase) - Capital stock
+    const salesStockWeight = Number(sales.total_weight_in_grams || 0);
+
+    const totalStockWeight = capitalStockWeight + purchaseStockWeight - salesStockWeight;
+
+    // Total stock value
+    const salesStockValue = Number(sales.total_value || 0);
+
+    const totalStockValue = capitalStockValue + purchaseStockValue - salesStockValue;
+
+    // Increase in stock = Total stock - Capital stock
     const increaseInStockWeight = totalStockWeight - capitalStockWeight;
-    const increaseInStockValue =  totalStockValue - capitalStockValue;
+
+    const increaseInStockValue = totalStockValue - capitalStockValue;
 
     // Average value per gram
-    const totalWeightForAverage = capitalStockWeight + totalStockWeight;
+    const totalWeightForAverage = capitalStockWeight + purchaseStockWeight;
 
-    const averageValuePerGram = totalWeightForAverage > 0 ? (capitalStockValue + totalStockValue) / totalWeightForAverage : 0;
+    const averageValuePerGram = totalWeightForAverage > 0 ? (capitalStockValue + purchaseStockValue) / totalWeightForAverage : 0;
 
     // Old silver / old jewel weight
     const oldSilverWeight = Number(oldJewel.total_weight_in_grams || 0);
@@ -1607,15 +1617,15 @@ const getProfitSection = async (req, res) => {
       },
 
       purchase: {
-        total_weight_in_grams: totalStockWeight,
-        total_value: totalStockValue,
+        total_weight_in_grams: purchaseStockWeight,
+        total_value: purchaseStockValue,
       },
 
       average_labour_cost_per_gram: AVERAGE_LABOUR_COST,
 
-      increase_in_stock: {
-        purchase_stock_in_grams: totalStockWeight,
-        purchase_stock_in_value: totalStockValue,
+      increase_in_stock: { // total - capital = increase_in_stock
+        total_stock_in_grams: totalStockWeight,
+        total_stock_in_value: totalStockValue,
         capital_stock_in_grams: capitalStockWeight,
         capital_stock_in_value: capitalStockValue,
         total_weight_in_grams: increaseInStockWeight, 
