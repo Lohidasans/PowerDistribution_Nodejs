@@ -2060,6 +2060,62 @@ const getLedgerReportByLedgerName = async (req, res) => {
   }
 }
 
+
+const getLedgerAccountsDropdown = async (req, res) => {
+  try {
+    const { search = "" } = req.query;
+
+    const replacements = {
+      search: `%${search.trim()}%`,
+    };
+
+    const rows = await sequelize.query(
+      `
+      SELECT
+        lg.id,
+        lg.ledger_group_name AS name,
+        'ledger_group' AS type,
+        CONCAT('ledger_group_', lg.id) AS value,
+        lg.id AS ledger_group_id
+
+      FROM ledger_group lg
+
+      WHERE lg.deleted_at IS NULL
+        AND lg.status_id = 1
+        AND lg.ledger_group_name ILIKE :search
+
+      UNION ALL
+
+      SELECT
+        l.id,
+        l.ledger_name AS name,
+        'ledger' AS type,
+        CONCAT('ledger_', l.id) AS value,
+        l.ledger_group_id AS ledger_group_id
+
+      FROM ledger l
+
+      WHERE l.deleted_at IS NULL
+        AND l.ledger_name ILIKE :search
+
+      ORDER BY name ASC
+
+      LIMIT 50
+      `,
+      {
+        replacements,
+        type: sequelize.QueryTypes.SELECT,
+      }
+    );
+
+    return commonService.okResponse(res, rows);
+  } catch (error) {
+    console.error("Get Ledger Accounts Dropdown Error:", error);
+    return commonService.handleError(res, error);
+  }
+};
+
+
 module.exports = {
   getSalesInvoiceReport,
   getSalesReturnReport,
@@ -2068,5 +2124,6 @@ module.exports = {
   getPurchaseReport,
   getProductWiseReport,
   getVendorLedgerReport,
-  getLedgerReportByLedgerName
+  getLedgerReportByLedgerName,
+  getLedgerAccountsDropdown
 }

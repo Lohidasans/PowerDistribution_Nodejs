@@ -10,5 +10,6 @@ router.get("/report/purchase", svc.getPurchaseReport);
 router.get("/report/product-wise", svc.getProductWiseReport);
 router.get("/report/ledger", svc.getVendorLedgerReport);
 router.get("/report/ledger-account", svc.getLedgerReportByLedgerName);
+router.get("/report/ledger-accounts-dropdown", svc.getLedgerAccountsDropdown);
 
 module.exports = router;
