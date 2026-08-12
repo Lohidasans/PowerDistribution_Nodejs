@@ -361,14 +361,31 @@ const getSuperAdminDashboard = async (req, res) => {
 
     const oldJewelQuery = `
       SELECT
-        COUNT(DISTINCT oj.id)::int        AS bill_count,
-        COUNT(oji.id)::int                AS total_quantity,
-        COALESCE(SUM(oji.net_weight), 0)  AS total_weight,
-        COALESCE(SUM(oj.total_amount), 0) AS total_amount
+        COUNT(DISTINCT oj.id)::int AS bill_count,
+        COUNT(oji.id)::int AS total_quantity,
+        COALESCE(SUM(oji.net_weight), 0) AS total_weight,
+
+        COALESCE(
+          (
+            SELECT SUM(oj2.total_amount)
+            FROM old_jewels oj2
+            WHERE oj2.deleted_at IS NULL
+              AND oj2.is_active = true
+              AND oj2.status = 'Printed'
+              ${ojDateCond.replace(/oj\./g, "oj2.")}
+              ${ojBranch.replace(/oj\./g, "oj2.")}
+          ),
+          0
+        ) AS total_amount
+
       FROM old_jewels oj
+
       LEFT JOIN old_jewel_items oji
-        ON oji.old_jewel_id = oj.id AND oji.deleted_at IS NULL
-      WHERE oj.deleted_at IS NULL AND oj.is_active = true
+        ON oji.old_jewel_id = oj.id
+        AND oji.deleted_at IS NULL
+
+      WHERE oj.deleted_at IS NULL
+        AND oj.is_active = true
         AND oj.status = 'Printed'
         ${ojDateCond}
         ${ojBranch}
