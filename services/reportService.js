@@ -1650,6 +1650,89 @@ const getVendorLedgerReport = async (req, res) => {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// LEDGER REPORT — chart-of-accounts resolution
+//
+// 'Sales Accounts', 'Purchase Accounts' and 'Bank Accounts' are ledger GROUP
+// names — there is NO `ledger` row called any of them. The legs below used to
+// join on `ledger_name = 'Sales Accounts'` / 'Purchase Accounts' / 'Bank
+// Accounts', which matched nothing, so sales revenue, GRN purchases and every
+// Bank-Transfer/Cheque payment silently produced ZERO rows and those accounts
+// looked empty in the report.
+//
+// Targets are resolved through the ledger -> ledger_group relationship instead,
+// using the SAME COALESCE chains as the trial balance
+// (services/financialReportService.js), so a figure shown there can be traced
+// back to its documents here. Verified against the live chart: Sales -> 'Silver
+// Sales', Purchase -> 'Purchase', Bank -> 'HDFC Bank'.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Leaf resolved by (ledger_name, ledger_group_name). MIN(id) is the same
+// deterministic "lowest id wins" tie-break the trial balance uses, and stays
+// NULL when the leaf is not seeded.
+const LEAF = (name, group) =>
+  `MIN(l.id) FILTER (WHERE l.ledger_name = '${name}' AND grp.ledger_group_name = '${group}')`
+
+// Leaf matched on ledger_name ALONE. The three collection leaves are resolved
+// this way on purpose — adding a group predicate could change which ledger they
+// land on, and the trial balance resolves them the same way.
+const NAMED_LEAF = (name) => `MIN(l.id) FILTER (WHERE l.ledger_name = '${name}')`
+
+// ANY active leaf in a group (lowest id) — the guaranteed-resolvable fallback,
+// safe here because Sales/Purchase/Bank Accounts are single-purpose groups.
+const ANY_LEAF = (group) =>
+  `MIN(l.id) FILTER (WHERE grp.ledger_group_name = '${group}')`
+
+// Every posting target the ledger report needs, resolved in ONE scan of the
+// chart. Aggregates with no GROUP BY, so it always yields exactly one row
+// (all-NULL on an empty chart) and can never add or drop rows.
+const LEDGER_LOOKUP_CTE = `
+  led AS (
+    SELECT
+      ${NAMED_LEAF('Cash in Hand')}                                 AS cash_id,
+      ${NAMED_LEAF('UPI Collections')}                              AS upi_id,
+      ${NAMED_LEAF('Card Collections')}                             AS card_id,
+      ${LEAF('Bank Accounts', 'Current Assets')}                    AS bank_leaf_id,
+      ${ANY_LEAF('Bank Accounts')}                                  AS bank_group_id,
+      ${LEAF('Sales', 'Sales Accounts')}                            AS sales_id,
+      ${LEAF('Silver Sales', 'Sales Accounts')}                     AS silver_sales_id,
+      ${ANY_LEAF('Sales Accounts')}                                 AS any_sales_id,
+      ${LEAF('Sales Return', 'Sales Accounts')}                     AS sales_return_id,
+      ${LEAF('Old Gold Sales', 'Sales Accounts')}                   AS old_gold_sales_id,
+      ${LEAF('Purchase', 'Purchase Accounts')}                      AS purchase_id,
+      ${LEAF('Silver Purchase', 'Purchase Accounts')}               AS silver_purchase_id,
+      ${ANY_LEAF('Purchase Accounts')}                              AS any_purchase_id,
+      ${LEAF('Repair Charges Income', 'Direct Income')}             AS repair_income_id,
+      ${ANY_LEAF('Direct Income')}                                  AS any_direct_income_id,
+      ${LEAF('Scheme Collection Liability', 'Current Liabilities')} AS scheme_liab_id
+    FROM ledger l
+    JOIN ledger_group grp ON grp.id = l.ledger_group_id
+    WHERE l.deleted_at IS NULL AND grp.deleted_at IS NULL
+  )`
+
+// Read a resolved id out of the single-row `led` CTE. Uncorrelated, so Postgres
+// evaluates it once per statement as an InitPlan.
+const LED = (expr) => `(SELECT ${expr} FROM led)`
+
+const CASH_LEDGER = LED('led.cash_id')
+const UPI_LEDGER = LED('led.upi_id')
+const CARD_LEDGER = LED('led.card_id')
+
+// 'Bank Accounts' may be a single ledger under Current Assets OR — as on the
+// live chart — a GROUP holding HDFC/IOB/UPI/Card leaves. Resolve the ledger,
+// else the lowest leaf inside the group.
+const BANK_LEDGER = LED('COALESCE(led.bank_leaf_id, led.bank_group_id)')
+
+const SALES_LEDGER = LED('COALESCE(led.sales_id, led.silver_sales_id, led.any_sales_id)')
+const PURCHASE_LEDGER = LED('COALESCE(led.purchase_id, led.silver_purchase_id, led.any_purchase_id)')
+const SALES_RETURN_LEDGER = LED('COALESCE(led.sales_return_id, led.any_sales_id)')
+const OLD_GOLD_SALES_LEDGER = LED('COALESCE(led.old_gold_sales_id, led.any_sales_id)')
+const SCHEME_LIABILITY_LEDGER = LED('led.scheme_liab_id')
+const REPAIR_INCOME_LEDGER = LED(
+  `COALESCE(led.repair_income_id, led.any_direct_income_id,
+            led.sales_id, led.silver_sales_id, led.any_sales_id)`
+)
+
 const getLedgerReportByLedgerName = async (req, res) => {
   try {
     const { ledger_id, from_date, to_date } = req.query
@@ -1666,8 +1749,12 @@ const getLedgerReportByLedgerName = async (req, res) => {
     const toDate = to_date || new Date().toISOString().split('T')[0]
 
     // BASE QUERY (NO LIMIT HERE)
+    // `led` resolves every posting target once; it is visible to the whole
+    // statement, including the UNION legs inside the derived table below, and
+    // survives being wrapped by the COUNT(*) query.
     const baseQuery = `
-    SELECT 
+    WITH ${LEDGER_LOOKUP_CTE}
+    SELECT
       t.date,
       t.reference_no,
       t.ledger_id,
@@ -1685,7 +1772,7 @@ const getLedgerReportByLedgerName = async (req, res) => {
         g.subtotal_amount AS debit,
         0 AS credit
       FROM grns g
-      JOIN ledger lp ON lp.ledger_name = 'Purchase Accounts'
+      JOIN ledger lp ON lp.id = ${PURCHASE_LEDGER}
       WHERE g.deleted_at IS NULL
         AND g.grn_date BETWEEN :from_date AND :to_date
 
@@ -1731,7 +1818,7 @@ const getLedgerReportByLedgerName = async (req, res) => {
         0,
         s.subtotal_amount
       FROM sales_invoice_bills s
-      JOIN ledger ls ON ls.ledger_name = 'Sales Accounts'
+      JOIN ledger ls ON ls.id = ${SALES_LEDGER}
       WHERE s.deleted_at IS NULL
         AND s.status = 'Invoice'
         AND s.invoice_date BETWEEN :from_date AND :to_date
@@ -1748,7 +1835,7 @@ const getLedgerReportByLedgerName = async (req, res) => {
         oj.total_amount,
         0
       FROM old_jewels oj
-      JOIN ledger lop ON lop.ledger_name = 'Old Gold Sales'
+      JOIN ledger lop ON lop.id = ${OLD_GOLD_SALES_LEDGER}
       WHERE oj.deleted_at IS NULL
         AND oj.status = 'Printed'
         AND oj.date BETWEEN :from_date AND :to_date
@@ -1799,7 +1886,7 @@ const getLedgerReportByLedgerName = async (req, res) => {
         0,
         jr.total_amount
       FROM jewel_repairs jr
-      JOIN ledger lri ON lri.ledger_name = 'Repair Charges Income'
+      JOIN ledger lri ON lri.id = ${REPAIR_INCOME_LEDGER}
       WHERE jr.deleted_at IS NULL
         AND jr.status = 'Completed'
         AND jr.date BETWEEN :from_date AND :to_date
@@ -1817,7 +1904,7 @@ const getLedgerReportByLedgerName = async (req, res) => {
         sr.subtotal_amount AS debit,
         0 AS credit
       FROM sales_returns sr
-      JOIN ledger lsr ON lsr.ledger_name = 'Sales Return'
+      JOIN ledger lsr ON lsr.id = ${SALES_RETURN_LEDGER}
       WHERE sr.deleted_at IS NULL
         AND sr.is_active = true
         AND sr.status = 'Printed'
@@ -1877,6 +1964,9 @@ const getLedgerReportByLedgerName = async (req, res) => {
       UNION ALL
 
       -- Cr: money-out leg mapped from the ACTUAL payment mode (was hard-coded 'Cash').
+      -- Bank Transfer/Cheque resolve through the 'Bank Accounts' GROUP: there is
+      -- no ledger literally named 'Bank Accounts', so matching on that string
+      -- dropped every bank-mode payment from this report.
       SELECT
         vp.payment_date,
         l.id,
@@ -1886,14 +1976,14 @@ const getLedgerReportByLedgerName = async (req, res) => {
         vp.amount
       FROM vendor_payments vp
       JOIN payment_modes pm ON pm.id = vp.payment_mode
-      JOIN ledger l ON l.ledger_name = (
+      JOIN ledger l ON l.id = (
         CASE pm.payment_mode
-          WHEN 'Cash' THEN 'Cash in Hand'
-          WHEN 'UPI' THEN 'UPI Collections'
-          WHEN 'Card' THEN 'Card Collections'
-          WHEN 'Bank Transfer' THEN 'Bank Accounts'
-          WHEN 'Cheque' THEN 'Bank Accounts'
-          ELSE 'Cash in Hand'
+          WHEN 'Cash' THEN ${CASH_LEDGER}
+          WHEN 'UPI' THEN ${UPI_LEDGER}
+          WHEN 'Card' THEN ${CARD_LEDGER}
+          WHEN 'Bank Transfer' THEN ${BANK_LEDGER}
+          WHEN 'Cheque' THEN ${BANK_LEDGER}
+          ELSE ${CASH_LEDGER}
         END)
       WHERE vp.deleted_at IS NULL
         AND vp.payment_date BETWEEN :from_date AND :to_date
@@ -1911,14 +2001,14 @@ const getLedgerReportByLedgerName = async (req, res) => {
         r.amount,
         0
       FROM voucher_receipts r
-      JOIN ledger lc ON lc.ledger_name = (
+      JOIN ledger lc ON lc.id = (
         CASE r.payment_mode_id
-          WHEN 1 THEN 'Cash in Hand'
-          WHEN 2 THEN 'Card Collections'
-          WHEN 3 THEN 'Bank Accounts'
-          WHEN 4 THEN 'Bank Accounts'
-          WHEN 5 THEN 'UPI Collections'
-          ELSE 'Cash in Hand'
+          WHEN 1 THEN ${CASH_LEDGER}
+          WHEN 2 THEN ${CARD_LEDGER}
+          WHEN 3 THEN ${BANK_LEDGER}
+          WHEN 4 THEN ${BANK_LEDGER}
+          WHEN 5 THEN ${UPI_LEDGER}
+          ELSE ${CASH_LEDGER}
         END)
       WHERE r.deleted_at IS NULL
         AND r.receipt_date BETWEEN :from_date AND :to_date
@@ -1952,7 +2042,7 @@ const getLedgerReportByLedgerName = async (req, res) => {
         0,
         r.amount
       FROM voucher_receipts r
-      JOIN ledger lsc ON lsc.ledger_name = 'Scheme Collection Liability'
+      JOIN ledger lsc ON lsc.id = ${SCHEME_LIABILITY_LEDGER}
       WHERE r.deleted_at IS NULL
         AND r.bill_type_id = 5
         AND r.receipt_date BETWEEN :from_date AND :to_date
