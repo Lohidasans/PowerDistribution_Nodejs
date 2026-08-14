@@ -920,7 +920,7 @@ const getOutOfStockList = async (
       COALESCE(ROUND(SUM(pid.quantity * pid.gross_weight), 2), 0) AS total_weight
 
     FROM subcategories sc
-    LEFT JOIN products p ON p.subcategory_id = sc.id AND p.deleted_at IS NULL
+    LEFT JOIN products p ON p.subcategory_id = sc.id AND p.deleted_at IS NULL AND p.status = 'Active'
       ${productBranchFilter}
     LEFT JOIN "productItemDetails" pid ON pid.product_id = p.id AND pid.deleted_at IS NULL
     LEFT JOIN "materialTypes" mt ON mt.id = sc.materialtype_id
@@ -1745,6 +1745,7 @@ const getStockOverviewCount = async (req, res) => {
   try {
     const replacements = {};
     const baseWhere = buildBaseFilters(req.query, replacements);
+    const outOfStockSummary = await getOutOfStockSummaryInternal(req.query);
 
     const [summary] = await sequelize.query(
       `
@@ -1789,29 +1790,7 @@ const getStockOverviewCount = async (req, res) => {
         FROM product_stock ps
         JOIN subcategories sc ON sc.id = ps.subcategory_id AND sc.deleted_at IS NULL AND sc.status = 'Active'
         WHERE ps.total_qty > 0 AND ps.total_qty < sc.reorder_level
-      ),
-      out_of_stock AS (
-        SELECT COUNT(*)::int AS subcategory_count
-        FROM (
-          SELECT
-            sc.id
-          FROM subcategories sc
-          LEFT JOIN products p  ON p.subcategory_id = sc.id  AND p.deleted_at IS NULL AND p.status = 'Active'
-          LEFT JOIN "productItemDetails" pid ON pid.product_id = p.id AND pid.deleted_at IS NULL
-          LEFT JOIN branches b ON b.id = p.branch_id AND b.deleted_at IS NULL
-          LEFT JOIN "materialTypes" mt ON mt.id = sc.materialtype_id AND mt.deleted_at IS NULL
-          LEFT JOIN categories c ON c.id = sc.category_id AND c.deleted_at IS NULL
-          ${buildSubcategoryFilters(req.query, { ...replacements })}
-          AND sc.branch_id = 1
-          GROUP BY sc.id
-          HAVING
-            -- no products
-            COUNT(DISTINCT p.id) = 0
-            OR
-            -- total qty becomes zero
-            COALESCE(SUM(pid.quantity), 0) = 0
-        ) z
-      )
+    )
       SELECT
         sih.total_quantity AS stock_total_quantity,
         sih.total_weight AS stock_total_weight,
@@ -1824,15 +1803,9 @@ const getStockOverviewCount = async (req, res) => {
         (
           SELECT COALESCE(SUM(total_weight), 0)
           FROM low_stock_rows
-        ) AS low_total_weight,
+        ) AS low_total_weight
 
-         -- OUT OF STOCK
-        (
-          SELECT subcategory_count
-          FROM out_of_stock
-        ) AS out_subcategory_count
-
-      FROM stock_in_hand sih
+       FROM stock_in_hand sih
       `,
       { replacements, type: sequelize.QueryTypes.SELECT }
     );
@@ -1855,7 +1828,7 @@ const getStockOverviewCount = async (req, res) => {
       },
 
       out_of_stock: {
-        subcategory_count: Number(summary?.out_subcategory_count || 0),
+        subcategory_count: Number(outOfStockSummary?.subcategory_count || 0),
       },
     });
   } catch (error) {
