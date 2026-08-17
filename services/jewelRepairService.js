@@ -156,6 +156,7 @@ const createJewelRepair = async (req, res) => {
 const getAllJewelRepairs = async (req, res) => {
   try {
     const {
+      id,
       page,
       pageSize,
       search,
@@ -170,6 +171,7 @@ const getAllJewelRepairs = async (req, res) => {
     const replacements = {};
     let whereSql = `jr.deleted_at IS NULL`;
     // Filters
+    if (id) { whereSql += ` AND jr.id = :id`; replacements.id = id;}
     if (status) { whereSql += ` AND jr.status = :status`; replacements.status = status;}
     if (customer_id) { whereSql += ` AND jr.customer_id = :customer_id`; replacements.customer_id = customer_id;}
     if (branch_id) { whereSql += ` AND jr.branch_id = :branch_id`; replacements.branch_id = branch_id; }

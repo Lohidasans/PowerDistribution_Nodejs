@@ -85,6 +85,7 @@ const createOldJewel = async (req, res) => {
 const getAllOldJewels = async (req, res) => {
   try {
     const {
+      id,
       old_jewel_code,
       status,
       branch_id,
@@ -96,6 +97,11 @@ const getAllOldJewels = async (req, res) => {
 
     const replacements = {};
     let whereSql = `oj.deleted_at IS NULL`;
+
+    if (id) {
+      whereSql += ` AND oj.id = :id`;
+      replacements.id = parseInt(id);
+    }
 
     // Old Jewel No
     if (old_jewel_code) {
