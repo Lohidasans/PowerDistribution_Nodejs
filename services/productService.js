@@ -936,21 +936,33 @@ const getAllProductDetails = async (req, res) => {
 
     if (search && !isNumericSearch) {
       const like = `%${search}%`;
+
       whereClause += `
         AND (
           p.product_name ILIKE :like OR
           p.product_code ILIKE :like OR
           p.sku_id ILIKE :like OR
-          p.description ILIKE :like OR
-          p.hsn_code ILIKE :like OR
-          p.product_type::text ILIKE :like OR
-          p.variation_type::text ILIKE :like OR
-          mt.material_type ILIKE :like OR
-          b.branch_name ILIKE :like OR
-          g.grn_no ILIKE :like OR
-          gi.ref_no ILIKE :like
+
+          -- Child SKU Search
+          EXISTS (
+            SELECT 1
+            FROM "productItemDetails" pid_search
+            WHERE pid_search.product_id = p.id
+            AND pid_search.deleted_at IS NULL
+            AND pid_search.sku_id ILIKE :like
+          )
+
+          OR p.description ILIKE :like
+          OR p.hsn_code ILIKE :like
+          OR p.product_type::text ILIKE :like
+          OR p.variation_type::text ILIKE :like
+          OR mt.material_type ILIKE :like
+          OR b.branch_name ILIKE :like
+          OR g.grn_no ILIKE :like
+          OR gi.ref_no ILIKE :like
         )
       `;
+
       replacements.like = like;
     }
 
@@ -2443,14 +2455,21 @@ const getProductStockCounts = async (req, res) => {
           p.product_name ILIKE :like OR
           p.product_code ILIKE :like OR
           p.sku_id ILIKE :like OR
-          p.description ILIKE :like OR
-          p.hsn_code ILIKE :like OR
-          p.product_type::text ILIKE :like OR
-          p.variation_type::text ILIKE :like OR
-          mt.material_type ILIKE :like OR
-          b.branch_name ILIKE :like OR
-          g.grn_no ILIKE :like OR
-          gi.ref_no ILIKE :like
+
+          EXISTS (
+            SELECT 1
+            FROM "productItemDetails" pid2
+            WHERE pid2.product_id = p.id
+              AND pid2.deleted_at IS NULL
+              AND pid2.sku_id ILIKE :like
+          )
+
+          OR p.description ILIKE :like
+          OR p.hsn_code ILIKE :like
+          OR mt.material_type ILIKE :like
+          OR b.branch_name ILIKE :like
+          OR g.grn_no ILIKE :like
+          OR gi.ref_no ILIKE :like
         )
       `;
       replacements.like = like;
