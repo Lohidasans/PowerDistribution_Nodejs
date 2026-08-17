@@ -102,7 +102,7 @@ const getSalesInvoiceById = async (req, res) => {
 const listSalesInvoices = async (req, res) => {
   try {
     const {
-      from, to, invoice_no, date, employee_id, customer_id,
+      id, from, to, invoice_no, date, employee_id, customer_id,
       branch_id, order_type, search, status,
       page, limit = 20
     } = req.query || {};
@@ -118,6 +118,7 @@ const listSalesInvoices = async (req, res) => {
     let where = `WHERE i.deleted_at IS NULL`;
     const replacements = {};
 
+    if (id) { where += ` AND i.id = :id`; replacements.id = parseInt(id); }
     if (from) { where += ` AND i.invoice_date >= :from`; replacements.from = from; }
     if (to) { where += ` AND i.invoice_date <= :to`; replacements.to = to; }
     if (date) { where += ` AND DATE(i.invoice_date) = :date`; replacements.date = date; }

@@ -150,6 +150,7 @@ const getSalesReturnById = async (req, res) => {
 const listSalesReturns = async (req, res) => {
   try {
     const {
+      id,
       page,
       limit,
       status,
@@ -167,7 +168,7 @@ const listSalesReturns = async (req, res) => {
       : null;
 
     let where = `WHERE sr.deleted_at IS NULL`;
-
+    if (id) where += ` AND sr.id = :id`;
     if (status) where += ` AND sr.status = :status`;
     if (customer_id) where += ` AND sr.customer_id = :customer_id`;
     if (branch_id) where += ` AND sr.branch_id = :branch_id`;
@@ -188,6 +189,7 @@ const listSalesReturns = async (req, res) => {
     }
 
     const replacements = {
+      id,
       status,
       customer_id,
       branch_id,
