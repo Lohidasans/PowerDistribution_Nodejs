@@ -1251,13 +1251,18 @@ const getTrialBalance = async (req, res) => {
 
 // ─────────────────────────────────────────
 // PROFIT & LOSS
+//
+// Query params: branch_id, from_date, to_date, include_zero
+//   - Ledgers/groups that render as ₹0.00 are hidden unless include_zero=true
+//     (same rule as the trial balance).
 // ─────────────────────────────────────────
 const getProfitLoss = async (req, res) => {
   try {
-    const { branch_id, from_date, to_date } = req.query;
+    const { branch_id, from_date, to_date, include_zero } = req.query;
     const fromDate = from_date || "2000-01-01";
     const toDate = to_date || new Date().toISOString().split("T")[0];
     const branchId = branch_id ? parseInt(branch_id) : null;
+    const includeZero = include_zero === "true" || include_zero === "1";
 
     const ledgerRows = await fetchLedgerAggregates(branchId, fromDate, toDate, null);
     const groups = await fetchGroupTree();
@@ -1266,18 +1271,37 @@ const getProfitLoss = async (req, res) => {
     // A nested P&L entry: the group's own amount plus its sub-groups (recursive)
     // and leaf ledgers. Sub-group children carry `amount` + `children`; ledger
     // children carry `debit`/`credit`.
-    const serializePL = (n) => ({
-      particulars: n.group_name,
-      amount: Math.abs(n.totalDebit - n.totalCredit).toFixed(2),
-      children: [
-        ...n.children.map(serializePL),
-        ...n.ledgers.map((l) => ({
+    //
+    // Rows with nothing to report are pruned (returns null) unless include_zero:
+    // a chart carries every seeded expense/income head plus every party ledger,
+    // and the untouched ones were padding the statement with ₹0.00 lines. The
+    // test is on the DISPLAYED amount — round2 of the net, matching the UI's
+    // own `Math.abs(debit - credit)` — so a ledger whose debit and credit cancel
+    // is hidden too, and float residue never leaves a "₹0.00" row behind. A
+    // group is kept whenever a child survives, even if its own net is zero, so
+    // offsetting balances under it stay visible.
+    const serializePL = (n) => {
+      const children = [];
+      for (const c of n.children) {
+        const s = serializePL(c);
+        if (s) children.push(s);
+      }
+      for (const l of n.ledgers) {
+        if (!includeZero && round2(l.debit - l.credit) === 0) continue;
+        children.push({
           particulars: l.ledger_name,
           debit: (l.debit || 0).toFixed(2),
           credit: (l.credit || 0).toFixed(2),
-        })),
-      ],
-    });
+        });
+      }
+      const amount = Math.abs(n.totalDebit - n.totalCredit);
+      if (!includeZero && children.length === 0 && round2(amount) === 0) return null;
+      return {
+        particulars: n.group_name,
+        amount: amount.toFixed(2),
+        children,
+      };
+    };
 
     const tradingDebit = [];   // Purchase, Direct Expenses
     const tradingCredit = [];  // Sales, Direct Income
@@ -1287,6 +1311,9 @@ const getProfitLoss = async (req, res) => {
     for (const n of roots) {
       const name = (n.group_name || "").toLowerCase();
       const entry = serializePL(n);
+      // A whole head that never moved (e.g. Direct Income with only zero
+      // ledgers) drops off its side. Totals are unaffected — it contributed 0.
+      if (!entry) continue;
       if (n.account_type === "Expense") {
         (name.includes("indirect") ? pnlDebit : tradingDebit).push(entry);
       } else if (n.account_type === "Income") {
@@ -1328,13 +1355,18 @@ const getProfitLoss = async (req, res) => {
 
 // ─────────────────────────────────────────
 // BALANCE SHEET
+//
+// Query params: branch_id, from_date, to_date, include_zero
+//   - Ledgers/groups that render as ₹0.00 are hidden unless include_zero=true
+//     (same rule as the trial balance).
 // ─────────────────────────────────────────
 const getBalanceSheet = async (req, res) => {
   try {
-    const { branch_id, from_date, to_date } = req.query;
+    const { branch_id, from_date, to_date, include_zero } = req.query;
     const fromDate = from_date || "2000-01-01";
     const toDate = to_date || new Date().toISOString().split("T")[0];
     const branchId = branch_id ? parseInt(branch_id) : null;
+    const includeZero = include_zero === "true" || include_zero === "1";
 
     const ledgerRows = await fetchLedgerAggregates(branchId, fromDate, toDate, null);
     const groups = await fetchGroupTree();
@@ -1344,19 +1376,39 @@ const getBalanceSheet = async (req, res) => {
     // amount on its natural side (assets = debit-positive, liabilities =
     // credit-positive). `children` are nested sub-groups; `ledgers` are the
     // group's own leaf ledgers.
-    const serialize = (n, side) => ({
-      group_id: n.id,
-      group_name: n.group_name,
-      amount: round2(
+    //
+    // Settled/untouched rows are pruned (returns null) unless include_zero.
+    // This matters most here: Sundry Debtors/Creditors hold one leaf per
+    // customer and vendor, and every party who has never transacted — or whose
+    // account is fully settled — was listed at ₹0.00. A group survives as long
+    // as one descendant does, so a zero-net group with offsetting children is
+    // still shown.
+    const serialize = (n, side) => {
+      const children = [];
+      for (const c of n.children) {
+        const s = serialize(c, side);
+        if (s) children.push(s);
+      }
+      const ledgers = [];
+      for (const l of n.ledgers) {
+        const amt = round2(side === "asset" ? l.debit - l.credit : l.credit - l.debit);
+        if (!includeZero && amt === 0) continue;
+        ledgers.push({ ledger_id: l.ledger_id, ledger_name: l.ledger_name, amount: amt });
+      }
+      const amount = round2(
         side === "asset" ? n.totalDebit - n.totalCredit : n.totalCredit - n.totalDebit
-      ),
-      children: n.children.map((c) => serialize(c, side)),
-      ledgers: n.ledgers.map((l) => ({
-        ledger_id: l.ledger_id,
-        ledger_name: l.ledger_name,
-        amount: round2(side === "asset" ? l.debit - l.credit : l.credit - l.debit),
-      })),
-    });
+      );
+      if (!includeZero && children.length === 0 && ledgers.length === 0 && amount === 0) {
+        return null;
+      }
+      return {
+        group_id: n.id,
+        group_name: n.group_name,
+        amount,
+        children,
+        ledgers,
+      };
+    };
 
     const liabilities = [];
     const assets = [];
@@ -1364,13 +1416,16 @@ const getBalanceSheet = async (req, res) => {
     let totalAssets = 0;
 
     // Only TOP-LEVEL groups drive the two sides; sub-groups nest inside them.
+    // A pruned head contributed 0, so the side totals are unchanged by hiding it.
     for (const n of roots) {
       if (n.account_type === "Asset") {
         const entry = serialize(n, "asset");
+        if (!entry) continue;
         assets.push(entry);
         totalAssets += entry.amount;
       } else if (n.account_type === "Liability") {
         const entry = serialize(n, "liability");
+        if (!entry) continue;
         liabilities.push(entry);
         totalLiabilities += entry.amount;
       }
