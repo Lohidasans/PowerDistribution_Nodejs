@@ -221,7 +221,9 @@ const ALL_TXNS_CTE = `
     SELECT
       ${SALES_LEDGER}                                           AS ledger_id,
       0 AS debit,
-      COALESCE(s.subtotal_amount, 0) AS credit
+      COALESCE(s.subtotal_amount, 0) AS credit,
+      s.invoice_date::date AS txn_date,
+      s.invoice_no::text   AS reference_no
     FROM sales_invoice_bills s
     WHERE s.deleted_at IS NULL AND s.status = 'Invoice'
       AND (:branch_id IS NULL OR s.branch_id = :branch_id)
@@ -235,7 +237,7 @@ const ALL_TXNS_CTE = `
         WHERE l.deleted_at IS NULL AND g.deleted_at IS NULL
           AND l.ledger_name = 'Output CGST' AND g.ledger_group_name = 'Duties & Taxes'
         ORDER BY l.id LIMIT 1),
-      0, COALESCE(s.cgst_amount, 0)
+      0, COALESCE(s.cgst_amount, 0), s.invoice_date::date, s.invoice_no::text
     FROM sales_invoice_bills s
     WHERE s.deleted_at IS NULL AND s.status = 'Invoice'
       AND (:branch_id IS NULL OR s.branch_id = :branch_id)
@@ -249,7 +251,7 @@ const ALL_TXNS_CTE = `
         WHERE l.deleted_at IS NULL AND g.deleted_at IS NULL
           AND l.ledger_name = 'Output SGST' AND g.ledger_group_name = 'Duties & Taxes'
         ORDER BY l.id LIMIT 1),
-      0, COALESCE(s.sgst_amount, 0)
+      0, COALESCE(s.sgst_amount, 0), s.invoice_date::date, s.invoice_no::text
     FROM sales_invoice_bills s
     WHERE s.deleted_at IS NULL AND s.status = 'Invoice'
       AND (:branch_id IS NULL OR s.branch_id = :branch_id)
@@ -263,7 +265,7 @@ const ALL_TXNS_CTE = `
         WHERE l.deleted_at IS NULL AND g.deleted_at IS NULL
           AND l.ledger_name = 'Output IGST' AND g.ledger_group_name = 'Duties & Taxes'
         ORDER BY l.id LIMIT 1),
-      0, COALESCE(s.igst_amount, 0)
+      0, COALESCE(s.igst_amount, 0), s.invoice_date::date, s.invoice_no::text
     FROM sales_invoice_bills s
     WHERE s.deleted_at IS NULL AND s.status = 'Invoice'
       AND (:branch_id IS NULL OR s.branch_id = :branch_id)
@@ -278,7 +280,7 @@ const ALL_TXNS_CTE = `
         WHERE l.deleted_at IS NULL AND g.deleted_at IS NULL
           AND l.ledger_name = 'Cash in Hand'
         ORDER BY l.id LIMIT 1),
-      COALESCE(p.amount_received, 0), 0
+      COALESCE(p.amount_received, 0), 0, s.invoice_date::date, s.invoice_no::text
     FROM payments p
     JOIN sales_invoice_bills s ON s.id = p.invoice_bill_id
     WHERE p.deleted_at IS NULL AND s.deleted_at IS NULL
@@ -295,7 +297,7 @@ const ALL_TXNS_CTE = `
         WHERE l.deleted_at IS NULL AND g.deleted_at IS NULL
           AND l.ledger_name = 'UPI Collections'
         ORDER BY l.id LIMIT 1),
-      COALESCE(p.amount_received, 0), 0
+      COALESCE(p.amount_received, 0), 0, s.invoice_date::date, s.invoice_no::text
     FROM payments p
     JOIN sales_invoice_bills s ON s.id = p.invoice_bill_id
     WHERE p.deleted_at IS NULL AND s.deleted_at IS NULL
@@ -312,7 +314,7 @@ const ALL_TXNS_CTE = `
         WHERE l.deleted_at IS NULL AND g.deleted_at IS NULL
           AND l.ledger_name = 'Card Collections'
         ORDER BY l.id LIMIT 1),
-      COALESCE(p.amount_received, 0), 0
+      COALESCE(p.amount_received, 0), 0, s.invoice_date::date, s.invoice_no::text
     FROM payments p
     JOIN sales_invoice_bills s ON s.id = p.invoice_bill_id
     WHERE p.deleted_at IS NULL AND s.deleted_at IS NULL
@@ -326,7 +328,7 @@ const ALL_TXNS_CTE = `
     -- A.Dr4  Bank Accounts (Bank Transfer / Cheque)
     SELECT
       ${BANK_LEDGER},
-      COALESCE(p.amount_received, 0), 0
+      COALESCE(p.amount_received, 0), 0, s.invoice_date::date, s.invoice_no::text
     FROM payments p
     JOIN sales_invoice_bills s ON s.id = p.invoice_bill_id
     WHERE p.deleted_at IS NULL AND s.deleted_at IS NULL
@@ -341,7 +343,7 @@ const ALL_TXNS_CTE = `
     --  'Purchase Accounts' (the Sales-side leaf is 'Old Gold Sales').
     SELECT
       ${OLD_GOLD_LEDGER},
-      COALESCE(a.adjustment_amount, 0), 0
+      COALESCE(a.adjustment_amount, 0), 0, s.invoice_date::date, s.invoice_no::text
     FROM sales_invoice_adjustments a
     JOIN sales_invoice_bills s ON s.id = a.sales_invoice_id
     WHERE a.deleted_at IS NULL AND s.deleted_at IS NULL
@@ -357,7 +359,7 @@ const ALL_TXNS_CTE = `
         WHERE l.deleted_at IS NULL AND g.deleted_at IS NULL
           AND l.ledger_name = 'Scheme Collection Liability' AND g.ledger_group_name = 'Current Liabilities'
         ORDER BY l.id LIMIT 1),
-      COALESCE(a.adjustment_amount, 0), 0
+      COALESCE(a.adjustment_amount, 0), 0, s.invoice_date::date, s.invoice_no::text
     FROM sales_invoice_adjustments a
     JOIN sales_invoice_bills s ON s.id = a.sales_invoice_id
     WHERE a.deleted_at IS NULL AND s.deleted_at IS NULL
@@ -370,7 +372,7 @@ const ALL_TXNS_CTE = `
     -- A.Dr7  Sales Return (adjustment_type_id '1')
     SELECT
       ${SALES_RETURN_LEDGER},
-      COALESCE(a.adjustment_amount, 0), 0
+      COALESCE(a.adjustment_amount, 0), 0, s.invoice_date::date, s.invoice_no::text
     FROM sales_invoice_adjustments a
     JOIN sales_invoice_bills s ON s.id = a.sales_invoice_id
     WHERE a.deleted_at IS NULL AND s.deleted_at IS NULL
@@ -388,22 +390,40 @@ const ALL_TXNS_CTE = `
     --  stray paise. pay.paid is restricted to the same 5 cash-like modes booked in
     --  A.Dr1..4 (Advance/Other settle elsewhere). Computed live from payments so
     --  it stays correct if a payment is added after invoice creation.
+    --  Posted GROSS then SETTLED (two legs) rather than as one netted debit.
+    --  The net per customer is identical — total_amount, less the same 5
+    --  cash-like modes — so every balance here is unchanged, but the ledger
+    --  STATEMENT (/report/ledger-account, same postings) can now show the
+    --  invoice and the collection as separate lines. Netted into one row, a
+    --  fully-paid customer produced a single ZERO row and their statement came
+    --  back empty.
     SELECT
       lc.id,
-      ( COALESCE(s.total_amount,0) - COALESCE(pay.paid, 0) ) AS debit,
-      0
+      COALESCE(s.total_amount,0) AS debit,
+      0, s.invoice_date::date, s.invoice_no::text
     FROM sales_invoice_bills s
     JOIN customers c ON c.id = s.customer_id
     JOIN ledger lc ON lc.id = c.ledger_id AND lc.deleted_at IS NULL
-    LEFT JOIN (
-      SELECT p.invoice_bill_id, SUM(COALESCE(p.amount_received,0)) AS paid
-      FROM payments p
-      WHERE p.deleted_at IS NULL AND p.status = 'Completed'
-        AND p.invoice_bill_id IS NOT NULL
-        AND p.payment_mode IN ('Cash','UPI','Card','Bank Transfer','Cheque')
-      GROUP BY p.invoice_bill_id
-    ) pay ON pay.invoice_bill_id = s.id
     WHERE s.deleted_at IS NULL AND s.status = 'Invoice'
+      AND (:branch_id IS NULL OR s.branch_id = :branch_id)
+      AND s.invoice_date BETWEEN :from_date AND :to_date
+
+    UNION ALL
+
+    -- A.Cr5  Customer settlement — the counterpart of A.Dr1..4, one row per
+    --  payment, restricted to exactly the modes A.Dr1..4 book. Keyed off the
+    --  INVOICE date/branch like every other leg of flow A, so an invoice's Dr
+    --  and Cr always enter the report window together.
+    SELECT
+      lc.id,
+      0, COALESCE(p.amount_received, 0), s.invoice_date::date, s.invoice_no::text
+    FROM payments p
+    JOIN sales_invoice_bills s ON s.id = p.invoice_bill_id
+    JOIN customers c ON c.id = s.customer_id
+    JOIN ledger lc ON lc.id = c.ledger_id AND lc.deleted_at IS NULL
+    WHERE p.deleted_at IS NULL AND s.deleted_at IS NULL
+      AND p.status = 'Completed' AND s.status = 'Invoice'
+      AND p.payment_mode IN ('Cash','UPI','Card','Bank Transfer','Cheque')
       AND (:branch_id IS NULL OR s.branch_id = :branch_id)
       AND s.invoice_date BETWEEN :from_date AND :to_date
 
@@ -419,7 +439,7 @@ const ALL_TXNS_CTE = `
         ( COALESCE(s.subtotal_amount,0) + COALESCE(s.cgst_amount,0)
           + COALESCE(s.sgst_amount,0) + COALESCE(s.igst_amount,0)
           - COALESCE(adj.adjusted,0) ) - COALESCE(s.total_amount,0), 0) AS debit,
-      0
+      0, s.invoice_date::date, s.invoice_no::text
     FROM sales_invoice_bills s
     JOIN customers c ON c.id = s.customer_id
     JOIN ledger lc ON lc.id = c.ledger_id AND lc.deleted_at IS NULL
@@ -444,7 +464,8 @@ const ALL_TXNS_CTE = `
       GREATEST( COALESCE(s.total_amount,0) -
         ( COALESCE(s.subtotal_amount,0) + COALESCE(s.cgst_amount,0)
           + COALESCE(s.sgst_amount,0) + COALESCE(s.igst_amount,0)
-          - COALESCE(adj.adjusted,0) ), 0) AS credit
+          - COALESCE(adj.adjusted,0) ), 0) AS credit,
+      s.invoice_date::date, s.invoice_no::text
     FROM sales_invoice_bills s
     JOIN customers c ON c.id = s.customer_id
     JOIN ledger lc ON lc.id = c.ledger_id AND lc.deleted_at IS NULL
@@ -479,7 +500,7 @@ const ALL_TXNS_CTE = `
        ========================================================= */
 
     -- B.Cr  Vendor (Sundry Creditors) = total_amount
-    SELECT lv.id, 0, COALESCE(g.total_amount, 0)
+    SELECT lv.id, 0, COALESCE(g.total_amount, 0), g.grn_date::date, g.grn_no::text
     FROM grns g
     JOIN vendors v ON v.id = g.vendor_id
     JOIN ledger lv ON lv.id = v.ledger_id AND lv.deleted_at IS NULL
@@ -497,7 +518,8 @@ const ALL_TXNS_CTE = `
     -- B.Dr1 + B.Dr2(stone) always sum to subtotal_amount, so the GRN stays balanced.
     SELECT
       ${PURCHASE_LEDGER},
-      COALESCE(g.subtotal_amount, 0) - COALESCE(gi.stone, 0), 0
+      COALESCE(g.subtotal_amount, 0) - COALESCE(gi.stone, 0), 0,
+      g.grn_date::date, g.grn_no::text
     FROM grns g
     LEFT JOIN (
       SELECT grn_id,
@@ -516,7 +538,7 @@ const ALL_TXNS_CTE = `
     --  the stone cost is never dropped (STONE_LEDGER).
     SELECT
       ${STONE_LEDGER},
-      COALESCE(gi.stone, 0), 0
+      COALESCE(gi.stone, 0), 0, g.grn_date::date, g.grn_no::text
     FROM grns g
     JOIN (
       SELECT grn_id,
@@ -536,7 +558,8 @@ const ALL_TXNS_CTE = `
         WHERE l.deleted_at IS NULL AND grp.deleted_at IS NULL
           AND l.ledger_name = 'GST Input CGST' AND grp.ledger_group_name = 'Current Assets'
         ORDER BY l.id LIMIT 1),
-      ROUND(COALESCE(g.subtotal_amount,0) * COALESCE(g.cgst_percent,0) / 100.0, 2), 0
+      ROUND(COALESCE(g.subtotal_amount,0) * COALESCE(g.cgst_percent,0) / 100.0, 2), 0,
+      g.grn_date::date, g.grn_no::text
     FROM grns g
     WHERE g.deleted_at IS NULL AND g.is_active = true
       AND (:branch_id IS NULL OR g.branch_id = :branch_id)
@@ -550,7 +573,8 @@ const ALL_TXNS_CTE = `
         WHERE l.deleted_at IS NULL AND grp.deleted_at IS NULL
           AND l.ledger_name = 'GST Input SGST' AND grp.ledger_group_name = 'Current Assets'
         ORDER BY l.id LIMIT 1),
-      ROUND(COALESCE(g.subtotal_amount,0) * COALESCE(g.sgst_percent,0) / 100.0, 2), 0
+      ROUND(COALESCE(g.subtotal_amount,0) * COALESCE(g.sgst_percent,0) / 100.0, 2), 0,
+      g.grn_date::date, g.grn_no::text
     FROM grns g
     WHERE g.deleted_at IS NULL AND g.is_active = true
       AND (:branch_id IS NULL OR g.branch_id = :branch_id)
@@ -567,7 +591,8 @@ const ALL_TXNS_CTE = `
         WHERE l.deleted_at IS NULL AND grp.deleted_at IS NULL
           AND l.ledger_name = 'GST Input IGST' AND grp.ledger_group_name = 'Current Assets'
         ORDER BY l.id LIMIT 1),
-      ROUND(COALESCE(g.subtotal_amount,0) * COALESCE(g.igst_percent,0) / 100.0, 2), 0
+      ROUND(COALESCE(g.subtotal_amount,0) * COALESCE(g.igst_percent,0) / 100.0, 2), 0,
+      g.grn_date::date, g.grn_no::text
     FROM grns g
     WHERE g.deleted_at IS NULL AND g.is_active = true
       AND (:branch_id IS NULL OR g.branch_id = :branch_id)
@@ -586,7 +611,7 @@ const ALL_TXNS_CTE = `
         - ROUND(COALESCE(g.subtotal_amount,0) * COALESCE(g.cgst_percent,0) / 100.0, 2)
         - ROUND(COALESCE(g.subtotal_amount,0) * COALESCE(g.sgst_percent,0) / 100.0, 2)
         - ROUND(COALESCE(g.subtotal_amount,0) * COALESCE(g.igst_percent,0) / 100.0, 2), 0) AS debit,
-      0
+      0, g.grn_date::date, g.grn_no::text
     FROM grns g
     WHERE g.deleted_at IS NULL AND g.is_active = true
       AND (:branch_id IS NULL OR g.branch_id = :branch_id)
@@ -604,7 +629,8 @@ const ALL_TXNS_CTE = `
         + ROUND(COALESCE(g.subtotal_amount,0) * COALESCE(g.cgst_percent,0) / 100.0, 2)
         + ROUND(COALESCE(g.subtotal_amount,0) * COALESCE(g.sgst_percent,0) / 100.0, 2)
         + ROUND(COALESCE(g.subtotal_amount,0) * COALESCE(g.igst_percent,0) / 100.0, 2)
-        - COALESCE(g.total_amount,0), 0) AS credit
+        - COALESCE(g.total_amount,0), 0) AS credit,
+      g.grn_date::date, g.grn_no::text
     FROM grns g
     WHERE g.deleted_at IS NULL AND g.is_active = true
       AND (:branch_id IS NULL OR g.branch_id = :branch_id)
@@ -641,7 +667,8 @@ const ALL_TXNS_CTE = `
         WHEN p.payment_mode IN ('Bank Transfer','Cheque') THEN
           ${BANK_LEDGER}
       END AS ledger_id,
-      COALESCE(p.amount_received, 0), 0
+      COALESCE(p.amount_received, 0), 0,
+      p.payment_date::date, csp.scheme_payment_code::text
     FROM payments p
     JOIN customer_scheme_payments csp ON csp.id = p.scheme_payment_id AND csp.deleted_at IS NULL
     WHERE p.deleted_at IS NULL AND p.status = 'Completed'
@@ -658,7 +685,8 @@ const ALL_TXNS_CTE = `
         WHERE l.deleted_at IS NULL AND g.deleted_at IS NULL
           AND l.ledger_name = 'Scheme Collection Liability' AND g.ledger_group_name = 'Current Liabilities'
         ORDER BY l.id LIMIT 1),
-      0, COALESCE(p.amount_received, 0)
+      0, COALESCE(p.amount_received, 0),
+      p.payment_date::date, csp.scheme_payment_code::text
     FROM payments p
     JOIN customer_scheme_payments csp ON csp.id = p.scheme_payment_id AND csp.deleted_at IS NULL
     WHERE p.deleted_at IS NULL AND p.status = 'Completed'
@@ -683,7 +711,7 @@ const ALL_TXNS_CTE = `
        ========================================================= */
 
     -- D.Dr  Vendor (Sundry Creditors)
-    SELECT lv.id, COALESCE(vp.amount, 0), 0
+    SELECT lv.id, COALESCE(vp.amount, 0), 0, vp.payment_date::date, vp.payment_no::text
     FROM vendor_payments vp
     JOIN vendors v ON v.id = vp.account_name_id
     JOIN ledger lv ON lv.id = v.ledger_id AND lv.deleted_at IS NULL
@@ -718,7 +746,7 @@ const ALL_TXNS_CTE = `
         WHEN pm.payment_mode IN ('Bank Transfer','Cheque') THEN
           ${BANK_LEDGER}
       END AS ledger_id,
-      0, COALESCE(vp.amount, 0)
+      0, COALESCE(vp.amount, 0), vp.payment_date::date, vp.payment_no::text
     FROM vendor_payments vp
     JOIN payment_modes pm ON pm.id = vp.payment_mode
     WHERE vp.deleted_at IS NULL AND vp.status = 'Completed'
@@ -746,7 +774,7 @@ const ALL_TXNS_CTE = `
        ========================================================= */
 
     -- D2.Dr  the ledger picked on the form (account_name_id)
-    SELECT ld.id, COALESCE(vp.amount, 0), 0
+    SELECT ld.id, COALESCE(vp.amount, 0), 0, vp.payment_date::date, vp.payment_no::text
     FROM vendor_payments vp
     JOIN ledger ld ON ld.id = vp.account_name_id AND ld.deleted_at IS NULL
     JOIN payment_modes pm ON pm.id = vp.payment_mode
@@ -779,7 +807,7 @@ const ALL_TXNS_CTE = `
         WHEN pm.payment_mode IN ('Bank Transfer','Cheque') THEN
           ${BANK_LEDGER}
       END AS ledger_id,
-      0, COALESCE(vp.amount, 0)
+      0, COALESCE(vp.amount, 0), vp.payment_date::date, vp.payment_no::text
     FROM vendor_payments vp
     JOIN ledger ld ON ld.id = vp.account_name_id AND ld.deleted_at IS NULL
     JOIN payment_modes pm ON pm.id = vp.payment_mode
@@ -822,7 +850,7 @@ const ALL_TXNS_CTE = `
         WHEN r.payment_mode_id IN (3,4) THEN
           ${BANK_LEDGER}
       END AS ledger_id,
-      COALESCE(r.amount, 0), 0
+      COALESCE(r.amount, 0), 0, r.receipt_date::date, r.receipt_no::text
     FROM voucher_receipts r
     WHERE r.deleted_at IS NULL AND r.is_active = true
       AND r.bill_type_id IN (2, 3)
@@ -834,7 +862,7 @@ const ALL_TXNS_CTE = `
 
     -- V.Cr  account_id ledger for manual receipt vouchers (non-scheme)
     --  account_id is a ledger id for bill_type 2/3 (verified in voucherReceiptService).
-    SELECT lc.id, 0, COALESCE(r.amount, 0)
+    SELECT lc.id, 0, COALESCE(r.amount, 0), r.receipt_date::date, r.receipt_no::text
     FROM voucher_receipts r
     JOIN ledger lc ON lc.id = r.account_id AND lc.deleted_at IS NULL
     WHERE r.deleted_at IS NULL AND r.is_active = true
@@ -848,7 +876,8 @@ const ALL_TXNS_CTE = `
     /* =========================================================
        E) JOURNAL ENTRIES — kept as-is
        ========================================================= */
-    SELECT jei.account_id, COALESCE(jei.debit, 0), COALESCE(jei.credit, 0)
+    SELECT jei.account_id, COALESCE(jei.debit, 0), COALESCE(jei.credit, 0),
+           je.date::date, je.journal_no::text
     FROM journal_entry_items jei
     JOIN journal_entries je ON je.id = jei.journal_entry_id
     WHERE jei.deleted_at IS NULL AND je.deleted_at IS NULL
@@ -870,24 +899,31 @@ const ALL_TXNS_CTE = `
        ========================================================= */
 
     -- F.1  Old Gold: Dr 'Old Gold Sales' (Sales Accounts) ; Cr customer ledger
-    SELECT ${OLD_GOLD_SALES_LEDGER}, COALESCE(oj.total_amount, 0), 0 ${OJ_STANDALONE}
+    SELECT ${OLD_GOLD_SALES_LEDGER}, COALESCE(oj.total_amount, 0), 0,
+           oj.date::date, oj.old_jewel_code::text ${OJ_STANDALONE}
     UNION ALL
-    SELECT lc.id, 0, COALESCE(oj.total_amount, 0) ${OJ_STANDALONE}
+    SELECT lc.id, 0, COALESCE(oj.total_amount, 0),
+           oj.date::date, oj.old_jewel_code::text ${OJ_STANDALONE}
 
     UNION ALL
 
     -- F.2  Sales Return (standalone refund) — reverse the sale.
     --  Dr 'Sales Return' (net residual) + Dr Output CGST/SGST/IGST ; Cr customer (total).
     SELECT ${SALES_RETURN_LEDGER},
-      ( COALESCE(r.subtotal_amount, 0) ), 0 ${SR_STANDALONE}
+      ( COALESCE(r.subtotal_amount, 0) ), 0,
+      r.return_date::date, r.sales_return_no::text ${SR_STANDALONE}
     UNION ALL
-    SELECT ${OUT_CGST_LEDGER}, COALESCE(r.cgst_amount,0), 0 ${SR_STANDALONE}
+    SELECT ${OUT_CGST_LEDGER}, COALESCE(r.cgst_amount,0), 0,
+      r.return_date::date, r.sales_return_no::text ${SR_STANDALONE}
     UNION ALL
-    SELECT ${OUT_SGST_LEDGER}, COALESCE(r.sgst_amount,0), 0 ${SR_STANDALONE}
+    SELECT ${OUT_SGST_LEDGER}, COALESCE(r.sgst_amount,0), 0,
+      r.return_date::date, r.sales_return_no::text ${SR_STANDALONE}
     UNION ALL
-    SELECT ${OUT_IGST_LEDGER}, COALESCE(r.igst_amount,0), 0 ${SR_STANDALONE}
+    SELECT ${OUT_IGST_LEDGER}, COALESCE(r.igst_amount,0), 0,
+      r.return_date::date, r.sales_return_no::text ${SR_STANDALONE}
     UNION ALL
-    SELECT lc.id, 0, COALESCE(r.total_amount,0) ${SR_STANDALONE}
+    SELECT lc.id, 0, COALESCE(r.total_amount,0),
+      r.return_date::date, r.sales_return_no::text ${SR_STANDALONE}
 
     UNION ALL
 
@@ -895,22 +931,27 @@ const ALL_TXNS_CTE = `
     --  Dr vendor (reduce Sundry Creditors) ; Cr 'Purchase Return' (net) +
     --  Cr GST Input CGST/SGST/IGST (reverse input tax). Vendor Dr = the full
     --  reversed value so the leg self-balances (discount_percent not applied).
-    SELECT ${PURCHASE_RETURN_LEDGER}, 0, COALESCE(pr.subtotal_amount,0) ${PR_BASE}
+    SELECT ${PURCHASE_RETURN_LEDGER}, 0, COALESCE(pr.subtotal_amount,0),
+      pr.pr_date::date, pr.pr_no::text ${PR_BASE}
     UNION ALL
     SELECT ${IN_CGST_LEDGER}, 0,
-      ROUND(COALESCE(pr.subtotal_amount,0) * COALESCE(pr.cgst_percent,0) / 100.0, 2) ${PR_BASE}
+      ROUND(COALESCE(pr.subtotal_amount,0) * COALESCE(pr.cgst_percent,0) / 100.0, 2),
+      pr.pr_date::date, pr.pr_no::text ${PR_BASE}
     UNION ALL
     SELECT ${IN_SGST_LEDGER}, 0,
-      ROUND(COALESCE(pr.subtotal_amount,0) * COALESCE(pr.sgst_percent,0) / 100.0, 2) ${PR_BASE}
+      ROUND(COALESCE(pr.subtotal_amount,0) * COALESCE(pr.sgst_percent,0) / 100.0, 2),
+      pr.pr_date::date, pr.pr_no::text ${PR_BASE}
     UNION ALL
     SELECT ${IN_IGST_LEDGER}, 0,
-      ROUND(COALESCE(pr.subtotal_amount,0) * COALESCE(pr.igst_percent,0) / 100.0, 2) ${PR_BASE}
+      ROUND(COALESCE(pr.subtotal_amount,0) * COALESCE(pr.igst_percent,0) / 100.0, 2),
+      pr.pr_date::date, pr.pr_no::text ${PR_BASE}
     UNION ALL
     SELECT lv.id,
       ( COALESCE(pr.subtotal_amount,0)
         + ROUND(COALESCE(pr.subtotal_amount,0) * COALESCE(pr.cgst_percent,0) / 100.0, 2)
         + ROUND(COALESCE(pr.subtotal_amount,0) * COALESCE(pr.sgst_percent,0) / 100.0, 2)
-        + ROUND(COALESCE(pr.subtotal_amount,0) * COALESCE(pr.igst_percent,0) / 100.0, 2) ), 0 ${PR_BASE}
+        + ROUND(COALESCE(pr.subtotal_amount,0) * COALESCE(pr.igst_percent,0) / 100.0, 2) ), 0,
+      pr.pr_date::date, pr.pr_no::text ${PR_BASE}
 
     UNION ALL
 
@@ -923,7 +964,8 @@ const ALL_TXNS_CTE = `
        ========================================================= */
 
     -- G.Cr  Repair Charges Income = total_amount
-    SELECT ${REPAIR_INCOME_LEDGER}, 0, COALESCE(jr.total_amount, 0)
+    SELECT ${REPAIR_INCOME_LEDGER}, 0, COALESCE(jr.total_amount, 0),
+           jr.date::date, jr.repair_code::text
     FROM jewel_repairs jr
     WHERE jr.deleted_at IS NULL AND jr.is_active = true AND jr.status = 'Completed'
       AND (:branch_id IS NULL OR jr.branch_id = :branch_id)
@@ -951,7 +993,7 @@ const ALL_TXNS_CTE = `
             ORDER BY l.id LIMIT 1)
         WHEN p.payment_mode IN ('Bank Transfer','Cheque') THEN ${BANK_LEDGER}
       END,
-      COALESCE(p.amount_received, 0), 0
+      COALESCE(p.amount_received, 0), 0, jr.date::date, jr.repair_code::text
     FROM payments p
     JOIN jewel_repairs jr ON jr.id = p.jewel_repair_id AND jr.deleted_at IS NULL
     WHERE p.deleted_at IS NULL AND p.status = 'Completed'
@@ -963,23 +1005,67 @@ const ALL_TXNS_CTE = `
     UNION ALL
 
     -- G.Dr  Customer receivable (Sundry Debtors) = total_amount - paid
-    SELECT lc.id, ( COALESCE(jr.total_amount,0) - COALESCE(pay.paid,0) ), 0
+    --  GROSS then SETTLED, for the same reason as A.Dr8a/A.Cr5: same net,
+    --  but the statement shows the repair and the collection separately.
+    SELECT lc.id, COALESCE(jr.total_amount,0), 0,
+           jr.date::date, jr.repair_code::text
     FROM jewel_repairs jr
     JOIN customers c ON c.id = jr.customer_id
     JOIN ledger lc ON lc.id = c.ledger_id AND lc.deleted_at IS NULL
-    LEFT JOIN (
-      SELECT p.jewel_repair_id, SUM(COALESCE(p.amount_received,0)) AS paid
-      FROM payments p
-      WHERE p.deleted_at IS NULL AND p.status = 'Completed'
-        AND p.jewel_repair_id IS NOT NULL
-        AND p.payment_mode IN ('Cash','UPI','Card','Bank Transfer','Cheque')
-      GROUP BY p.jewel_repair_id
-    ) pay ON pay.jewel_repair_id = jr.id
     WHERE jr.deleted_at IS NULL AND jr.is_active = true AND jr.status = 'Completed'
+      AND (:branch_id IS NULL OR jr.branch_id = :branch_id)
+      AND jr.date BETWEEN :from_date AND :to_date
+
+    UNION ALL
+
+    -- G.Cr  Customer settlement on a repair (counterpart of G.Dr payment legs)
+    SELECT lc.id, 0, COALESCE(p.amount_received, 0),
+           jr.date::date, jr.repair_code::text
+    FROM payments p
+    JOIN jewel_repairs jr ON jr.id = p.jewel_repair_id AND jr.deleted_at IS NULL
+    JOIN customers c ON c.id = jr.customer_id
+    JOIN ledger lc ON lc.id = c.ledger_id AND lc.deleted_at IS NULL
+    WHERE p.deleted_at IS NULL AND p.status = 'Completed'
+      AND jr.is_active = true AND jr.status = 'Completed'
+      AND p.payment_mode IN ('Cash','UPI','Card','Bank Transfer','Cheque')
       AND (:branch_id IS NULL OR jr.branch_id = :branch_id)
       AND jr.date BETWEEN :from_date AND :to_date
   )
 `;
+
+// ─────────────────────────────────────────
+// LEDGER STATEMENT (the trial balance's drill-down)
+//
+// The SAME postings the trial balance aggregates, listed row by row instead of
+// summed, so /report/ledger-account can never disagree with
+// /financial-report/trial-balance. reportService used to hand-roll its own
+// subset of these legs and had drifted: 15 ledgers could not be reported at all
+// (Stone Purchase Cost, both GST sides, the two Round Offs, Purchase Return,
+// Old Gold Purchase, UPI/Card/Bank collections, …) and 67 more disagreed with
+// the trial balance, because a leg the copy omitted is a leg that never posts.
+//
+// Zero rows are dropped. Several legs are GREATEST(...)/percentage expressions
+// that legitimately evaluate to 0 for most documents (round-off on an exact
+// bill, IGST on an intra-state GRN), and keeping them would bury the real
+// entries under thousands of ₹0.00 lines. It cannot hide a ledger that has
+// activity: only the individual no-op rows go.
+const LEDGER_STATEMENT_SELECT = `
+  SELECT
+    t.txn_date     AS date,
+    t.reference_no AS reference_no,
+    t.ledger_id    AS ledger_id,
+    l.ledger_name  AS ledger_name,
+    t.debit        AS debit,
+    t.credit       AS credit
+  FROM all_txns t
+  JOIN ledger l ON l.id = t.ledger_id AND l.deleted_at IS NULL
+  WHERE (COALESCE(t.debit, 0) <> 0 OR COALESCE(t.credit, 0) <> 0)
+    AND (:ledger_id IS NULL OR t.ledger_id = :ledger_id)
+`;
+
+// Statement SQL with no ORDER BY / LIMIT, so a caller can order it, paginate it,
+// or wrap it in COUNT(*). Takes :branch_id, :from_date, :to_date, :ledger_id.
+const buildLedgerStatementSql = () => `${ALL_TXNS_CTE}${LEDGER_STATEMENT_SELECT}`;
 
 // Aggregation query that uses all_txns CTE and joins to ledger hierarchy
 const LEDGER_AGG_SELECT = `
@@ -2189,4 +2275,7 @@ module.exports = {
   getBalanceSheet,
   getGstr1,
   getGstr1Portal,
+  // Shared with reportService's ledger statement so the drill-down is built from
+  // the trial balance's own postings instead of a second, drifting copy.
+  buildLedgerStatementSql,
 };

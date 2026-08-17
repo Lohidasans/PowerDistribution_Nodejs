@@ -2,6 +2,9 @@ const { models, sequelize } = require('../models')
 const commonService = require('./commonService')
 const { dateFilter } = require('../helpers/dateHelper')
 const { calculateSellingPriceSync } = require('../services/productService')
+// The ledger statement is built from the trial balance's own postings — see
+// getLedgerReportByLedgerName below.
+const { buildLedgerStatementSql } = require('./financialReportService')
 
 const getSalesInvoiceReport = async (req, res) => {
   try {
@@ -1651,91 +1654,32 @@ const getVendorLedgerReport = async (req, res) => {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// LEDGER REPORT — chart-of-accounts resolution
+// LEDGER REPORT — statement of one ledger (or of every ledger)
 //
-// 'Sales Accounts', 'Purchase Accounts' and 'Bank Accounts' are ledger GROUP
-// names — there is NO `ledger` row called any of them. The legs below used to
-// join on `ledger_name = 'Sales Accounts'` / 'Purchase Accounts' / 'Bank
-// Accounts', which matched nothing, so sales revenue, GRN purchases and every
-// Bank-Transfer/Cheque payment silently produced ZERO rows and those accounts
-// looked empty in the report.
+// Built from the TRIAL BALANCE's own posting set (financialReportService's
+// all_txns, via buildLedgerStatementSql) instead of a second copy of the
+// accounting rules. The copy that used to live here resolved its own chart
+// leaves and implemented only 8 of the 46 posting legs, which is why:
+//   - 15 ledgers could never be reported AT ALL — Stone Purchase Cost, GST
+//     Input CGST/SGST/IGST, Output CGST/SGST/IGST, Round Off (both the Indirect
+//     Expense and the Indirect Income one), Purchase Return, Old Gold Purchase,
+//     UPI Collections, Card Collections, HDFC Bank, and journal-entry-only
+//     ledgers — a ledger with no leg is a ledger with no rows; and
+//   - 67 more disagreed with the trial balance: 'Purchase' was overstated by
+//     exactly the stone cost (the GRN leg posted the whole subtotal to it and
+//     never split B.Dr2 out), vendors were credited subtotal_amount instead of
+//     total_amount so GST was missing from every vendor balance, and sales
+//     invoices posted no payment leg at all, which left Cash in Hand off by
+//     ~77 lakh.
 //
-// Targets are resolved through the ledger -> ledger_group relationship instead,
-// using the SAME COALESCE chains as the trial balance
-// (services/financialReportService.js), so a figure shown there can be traced
-// back to its documents here. Verified against the live chart: Sales -> 'Silver
-// Sales', Purchase -> 'Purchase', Bank -> 'HDFC Bank'.
+// Whatever the trial balance shows for a ledger, this statement now itemises.
+//
+// NOTE on pagination: `running_balance` and `summary` are scoped to the rows
+// returned, i.e. to the requested page — unchanged from before.
 // ─────────────────────────────────────────────────────────────────────────────
-
-// Leaf resolved by (ledger_name, ledger_group_name). MIN(id) is the same
-// deterministic "lowest id wins" tie-break the trial balance uses, and stays
-// NULL when the leaf is not seeded.
-const LEAF = (name, group) =>
-  `MIN(l.id) FILTER (WHERE l.ledger_name = '${name}' AND grp.ledger_group_name = '${group}')`
-
-// Leaf matched on ledger_name ALONE. The three collection leaves are resolved
-// this way on purpose — adding a group predicate could change which ledger they
-// land on, and the trial balance resolves them the same way.
-const NAMED_LEAF = (name) => `MIN(l.id) FILTER (WHERE l.ledger_name = '${name}')`
-
-// ANY active leaf in a group (lowest id) — the guaranteed-resolvable fallback,
-// safe here because Sales/Purchase/Bank Accounts are single-purpose groups.
-const ANY_LEAF = (group) =>
-  `MIN(l.id) FILTER (WHERE grp.ledger_group_name = '${group}')`
-
-// Every posting target the ledger report needs, resolved in ONE scan of the
-// chart. Aggregates with no GROUP BY, so it always yields exactly one row
-// (all-NULL on an empty chart) and can never add or drop rows.
-const LEDGER_LOOKUP_CTE = `
-  led AS (
-    SELECT
-      ${NAMED_LEAF('Cash in Hand')}                                 AS cash_id,
-      ${NAMED_LEAF('UPI Collections')}                              AS upi_id,
-      ${NAMED_LEAF('Card Collections')}                             AS card_id,
-      ${LEAF('Bank Accounts', 'Current Assets')}                    AS bank_leaf_id,
-      ${ANY_LEAF('Bank Accounts')}                                  AS bank_group_id,
-      ${LEAF('Sales', 'Sales Accounts')}                            AS sales_id,
-      ${LEAF('Silver Sales', 'Sales Accounts')}                     AS silver_sales_id,
-      ${ANY_LEAF('Sales Accounts')}                                 AS any_sales_id,
-      ${LEAF('Sales Return', 'Sales Accounts')}                     AS sales_return_id,
-      ${LEAF('Old Gold Sales', 'Sales Accounts')}                   AS old_gold_sales_id,
-      ${LEAF('Purchase', 'Purchase Accounts')}                      AS purchase_id,
-      ${LEAF('Silver Purchase', 'Purchase Accounts')}               AS silver_purchase_id,
-      ${ANY_LEAF('Purchase Accounts')}                              AS any_purchase_id,
-      ${LEAF('Repair Charges Income', 'Direct Income')}             AS repair_income_id,
-      ${ANY_LEAF('Direct Income')}                                  AS any_direct_income_id,
-      ${LEAF('Scheme Collection Liability', 'Current Liabilities')} AS scheme_liab_id
-    FROM ledger l
-    JOIN ledger_group grp ON grp.id = l.ledger_group_id
-    WHERE l.deleted_at IS NULL AND grp.deleted_at IS NULL
-  )`
-
-// Read a resolved id out of the single-row `led` CTE. Uncorrelated, so Postgres
-// evaluates it once per statement as an InitPlan.
-const LED = (expr) => `(SELECT ${expr} FROM led)`
-
-const CASH_LEDGER = LED('led.cash_id')
-const UPI_LEDGER = LED('led.upi_id')
-const CARD_LEDGER = LED('led.card_id')
-
-// 'Bank Accounts' may be a single ledger under Current Assets OR — as on the
-// live chart — a GROUP holding HDFC/IOB/UPI/Card leaves. Resolve the ledger,
-// else the lowest leaf inside the group.
-const BANK_LEDGER = LED('COALESCE(led.bank_leaf_id, led.bank_group_id)')
-
-const SALES_LEDGER = LED('COALESCE(led.sales_id, led.silver_sales_id, led.any_sales_id)')
-const PURCHASE_LEDGER = LED('COALESCE(led.purchase_id, led.silver_purchase_id, led.any_purchase_id)')
-const SALES_RETURN_LEDGER = LED('COALESCE(led.sales_return_id, led.any_sales_id)')
-const OLD_GOLD_SALES_LEDGER = LED('COALESCE(led.old_gold_sales_id, led.any_sales_id)')
-const SCHEME_LIABILITY_LEDGER = LED('led.scheme_liab_id')
-const REPAIR_INCOME_LEDGER = LED(
-  `COALESCE(led.repair_income_id, led.any_direct_income_id,
-            led.sales_id, led.silver_sales_id, led.any_sales_id)`
-)
-
 const getLedgerReportByLedgerName = async (req, res) => {
   try {
-    const { ledger_id, from_date, to_date } = req.query
+    const { ledger_id, branch_id, from_date, to_date } = req.query
 
     // Optional Pagination
     const hasPagination =
@@ -1745,370 +1689,53 @@ const getLedgerReportByLedgerName = async (req, res) => {
     const limit = hasPagination ? parseInt(req.query.limit) : null
     const offset = hasPagination ? (page - 1) * limit : null
 
+    // Same window default as the trial balance, so the two tie by default.
     const fromDate = from_date || '2000-01-01'
     const toDate = to_date || new Date().toISOString().split('T')[0]
 
-    // BASE QUERY (NO LIMIT HERE)
-    // `led` resolves every posting target once; it is visible to the whole
-    // statement, including the UNION legs inside the derived table below, and
-    // survives being wrapped by the COUNT(*) query.
-    const baseQuery = `
-    WITH ${LEDGER_LOOKUP_CTE}
-    SELECT
-      t.date,
-      t.reference_no,
-      t.ledger_id,
-      t.ledger_name,
-      t.debit,
-      t.credit
-    FROM (
-
-      -- ===================== GRN =====================
-      SELECT 
-        g.grn_date AS date,
-        lp.id AS ledger_id,
-        lp.ledger_name,
-        g.grn_no AS reference_no,
-        g.subtotal_amount AS debit,
-        0 AS credit
-      FROM grns g
-      JOIN ledger lp ON lp.id = ${PURCHASE_LEDGER}
-      WHERE g.deleted_at IS NULL
-        AND g.grn_date BETWEEN :from_date AND :to_date
-
-      UNION ALL
-
-      SELECT 
-        g.grn_date,
-        lv.id,
-        lv.ledger_name,
-        g.grn_no,
-        0,
-        g.subtotal_amount
-      FROM grns g
-      JOIN vendors v ON v.id = g.vendor_id
-      JOIN ledger lv ON lv.id = v.ledger_id
-      WHERE g.deleted_at IS NULL
-        AND g.grn_date BETWEEN :from_date AND :to_date
-
-      -- ===================== SALES =====================
-      UNION ALL
-
-      SELECT 
-        s.invoice_date,
-        lc.id,
-        lc.ledger_name,
-        s.invoice_no,
-        s.subtotal_amount,
-        0
-      FROM sales_invoice_bills s
-      JOIN customers c ON c.id = s.customer_id
-      JOIN ledger lc ON lc.id = c.ledger_id
-      WHERE s.deleted_at IS NULL
-        AND s.status = 'Invoice'
-        AND s.invoice_date BETWEEN :from_date AND :to_date
-
-      UNION ALL
-
-      SELECT 
-        s.invoice_date,
-        ls.id,
-        ls.ledger_name,
-        s.invoice_no,
-        0,
-        s.subtotal_amount
-      FROM sales_invoice_bills s
-      JOIN ledger ls ON ls.id = ${SALES_LEDGER}
-      WHERE s.deleted_at IS NULL
-        AND s.status = 'Invoice'
-        AND s.invoice_date BETWEEN :from_date AND :to_date
-
-      -- ===================== OLD JEWEL =====================
-      UNION ALL
-
-      -- Dr: Old Gold Sales
-      SELECT
-        oj.date,
-        lop.id,
-        lop.ledger_name,
-        oj.old_jewel_code,
-        oj.total_amount,
-        0
-      FROM old_jewels oj
-      JOIN ledger lop ON lop.id = ${OLD_GOLD_SALES_LEDGER}
-      WHERE oj.deleted_at IS NULL
-        AND oj.status = 'Printed'
-        AND oj.date BETWEEN :from_date AND :to_date
-
-      UNION ALL
-
-      -- Cr: Customer ledger
-      SELECT
-        oj.date,
-        lc.id,
-        lc.ledger_name,
-        oj.old_jewel_code,
-        0,
-        oj.total_amount
-      FROM old_jewels oj
-      JOIN customers c ON c.id = oj.customer_id
-      JOIN ledger lc ON lc.id = c.ledger_id
-      WHERE oj.deleted_at IS NULL
-        AND oj.status = 'Printed'
-        AND oj.date BETWEEN :from_date AND :to_date
-
-      -- ===================== JEWEL REPAIR =====================
-      UNION ALL
-
-      -- Dr: Customer ledger
-      SELECT
-        jr.date,
-        lc.id,
-        lc.ledger_name,
-        jr.repair_code,
-        jr.total_amount,
-        0
-      FROM jewel_repairs jr
-      JOIN customers c ON c.id = jr.customer_id
-      JOIN ledger lc ON lc.id = c.ledger_id
-      WHERE jr.deleted_at IS NULL
-        AND jr.status = 'Completed'
-        AND jr.date BETWEEN :from_date AND :to_date
-
-      UNION ALL
-
-      -- Cr: Repair income ledger
-      SELECT
-        jr.date,
-        lri.id,
-        lri.ledger_name,
-        jr.repair_code,
-        0,
-        jr.total_amount
-      FROM jewel_repairs jr
-      JOIN ledger lri ON lri.id = ${REPAIR_INCOME_LEDGER}
-      WHERE jr.deleted_at IS NULL
-        AND jr.status = 'Completed'
-        AND jr.date BETWEEN :from_date AND :to_date
-
-
-    -- ===================== SALES RETURN =====================
-      UNION ALL
-
-      -- Dr: Sales Return ledger
-      SELECT
-        sr.return_date AS date,
-        lsr.id AS ledger_id,
-        lsr.ledger_name,
-        sr.sales_return_no AS reference_no,
-        sr.subtotal_amount AS debit,
-        0 AS credit
-      FROM sales_returns sr
-      JOIN ledger lsr ON lsr.id = ${SALES_RETURN_LEDGER}
-      WHERE sr.deleted_at IS NULL
-        AND sr.is_active = true
-        AND sr.status = 'Printed'
-        AND sr.return_date BETWEEN :from_date AND :to_date
-
-      UNION ALL
-
-      -- Cr: Customer ledger
-      SELECT
-        sr.return_date AS date,
-        lc.id AS ledger_id,
-        lc.ledger_name,
-        sr.sales_return_no AS reference_no,
-        0 AS debit,
-        sr.subtotal_amount AS credit
-      FROM sales_returns sr
-      JOIN customers c ON c.id = sr.customer_id
-      JOIN ledger lc ON lc.id = c.ledger_id
-      WHERE sr.deleted_at IS NULL
-        AND sr.is_active = true
-        AND sr.status = 'Printed'
-        AND sr.return_date BETWEEN :from_date AND :to_date
-
-      -- ===================== PAYMENTS =====================
-      UNION ALL
-
-      SELECT 
-        vp.payment_date,
-        lv.id,
-        lv.ledger_name,
-        vp.payment_no,
-        vp.amount,
-        0
-      FROM vendor_payments vp
-      JOIN vendors v ON v.id = vp.account_name_id
-      JOIN ledger lv ON lv.id = v.ledger_id
-      WHERE vp.deleted_at IS NULL
-        AND vp.user_type_id = 1
-        AND vp.payment_date BETWEEN :from_date AND :to_date
-
-      UNION ALL
-
-      SELECT 
-        vp.payment_date,
-        lc.id,
-        lc.ledger_name,
-        vp.payment_no,
-        vp.amount,
-        0
-      FROM vendor_payments vp
-      JOIN customers c ON c.id = vp.account_name_id
-      JOIN ledger lc ON lc.id = c.ledger_id
-      WHERE vp.deleted_at IS NULL
-        AND vp.user_type_id = 2
-        AND vp.payment_date BETWEEN :from_date AND :to_date
-
-      UNION ALL
-
-      -- Cr: money-out leg mapped from the ACTUAL payment mode (was hard-coded 'Cash').
-      -- Bank Transfer/Cheque resolve through the 'Bank Accounts' GROUP: there is
-      -- no ledger literally named 'Bank Accounts', so matching on that string
-      -- dropped every bank-mode payment from this report.
-      SELECT
-        vp.payment_date,
-        l.id,
-        l.ledger_name,
-        vp.payment_no,
-        0,
-        vp.amount
-      FROM vendor_payments vp
-      JOIN payment_modes pm ON pm.id = vp.payment_mode
-      JOIN ledger l ON l.id = (
-        CASE pm.payment_mode
-          WHEN 'Cash' THEN ${CASH_LEDGER}
-          WHEN 'UPI' THEN ${UPI_LEDGER}
-          WHEN 'Card' THEN ${CARD_LEDGER}
-          WHEN 'Bank Transfer' THEN ${BANK_LEDGER}
-          WHEN 'Cheque' THEN ${BANK_LEDGER}
-          ELSE ${CASH_LEDGER}
-        END)
-      WHERE vp.deleted_at IS NULL
-        AND vp.payment_date BETWEEN :from_date AND :to_date
-
-      -- ===================== RECEIPTS =====================
-      UNION ALL
-
-      -- Dr: money-in leg mapped from the ACTUAL payment mode (was hard-coded to a
-      -- non-existent 'Cash' ledger, so a Card receipt showed under Cash in Hand).
-      SELECT
-        r.receipt_date,
-        lc.id,
-        lc.ledger_name,
-        r.receipt_no,
-        r.amount,
-        0
-      FROM voucher_receipts r
-      JOIN ledger lc ON lc.id = (
-        CASE r.payment_mode_id
-          WHEN 1 THEN ${CASH_LEDGER}
-          WHEN 2 THEN ${CARD_LEDGER}
-          WHEN 3 THEN ${BANK_LEDGER}
-          WHEN 4 THEN ${BANK_LEDGER}
-          WHEN 5 THEN ${UPI_LEDGER}
-          ELSE ${CASH_LEDGER}
-        END)
-      WHERE r.deleted_at IS NULL
-        AND r.receipt_date BETWEEN :from_date AND :to_date
-
-      UNION ALL
-
-      -- Cr: for bill-type 2/3 account_id IS a ledger; restrict to those so a
-      -- Scheme receipt (bill_type 5, where account_id is a CUSTOMER id) does not
-      -- mis-join to an unrelated ledger.
-      SELECT
-        r.receipt_date,
-        lp.id,
-        lp.ledger_name,
-        r.receipt_no,
-        0,
-        r.amount
-      FROM voucher_receipts r
-      JOIN ledger lp ON lp.id = r.account_id
-      WHERE r.deleted_at IS NULL
-        AND r.bill_type_id IN (2, 3)
-        AND r.receipt_date BETWEEN :from_date AND :to_date
-
-      UNION ALL
-
-      -- Cr: Scheme receipts (bill_type 5) credit the Scheme Collection Liability.
-      SELECT
-        r.receipt_date,
-        lsc.id,
-        lsc.ledger_name,
-        r.receipt_no,
-        0,
-        r.amount
-      FROM voucher_receipts r
-      JOIN ledger lsc ON lsc.id = ${SCHEME_LIABILITY_LEDGER}
-      WHERE r.deleted_at IS NULL
-        AND r.bill_type_id = 5
-        AND r.receipt_date BETWEEN :from_date AND :to_date
-
-      -- ===================== SCHEME =====================
-      UNION ALL
-
-      SELECT 
-        csp.payment_date,
-        lc.id,
-        lc.ledger_name,
-        csp.scheme_payment_code,
-        csp.paid_amount,
-        0
-      FROM customer_scheme_payments csp
-      JOIN customer_enrollments ce ON ce.id = csp.enrollment_id
-      JOIN customers c ON c.id = ce.customer_id
-      JOIN ledger lc ON lc.id = c.ledger_id
-      WHERE csp.deleted_at IS NULL
-        AND csp.payment_date BETWEEN :from_date AND :to_date
-
-    ) t
-    WHERE (:ledger_id IS NULL OR t.ledger_id = :ledger_id)
-    `
-
-    // ✅ FINAL QUERY
-    let finalQuery = `${baseQuery} ORDER BY t.date::date ASC, t.reference_no ASC`
-
-    if (hasPagination) {
-      finalQuery += ` LIMIT :limit OFFSET :offset`
+    const replacements = {
+      ledger_id: ledger_id ? parseInt(ledger_id) : null,
+      // Omitted = every branch, matching the trial balance.
+      branch_id: branch_id ? parseInt(branch_id) : null,
+      from_date: fromDate,
+      to_date: toDate
     }
 
-    const data = await sequelize.query(finalQuery, {
+    // BASE QUERY (NO ORDER BY / LIMIT) — shared with the trial balance.
+    const baseQuery = buildLedgerStatementSql()
+
+    // COUNT(*) OVER () rides along with the page instead of a second query.
+    // all_txns is a MATERIALIZED 46-leg union; running it twice per request
+    // doubled the cost of the endpoint for a number the window function already
+    // has. The window is evaluated before ORDER BY/LIMIT, so it counts every
+    // matching row, not just the page.
+    const finalQuery = hasPagination
+      ? `SELECT x.*, COUNT(*) OVER () AS total_count
+         FROM (${baseQuery}) x
+         ORDER BY x.date ASC, x.reference_no ASC
+         LIMIT :limit OFFSET :offset`
+      : `SELECT x.*
+         FROM (${baseQuery}) x
+         ORDER BY x.date ASC, x.reference_no ASC`
+
+    const rows = await sequelize.query(finalQuery, {
       replacements: {
-        ledger_id: ledger_id ? parseInt(ledger_id) : null,
-        from_date: fromDate,
-        to_date: toDate,
+        ...replacements,
         ...(hasPagination && { limit, offset })
       },
       type: sequelize.QueryTypes.SELECT
     })
 
-    // ✅ COUNT ONLY IF PAGINATION
-    let total = null
-
-    if (hasPagination) {
-      const countQuery = `SELECT COUNT(*) as total FROM (${baseQuery}) x`
-
-      const countResult = await sequelize.query(countQuery, {
-        replacements: {
-          ledger_id: ledger_id ? parseInt(ledger_id) : null,
-          from_date: fromDate,
-          to_date: toDate
-        },
-        type: sequelize.QueryTypes.SELECT
-      })
-
-      total = countResult[0].total
-    }
+    const total = hasPagination
+      ? Number(rows[0] ? rows[0].total_count : 0)
+      : null
 
     // ✅ CALCULATIONS
     let totalDebit = 0
     let totalCredit = 0
     let runningBalance = 0
 
-    const formatted = data.map(row => {
+    const formatted = rows.map(row => {
       const debit = parseFloat(row.debit || 0)
       const credit = parseFloat(row.credit || 0)
 
@@ -2116,8 +1743,11 @@ const getLedgerReportByLedgerName = async (req, res) => {
       totalCredit += credit
       runningBalance += debit - credit
 
+      // total_count is plumbing for the pagination block, not part of a row.
+      const { total_count, ...rest } = row
+
       return {
-        ...row,
+        ...rest,
         debit: debit.toFixed(2),
         credit: credit.toFixed(2),
         running_balance: runningBalance.toFixed(2)
