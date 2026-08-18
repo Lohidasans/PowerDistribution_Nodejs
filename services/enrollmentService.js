@@ -165,7 +165,7 @@ const listEnrollments = async (req, res) => {
           '-' AS duration,
           0 AS installment_amount,
           CASE WHEN c.is_online = true THEN 'Online' ELSE 'Offline' END AS mode,
-          e.branch_id,
+          c.branch_id,
           b.branch_name,
           '0/0' AS dues,
           NULL AS invoice_no,
@@ -175,7 +175,7 @@ const listEnrollments = async (req, res) => {
         LEFT JOIN customer_enrollments e
           ON e.customer_id = c.id
           AND e.deleted_at IS NULL
-        LEFT JOIN branches b ON b.id = e.branch_id
+        LEFT JOIN branches b ON b.id = c.branch_id
 
         WHERE c.deleted_at IS NULL
         AND e.id IS NULL
@@ -280,7 +280,13 @@ const listEnrollments = async (req, res) => {
     }
 
     // ================= COMMON FILTERS =================
-    if (branch_id) sql += ` AND c.branch_id = :branch_id `;
+    if (branch_id) {
+      if (type === "not_enrolled") {
+        sql += ` AND c.branch_id = :branch_id `;
+      } else {
+        sql += ` AND e.branch_id = :branch_id `;
+      }
+    }
     if (customer_id) sql += ` AND c.id = :customer_id `;
 
     if (mode) {
@@ -317,9 +323,9 @@ const listEnrollments = async (req, res) => {
     let paymentWhere = ` WHERE csp.deleted_at IS NULL `;
 
     if (branch_id) {
-      scoreWhere += ` AND c.branch_id = :branch_id `;
+      scoreWhere += ` AND e.branch_id = :branch_id `;
       customerWhere += ` AND c.branch_id = :branch_id `;
-      paymentWhere += ` AND c.branch_id = :branch_id `;
+      paymentWhere += ` AND e.branch_id = :branch_id `;
     }
 
     if (customer_id) {
