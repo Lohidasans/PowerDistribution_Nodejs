@@ -350,9 +350,7 @@ const getBranchRevenueDetailsNew = async (req, res) => {
 
                 SELECT
                     COALESCE(sib.branch_id, jr.branch_id) AS branch_id,
-
                     p.payment_date AS txn_date,
-
                     p.payment_mode::text AS payment_mode,
 
                     COALESCE(
@@ -361,8 +359,7 @@ const getBranchRevenueDetailsNew = async (req, res) => {
                     ) AS description,
 
                     p.amount_received::numeric AS amount,
-
-                    0::numeric AS refund_amount,
+                     COALESCE(sib.refund_amount, jr.refund_amount, 0)::numeric AS refund_amount,
 
                     CASE
                         WHEN sib.id IS NOT NULL THEN 'SALES'
