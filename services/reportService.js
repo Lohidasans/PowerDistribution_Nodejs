@@ -108,7 +108,12 @@ const getSalesInvoiceReport = async (req, res) => {
                             'product_sku_id', p.sku_id,
                             'product_item_sku_id', pid.sku_id,
                             'is_returned', sii.is_returned,
-                            'returned_quantity', sii.returned_quantity
+                            'returned_quantity', sii.returned_quantity,
+                            'grn_no', g.grn_no,
+                            'gross_weight', pid.gross_weight,
+                            'making_charge_type', pid.making_charge_type,
+                            'making_charge', pid.making_charge,
+                            'silver_rate', mt.material_price
                         )
                         ORDER BY sii.id
                     ) AS items,
@@ -143,6 +148,8 @@ const getSalesInvoiceReport = async (req, res) => {
                 INNER JOIN sales_invoice_bill_items sii ON sii.invoice_bill_id = sib.id AND sii.deleted_at IS NULL
                 LEFT JOIN "productItemDetails" pid ON pid.id = sii.product_item_detail_id
                 LEFT JOIN products p ON p.id = pid.product_id
+                LEFT JOIN grns g ON g.id = p.grn_id
+                LEFT JOIN "materialTypes" mt ON mt.id = p.material_type_id
                 LEFT JOIN customers c ON c.id = sib.customer_id
                 LEFT JOIN employees e ON e.id = sib.employee_id
                 LEFT JOIN offline_adjustments adj ON adj.sales_invoice_id = sib.id
@@ -178,7 +185,12 @@ const getSalesInvoiceReport = async (req, res) => {
                             'product_sku_id', oi.sku_id,
                             'product_item_sku_id', oi.sku_id,
                             'is_returned', false,
-                            'branch_id', oi.branch_id
+                            'branch_id', oi.branch_id,
+                            'grn_no', g.grn_no,
+                            'gross_weight', pid.gross_weight,
+                            'silver_rate', mt.material_price,
+                            'making_charge_type', pid.making_charge_type,
+                            'making_charge', pid.making_charge
                         )
                         ORDER BY oi.id
                     ) AS items,
@@ -223,6 +235,18 @@ const getSalesInvoiceReport = async (req, res) => {
                 LEFT JOIN order_items oi
                     ON oi.id = oii.order_item_id
                     AND oi.deleted_at IS NULL
+                
+                LEFT JOIN "productItemDetails" pid
+                    ON pid.id = oi.product_item_id
+
+                LEFT JOIN products p
+                    ON p.id = oi.product_id
+
+                LEFT JOIN grns g
+                    ON g.id = p.grn_id
+
+                LEFT JOIN "materialTypes" mt
+                    ON mt.id = p.material_type_id
 
                 LEFT JOIN customers c
                     ON c.id = ooi.customer_id
