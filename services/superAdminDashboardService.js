@@ -1288,6 +1288,8 @@ const getProfitSection = async (req, res) => {
 
     const [
       capitalRows,
+      capitalRateRows,
+      purchaseRateRows,
       salesRows,
       oldJewelRows,
       purchaseRows,
@@ -1340,6 +1342,61 @@ const getProfitSection = async (req, res) => {
           replacements: {
             ...replacements,
             capitalCutoffDate: CAPITAL_CUTOFF_DATE,
+          },
+          type: sequelize.QueryTypes.SELECT,
+        }
+      ),
+
+      // Capital: simple average Material Price /g from GRN items
+      sequelize.query(
+        `
+        SELECT
+          COALESCE(AVG(gi.material_price_per_g), 0) AS average_rate_per_g
+        FROM grns grn
+        INNER JOIN "grnItems" gi
+          ON gi.grn_id = grn.id
+          AND gi.deleted_at IS NULL
+        INNER JOIN "materialTypes" mt
+          ON mt.id = gi.material_type_id
+          AND mt.deleted_at IS NULL
+        WHERE grn.deleted_at IS NULL
+          AND grn.is_active = true
+          AND grn.grn_date < :capitalCutoffDate
+          AND LOWER(TRIM(mt.material_type)) = 'silver'
+          ${capitalBranchFilter}
+        `,
+        {
+          replacements: {
+            ...replacements,
+            capitalCutoffDate: CAPITAL_CUTOFF_DATE,
+          },
+          type: sequelize.QueryTypes.SELECT,
+        }
+      ),
+
+      // Purchase: simple average Material Price /g from GRN items
+      sequelize.query(
+        `
+        SELECT
+          COALESCE(AVG(gi.material_price_per_g), 0) AS average_rate_per_g
+        FROM grns grn
+        INNER JOIN "grnItems" gi
+          ON gi.grn_id = grn.id
+          AND gi.deleted_at IS NULL
+        INNER JOIN "materialTypes" mt
+          ON mt.id = gi.material_type_id
+          AND mt.deleted_at IS NULL
+        WHERE grn.deleted_at IS NULL
+          AND grn.is_active = true
+          AND grn.grn_date >= :purchaseStartDate
+          AND LOWER(TRIM(mt.material_type)) = 'silver'
+          ${purchaseBranchFilter}
+          ${purchaseDateFilter}
+        `,
+        {
+          replacements: {
+            ...replacements,
+            purchaseStartDate: PURCHASE_START_DATE,
           },
           type: sequelize.QueryTypes.SELECT,
         }
@@ -1687,14 +1744,16 @@ const getProfitSection = async (req, res) => {
     const increaseInStockValue = totalStockValue - capitalStockValue;
 
     // Average value per gram
+    const capitalSilverRatePerGram = Number(capitalRateRows[0]?.average_rate_per_g || 0);
+
+    const purchaseSilverRatePerGram = Number(purchaseRateRows[0]?.average_rate_per_g || 0);
+
     const totalWeightForAverage = capitalStockWeight + purchaseStockWeight;
 
-    const silverRatePerGram = Number(silverRate.material_price || 0);
+    const silverRatePerGram = Number(silverRate.material_price || 0);  
 
     const averageValuePerGram = totalWeightForAverage > 0
-      ? ((capitalStockWeight * silverRatePerGram) +
-         (purchaseStockWeight * silverRatePerGram)) / totalWeightForAverage
-      : 0;
+      ? ((capitalStockWeight * capitalSilverRatePerGram) + (purchaseStockWeight * purchaseSilverRatePerGram)) / totalWeightForAverage : 0;
 
     // Old silver / old jewel weight
     const oldSilverWeight = Number(oldJewel.total_weight_in_grams || 0);
