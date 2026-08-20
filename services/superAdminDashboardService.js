@@ -1205,7 +1205,12 @@ const getProfitSection = async (req, res) => {
       date_filter,
     } = req.query;
 
+    // Capital: purchases strictly before 27-Jan-2026 (through 26-Jan-2026).
     const CAPITAL_CUTOFF_DATE = "2026-01-27";
+
+    // Purchase: purchases from 28-Jan-2026 onward.
+    const PURCHASE_START_DATE = "2026-01-28";
+
     const replacements = {};
 
     if (branch_id) {
@@ -1239,7 +1244,10 @@ const getProfitSection = async (req, res) => {
     const silverRateBranchFilter = branch_id
       ? ` AND mt.branch_id = :branch_id`
       : "";
-
+    
+    const onlineSalesBranchFilter = branch_id
+      ? ` AND ooi.branch_id = :branch_id`
+      : "";
     // Date filters use the selected filter:
     // today / week / month / year / custom from_date and to_date.
     const salesDateFilter = dateFilter(
@@ -1272,6 +1280,12 @@ const getProfitSection = async (req, res) => {
       replacements
     );
 
+    const onlineSalesDateFilter = dateFilter(
+      { from_date, to_date, date_filter },
+      "ooi.invoice_date",
+      replacements
+    );
+
     const [
       capitalRows,
       salesRows,
@@ -1286,14 +1300,41 @@ const getProfitSection = async (req, res) => {
       // Branch filter applies when branch_id is sent.
       sequelize.query(
         `
+        WITH grn_totals AS (
           SELECT
-            COALESCE(SUM(grn.total_gross_wt_in_g), 0) AS total_weight_in_grams,
-            COALESCE(SUM(grn.total_amount), 0) AS total_value
+            grn.id,
+            COALESCE(SUM(gid.total_amount), 0) AS item_total_amount,
+            COALESCE(SUM(gid.gross_wt_in_g), 0) AS grn_weight_in_grams
           FROM grns grn
+          LEFT JOIN "grnItems" gid
+            ON gid.grn_id = grn.id
+            AND gid.deleted_at IS NULL
           WHERE grn.deleted_at IS NULL
             AND grn.is_active = true
             AND grn.grn_date < :capitalCutoffDate
             ${capitalBranchFilter}
+          GROUP BY grn.id
+        ),
+        returns_by_grn AS (
+          SELECT
+            pr.grn_id,
+            COALESCE(SUM(pri.gross_weight), 0) AS returned_weight_in_grams,
+            COALESCE(SUM(pri.total_amount), 0) AS returned_amount
+          FROM purchase_returns pr
+          INNER JOIN purchase_return_items pri
+            ON pri.pr_id = pr.id
+            AND pri.deleted_at IS NULL
+          WHERE pr.deleted_at IS NULL
+            AND pr.grn_id IS NOT NULL
+          GROUP BY pr.grn_id
+        )
+        SELECT
+          COALESCE(SUM(gt.grn_weight_in_grams - COALESCE(rbg.returned_weight_in_grams, 0)), 0)
+            AS total_weight_in_grams,
+          COALESCE(SUM(gt.item_total_amount - COALESCE(rbg.returned_amount, 0)), 0)
+            AS total_value
+        FROM grn_totals gt
+        LEFT JOIN returns_by_grn rbg ON rbg.grn_id = gt.id;  
         `,
         {
           replacements: {
@@ -1307,19 +1348,32 @@ const getProfitSection = async (req, res) => {
       // SALES:
       // Sales invoice GST raised weight and value for selected date range.
       sequelize.query(
-        `
-          WITH valid_invoices AS (
-            SELECT
-              sib.id,
-              sib.total_amount
-            FROM sales_invoice_bills sib
-            WHERE sib.deleted_at IS NULL
-              AND sib.is_active = true
-              AND sib.status = 'Invoice'
-              ${salesBranchFilter}
-              ${salesDateFilter}
-          )
+      `
+        WITH valid_invoices AS (
           SELECT
+            sib.id,
+            sib.subtotal_amount
+          FROM sales_invoice_bills sib
+          WHERE sib.deleted_at IS NULL
+            AND sib.is_active = true
+            AND sib.status = 'Invoice'
+            ${salesBranchFilter}
+            ${salesDateFilter}
+        ),
+
+        valid_online_invoices AS (
+          SELECT
+            ooi.id,
+            ooi.subtotal
+          FROM online_order_invoices ooi
+          WHERE ooi.deleted_at IS NULL
+            ${onlineSalesBranchFilter}
+            ${onlineSalesDateFilter}
+        )
+
+        SELECT
+          (
+            /* Keep your offline returned-quantity calculation unchanged */
             COALESCE(
               (
                 SELECT SUM(
@@ -1332,16 +1386,41 @@ const getProfitSection = async (req, res) => {
                 WHERE sii.deleted_at IS NULL
               ),
               0
-            ) AS total_weight_in_grams,
+            )
 
+            +
+
+            /* Online orders have no returned-quantity flow here */
             COALESCE(
               (
-                SELECT SUM(vi.total_amount)
-                FROM valid_invoices vi
+                SELECT SUM(
+                  COALESCE(oi.gross_weight, 0)
+                  * COALESCE(oii.quantity, oi.quantity, 1)
+                )
+                FROM online_order_invoice_items oii
+                INNER JOIN valid_online_invoices voi
+                  ON voi.id = oii.online_order_invoice_id
+                INNER JOIN order_items oi
+                  ON oi.id = oii.order_item_id
+                  AND oi.deleted_at IS NULL
+                WHERE oii.deleted_at IS NULL
               ),
               0
-            ) AS total_value
-        `,
+            )
+          ) AS total_weight_in_grams,
+
+          (
+            COALESCE(
+              (SELECT SUM(vi.subtotal_amount) FROM valid_invoices vi),
+              0
+            )
+            +
+            COALESCE(
+              (SELECT SUM(voi.subtotal) FROM valid_online_invoices voi),
+              0
+            )
+          ) AS total_value
+      `,
         {
           replacements,
           type: sequelize.QueryTypes.SELECT,
@@ -1393,17 +1472,24 @@ const getProfitSection = async (req, res) => {
       // GRN GST raised weight and value for selected date range.
       sequelize.query(
         `
-          SELECT
-            COALESCE(SUM(grn.total_gross_wt_in_g), 0) AS total_weight_in_grams,
-            COALESCE(SUM(grn.total_amount), 0) AS total_value
-          FROM grns grn
-          WHERE grn.deleted_at IS NULL
-            AND grn.is_active = true
-            ${purchaseBranchFilter}
-            ${purchaseDateFilter}
+        SELECT
+          COALESCE(SUM(gi.gross_wt_in_g), 0) AS total_weight_in_grams,
+          COALESCE(SUM(gi.total_amount), 0) AS total_value
+        FROM grns grn
+        INNER JOIN "grnItems" gi
+          ON gi.grn_id = grn.id
+          AND gi.deleted_at IS NULL
+        WHERE grn.deleted_at IS NULL
+          AND grn.is_active = true
+          AND grn.grn_date >= :purchaseStartDate
+          ${purchaseBranchFilter}
+          ${purchaseDateFilter}
         `,
         {
-          replacements,
+          replacements: {
+            ...replacements,
+            purchaseStartDate: PURCHASE_START_DATE,
+          },
           type: sequelize.QueryTypes.SELECT,
         }
       ),
@@ -1503,7 +1589,16 @@ const getProfitSection = async (req, res) => {
               0
             ) AS card_amount,
 
-            COALESCE(SUM(cs.amount), 0) AS total_amount_collected
+            -- Collections are only Cash + UPI + Card.
+            COALESCE(
+                SUM(
+                  CASE WHEN cs.payment_mode IN ('Cash', 'UPI', 'Card')
+                  THEN cs.amount
+                  ELSE 0 END
+                ),
+                0
+              ) AS total_amount_collected
+
           FROM collection_stream cs
           WHERE 1 = 1
             ${collectionBranchFilter}
@@ -1594,7 +1689,12 @@ const getProfitSection = async (req, res) => {
     // Average value per gram
     const totalWeightForAverage = capitalStockWeight + purchaseStockWeight;
 
-    const averageValuePerGram = totalWeightForAverage > 0 ? (capitalStockValue + purchaseStockValue) / totalWeightForAverage : 0;
+    const silverRatePerGram = Number(silverRate.material_price || 0);
+
+    const averageValuePerGram = totalWeightForAverage > 0
+      ? ((capitalStockWeight * silverRatePerGram) +
+         (purchaseStockWeight * silverRatePerGram)) / totalWeightForAverage
+      : 0;
 
     // Old silver / old jewel weight
     const oldSilverWeight = Number(oldJewel.total_weight_in_grams || 0);
@@ -1608,8 +1708,6 @@ const getProfitSection = async (req, res) => {
 
     // Expenses already exclude Cash in Hand / HDFC bank-deposit entries.
     const cashVsStockAmount = totalCollectionAmount - totalExpenseAmount;
-
-    const silverRatePerGram = Number(silverRate.material_price || 0);
 
     const cashVsStockRatePerGram = silverRatePerGram + AVERAGE_LABOUR_COST;
 
