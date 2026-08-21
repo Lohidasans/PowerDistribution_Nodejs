@@ -1477,11 +1477,11 @@ const getBalanceSheet = async (req, res) => {
       }
       const ledgers = [];
       for (const l of n.ledgers) {
-        const amt = round2(side === "asset" ? l.debit - l.credit : l.credit - l.debit);
+        const amt = Math.abs(side === "asset" ? l.debit - l.credit : l.credit - l.debit);
         if (!includeZero && amt === 0) continue;
         ledgers.push({ ledger_id: l.ledger_id, ledger_name: l.ledger_name, amount: amt });
       }
-      const amount = round2(
+      const amount = Math.abs(
         side === "asset" ? n.totalDebit - n.totalCredit : n.totalCredit - n.totalDebit
       );
       if (!includeZero && children.length === 0 && ledgers.length === 0 && amount === 0) {
