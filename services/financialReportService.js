@@ -1230,6 +1230,155 @@ function buildGroupTree(ledgerRows, groups) {
 }
 
 // ─────────────────────────────────────────
+// STOCK POSITION  (opening / closing stock)
+//
+// The ledger-driven statements have NO stock leg: every GRN is charged straight
+// to Purchase Accounts and is never relieved when the metal is sold. So the
+// Trading Account matches the FULL purchase cost against sales and reports the
+// unsold vault as a gross LOSS. Closing stock is the missing credit — and the
+// same figure is the missing Current Asset on the balance sheet.
+//
+// Ported from getProfitSection (superAdminDashboardService): same three source
+// aggregations — GRN weight+value, sales-item weight, weighted-average cost —
+// but driven off the REPORT's date window instead of the dashboard's static
+// 27-Jan-2026 capital cutoff:
+//
+//   getProfitSection : total stock = capital + purchase - sales
+//                      (capital = GRNs before the cutoff, purchase = after it)
+//   here             : capital + purchase IS "every GRN up to :as_of", so the
+//                      cutoff cancels out of the sum and the identity holds for
+//                      ANY date. Pass the report's to_date for CLOSING stock,
+//                      and (from_date - 1 day) for OPENING stock.
+//
+// This also removes a double-count that the dashboard version is exposed to:
+// its purchase leg has no lower bound, so any window starting before the cutoff
+// counts the capital GRNs twice — which on this report, whose default window is
+// 2000-01-01 -> today, would fire on every unfiltered load.
+//
+// VALUATION IS AT WEIGHTED-AVERAGE COST: closing weight x (total GRN value /
+// total GRN weight) — the spec's "Average value" formula, generalised the same
+// way. getProfitSection's other line, capital_value + purchase_value - SALES
+// value, is deliberately NOT what feeds the statements: sales value is the
+// RETAIL total (making charges + GST included), so netting it against
+// cost-based GRN amounts strips out margin and tax that were never part of
+// stock cost and understates the asset. It is still returned as `net_value` so
+// the dashboard figure stays available to the client.
+// ─────────────────────────────────────────
+
+// as_of date one day before `d` — the instant an opening balance is measured.
+const dayBefore = (d) => {
+  const dt = new Date(`${d}T00:00:00Z`);
+  dt.setUTCDate(dt.getUTCDate() - 1);
+  return dt.toISOString().split("T")[0];
+};
+
+async function fetchStockPosition(branchId, asOfDate) {
+  const replacements = { branch_id: branchId, as_of: asOfDate };
+
+  const [grnRows, salesRows] = await Promise.all([
+    // Every GRN up to :as_of = getProfitSection's capital + purchase legs.
+    //
+    // grns.total_gross_wt_in_g is a CLIENT-SUPPLIED header total — nothing on
+    // the write path derives it from the lines — so a GRN saved without it
+    // would silently contribute 0 grams while still contributing its full
+    // value, inflating the average cost per gram and shrinking closing stock.
+    // Fall back to the line weights when the header is missing or zero.
+    // NOTE: grnItems.gross_wt_in_g is a LINE TOTAL, so it is summed plain — it
+    // is NOT multiplied by quantity. That is the convention everywhere else in
+    // this codebase (grnService, purchaseOrderService, stockManagementService),
+    // and it is the opposite of the sales side below, where gross_weight is
+    // PER UNIT and must be multiplied out. Both bases are gross weight, so the
+    // subtraction is apples-to-apples in grams.
+    sequelize.query(
+      `
+        SELECT
+          COALESCE(SUM(
+            COALESCE(
+              NULLIF(grn.total_gross_wt_in_g, 0),
+              (
+                SELECT SUM(gi.gross_wt_in_g)
+                FROM "grnItems" gi
+                WHERE gi.grn_id = grn.id
+                  AND gi.deleted_at IS NULL
+              ),
+              0
+            )
+          ), 0) AS total_weight_in_grams,
+          COALESCE(SUM(grn.total_amount), 0) AS total_value
+        FROM grns grn
+        WHERE grn.deleted_at IS NULL
+          AND grn.is_active = true
+          AND grn.grn_date <= :as_of
+          AND (:branch_id IS NULL OR grn.branch_id = :branch_id)
+      `,
+      { replacements, type: sequelize.QueryTypes.SELECT }
+    ),
+
+    // Metal that has LEFT the vault, net of returns — item gross weight x
+    // (quantity - returned_quantity), exactly as getProfitSection counts it.
+    sequelize.query(
+      `
+        WITH valid_invoices AS (
+          SELECT sib.id, sib.total_amount
+          FROM sales_invoice_bills sib
+          WHERE sib.deleted_at IS NULL
+            AND sib.is_active = true
+            AND sib.status = 'Invoice'
+            AND sib.invoice_date <= :as_of
+            AND (:branch_id IS NULL OR sib.branch_id = :branch_id)
+        )
+        SELECT
+          COALESCE(
+            (
+              SELECT SUM(
+                COALESCE(sii.gross_weight, 0)
+                * (COALESCE(sii.quantity, 1) - COALESCE(sii.returned_quantity, 0))
+              )
+              FROM sales_invoice_bill_items sii
+              INNER JOIN valid_invoices vi ON vi.id = sii.invoice_bill_id
+              WHERE sii.deleted_at IS NULL
+            ),
+            0
+          ) AS total_weight_in_grams,
+          COALESCE((SELECT SUM(vi.total_amount) FROM valid_invoices vi), 0) AS total_value
+      `,
+      { replacements, type: sequelize.QueryTypes.SELECT }
+    ),
+  ]);
+
+  const grn = grnRows[0] || {};
+  const sales = salesRows[0] || {};
+
+  const purchasedWeight = Number(grn.total_weight_in_grams || 0);
+  const purchasedValue = Number(grn.total_value || 0);
+  const soldWeight = Number(sales.total_weight_in_grams || 0);
+  const soldValue = Number(sales.total_value || 0);
+
+  // Average value per gram = total GRN value / total GRN weight.
+  const averageValuePerGram = purchasedWeight > 0 ? purchasedValue / purchasedWeight : 0;
+
+  // Stock can only be negative when sale weights outrun GRN weights (bad master
+  // data, or stock carried in before the system went live). Clamping to 0 keeps
+  // a data problem from being reported as a NEGATIVE asset on the balance sheet.
+  const rawWeight = purchasedWeight - soldWeight;
+  const weight = rawWeight > 0 ? rawWeight : 0;
+
+  return {
+    as_of: asOfDate,
+    weight_in_grams: round2(weight),
+    average_value_per_gram: round2(averageValuePerGram),
+    value: round2(weight * averageValuePerGram),
+    // getProfitSection's raw line (cost purchases less RETAIL sales), carried
+    // for reference only — see the valuation note above.
+    net_value: round2(purchasedValue - soldValue),
+    purchased_weight_in_grams: round2(purchasedWeight),
+    purchased_value: round2(purchasedValue),
+    sold_weight_in_grams: round2(soldWeight),
+    sold_value: round2(soldValue),
+  };
+}
+
+// ─────────────────────────────────────────
 // TRIAL BALANCE
 //
 // Aggregates every transaction source (GRN, sales, returns, payments,
@@ -1354,83 +1503,41 @@ const getProfitLoss = async (req, res) => {
     const groups = await fetchGroupTree();
     const { roots } = buildGroupTree(ledgerRows, groups);
 
-    // A nested P&L entry: the group's own amount plus its sub-groups (recursive)
-    // and leaf ledgers. Sub-group children carry `amount` + `children`; ledger
-    // children carry `debit`/`credit`.
-    //
-    // Rows with nothing to report are pruned (returns null) unless include_zero:
-    // a chart carries every seeded expense/income head plus every party ledger,
-    // and the untouched ones were padding the statement with ₹0.00 lines. The
-    // test is on the DISPLAYED amount — round2 of the net, matching the UI's
-    // own `Math.abs(debit - credit)` — so a ledger whose debit and credit cancel
-    // is hidden too, and float residue never leaves a "₹0.00" row behind. A
-    // group is kept whenever a child survives, even if its own net is zero, so
-    // offsetting balances under it stay visible.
-    const serializePL = (n) => {
-      const children = [];
-      for (const c of n.children) {
-        const s = serializePL(c);
-        if (s) children.push(s);
-      }
-      for (const l of n.ledgers) {
-        if (!includeZero && round2(l.debit - l.credit) === 0) continue;
-        children.push({
-          particulars: l.ledger_name,
-          debit: (l.debit || 0).toFixed(2),
-          credit: (l.credit || 0).toFixed(2),
-        });
-      }
-      const amount = Math.abs(n.totalDebit - n.totalCredit);
-      if (!includeZero && children.length === 0 && round2(amount) === 0) return null;
-      return {
-        particulars: n.group_name,
-        amount: amount.toFixed(2),
-        children,
-      };
-    };
+    // Stock at both ends of the window. Purchases inside the window are already
+    // on the debit side via the Purchase Accounts ledgers, so the Trading
+    // Account only needs the two stock balances to close the loop:
+    //   Gross Profit = (Sales + Closing Stock) - (Opening Stock + Purchases + Direct Expenses)
+    const [openingStock, closingStock] = await Promise.all([
+      fetchStockPosition(branchId, dayBefore(fromDate)),
+      fetchStockPosition(branchId, toDate),
+    ]);
 
-    const tradingDebit = [];   // Purchase, Direct Expenses
-    const tradingCredit = [];  // Sales, Direct Income
-    const pnlDebit = [];       // Indirect Expenses
-    const pnlCredit = [];      // Indirect Income
-
-    for (const n of roots) {
-      const name = (n.group_name || "").toLowerCase();
-      const entry = serializePL(n);
-      // A whole head that never moved (e.g. Direct Income with only zero
-      // ledgers) drops off its side. Totals are unaffected — it contributed 0.
-      if (!entry) continue;
-      if (n.account_type === "Expense") {
-        (name.includes("indirect") ? pnlDebit : tradingDebit).push(entry);
-      } else if (n.account_type === "Income") {
-        (name.includes("indirect") ? pnlCredit : tradingCredit).push(entry);
-      }
-    }
-
-    const sumAmt = (arr) => arr.reduce((s, e) => s + parseFloat(e.amount), 0);
-    const tradingDebitTotal = sumAmt(tradingDebit);
-    const tradingCreditTotal = sumAmt(tradingCredit);
-    const pnlDebitTotal = sumAmt(pnlDebit);
-    const pnlCreditTotal = sumAmt(pnlCredit);
-
-    // Gross Profit / Loss plugged into the second section
-    const grossProfit = tradingCreditTotal - tradingDebitTotal;
-    const netProfit = grossProfit + pnlCreditTotal - pnlDebitTotal;
+    const sections = buildProfitSections(roots, {
+      includeZero,
+      openingStock,
+      closingStock,
+    });
 
     return commonService.okResponse(res, {
       trading_account: {
-        debit: tradingDebit,
-        debit_total: tradingDebitTotal.toFixed(2),
-        credit: tradingCredit,
-        credit_total: tradingCreditTotal.toFixed(2),
-        gross_profit: grossProfit.toFixed(2),
+        debit: sections.tradingDebit,
+        debit_total: sections.tradingDebitTotal.toFixed(2),
+        credit: sections.tradingCredit,
+        credit_total: sections.tradingCreditTotal.toFixed(2),
+        gross_profit: sections.grossProfit.toFixed(2),
       },
       pnl_account: {
-        debit: pnlDebit,
-        debit_total: pnlDebitTotal.toFixed(2),
-        credit: pnlCredit,
-        credit_total: pnlCreditTotal.toFixed(2),
-        net_profit: netProfit.toFixed(2),
+        debit: sections.pnlDebit,
+        debit_total: sections.pnlDebitTotal.toFixed(2),
+        credit: sections.pnlCredit,
+        credit_total: sections.pnlCreditTotal.toFixed(2),
+        net_profit: sections.netProfit.toFixed(2),
+      },
+      // Weights + the valuation basis behind the two stock rows, so the report
+      // can show HOW the closing figure was arrived at.
+      stock: {
+        opening: openingStock,
+        closing: closingStock,
       },
     });
   } catch (err) {
@@ -1438,6 +1545,108 @@ const getProfitLoss = async (req, res) => {
     return commonService.handleError(res, err);
   }
 };
+
+// Builds the Trading + Profit & Loss sections from an already-built group tree.
+//
+// Extracted out of getProfitLoss so the BALANCE SHEET can derive the period's
+// net result from the exact same arithmetic. Duplicating the calculation there
+// would let the two statements disagree on the profit figure, which is the one
+// number a reader will cross-check between them first.
+function buildProfitSections(roots, { includeZero, openingStock, closingStock }) {
+  // A nested P&L entry: the group's own amount plus its sub-groups (recursive)
+  // and leaf ledgers. Sub-group children carry `amount` + `children`; ledger
+  // children carry `debit`/`credit`.
+  //
+  // Rows with nothing to report are pruned (returns null) unless include_zero:
+  // a chart carries every seeded expense/income head plus every party ledger,
+  // and the untouched ones were padding the statement with ₹0.00 lines. The
+  // test is on the DISPLAYED amount — round2 of the net, matching the UI's
+  // own `Math.abs(debit - credit)` — so a ledger whose debit and credit cancel
+  // is hidden too, and float residue never leaves a "₹0.00" row behind. A
+  // group is kept whenever a child survives, even if its own net is zero, so
+  // offsetting balances under it stay visible.
+  const serializePL = (n) => {
+    const children = [];
+    for (const c of n.children) {
+      const s = serializePL(c);
+      if (s) children.push(s);
+    }
+    for (const l of n.ledgers) {
+      if (!includeZero && round2(l.debit - l.credit) === 0) continue;
+      children.push({
+        particulars: l.ledger_name,
+        debit: (l.debit || 0).toFixed(2),
+        credit: (l.credit || 0).toFixed(2),
+      });
+    }
+    const amount = Math.abs(n.totalDebit - n.totalCredit);
+    if (!includeZero && children.length === 0 && round2(amount) === 0) return null;
+    return {
+      particulars: n.group_name,
+      amount: amount.toFixed(2),
+      children,
+    };
+  };
+
+  const tradingDebit = [];   // Purchase, Direct Expenses
+  const tradingCredit = [];  // Sales, Direct Income
+  const pnlDebit = [];       // Indirect Expenses
+  const pnlCredit = [];      // Indirect Income
+
+  for (const n of roots) {
+    const name = (n.group_name || "").toLowerCase();
+    const entry = serializePL(n);
+    // A whole head that never moved (e.g. Direct Income with only zero
+    // ledgers) drops off its side. Totals are unaffected — it contributed 0.
+    if (!entry) continue;
+    if (n.account_type === "Expense") {
+      (name.includes("indirect") ? pnlDebit : tradingDebit).push(entry);
+    } else if (n.account_type === "Income") {
+      (name.includes("indirect") ? pnlCredit : tradingCredit).push(entry);
+    }
+  }
+
+  // Stock lines are computed, not posted, so they are appended after the
+  // ledger heads — opening FIRST on the debit side and closing LAST on the
+  // credit side, the conventional Trading Account layout. Both are pruned at
+  // zero like every other row, so a window with no stock either side is
+  // rendered exactly as it is today.
+  const stockRow = (particulars, amount) => ({
+    particulars,
+    amount: amount.toFixed(2),
+    children: [],
+  });
+
+  if (includeZero || round2(openingStock.value) !== 0) {
+    tradingDebit.unshift(stockRow("Opening Stock", openingStock.value));
+  }
+  if (includeZero || round2(closingStock.value) !== 0) {
+    tradingCredit.push(stockRow("Closing Stock", closingStock.value));
+  }
+
+  const sumAmt = (arr) => arr.reduce((s, e) => s + parseFloat(e.amount), 0);
+  const tradingDebitTotal = sumAmt(tradingDebit);
+  const tradingCreditTotal = sumAmt(tradingCredit);
+  const pnlDebitTotal = sumAmt(pnlDebit);
+  const pnlCreditTotal = sumAmt(pnlCredit);
+
+  // Gross Profit / Loss plugged into the second section
+  const grossProfit = tradingCreditTotal - tradingDebitTotal;
+  const netProfit = grossProfit + pnlCreditTotal - pnlDebitTotal;
+
+  return {
+    tradingDebit,
+    tradingDebitTotal,
+    tradingCredit,
+    tradingCreditTotal,
+    pnlDebit,
+    pnlDebitTotal,
+    pnlCredit,
+    pnlCreditTotal,
+    grossProfit,
+    netProfit,
+  };
+}
 
 // ─────────────────────────────────────────
 // BALANCE SHEET
@@ -1458,10 +1667,97 @@ const getBalanceSheet = async (req, res) => {
     const groups = await fetchGroupTree();
     const { roots } = buildGroupTree(ledgerRows, groups);
 
+    // The asset row needs only the CLOSING position (a balance sheet is a
+    // point-in-time statement, measured at to_date — the same figure the
+    // Trading Account credits). Opening stock is fetched too because the
+    // period's net result, carried into Capital Account below, is computed from
+    // both ends exactly as the P&L computes it.
+    const [openingStock, closingStock] = await Promise.all([
+      fetchStockPosition(branchId, dayBefore(fromDate)),
+      fetchStockPosition(branchId, toDate),
+    ]);
+
+    // NO NEGATIVE MAY REACH THE STATEMENT (client requirement). Reclassify
+    // rather than sign-flip.
+    //
+    // bae0d34 met the requirement with Math.abs, which reads a debtor sitting
+    // at -200 as +200. That hides the sign but INVENTS 400 of value: the books
+    // say the balance is 200 on the OTHER side, so the sheet moves by twice the
+    // amount and stops balancing. Rounding was collateral damage too — round2
+    // was doing double duty there, and without it the zero tests below compared
+    // raw float residue (5.5e-17 !== 0), letting every settled party this
+    // pruning exists to hide back in as a "₹0.00" row.
+    //
+    // A contra balance is not a negative asset, it is a balance of the OPPOSITE
+    // NATURE: a debtor in credit is money owed TO the customer (an advance
+    // received), an overdrawn bank is a loan. So move it across instead — the
+    // standard treatment, and what Tally does. Both goals are then met at once:
+    //
+    //   moving -X off assets and showing it as +X on liabilities leaves
+    //   (assets - liabilities) unchanged, so the sheet still balances, and
+    //   every figure printed is positive because it now sits on its own side.
+    //
+    // Done at LEAF level, before any rollup: once every surviving leaf is
+    // natural-side-positive, every group total is a sum of positives, so no
+    // negative can appear at any depth. The invariant is asserted below.
+    const contraToLiability = []; // asset ledgers in credit  -> liabilities
+    const contraToAsset = [];     // liability ledgers in debit -> assets
+
+    const extractContra = (n, side) => {
+      const keep = [];
+      for (const l of n.ledgers) {
+        const net = round2(side === "asset" ? l.debit - l.credit : l.credit - l.debit);
+        if (net < 0) {
+          (side === "asset" ? contraToLiability : contraToAsset).push({
+            ledger_id: l.ledger_id,
+            ledger_name: l.ledger_name,
+            amount: -net, // positive magnitude on its true side
+            reclassified_from: n.group_name,
+          });
+        } else {
+          keep.push(l);
+        }
+      }
+      n.ledgers = keep;
+      for (const c of n.children) extractContra(c, side);
+    };
+
+    // Totals were rolled up by buildGroupTree over ALL leaves, so they have to
+    // be rebuilt from the leaves that survived the extraction.
+    const reRollup = (n) => {
+      let d = 0;
+      let c = 0;
+      for (const l of n.ledgers) {
+        d += l.debit;
+        c += l.credit;
+      }
+      for (const child of n.children) {
+        reRollup(child);
+        d += child.totalDebit;
+        c += child.totalCredit;
+      }
+      n.totalDebit = d;
+      n.totalCredit = c;
+    };
+
+    for (const n of roots) {
+      if (n.account_type === "Asset") {
+        extractContra(n, "asset");
+        reRollup(n);
+      } else if (n.account_type === "Liability") {
+        extractContra(n, "liability");
+        reRollup(n);
+      }
+    }
+
     // Serialize a group node into the NESTED balance-sheet shape, placing every
     // amount on its natural side (assets = debit-positive, liabilities =
     // credit-positive). `children` are nested sub-groups; `ledgers` are the
     // group's own leaf ledgers.
+    //
+    // Signed arithmetic is correct here BECAUSE of the extraction above — no
+    // Math.abs needed, and none wanted: if a negative ever did survive, it
+    // should be visible as a bug rather than silently doubled into the totals.
     //
     // Settled/untouched rows are pruned (returns null) unless include_zero.
     // This matters most here: Sundry Debtors/Creditors hold one leaf per
@@ -1477,11 +1773,11 @@ const getBalanceSheet = async (req, res) => {
       }
       const ledgers = [];
       for (const l of n.ledgers) {
-        const amt = Math.abs(side === "asset" ? l.debit - l.credit : l.credit - l.debit);
+        const amt = round2(side === "asset" ? l.debit - l.credit : l.credit - l.debit);
         if (!includeZero && amt === 0) continue;
         ledgers.push({ ledger_id: l.ledger_id, ledger_name: l.ledger_name, amount: amt });
       }
-      const amount = Math.abs(
+      const amount = round2(
         side === "asset" ? n.totalDebit - n.totalCredit : n.totalCredit - n.totalDebit
       );
       if (!includeZero && children.length === 0 && ledgers.length === 0 && amount === 0) {
@@ -1517,12 +1813,151 @@ const getBalanceSheet = async (req, res) => {
       }
     }
 
+    // Closing stock is a COMPUTED balance, not a ledger posting, so the seeded
+    // 'Stock in Hand' group (Gold/Silver/Stone Stock leaves) aggregates to zero
+    // and gets pruned above — which is why the balance sheet shows no stock at
+    // all today. Attach the figure to that group when it exists in the chart so
+    // it lands in its proper place, and fall back to a synthetic head if the
+    // chart was never seeded with it.
+    const closingStockValue = round2(closingStock.value);
+
+    if (includeZero || closingStockValue !== 0) {
+      const stockLedger = {
+        ledger_id: null,
+        ledger_name: "Closing Stock",
+        amount: closingStockValue,
+      };
+      const stockNode = roots.find(
+        (n) =>
+          n.account_type === "Asset" &&
+          (n.group_name || "").toLowerCase() === "stock in hand"
+      );
+      const existing = stockNode ? assets.find((a) => a.group_id === stockNode.id) : null;
+
+      if (existing) {
+        existing.ledgers.push(stockLedger);
+        existing.amount = round2(existing.amount + closingStockValue);
+      } else {
+        assets.push({
+          group_id: stockNode ? stockNode.id : null,
+          group_name: stockNode ? stockNode.group_name : "Stock in Hand",
+          amount: closingStockValue,
+          children: [],
+          ledgers: [stockLedger],
+        });
+      }
+      totalAssets += closingStockValue;
+    }
+
+    // The contra balances pulled out above, presented on the side they actually
+    // belong to. Each row keeps `reclassified_from` so a reader can see that
+    // "Advance Customer" under here is the same party they expected to find
+    // under Sundry Debtors, rather than wondering where the balance went.
+    const contraGroup = (list, groupName) => ({
+      group_id: null,
+      group_name: groupName,
+      amount: round2(list.reduce((s, l) => s + l.amount, 0)),
+      children: [],
+      ledgers: list.map((l) => ({ ...l, amount: round2(l.amount) })),
+    });
+
+    if (contraToLiability.length) {
+      const entry = contraGroup(contraToLiability, "Advances & Credit Balances");
+      liabilities.push(entry);
+      totalLiabilities += entry.amount;
+    }
+    if (contraToAsset.length) {
+      const entry = contraGroup(contraToAsset, "Advances & Debit Balances");
+      assets.push(entry);
+      totalAssets += entry.amount;
+    }
+
+    // Assets = Liabilities + Capital + (Income - Expenses).
+    //
+    // The loop above walks ONLY the Asset and Liability roots — the period's
+    // RESULT lives in the Income/Expense roots and was never carried anywhere,
+    // so the two sides could not balance even before closing stock existed.
+    // (`grand_total` took Math.max of the two, which hid the gap rather than
+    // closing it.) Post the SAME net profit the P&L reports into Capital
+    // Account and the statement closes.
+    //
+    // The figure is SIGNED: a net loss reduces capital, so it is carried as a
+    // negative rather than being flipped to the asset side. Reusing
+    // buildProfitSections is what guarantees the two reports never disagree.
+    const { netProfit } = buildProfitSections(roots, {
+      includeZero,
+      openingStock,
+      closingStock,
+    });
+    const netResult = round2(netProfit);
+
+    if (netResult < 0) {
+      // A LOSS is reclassified exactly like a contra ledger: it belongs on the
+      // ASSETS side at positive magnitude, not under Capital as a negative.
+      // Same arithmetic as above — moving -X off liabilities and showing +X on
+      // assets leaves the two sides equally apart — and it is the conventional
+      // Indian balance-sheet layout, where accumulated losses sit on the assets
+      // side until reserves absorb them.
+      const entry = {
+        group_id: null,
+        group_name: "Profit & Loss A/c",
+        amount: -netResult,
+        children: [],
+        ledgers: [{ ledger_id: null, ledger_name: "Net Loss", amount: -netResult }],
+      };
+      assets.push(entry);
+      totalAssets += entry.amount;
+    } else if (includeZero || netResult !== 0) {
+      const resultLedger = {
+        ledger_id: null,
+        ledger_name: "Net Profit",
+        amount: netResult,
+      };
+      const capitalNode = roots.find(
+        (n) =>
+          n.account_type === "Liability" &&
+          (n.group_name || "").toLowerCase() === "capital account"
+      );
+      const existingCapital = capitalNode
+        ? liabilities.find((l) => l.group_id === capitalNode.id)
+        : null;
+
+      if (existingCapital) {
+        existingCapital.ledgers.push(resultLedger);
+        existingCapital.amount = round2(existingCapital.amount + netResult);
+      } else {
+        liabilities.push({
+          group_id: capitalNode ? capitalNode.id : null,
+          group_name: capitalNode ? capitalNode.group_name : "Capital Account",
+          amount: netResult,
+          children: [],
+          ledgers: [resultLedger],
+        });
+      }
+      totalLiabilities += netResult;
+    }
+
+    const roundedLiabilities = round2(totalLiabilities);
+    const roundedAssets = round2(totalAssets);
+
     return commonService.okResponse(res, {
       liabilities,
       assets,
-      total_liabilities: round2(totalLiabilities).toFixed(2),
-      total_assets: round2(totalAssets).toFixed(2),
-      grand_total: Math.max(round2(totalLiabilities), round2(totalAssets)).toFixed(2),
+      total_liabilities: roundedLiabilities.toFixed(2),
+      total_assets: roundedAssets.toFixed(2),
+      grand_total: Math.max(roundedLiabilities, roundedAssets).toFixed(2),
+      // Weights + valuation basis behind the Closing Stock asset row.
+      stock: { opening: openingStock, closing: closingStock },
+      // Surfaced so a caller can SEE whether the sheet actually balanced rather
+      // than inferring it from grand_total, which reports the larger side.
+      //
+      // Expect 0.00 on a full-range report — contra balances and losses are
+      // reclassified across sides, which preserves the identity, so neither
+      // knocks it off any more. The remaining way it goes non-zero is a
+      // NARROWED date range: fetchLedgerAggregates windows every ledger, so a
+      // from_date later than the first transaction yields movements rather than
+      // true opening balances, while closing stock is a real as-of figure.
+      difference: round2(roundedAssets - roundedLiabilities).toFixed(2),
     });
   } catch (err) {
     console.error(err);
