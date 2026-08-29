@@ -743,9 +743,10 @@ const createSalesInvoice = async (req, res) => {
 
 const updateSalesInvoice = async (req, res) => {
   const t = await sequelize.transaction();
+
   try {
     const invoiceId = req.params.id;
-    const { header = {}, items = [], payment = [], adjustments = [] } = req.body || {};
+    const { header = {}, items = [], payment = [], adjustments = [], } = req.body || {};
 
     // FETCH & VALIDATE INVOICE
     const invoice = await validateInvoiceItems({
@@ -759,29 +760,53 @@ const updateSalesInvoice = async (req, res) => {
     const previousStatus = invoice.status;
     const newStatus = header.status ?? invoice.status;
 
-    // Validate products and stock
+    /*
+     * Once the bill becomes an Invoice, existing payment transactions
+     * must not be changed during an invoice edit.
+     *
+     * This preserves:
+     * - Original payment date
+     * - Original payment ID
+     * - Revenue/collection reporting date
+     * - Advance wallet transaction
+     * - Voucher receipt usage
+     */
+    const preserveExistingPayments = previousStatus === "Invoice";
+
+    // VALIDATE PRODUCTS
+
     await validateProducts(items, t);
     await validateProductItemDetails(items, t);
 
-    if (header.net_total < 0 || header.total_amount < 0) {
+    if (Number(header.net_total) < 0 || Number(header.total_amount) < 0
+    ) {
       throw new ValidationError("Invalid invoice totals");
     }
 
-
     // PAYMENT PROCESSING
+
     const incomingPayments = Array.isArray(payment) ? payment : [];
 
     const existingPayments = await models.Payment.findAll({
-      where: { invoice_bill_id: invoice.id },
-      attributes: ["id", "payment_mode", "amount_received", "transaction_id"],
+      where: { invoice_bill_id: invoice.id, deleted_at: null, },
+      attributes: ["id", "payment_date", "payment_mode", "amount_received", "transaction_id","status",],
       transaction: t,
-      raw: true
+      raw: true,
     });
 
+    /*
+     * For an existing Invoice edit, use only the payments already
+     * saved in the database.
+     *
+     * The payment array received from the UI is ignored.
+     */
+    const effectivePayments = preserveExistingPayments
+      ? existingPayments
+      : incomingPayments;
 
     // ================= ADVANCE CALCULATION =================
     const oldAdvancePayments = existingPayments.filter(
-      p => p.payment_mode === "Advance"
+      (p) => p.payment_mode === "Advance"
     );
 
     const oldAdvanceTotal = oldAdvancePayments.reduce(
@@ -789,9 +814,18 @@ const updateSalesInvoice = async (req, res) => {
       0
     );
 
-    const newAdvancePayments = incomingPayments.filter(
-      p => p.payment_mode === "Advance"
-    );
+    /*
+     * Existing Invoice:
+     * Keep the existing advance payments unchanged.
+     *
+     * Draft/Hold:
+     * Use payment data received from the UI.
+     */
+    const newAdvancePayments = preserveExistingPayments
+      ? oldAdvancePayments
+      : incomingPayments.filter(
+          (p) => p.payment_mode === "Advance"
+        );
 
     const newAdvanceTotal = newAdvancePayments.reduce(
       (sum, p) => sum + Number(p.amount_received || 0),
@@ -801,28 +835,31 @@ const updateSalesInvoice = async (req, res) => {
     const advanceDiff = newAdvanceTotal - oldAdvanceTotal;
 
     // ================= VALIDATE CASH LIMIT =================
-    const allPayments = [
-      ...existingPayments.map(p => ({
-        payment_mode: p.payment_mode,
-        amount_received: Number(p.amount_received),
-      })),
-      ...incomingPayments.map(p => ({
-        payment_mode: p.payment_mode,
-        amount_received: Number(p.amount_received || 0),
-      })),
-    ];
+    const allPayments = effectivePayments.map((p) => ({
+      payment_date: p.payment_date,
+      payment_mode: p.payment_mode,
+      amount_received: Number(p.amount_received || 0),
+    }));
 
-    validateCashPayment(incomingPayments, req.body.customer?.pan_no);
+    /*
+     * Existing finalized payments were already validated when
+     * the invoice was created.
+     */
+    if (!preserveExistingPayments) {
+      validateCashPayment(
+        incomingPayments,
+        req.body.customer?.pan_no
+      );
+    }
 
-    // Determine IGST vs CGST/SGST
+    // GST CALCULATION
+
     const hasIgst = Number(header.igst_amount || 0) > 0;
     const cgstAmt = hasIgst ? 0 : Number(header.cgst_amount || 0);
     const sgstAmt = hasIgst ? 0 : Number(header.sgst_amount || 0);
     const igstAmt = hasIgst ? Number(header.igst_amount || 0) : 0;
 
-    // ================= GSTR-1 CLASSIFICATION SNAPSHOT =================
-    // Recompute on edit so a changed customer / place of supply / totals keep
-    // the invoice in the correct GSTR-1 bucket.
+    // GSTR-1 SNAPSHOT
     const gstSnapshot = await buildInvoiceGstSnapshot({
       header,
       cgstAmt,
@@ -834,6 +871,7 @@ const updateSalesInvoice = async (req, res) => {
     });
 
     // ================= FETCH OLD ITEMS =================
+
     const oldItems = await models.SalesInvoiceBillItem.findAll({
       where: { invoice_bill_id: invoice.id },
       transaction: t,
@@ -873,16 +911,18 @@ const updateSalesInvoice = async (req, res) => {
         // GSTR-1 snapshot
         ...gstSnapshot,
       },
-      { transaction: t }
+      { transaction: t, }
     );
 
     // UPSERT ITEMS
-    const payloadItemIds = items.filter(i => i.id).map(i => i.id);
+    const payloadItemIds = items
+      .filter((item) => item.id)
+      .map((item) => item.id);
 
     await models.SalesInvoiceBillItem.destroy({
       where: {
         invoice_bill_id: invoice.id,
-        id: { [Op.notIn]: payloadItemIds.length ? payloadItemIds : [0] },
+        id: { [Op.notIn]: payloadItemIds.length ? payloadItemIds : [0], },
       },
       transaction: t,
     });
@@ -891,44 +931,53 @@ const updateSalesInvoice = async (req, res) => {
     for (const item of itemsWithHsn) {
       if (item.id) {
         await models.SalesInvoiceBillItem.update(item, {
-          where: { id: item.id }, transaction: t,
+          where: { id: item.id, invoice_bill_id: invoice.id },
+          transaction: t,
         });
       } else {
         await models.SalesInvoiceBillItem.create(
           { ...item, invoice_bill_id: invoice.id },
-          { transaction: t }
+          { transaction: t, }
         );
       }
     }
 
-    //STOCK LOGIC
-    const normalize = list =>
-      list
-        .map(i => ({
-          product_item_detail_id: i.product_item_detail_id,
-          quantity: Number(i.quantity),
+    // STOCK LOGIC
+    const normalizeItems = (itemList) =>
+      itemList
+        .map((item) => ({
+          product_item_detail_id:
+            item.product_item_detail_id,
+          quantity: Number(item.quantity),
         }))
-        .sort((a, b) => a.product_item_detail_id - b.product_item_detail_id);
+        .sort(
+          (a, b) =>
+            Number(a.product_item_detail_id) -
+            Number(b.product_item_detail_id)
+        );
 
     const itemsChanged =
-      JSON.stringify(normalize(oldItems)) !==
-      JSON.stringify(normalize(items));
+      JSON.stringify(normalizeItems(oldItems)) !==
+      JSON.stringify(normalizeItems(items));
 
+    /*
+     * For an existing Invoice edit, allPayments contains the
+     * original database payments.
+     */
     const hasPayment = allPayments.length > 0;
-    //const hasPayment = incomingPayments.length > 0;
-    const isFullyPaid = Number(header.amount_due) === 0;
+    const isFullyPaid = Number(header.amount_due || 0) === 0;
     const isInvoice = newStatus === "Invoice";
-    const wasStockDeducted = invoice.stock_deducted === true;
+    const wasStockDeducted =invoice.stock_deducted === true;
 
     const shouldReduceStock =
       isInvoice && hasPayment && isFullyPaid;
 
-    // 🔁 RESTORE OLD STOCK
+    // Restore the stock of the old products
     if (wasStockDeducted && itemsChanged) {
       await restoreStockForInvoice(oldItems, t);
     }
 
-    // 🔻 REDUCE NEW STOCK
+    // Deduct stock for the newly selected products
     if (
       (!wasStockDeducted && shouldReduceStock) ||
       (wasStockDeducted && itemsChanged)
@@ -936,163 +985,205 @@ const updateSalesInvoice = async (req, res) => {
       await reduceStockForInvoice(items, t);
 
       await invoice.update(
-        { stock_deducted: true },
-        { transaction: t }
+        { stock_deducted: true,},
+        { transaction: t,}
       );
     }
 
-    // UPSERT PAYMENTS
-    const payloadPaymentIds = incomingPayments.filter(p => p.id).map(p => p.id);
+    /*
+     * Payment, advance wallet and voucher receipt usage can be
+     * modified only before the bill becomes a finalized Invoice.
+     *
+     * If previousStatus is Invoice, this entire block is skipped.
+     */
+    if (!preserveExistingPayments) {
+      // UPSERT PAYMENTS
+      const payloadPaymentIds = incomingPayments
+        .filter((p) => p.id)
+        .map((p) => p.id);
 
-    await models.Payment.destroy({
-      where: {
-        invoice_bill_id: invoice.id,
-        id: { [Op.notIn]: payloadPaymentIds.length ? payloadPaymentIds : [0] },
-      },
-      transaction: t,
-    });
+      await models.Payment.destroy({
+        where: {
+          invoice_bill_id: invoice.id,
+          id: { [Op.notIn]: payloadPaymentIds.length ? payloadPaymentIds : [0] },
+        },
+        transaction: t,
+      });
 
-    for (const p of incomingPayments) {
-      const data = {
-        payment_mode: p.payment_mode,
-        amount_received: Number(p.amount_received || 0),
-        payment_date: p.payment_date || new Date(),
-        transaction_id: p.transaction_id || null,
-        status: "Completed",
-      };
+      for (const paymentData of incomingPayments) {
+        const existingPayment = paymentData.id
+          ? existingPayments.find(
+              (existing) =>
+                existing.id === paymentData.id
+            )
+          : null;
 
-      if (p.id) {
-        // 🔍 fetch existing payment
-        const existingPayment = existingPayments.find(ep => ep.id === p.id);
-        await models.Payment.update({data, payment_date: existingPayment?.payment_date }, {     
-          where: { id: p.id },
-          transaction: t,
-        });
-      } else {
-        await models.Payment.create(
-          { ...data, invoice_bill_id: invoice.id },
-          { transaction: t }
+        const data = {
+          payment_mode: paymentData.payment_mode,
+
+          amount_received: Number(
+            paymentData.amount_received || 0
+          ),
+
+          /*
+           * Preserve the original payment date when updating
+           * an existing pre-invoice payment.
+           */
+          payment_date:
+            existingPayment?.payment_date ||
+            paymentData.payment_date ||
+            new Date(),
+          transaction_id: paymentData.transaction_id || null,
+          status: "Completed",
+        };
+
+        if (paymentData.id) {
+          await models.Payment.update(data, {
+            where: {
+              id: paymentData.id,
+              invoice_bill_id: invoice.id,
+            },
+            transaction: t,
+          });
+        } else {
+          await models.Payment.create(
+            { ...data, invoice_bill_id: invoice.id,},
+            { transaction: t,}
+          );
+        }
+      }
+
+      // ADVANCE WALLET UPDATE
+      const becameInvoice = previousStatus !== "Invoice" && newStatus === "Invoice";
+      if (header.customer_id) {
+        const customer =await models.Customer.findByPk(
+            header.customer_id,
+            { transaction: t, }
+          );
+
+        if (customer) {
+          let deductionAmount = 0;
+
+          // Draft/Hold to Invoice
+          if (becameInvoice) {
+            deductionAmount = newAdvanceTotal;
+          } else if (advanceDiff !== 0) {
+            /*
+             * Advance payment changed while the bill is still
+             * in an editable state.
+             */
+            deductionAmount = advanceDiff;
+          }
+
+          if (deductionAmount !== 0) {
+            const currentWalletAmount = Number(customer.wallet_advance_amount || 0);
+            const newWalletAmount = currentWalletAmount - deductionAmount;
+            await customer.update(
+              {wallet_advance_amount: Math.max(newWalletAmount, 0), },
+              { transaction: t, }
+            );
+          }
+        }
+      }
+
+      // ================= UPDATE RECEIPT USAGE =================
+      const newReceiptNos = newAdvancePayments
+        .map((p) => p.transaction_id)
+        .filter(Boolean);
+
+      const oldReceiptNos = oldAdvancePayments
+        .map((p) => p.transaction_id)
+        .filter(Boolean);
+
+      const removedReceipts = oldReceiptNos.filter(
+        (receiptNo) => !newReceiptNos.includes(receiptNo)
+      );
+
+      if (newReceiptNos.length > 0) {
+        await models.VoucherReceipt.update(
+          { is_advance_used: true, },
+          {
+            where: { receipt_no: { [Op.in]: newReceiptNos, }, },
+            transaction: t,
+          }
+        );
+      }
+
+      if (removedReceipts.length > 0) {
+        await models.VoucherReceipt.update(
+          { is_advance_used: false,},
+          {
+            where: { receipt_no: { [Op.in]: removedReceipts,},
+            },
+            transaction: t,
+          }
         );
       }
     }
 
-    // ================= ADVANCE WALLET UPDATE =================
-    const becameInvoice = previousStatus !== "Invoice" && newStatus === "Invoice";
-    if (header.customer_id) {
-      const customer = await models.Customer.findByPk(
-        header.customer_id,
-        { transaction: t }
-      );
-      if (customer) {
-        let deductionAmount = 0;
-        // HOLD → INVOICE
-        if (becameInvoice) {
-          deductionAmount = newAdvanceTotal;
-        }
-        // INVOICE → INVOICE edit
-        else if (advanceDiff !== 0) {
-          deductionAmount = advanceDiff;
-        }
-        if (deductionAmount !== 0) {
-          const newWallet =
-            Number(customer.wallet_advance_amount || 0) - deductionAmount;
-          await customer.update(
-            { wallet_advance_amount: Math.max(newWallet, 0) },
-            { transaction: t }
-          );
-        }
-      }
-    }
-
-    // ================= UPDATE RECEIPT USAGE =================
-    const newReceiptNos = newAdvancePayments
-      .map(p => p.transaction_id)
-      .filter(Boolean);
-
-    const oldReceiptNos = oldAdvancePayments
-      .map(p => p.transaction_id)
-      .filter(Boolean);
-
-    const removedReceipts = oldReceiptNos.filter(
-      r => !newReceiptNos.includes(r)
-    );
-
-    if (newReceiptNos.length) {
-      await models.VoucherReceipt.update(
-        { is_advance_used: true },
-        {
-          where: { receipt_no: newReceiptNos },
-          transaction: t
-        }
-      );
-    }
-
-    if (removedReceipts.length) {
-      await models.VoucherReceipt.update(
-        { is_advance_used: false },
-        {
-          where: { receipt_no: removedReceipts },
-          transaction: t
-        }
-      );
-    }
-
     // UPSERT ADJUSTMENTS
-    const payloadAdjIds = adjustments.filter(a => a.id).map(a => a.id);
+    const payloadAdjustmentIds = adjustments
+      .filter((adjustment) => adjustment.id)
+      .map((adjustment) => adjustment.id);
 
     const oldAdjustments = await models.SalesInvoiceAdjustment.findAll({
-      where: { sales_invoice_id: invoice.id },
-        transaction: t,
-        raw: true,
+      where: { sales_invoice_id: invoice.id, },
+      transaction: t,
+      raw: true,
     });
 
     await models.SalesInvoiceAdjustment.destroy({
       where: {
         sales_invoice_id: invoice.id,
-        id: { [Op.notIn]: payloadAdjIds.length > 0 ? payloadAdjIds : [0] },
+        id: { [Op.notIn]: payloadAdjustmentIds.length ? payloadAdjustmentIds : [0], },
       },
       transaction: t,
     });
 
     const removedAdjustments = oldAdjustments.filter(
-        oldAdj => !payloadAdjIds.includes(oldAdj.id)
+      (oldAdjustment) => !payloadAdjustmentIds.includes(oldAdjustment.id)
     );
 
     if (removedAdjustments.length > 0) {
-        await unlockBillAdjustmentFlags(removedAdjustments, t);
+      await unlockBillAdjustmentFlags(removedAdjustments, t);
     }
 
-    for (const adj of adjustments) {
-      const data = {
-        adjustment_type_id: adj.adjustment_type_id,
-        reference_id: adj.reference_id,
-        reference_no: adj.reference_no,
-        adjustment_amount: Number(adj.adjustment_amount) || 0,
+    for (const adjustment of adjustments) {
+      const adjustmentData = {
+        adjustment_type_id: adjustment.adjustment_type_id,
+        reference_id: adjustment.reference_id,
+        reference_no: adjustment.reference_no,
+        adjustment_amount: Number(adjustment.adjustment_amount) || 0,
       };
 
-      if (adj.id) {
-        await models.SalesInvoiceAdjustment.update(data, {
-          where: { id: adj.id },
-          transaction: t,
-        });
+      if (adjustment.id) {
+        await models.SalesInvoiceAdjustment.update(
+          adjustmentData,
+          {
+            where: {
+              id: adjustment.id,
+              sales_invoice_id: invoice.id,
+            },
+            transaction: t,
+          });
       } else {
         await models.SalesInvoiceAdjustment.create(
-          { ...data, sales_invoice_id: invoice.id },
-          { transaction: t }
+          { ...adjustmentData, sales_invoice_id: invoice.id, },
+          { transaction: t, }
         );
       }
     }
 
-    // Update customer PAN
+    // UPDATE CUSTOMER PAN
     if (req.body.customer?.pan_no && header.customer_id) {
       await models.Customer.update(
         { pan_no: req.body.customer.pan_no },
-        { where: { id: header.customer_id }, transaction: t }
+        { where: { id: header.customer_id }, transaction: t, }
       );
     }
     // Lock adjustments
     if (newStatus === "Invoice") {
-        await lockBillAdjustmentFlags(adjustments, t);
+      await lockBillAdjustmentFlags(adjustments, t);
     }
 
     await t.commit();
@@ -1110,7 +1201,7 @@ const updateSalesInvoice = async (req, res) => {
     */
 
     return commonService.okResponse(res, {
-      message: "Invoice updated successfully"
+      message: "Invoice updated successfully",
     });
 
   } catch (err) {
@@ -1584,9 +1675,9 @@ const toggleSalesInvoiceActive = async (req, res) => {
         }
 
         if (is_active === false) {
-            // ======================
+            //=====
             // RESTORE STOCK
-            // ======================
+            //=====
             if (invoice.stock_deducted) {
                 const invoiceItems =
                     await models.SalesInvoiceBillItem.findAll({
@@ -1597,9 +1688,9 @@ const toggleSalesInvoiceActive = async (req, res) => {
                 await invoice.update({ stock_deducted: false }, { transaction: t });
             }
 
-            // ======================
+            //=====
             // UNLOCK ADJUSTMENTS
-            // ======================
+            //=====
             const adjustments =
                 await models.SalesInvoiceAdjustment.findAll({
                     where: { sales_invoice_id: invoice.id },
@@ -1610,9 +1701,9 @@ const toggleSalesInvoiceActive = async (req, res) => {
             await unlockBillAdjustmentFlags(adjustments, t);
             console.log("ADJUSTMENTS BEFORE UNLOCK", JSON.stringify(adjustments, null, 2));
 
-          // ======================
+          //=====
           // Restore Advance
-          // ======================
+          //=====
           const advancePayments =
             await models.Payment.findAll({
                 where: {
@@ -1651,9 +1742,9 @@ const toggleSalesInvoiceActive = async (req, res) => {
             }
           }
 
-          // ======================
+          //=====
           // MAKE RECEIPTS REUSABLE
-          // ======================
+          //=====
           await models.VoucherReceipt.update(
           {
             is_advance_used: false
