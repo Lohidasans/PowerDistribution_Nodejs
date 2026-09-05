@@ -162,8 +162,20 @@ module.exports = router;
  * /api/v1/products/list-details:
  *   get:
  *     summary: Get products for web list with filters and search (includes variation_count)
+ *     description: For GRN bulk selection, send branch_id, grn_id and stock=stock_in_hand without page or limit to fetch all matching products and their available item_details. The UI adds these items to the stock transfer form.
  *     tags: [Product]
  *     parameters:
+ *       - in: query
+ *         name: branch_id
+ *         schema: { type: integer }
+ *         description: Source branch for stock transfer selection.
+ *       - in: query
+ *         name: grn_id
+ *         schema: { type: integer }
+ *         description: Selected GRN dropdown ID.
+ *       - in: query
+ *         name: stock
+ *         schema: { type: string, enum: [stock_in_hand, out_of_stock] }
  *       - in: query
  *         name: material_type_id
  *         schema: { type: integer }

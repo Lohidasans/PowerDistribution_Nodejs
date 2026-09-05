@@ -268,6 +268,14 @@ module.exports = router;
  *     tags: [GRN]
  *     parameters:
  *       - in: query
+ *         name: branch_id
+ *         schema: { type: integer, minimum: 1 }
+ *         description: Filter by GRN branch. Required when purpose is stock_transfer.
+ *       - in: query
+ *         name: purpose
+ *         schema: { type: string, enum: [purchase_return, stock_transfer] }
+ *         description: stock_transfer returns lightweight GRN options for the source branch.
+ *       - in: query
  *         name: vendor_id
  *         schema: 
  *           type: integer

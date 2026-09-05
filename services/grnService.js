@@ -721,11 +721,23 @@ const getAllGrns = async (req, res) => {
 // GET: list of GRN numbers with full ProductGrnInfo + joined details
 const listGrnNumbers = async (req, res) => {
   try {
-    const { vendor_id, purpose } = req.query;
+    const { vendor_id, purpose, branch_id } = req.query;
+    
+    if (purpose === "stock_transfer" && !branch_id) {
+      return commonService.badRequest(res, "branch_id is required for stock transfer GRNs");
+    }
+
+    if (branch_id !== undefined && (!/^\d+$/.test(String(branch_id)) || !Number.isSafeInteger(Number(branch_id)) || Number(branch_id) <= 0)) {
+      return commonService.badRequest(res, "branch_id must be a positive integer");
+    }
     // Base condition: only active GRNs
     const whereCondition = {
       is_active: true,
     };
+
+    if (branch_id !== undefined) {
+      whereCondition.branch_id = Number(branch_id);
+    }
 
     // Optional vendor filter
     if (vendor_id) {
@@ -744,6 +756,11 @@ const listGrnNumbers = async (req, res) => {
       order: [["created_at", "DESC"]],
       raw: true,
     });
+
+    // The transfer picker needs GRN options, not purchase-return line balances.
+    if (purpose === "stock_transfer") {
+      return commonService.okResponse(res, { grns });
+    }
 
     if (grns.length === 0) {
       return commonService.okResponse(res, { grns: [] });

@@ -224,6 +224,9 @@ const createStockTransfer = async (req, res) => {
       console.log(`[createStockTransfer] Processing product ID: ${productId} with ${rows.length} items`);
 
       const sourceProduct = await models.Product.findByPk(productId, { transaction });
+      if (!sourceProduct || Number(sourceProduct.branch_id) !== Number(branch_from)) {
+        throw new Error(`Product ${productId} does not belong to the source branch`);
+      }
       console.log(`[createStockTransfer] Source product found:`, sourceProduct.product_name);
       
       const additionals = await models.ProductAdditionalDetail.findAll({ where: { product_id: productId }, transaction });
