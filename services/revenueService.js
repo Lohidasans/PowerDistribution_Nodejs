@@ -1,7 +1,7 @@
 const { Op } = require('sequelize');
 const commonService = require('./commonService');
 const { sequelize } = require('../models/index');
-const { dateFilter } = require("../helpers/dateHelper");
+const { revenueDateFilter } = require("../helpers/revenueDateFilter");
 
 const getBranchwiseRevenue = async (req, res) => {
     try {
@@ -19,9 +19,8 @@ const getBranchwiseRevenue = async (req, res) => {
         const replacements = {};
         const dateReplacements = {};
 
-        const dateCondition = dateFilter(
+        const { periodCondition, balanceCondition } = revenueDateFilter(
             { from_date, to_date, date_filter },
-            "rs.txn_date",
             dateReplacements
         );
 
@@ -143,7 +142,7 @@ const getBranchwiseRevenue = async (req, res) => {
                 ROUND(SUM(CASE WHEN rs.payment_mode = 'Cash' THEN rs.amount ELSE 0 END), 2) AS cash,
                 ROUND(SUM(CASE WHEN rs.payment_mode = 'UPI' THEN rs.amount ELSE 0 END), 2) AS upi,
                 ROUND(SUM(CASE WHEN rs.payment_mode = 'Card' THEN rs.amount ELSE 0 END), 2) AS card,
-                ROUND(SUM(rs.refund_amount), 2) AS refund,
+                ROUND(SUM(CASE WHEN TRUE ${periodCondition} THEN rs.refund_amount ELSE 0 END), 2) AS refund,
 
                 ROUND(SUM(rs.amount), 2) AS total_amount
 
@@ -151,8 +150,9 @@ const getBranchwiseRevenue = async (req, res) => {
             JOIN branches b ON b.id = rs.branch_id AND b.deleted_at IS NULL
 
             WHERE 1=1
-                ${dateCondition}
+                ${balanceCondition}
                 ${branchCondition}
+                ${paymentModeCondition}
                 ${searchCondition}
 
             GROUP BY b.id, b.branch_name
@@ -270,13 +270,13 @@ const getBranchwiseRevenue = async (req, res) => {
                 ROUND(SUM(CASE WHEN rs.payment_mode = 'Cash' THEN rs.amount ELSE 0 END), 2) AS cash,
                 ROUND(SUM(CASE WHEN rs.payment_mode = 'UPI' THEN rs.amount ELSE 0 END), 2) AS upi,
                 ROUND(SUM(CASE WHEN rs.payment_mode = 'Card' THEN rs.amount ELSE 0 END), 2) AS card,
-                ROUND(SUM(rs.refund_amount), 2) AS refund
+                ROUND(SUM(CASE WHEN TRUE ${periodCondition} THEN rs.refund_amount ELSE 0 END), 2) AS refund
             FROM revenue_stream rs
             JOIN branches b
                 ON b.id = rs.branch_id
                 AND b.deleted_at IS NULL
             WHERE 1=1
-                ${dateCondition}
+                ${balanceCondition}
                 ${branchCondition}
                 ${paymentModeCondition}
                 ${searchCondition}
@@ -321,9 +321,8 @@ const getBranchRevenueDetailsNew = async (req, res) => {
 
         const replacements = { branch_id };
 
-        const dateCondition = dateFilter(
+        const { periodCondition: dateCondition, balanceCondition } = revenueDateFilter(
             { from_date, to_date, date_filter },
-            "rs.txn_date",
             replacements
         );
 
@@ -519,7 +518,8 @@ const getBranchRevenueDetailsNew = async (req, res) => {
             ROUND(SUM(CASE WHEN payment_mode='Card' THEN amount ELSE 0 END),2) AS card
         FROM revenue_stream rs
         WHERE rs.branch_id = :branch_id
-        ${dateCondition}
+        ${balanceCondition}
+        ${paymentModeCondition}
         `;
 
         const [summary] = await sequelize.query(summaryQuery, {
