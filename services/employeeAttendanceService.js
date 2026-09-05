@@ -276,8 +276,13 @@ const getEmployeeAttendance = async (req, res) => {
         current_page: page,
         per_page: limit,
       },
-
       attendance: paginatedAttendance,
+      // Keep computed durations internal for the dashboard and status filters.
+      // The attendance table only needs employee details and in/out times.
+      // attendance: paginatedAttendance.map(({
+      //   production_hours, break_hours, overtime_hours, total_hours, late_by,
+      //   has_overtime, ...employeeAttendance
+      // }) => employeeAttendance),
     });
   } catch (err) {
     console.error("Error in getEmployeeAttendance:", err);
@@ -323,6 +328,7 @@ const getEmployeeAttendanceHistory = async (req, res) => {
         LEFT JOIN employee_departments d ON d.id = e.department_id
         LEFT JOIN roles r ON r.id = e.role_id
         WHERE e.id = :employee_id AND e.deleted_at IS NULL
+          AND e.status = 'Active'
       ),
       tracking_data AS (
         SELECT 
@@ -609,6 +615,7 @@ const getEmployeeAttendanceDetail = async (req, res) => {
         LEFT JOIN employee_departments d ON d.id = e.department_id
         LEFT JOIN roles r ON r.id = e.role_id
         WHERE e.id = :employee_id AND e.deleted_at IS NULL
+          AND e.status = 'Active'
       ),
       tracking_data AS (
         SELECT

@@ -231,6 +231,7 @@ const getEmployeeIncentiveReport = async (req, res) => {
           AND sib.status = 'Invoice'
           ${dateFilter}
         WHERE e.deleted_at IS NULL
+          AND e.status = 'Active'
           ${employeeWhere}
         GROUP BY
           e.id, e.employee_no, e.employee_name, e.profile_image_url,

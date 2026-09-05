@@ -20,11 +20,12 @@ module.exports = router;
  * @openapi
  * /api/v1/employees/attendance:
  *   get:
- *     summary: Get employee attendance with work hours calculation
+ *     summary: Get active employee attendance with clock-in and clock-out times
  *     tags: [Employee Attendance]
  *     description: |
- *       Calculate employee attendance based on office timings (09:00 AM - 06:00 PM).
- *       Returns clock in/out times, production hours, break hours, overtime, and total hours.
+ *       Returns only active employees, with employee details, attendance status, and clock-in/out times.
+ *       Attendance rows omit production, break, overtime, total hours, and lateness fields.
+ *       Dashboard summary and status filters retain their existing calculations.
  *     parameters:
  *       - in: query
  *         name: date
@@ -112,11 +113,6 @@ module.exports = router;
  *                           status: { type: string, enum: [Present, Absent] }
  *                           clock_in: { type: string, example: "09:00 AM" }
  *                           clock_out: { type: string, example: "06:00 PM" }
- *                           production_hours: { type: string, example: "10h 00m" }
- *                           break_hours: { type: string, example: "00h 45m" }
- *                           overtime_hours: { type: string, example: "02h 15m" }
- *                           total_hours: { type: string, example: "10h 00m" }
- *                           late_by: { type: string, example: "00h 15m" }
  */
 
 /**
