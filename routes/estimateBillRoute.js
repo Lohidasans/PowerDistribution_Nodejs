@@ -35,6 +35,7 @@ module.exports = router;
  * /api/v1/estimate-bills:
  *   post:
  *     summary: Create an estimate bill (header + items)
+ *     description: Each item accepts adjustment_percent (defaults to 0). The UI must calculate and send amount including the adjustment; the API stores the percentage without applying it again. For example, quantity 1, rate 100, adjustment_percent 10, amount 110. Updates use the same item fields.
  *     tags: [EstimateBill]
  *     responses:
  *       201:

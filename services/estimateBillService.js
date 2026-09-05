@@ -63,6 +63,8 @@ const createEstimate = async (req, res) => {
         purity_snapshot: it.purity_snapshot ?? null,
         quantity: qty,
         rate,
+        // The UI sends the final amount with this percentage already applied.
+        adjustment_percent: it.adjustment_percent ?? 0,
         amount,
         cgst_percent: it.cgst_percent ?? null,
         sgst_percent: it.sgst_percent ?? null,
@@ -193,6 +195,7 @@ const listEstimates = async (req, res) => {
         i.product_name_snapshot,
         i.quantity,
         i.rate,
+        i.adjustment_percent,
         i.amount,
         i.created_at,
         i.updated_at,
@@ -317,6 +320,8 @@ const updateEstimate = async (req, res) => {
         purity_snapshot: it.purity_snapshot ?? null,
         quantity: qty,
         rate,
+        // The UI sends the final amount with this percentage already applied.
+        adjustment_percent: it.adjustment_percent ?? 0,
         amount,
         cgst_percent: it.cgst_percent ?? null,
         sgst_percent: it.sgst_percent ?? null,
