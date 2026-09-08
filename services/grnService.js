@@ -730,18 +730,40 @@ const listGrnNumbers = async (req, res) => {
     if (branch_id !== undefined && (!/^\d+$/.test(String(branch_id)) || !Number.isSafeInteger(Number(branch_id)) || Number(branch_id) <= 0)) {
       return commonService.badRequest(res, "branch_id must be a positive integer");
     }
-    // Base condition: only active GRNs
-    const whereCondition = {
-      is_active: true,
-    };
+    // Transfers select existing stock, including stock from an older/inactive GRN.
+    // Match the product picker, which only excludes deleted GRNs from its join.
+    const whereCondition = purpose === "stock_transfer" ? {} : { is_active: true };
 
-    if (branch_id !== undefined) {
+    // Transferred products retain the original GRN; its branch can differ from
+    // the branch currently holding stock. Transfer branch filtering happens below.
+    if (branch_id !== undefined && purpose !== "stock_transfer") {
       whereCondition.branch_id = Number(branch_id);
     }
 
     // Optional vendor filter
     if (vendor_id) {
       whereCondition.vendor_id = vendor_id;
+    }
+
+    if (purpose === "stock_transfer") {
+      // Match products/list-details?stock=stock_in_hand for the source branch.
+      // branch_id has been validated as a positive safe integer above.
+      whereCondition.id = {
+        [Op.in]: sequelize.literal(`(
+          SELECT p.grn_id
+          FROM products p
+          WHERE p.branch_id = ${Number(branch_id)}
+            AND p.status = 'Active'
+            AND p.deleted_at IS NULL
+            AND EXISTS (
+              SELECT 1
+              FROM "productItemDetails" pid
+              WHERE pid.product_id = p.id
+                AND pid.deleted_at IS NULL
+                AND pid.quantity > 0
+            )
+        )`),
+      };
     }
 
     // Only Purchase Return should restrict to Pending grn

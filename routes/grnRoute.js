@@ -270,11 +270,11 @@ module.exports = router;
  *       - in: query
  *         name: branch_id
  *         schema: { type: integer, minimum: 1 }
- *         description: Filter by GRN branch. Required when purpose is stock_transfer.
+ *         description: For stock_transfer, filter by the branch currently holding product stock (required). Otherwise filter by the original GRN branch.
  *       - in: query
  *         name: purpose
  *         schema: { type: string, enum: [purchase_return, stock_transfer] }
- *         description: stock_transfer returns lightweight GRN options for the source branch.
+ *         description: stock_transfer returns non-deleted GRNs linked to active products with positive item stock in the selected branch, regardless of the GRN's original branch or active flag.
  *       - in: query
  *         name: vendor_id
  *         schema: 
