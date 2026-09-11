@@ -102,10 +102,10 @@ const CHART = {
     ['Sales Accounts', [
       'Sales Accounts', // catch-all posting ledger the financial reports match via ILIKE 'SALES ACCOUNTS'
       'Gold Sales',
-      'Silver Sales',
+      'Sales',  //'Silver Sales',
       'Diamond Sales',
       'Stone Sales',
-      'Old Gold Sales',
+      'Old Jewel',//'Old Gold Sales',
       'Sales Return',
     ]],
     ['Direct Income', [

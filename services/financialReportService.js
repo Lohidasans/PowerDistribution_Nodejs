@@ -43,6 +43,7 @@ const LEDGER_LOOKUP_CTE = `
       ${LEAF("Silver Sales", "Sales Accounts")}                AS silver_sales_id,
       ${ANY_LEAF("Sales Accounts")}                            AS any_sales_id,
       ${LEAF("Sales Return", "Sales Accounts")}                AS sales_return_id,
+      ${LEAF("Old Jewel", "Sales Accounts")}                   AS old_jewel_id,
       ${LEAF("Old Gold Sales", "Sales Accounts")}              AS old_gold_sales_id,
       ${LEAF("Purchase", "Purchase Accounts")}                 AS purchase_id,
       ${LEAF("Silver Purchase", "Purchase Accounts")}          AS silver_purchase_id,
@@ -117,7 +118,7 @@ const STONE_LEDGER = LED(`COALESCE(led.stone_id, led.purchase_id, led.silver_pur
 const BANK_LEDGER = LED(`COALESCE(led.bank_leaf_id, led.bank_group_id)`);
 
 // Resilient posting ledgers for the standalone old-gold / return flows (flow F).
-const OLD_GOLD_SALES_LEDGER = LED(`COALESCE(led.old_gold_sales_id, led.any_sales_id)`);
+const OLD_JEWEL_LEDGER  = LED(`COALESCE(led.old_jewel_id, led.old_gold_sales_id, led.any_sales_id)`);
 const PURCHASE_RETURN_LEDGER = LED(`COALESCE(led.purchase_return_id, led.any_purchase_id)`);
 
 // Jewel-repair income (flow G) -> 'Repair Charges Income' under Direct Income.
@@ -210,14 +211,14 @@ const ALL_TXNS_CTE = `
 
     /* =========================================================
        A) SALES INVOICE  (status = 'Invoice')
-       Cr: Silver Sales (subtotal) + Output CGST/SGST/IGST
+       Cr: Sales (subtotal) + Output CGST/SGST/IGST
        Dr: payment-mode ledgers + adjustment ledgers + customer receivable
        Balance: subtotal+cgst+sgst+igst = Σpay(5 modes) + Σadj(1,2,3) + receivable
        ALL legs keyed off the INVOICE (s.invoice_date + s.branch_id) so an
        invoice's Dr and Cr always enter/leave the report window together.
        ========================================================= */
 
-    -- A.Cr1  Sales (was 'Silver Sales') = subtotal_amount
+    -- A.Cr1 Sales = subtotal_amount
     SELECT
       ${SALES_LEDGER}                                           AS ledger_id,
       0 AS debit,
@@ -898,8 +899,8 @@ const ALL_TXNS_CTE = `
        flow is self-balancing (Σ debit = Σ credit).
        ========================================================= */
 
-    -- F.1  Old Gold: Dr 'Old Gold Sales' (Sales Accounts) ; Cr customer ledger
-    SELECT ${OLD_GOLD_SALES_LEDGER}, COALESCE(oj.total_amount, 0), 0,
+    -- F.1  Old Gold: Dr 'Old Jewel' (Sales Accounts) ; Cr customer ledger
+    SELECT ${OLD_JEWEL_LEDGER}, COALESCE(oj.total_amount, 0), 0,
            oj.date::date, oj.old_jewel_code::text ${OJ_STANDALONE}
     UNION ALL
     SELECT lc.id, 0, COALESCE(oj.total_amount, 0),
